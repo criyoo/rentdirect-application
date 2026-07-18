@@ -169,6 +169,8 @@ STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
 }
+if ENVIRONMENT == "test":
+    STORAGES["staticfiles"] = {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"}
 
 AWS_STORAGE_BUCKET_NAME = os.environ.get("AWS_STORAGE_BUCKET_NAME", "").strip()
 AWS_S3_REGION_NAME = os.environ.get("AWS_S3_REGION_NAME", os.environ.get("AWS_REGION", "eu-west-1")).strip()

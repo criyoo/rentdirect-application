@@ -601,13 +601,13 @@ class UserViewSetTests(TestCase):
         self.assertEqual(response.status_code, 200, response.json())
         payload = response.json()
         self.assertEqual(payload["tenant"]["bronze"]["monthly"], 0)
-        self.assertEqual(payload["tenant"]["silver"]["monthly"], 5000)
-        self.assertEqual(payload["tenant"]["gold"]["monthly"], 8000)
-        self.assertEqual(payload["tenant"]["platinum"]["monthly"], 10000)
+        self.assertEqual(payload["tenant"]["silver"]["monthly"], 200)
+        self.assertEqual(payload["tenant"]["gold"]["monthly"], 300)
+        self.assertEqual(payload["tenant"]["platinum"]["monthly"], 500)
         self.assertEqual(payload["landlord"]["bronze"]["monthly"], 0)
-        self.assertEqual(payload["landlord"]["silver"]["monthly"], 10000)
-        self.assertEqual(payload["landlord"]["gold"]["monthly"], 15000)
-        self.assertEqual(payload["landlord"]["platinum"]["monthly"], 20000)
+        self.assertEqual(payload["landlord"]["silver"]["monthly"], 300)
+        self.assertEqual(payload["landlord"]["gold"]["monthly"], 400)
+        self.assertEqual(payload["landlord"]["platinum"]["monthly"], 500)
 
     @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
     def test_authenticated_user_can_change_password(self):
@@ -2745,7 +2745,7 @@ class SubscriptionPaymentTests(TestCase):
         self.assertEqual(request_response.status_code, 201, request_response.json())
         payment = SubscriptionPayment.objects.get(id=request_response.json()["id"])
         self.assertEqual(payment.status, SubscriptionPayment.Status.PENDING)
-        self.assertEqual(str(payment.amount), "5000.00")
+        self.assertEqual(str(payment.amount), "200.00")
 
         checkout_response = client.post(f"/api/v1/subscriptions/{payment.id}/flutterwave/checkout", {}, format="json")
 
@@ -2761,7 +2761,7 @@ class SubscriptionPaymentTests(TestCase):
                 "id": "991",
                 "tx_ref": payment.transaction_id,
                 "status": "successful",
-                "amount": "5000.00",
+                "amount": "200.00",
                 "currency": "NGN",
                 "customer": {"email": tenant.email},
             },
