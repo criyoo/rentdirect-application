@@ -1,0 +1,302 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Modern Design System */
+@layer base {
+    @font-face {
+        font-family: "Buenos Aires";
+        src:
+            url("https://c.superprof.com/p/style/fonts/BuenosAires-Regular.woff2") format("woff2"),
+            url("https://c.superprof.com/p/style/fonts/BuenosAires-Regular.woff") format("woff");
+        font-style: normal;
+        font-weight: 400;
+        font-display: swap;
+    }
+
+    @font-face {
+        font-family: "Buenos Aires";
+        src:
+            url("https://c.superprof.com/p/style/fonts/BuenosAires-SemiBold.woff2") format("woff2"),
+            url("https://c.superprof.com/p/style/fonts/BuenosAires-SemiBold.woff") format("woff");
+        font-style: normal;
+        font-weight: 600;
+        font-display: swap;
+    }
+
+    @font-face {
+        font-family: "Buenos Aires";
+        src:
+            url("https://c.superprof.com/p/style/fonts/BuenosAires-Bold.woff2") format("woff2"),
+            url("https://c.superprof.com/p/style/fonts/BuenosAires-Bold.woff") format("woff");
+        font-style: normal;
+        font-weight: 700;
+        font-display: swap;
+    }
+
+    @font-face {
+        font-family: "Buenos Aires";
+        src:
+            url("https://c.superprof.com/p/style/fonts/BuenosAires-Black.woff2") format("woff2"),
+            url("https://c.superprof.com/p/style/fonts/BuenosAires-Black.woff") format("woff");
+        font-style: normal;
+        font-weight: 900;
+        font-display: swap;
+    }
+
+    :root {
+        --color-primary: 59 130 246;
+        --color-primary-dark: 37 99 235;
+        --color-secondary: 139 92 246;
+        --color-accent: 16 185 129;
+        --color-warning: 245 158 11;
+        --color-error: 239 68 68;
+        --color-success: 34 197 94;
+        --color-gray-50: 249 250 251;
+        --color-gray-100: 243 244 246;
+        --color-gray-200: 229 231 235;
+        --color-gray-300: 209 213 219;
+        --color-gray-400: 156 163 175;
+        --color-gray-500: 107 114 128;
+        --color-gray-600: 75 85 99;
+        --color-gray-700: 55 65 81;
+        --color-gray-800: 31 41 55;
+        --color-gray-900: 17 24 39;
+        --font-sans: "Buenos Aires", "OpenSans", "Open Sans", sans-serif;
+    }
+
+    * {
+        @apply border-gray-200;
+    }
+
+    html {
+        @apply scroll-smooth;
+    }
+
+    body {
+        @apply bg-gray-50 text-gray-900 font-sans antialiased;
+        font-family: var(--font-sans);
+        font-feature-settings: "rlig" 1, "calt" 1;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+        font: inherit;
+    }
+
+    /* Modern Typography */
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6 {
+        @apply font-bold tracking-tight;
+    }
+
+    h1 {
+        @apply text-4xl md:text-5xl lg:text-6xl;
+    }
+
+    h2 {
+        @apply text-3xl md:text-4xl;
+    }
+
+    h3 {
+        @apply text-2xl md:text-3xl;
+    }
+
+    h4 {
+        @apply text-xl md:text-2xl;
+    }
+
+    /* Modern Focus Styles */
+    *:focus-visible {
+        @apply outline-none ring-2 ring-blue-500 ring-offset-2;
+    }
+
+    /* Smooth Transitions */
+    * {
+        @apply transition-colors duration-200;
+    }
+}
+
+@layer components {
+
+    /* Modern Button Styles */
+    .btn {
+        @apply inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+    }
+
+    .btn-primary {
+        @apply bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500 shadow-sm hover:shadow-md;
+    }
+
+    .btn-secondary {
+        @apply bg-gray-100 text-gray-700 hover:bg-gray-200 focus:ring-gray-500 border border-gray-300;
+    }
+
+    .btn-success {
+        @apply bg-green-600 text-white hover:bg-green-700 focus:ring-green-500;
+    }
+
+    .btn-danger {
+        @apply bg-red-600 text-white hover:bg-red-700 focus:ring-red-500;
+    }
+
+    .btn-outline {
+        @apply border-2 border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white focus:ring-blue-500;
+    }
+
+    /* Modern Card Styles */
+    .card {
+        @apply bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden transition-all duration-200 hover:shadow-md;
+    }
+
+    .card-hover {
+        @apply hover:shadow-lg hover:-translate-y-1;
+    }
+
+    /* Modern Form Styles */
+    .form-input {
+        @apply w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200;
+    }
+
+    .form-label {
+        @apply block text-sm font-medium text-gray-700 mb-2;
+    }
+
+    .form-error {
+        @apply text-sm text-red-600 mt-1;
+    }
+
+    /* Modern Navigation */
+    .nav-link {
+        @apply text-gray-700 hover:text-blue-600 transition-colors duration-200 font-medium;
+    }
+
+    .nav-link-active {
+        @apply text-blue-600 font-semibold;
+    }
+
+    /* Modern Container */
+    .container-modern {
+        /* @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8; */
+        @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col gap-6;
+    }
+
+    /* Modern Section */
+    .section {
+        @apply py-12 md:py-16 lg:py-20;
+    }
+
+    /* Modern Grid */
+    .grid-modern {
+        @apply grid gap-6 md:gap-8;
+    }
+
+    /* Modern Badge */
+    .badge {
+        @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+    }
+
+    .badge-primary {
+        @apply bg-blue-100 text-blue-800;
+    }
+
+    .badge-success {
+        @apply bg-green-100 text-green-800;
+    }
+
+    .badge-warning {
+        @apply bg-yellow-100 text-yellow-800;
+    }
+
+    .badge-error {
+        @apply bg-red-100 text-red-800;
+    }
+
+    /* Modern Loading States */
+    .skeleton {
+        @apply animate-pulse bg-gray-200 rounded;
+    }
+
+    /* Modern Glass Effect */
+    .glass {
+        @apply bg-white/80 backdrop-blur-sm border border-white/20;
+    }
+
+    /* Modern Gradient Backgrounds */
+    .gradient-primary {
+        @apply bg-gradient-to-br from-blue-600 to-blue-700;
+    }
+
+    .gradient-secondary {
+        @apply bg-gradient-to-br from-purple-600 to-purple-700;
+    }
+
+    .gradient-accent {
+        @apply bg-gradient-to-br from-green-600 to-green-700;
+    }
+}
+
+@layer utilities {
+
+    /* Modern Shadows */
+    .shadow-modern {
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    }
+
+    .shadow-modern-lg {
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    }
+
+    /* Modern Animations */
+    .animate-fade-in {
+        animation: fadeIn 0.5s ease-in-out;
+    }
+
+    .animate-slide-up {
+        animation: slideUp 0.3s ease-out;
+    }
+
+    .animate-scale-in {
+        animation: scaleIn 0.2s ease-out;
+    }
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(20px);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+@keyframes scaleIn {
+    from {
+        transform: scale(0.95);
+        opacity: 0;
+    }
+
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}

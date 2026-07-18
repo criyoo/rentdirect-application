@@ -1,0 +1,272 @@
+{
+    "jade": {
+        "login": {
+            "full_name": "Jade Bola Smith",
+            "email": "criyo.career+jade@gmail.com",
+            "password": "ifG0dbi4mi",
+            "tenant": true
+        },
+        "verification": {
+            "first_name": "Jade",
+            "middle_name": "Bola",
+            "last_name": "Smith",
+            "country_of_birth": "Nigeria",
+            "date_of_birth": "1990-01-01",
+            "gender": "Female",
+            "nationality": "Nigeria",
+            "state_of_origin": "Oyo",
+            "lga": "Ibadan Central",
+            "nin": "98311128454",
+            "bvn": "23516273876",
+            "email": "criyo.career+jade@gmail.com",
+            "mobile": "+234807138378",
+            "employment_status": "Employed"
+        },
+        "profile": {
+            "mobile": "+234807138378",
+            "nin_number": "98311128454",
+            "bvn_number": "23516273876",
+            "state_of_origin": "Oyo",
+            "residence": {
+                "state": "Oyo",
+                "city": "Ibadan",
+                "address": "123 Main Street, Jericho, Ibadan"
+            },
+            "status": "approved",
+            "personal_information": {
+                "first_name": "Jade",
+                "middle_name": "Bola",
+                "last_name": "Smith",
+                "date_of_birth": "1990-01-01",
+                "gender": "Female",
+                "employment_status": "Employed",
+                "nationality": "Nigeria",
+                "state_of_origin": "Oyo",
+                "lga": "Ibadan Central"
+            },
+            "current_residence": {
+                "country": "Nigeria",
+                "state": "Oyo",
+                "city": "Ibadan",
+                "lga": "Ibadan Central",
+                "address": "123 Main Street, Jericho, Ibadan",
+                "length_of_stay": "7",
+                "housing_status": "Rented",
+                "current_rent_amount": "15000000",
+                "current_service_charge": "1500000",
+                "current_move_in_date": "2019-01-01",
+                "expected_move_out_date": "2026-12-01",
+                "reason_for_wanting_to_leave": "To get closer to my son's school"
+            },
+            "employment_info": {
+                "company_name": "Bluebird Analytics Limited",
+                "company_contact_number": "+2348091283344",
+                "industry": "Technology",
+                "employment_type": "Full-time",
+                "employment_start_date": "2018-03-12",
+                "position_job_title": "Senior Product Manager",
+                "company_address": "22 Magazine Road, Jericho, Ibadan",
+                "company_website": "https://bluebirdanalytics.example",
+                "hr_contact_name": "Amina Lawal",
+                "hr_email": "amina.lawal@bluebirdanalytics.example",
+                "hr_contact_phone": "+2348091182233"
+            },
+            "financial_info": {
+                "bank_name": "Guaranty Trust Bank",
+                "bank_address": "Dugbe Branch, Ibadan",
+                "account_name": "Jade Bola Smith",
+                "account_number": "0123456789",
+                "monthly_income_amount": "2200000",
+                "monthly_expenses": "650000",
+                "credit_commitment": "120000",
+                "outstanding_loans": "0"
+            },
+            "guarantor_details": {
+                "full_name": "Mrs. Kemi Smith",
+                "relationship": "Parent",
+                "email": "kemi.smith@example.com",
+                "mobile_number": "+2348075551122",
+                "occupation": "School Proprietor",
+                "employer": "Bright Steps Academy",
+                "residential_address": "14 Akinyele Road, Bodija, Ibadan"
+            },
+            "landlord_info": {
+                "name": "Mr. Adewale Balogun",
+                "mobile": "+2348093332211",
+                "email": "adewale.balogun@example.com",
+                "address": "123 Main Street, Jericho, Ibadan",
+                "same_as_current_address": true,
+                "property_manager_name": "Sola Martins",
+                "property_manager_phone": "+2348093332212"
+            },
+            "rental_history": [
+                {
+                    "property_address": "123 Main Street, Jericho, Ibadan",
+                    "annual_rent": "15000000",
+                    "service_charge": "1500000",
+                    "move_in_date": "2019-01-01",
+                    "move_out_date": "2026-12-01",
+                    "reason_for_leave": "To get closer to my son's school"
+                }
+            ],
+            "household_info": {
+                "number_of_adults": "2",
+                "number_of_children": "1",
+                "has_pets": false,
+                "number_of_pets": "0",
+                "work_from_home": true,
+                "commercial_activities_at_home": false,
+                "has_smokers": false
+            },
+            "social_presence": {
+                "linkedin_profile": "https://linkedin.com/in/jadebola",
+                "facebook_profile": "https://facebook.com/jadebola",
+                "instagram_profile": "https://instagram.com/jadebola",
+                "x_twitter_profile": "https://x.com/jadebola",
+                "tiktok_profile": "",
+                "threads_profile": ""
+            },
+            "criminal_declaration": {
+                "convicted_of_crime": false,
+                "evicted_from_property": false,
+                "ongoing_tenancy_litigation": false,
+                "rent_arrears_history": false,
+                "legal_dispute_with_landlords": false
+            }
+        }
+    },
+    "subomi": {
+        "login": {
+            "full_name": "Funke Subomi Daniels",
+            "email": "criyo.career+funke@gmail.com",
+            "password": "ifG0dbi4mi",
+            "tenant": true
+        },
+        "verification": {
+            "first_name": "Funke",
+            "middle_name": "Subomi",
+            "last_name": "Daniels",
+            "country_of_birth": "Nigeria",
+            "date_of_birth": "1994-01-01",
+            "gender": "Female",
+            "nationality": "Nigeria",
+            "state_of_origin": "Delta",
+            "lga": "Oshimili",
+            "nin": "78376713512",
+            "bvn": "20116272016",
+            "email": "criyo.career+funke@gmail.com",
+            "mobile": "+234809848692",
+            "employment_status": "Self Employed"
+        },
+        "profile": {
+            "mobile": "+234809848692",
+            "nin_number": "78376713512",
+            "bvn_number": "20116272016",
+            "state_of_origin": "Delta",
+            "residence": {
+                "state": "Lagos",
+                "city": "Ikeja",
+                "address": "18 Allen Avenue, Ikeja, Lagos"
+            },
+            "status": "approved",
+            "personal_information": {
+                "first_name": "Funke",
+                "middle_name": "Subomi",
+                "last_name": "Daniels",
+                "date_of_birth": "1994-01-01",
+                "gender": "Female",
+                "employment_status": "Self Employed",
+                "nationality": "Nigeria",
+                "state_of_origin": "Delta",
+                "lga": "Oshimili"
+            },
+            "current_residence": {
+                "country": "Nigeria",
+                "state": "Lagos",
+                "city": "Ikeja",
+                "lga": "Ikeja",
+                "address": "18 Allen Avenue, Ikeja, Lagos",
+                "length_of_stay": "3.2",
+                "housing_status": "Rented",
+                "current_rent_amount": "8500000",
+                "current_service_charge": "850000",
+                "current_move_in_date": "2023-05-01",
+                "expected_move_out_date": "2027-04-30",
+                "reason_for_wanting_to_leave": "Needs a larger apartment with dedicated workspace"
+            },
+            "financial_info": {
+                "bank_name": "Zenith Bank",
+                "bank_address": "Allen Avenue Branch, Ikeja",
+                "account_name": "Funke Subomi Daniels",
+                "account_number": "2034567891",
+                "business_name": "Subomi Home Essentials",
+                "business_address": "42 Opebi Road, Ikeja, Lagos",
+                "business_type": "Home goods retail and interior sourcing",
+                "monthly_income_amount": "1800000",
+                "monthly_expenses": "620000",
+                "credit_commitment": "90000",
+                "outstanding_loans": "450000"
+            },
+            "guarantor_details": {
+                "full_name": "Mr. Tunde Daniels",
+                "relationship": "Sibling",
+                "email": "tunde.daniels@example.com",
+                "mobile_number": "+2348097774422",
+                "occupation": "Chartered Accountant",
+                "employer": "Daniels Advisory Services",
+                "residential_address": "7 Admiralty Way, Lekki Phase 1, Lagos"
+            },
+            "landlord_info": {
+                "name": "Mrs. Ifeoma Okonkwo",
+                "mobile": "+2348094443322",
+                "email": "ifeoma.okonkwo@example.com",
+                "address": "18 Allen Avenue, Ikeja, Lagos",
+                "same_as_current_address": true,
+                "property_manager_name": "Kunle Adebayo",
+                "property_manager_phone": "+2348094443323"
+            },
+            "rental_history": [
+                {
+                    "property_address": "18 Allen Avenue, Ikeja, Lagos",
+                    "annual_rent": "8500000",
+                    "service_charge": "850000",
+                    "move_in_date": "2023-05-01",
+                    "move_out_date": "2027-04-30",
+                    "reason_for_leave": "Needs a larger apartment with dedicated workspace"
+                },
+                {
+                    "property_address": "6 Okotie Eboh Street, Victoria Island, Lagos",
+                    "annual_rent": "6200000",
+                    "service_charge": "500000",
+                    "move_in_date": "2020-01-15",
+                    "move_out_date": "2023-04-30",
+                    "reason_for_leave": "Lease ended and business moved to Ikeja"
+                }
+            ],
+            "household_info": {
+                "number_of_adults": "1",
+                "number_of_children": "0",
+                "has_pets": false,
+                "number_of_pets": "0",
+                "work_from_home": true,
+                "commercial_activities_at_home": true,
+                "has_smokers": false
+            },
+            "social_presence": {
+                "linkedin_profile": "https://linkedin.com/in/funkesubomi",
+                "facebook_profile": "https://facebook.com/funke.subomi",
+                "instagram_profile": "https://instagram.com/subomihome",
+                "x_twitter_profile": "https://x.com/subomihome",
+                "tiktok_profile": "https://tiktok.com/@subomihome",
+                "threads_profile": "https://threads.net/@subomihome"
+            },
+            "criminal_declaration": {
+                "convicted_of_crime": false,
+                "evicted_from_property": false,
+                "ongoing_tenancy_litigation": false,
+                "rent_arrears_history": false,
+                "legal_dispute_with_landlords": false
+            }
+        }
+    }
+}

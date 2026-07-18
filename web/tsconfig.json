@@ -1,0 +1,33 @@
+{
+    "extends": "./tsconfig.node.json",
+    "compilerOptions": {
+        "target": "ES2021",
+        "lib": [
+            "ES2021",
+            "DOM",
+            "DOM.Iterable"
+        ],
+        "types": [
+            "vite/client"
+        ],
+        "jsx": "react-jsx",
+        "module": "ESNext",
+        "moduleResolution": "Bundler",
+        "resolveJsonModule": true,
+        "strict": true,
+        "baseUrl": ".",
+        "paths": {
+            "@/*": [
+                "src/*"
+            ]
+        },
+        "noEmit": true,
+        "skipLibCheck": true,
+        "noImplicitAny": true,
+        "strictNullChecks": true,
+        "strictFunctionTypes": true
+    },
+    "include": [
+        "src"
+    ]
+}

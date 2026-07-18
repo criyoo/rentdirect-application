@@ -1,0 +1,38 @@
+{
+  "tenant": {
+    "bronze": {
+      "monthly": 0,
+      "yearly": 0
+    },
+    "silver": {
+      "monthly": 5000,
+      "yearly": 50000
+    },
+    "gold": {
+      "monthly": 8000,
+      "yearly": 80000
+    },
+    "platinum": {
+      "monthly": 10000,
+      "yearly": 100000
+    }
+  },
+  "landlord": {
+    "bronze": {
+      "monthly": 0,
+      "yearly": 0
+    },
+    "silver": {
+      "monthly": 10000,
+      "yearly": 100000
+    },
+    "gold": {
+      "monthly": 15000,
+      "yearly": 150000
+    },
+    "platinum": {
+      "monthly": 20000,
+      "yearly": 200000
+    }
+  }
+}

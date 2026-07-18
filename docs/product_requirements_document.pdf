@@ -1,0 +1,853 @@
+%PDF-1.4
+%����
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [8 0 R 10 0 R 12 0 R 14 0 R 16 0 R 18 0 R 20 0 R 22 0 R 24 0 R 26 0 R 28 0 R 30 0 R 32 0 R 34 0 R 36 0 R 38 0 R 40 0 R] /Count 17 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>
+endobj
+6 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique >>
+endobj
+7 0 obj
+<< /Length 3954 >>
+stream
+BT /F2 22.00 Tf 0.00 g 54.00 738.00 Td (RentDirect Product Requirements Document) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 696.00 Td (Document status: Draft for product alignment) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 678.00 Td (Product: RentDirect rental marketplace) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 660.00 Td (Primary market: Nigeria, starting with urban rental markets where direct landlord-tenant trust) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 646.00 Td (is a major constraint) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 628.00 Td (Prepared date: 2026-07-17) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 610.00 Td (Reviewed sources: apps/README.md, apps/web/src/App.tsx, public content pages, frontend user) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 596.00 Td (flows, Django models, API viewsets, pricing utilities, payment, verification, subscription,) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 582.00 Td (support, and worker code.) Tj ET
+54.00 559.00 m 558.00 559.00 l S
+BT /F2 16.00 Tf 0.00 g 54.00 532.00 Td (1. Executive Summary) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 500.00 Td (RentDirect is a verified rental marketplace that connects tenants directly with landlords and) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 486.00 Td (reduces dependence on fragmented intermediary-led rental processes. The product helps tenants) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 472.00 Td (find verified homes, communicate directly with landlords, build a reusable tenant profile, make) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 458.00 Td (secure rental payments, and track the move-in process. It helps landlords list properties,) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 444.00 Td (verify ownership and identity, review higher-quality tenant profiles, receive structured rental) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 430.00 Td (payments, and manage rental progress through a documented workflow.) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 407.00 Td (The core product promise is:) Tj ET
+BT /F4 10.50 Tf 0.20 g 72.00 384.00 Td (RentDirect makes renting direct, transparent, verified, and easier to manage for both) Tj ET
+BT /F4 10.50 Tf 0.20 g 72.00 370.00 Td (tenants and landlords.) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 346.00 Td (The product exists to solve three connected problems:) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 323.00 Td (1. Tenants face fake listings, hidden fees, inspection charges, unclear processes, and limited) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 310.00 Td (confidence when searching for homes.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 295.00 Td (2. Landlords struggle to identify trustworthy tenants, reduce vacancy time, and manage) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 282.00 Td (applications without relying heavily on third parties.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 267.00 Td (3. Both sides lack a shared digital system for verification, communication, rental payments,) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 254.00 Td (tenancy progress, and records.) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 234.00 Td (RentDirect should prioritize marketplace trust, transaction transparency, and successful tenancy) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 220.00 Td (completion over raw listing volume. The near-term product strategy is to grow verified supply,) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 206.00 Td (convert serious tenants into verified applicants, and monetize through subscriptions, featured) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 192.00 Td (listings, and platform-managed payment flows.) Tj ET
+54.00 169.00 m 558.00 169.00 l S
+BT /F2 16.00 Tf 0.00 g 54.00 142.00 Td (2. Product Vision) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 110.00 Td (RentDirect should become the trusted digital infrastructure for residential rentals in Nigeria:) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 96.00 Td (a place where tenants can search, apply, pay, and move in with confidence, and where landlords) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 82.00 Td (can list, verify, screen, communicate, and receive rent with less friction.) Tj ET
+BT /F1 8 Tf 0.45 g 288.00 28 Td (Page 1) Tj ET
+endstream
+endobj
+8 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> /Contents 7 0 R >>
+endobj
+9 0 obj
+<< /Length 3782 >>
+stream
+BT /F2 13.00 Tf 0.00 g 54.00 738.00 Td (2.1 Mission) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 712.00 Td (Create the most transparent, trusted, and efficient rental marketplace where verified landlords) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 698.00 Td (connect directly with verified tenants.) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 671.00 Td (2.2 Product Principles) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 645.00 Td (1. Trust before scale: Verification and fraud reduction are more important than maximizing) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 632.00 Td (unverified listings.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 617.00 Td (2. Direct but protected: Tenants and landlords should communicate directly, while RentDirect) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 604.00 Td (records key interactions and protects users from abuse.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 589.00 Td (3. Transparent money movement: Fees, deposits, rent, payment status, and landlord payouts must) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 576.00 Td (be visible and auditable.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 561.00 Td (4. Reusable rental identity: Tenants should build a profile that improves their ability to rent) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 548.00 Td (again.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 533.00 Td (5. Landlord control: Landlords should be able to manage listings, applications, tenant review,) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 520.00 Td (and rental progress without losing oversight.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 505.00 Td (6. Operational accountability: Admins need review tools, verification queues, metrics, and) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 492.00 Td (support visibility to keep the marketplace trustworthy.) Tj ET
+54.00 472.00 m 558.00 472.00 l S
+BT /F2 16.00 Tf 0.00 g 54.00 445.00 Td (3. Problem Statement) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 413.00 Td (The traditional rental process in Nigeria is often expensive, opaque, and low-trust.) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 390.00 Td (Tenants commonly face:) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 367.00 Td (- Fake or stale listings.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 352.00 Td (- Multiple agents and duplicate fees.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 337.00 Td (- Inspection or viewing charges before meaningful qualification.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 322.00 Td (- Sudden price changes and hidden costs.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 307.00 Td (- Limited visibility into whether a landlord or property is legitimate.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 292.00 Td (- Poor recordkeeping for payments, agreements, and communications.) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 272.00 Td (Landlords commonly face:) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 249.00 Td (- Difficulty finding reliable tenants.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 234.00 Td (- Limited structured tenant information before approving applicants.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 219.00 Td (- Fraudulent or incomplete applicant details.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 204.00 Td (- Dependency on intermediaries for discovery and communication.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 189.00 Td (- Delays in collecting payment and confirming move-in readiness.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 174.00 Td (- Poor visibility into tenant experience and satisfaction.) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 154.00 Td (RentDirect should reduce these problems by combining verified listings, verified user profiles,) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 140.00 Td (direct messaging, structured applications, payment tracking, rental progress workflows, support,) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 126.00 Td (and admin oversight.) Tj ET
+54.00 103.00 m 558.00 103.00 l S
+BT /F2 16.00 Tf 0.00 g 54.00 76.00 Td (4. Target Users) Tj ET
+BT /F1 8 Tf 0.45 g 288.00 28 Td (Page 2) Tj ET
+endstream
+endobj
+10 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> /Contents 9 0 R >>
+endobj
+11 0 obj
+<< /Length 3249 >>
+stream
+BT /F2 13.00 Tf 0.00 g 54.00 734.00 Td (4.1 Primary Users) Tj ET
+BT /F2 11.50 Tf 0.00 g 54.00 708.00 Td (Tenants) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 685.00 Td (Tenants are individuals looking for a residential rental property and wanting to avoid scams,) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 671.00 Td (unnecessary intermediaries, and unclear payment processes.) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 648.00 Td (Key needs:) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 625.00 Td (- Discover verified rental properties.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 610.00 Td (- Search by location, budget, type, rooms, and amenities.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 595.00 Td (- Contact landlords directly.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 580.00 Td (- Save favorite properties.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 565.00 Td (- Build a trusted tenant profile.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 550.00 Td (- Submit a rental application or booking.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 535.00 Td (- Pay securely through supported methods.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 520.00 Td (- Track rental progress and maintain digital records.) Tj ET
+BT /F2 11.50 Tf 0.00 g 54.00 500.00 Td (Landlords) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 477.00 Td (Landlords are individual or corporate property owners/managers who want direct access to serious) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 463.00 Td (tenants and better control of the rental process.) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 440.00 Td (Key needs:) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 417.00 Td (- Create and manage property listings.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 402.00 Td (- Upload listing images and property details.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 387.00 Td (- Complete identity and property document verification.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 372.00 Td (- Receive tenant enquiries directly.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 357.00 Td (- Review tenant profiles and screening signals.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 342.00 Td (- Track rental payment status.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 327.00 Td (- Confirm rental progress milestones.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 312.00 Td (- Promote listings with featured placement.) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 288.00 Td (4.2 Secondary Users) Tj ET
+BT /F2 11.50 Tf 0.00 g 54.00 262.00 Td (RentDirect Admins and Operations) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 239.00 Td (Admins are internal users responsible for trust, verification, support, payments oversight, and) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 225.00 Td (marketplace health.) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 202.00 Td (Key needs:) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 179.00 Td (- View marketplace metrics.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 164.00 Td (- Review verification requests.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 149.00 Td (- Approve or reject identity and property document submissions.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 134.00 Td (- View users and listings.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 119.00 Td (- Monitor support issues and feedback.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 104.00 Td (- Ensure payment and payout issues are traceable.) Tj ET
+BT /F2 11.50 Tf 0.00 g 54.00 84.00 Td (Prospective Visitors) Tj ET
+BT /F1 8 Tf 0.45 g 288.00 28 Td (Page 3) Tj ET
+endstream
+endobj
+12 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> /Contents 11 0 R >>
+endobj
+13 0 obj
+<< /Length 3400 >>
+stream
+BT /F1 10.50 Tf 0.00 g 54.00 738.00 Td (Visitors are unauthenticated users who browse public pages and listings before creating an) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 724.00 Td (account.) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 701.00 Td (Key needs:) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 678.00 Td (- Understand RentDirect's value proposition.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 663.00 Td (- Browse public property listings.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 648.00 Td (- View landlord public profiles.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 633.00 Td (- Learn how renting works.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 618.00 Td (- Register or sign in when ready to take action.) Tj ET
+54.00 598.00 m 558.00 598.00 l S
+BT /F2 16.00 Tf 0.00 g 54.00 571.00 Td (5. Business Goals) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 535.00 Td (5.1 Near-Term Goals) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 509.00 Td (1. Increase the number of verified landlord accounts and verified property listings.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 494.00 Td (2. Increase tenant registration and tenant profile completion.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 479.00 Td (3. Convert property discovery into enquiries, rental applications, and completed rental) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 466.00 Td (payments.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 451.00 Td (4. Reduce user uncertainty by making fees, verification status, and payment state clear.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 436.00 Td (5. Establish admin workflows that can support verification and marketplace trust without manual) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 423.00 Td (data confusion.) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 399.00 Td (5.2 Revenue Goals) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 373.00 Td (RentDirect should support multiple monetization paths:) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 350.00 Td (1. Tenant and landlord subscriptions: Bronze, Silver, Gold, and Platinum plans with) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 337.00 Td (role-specific monthly and yearly pricing.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 322.00 Td (2. Featured listings: Landlords can pay to promote a listing for a fixed duration.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 307.00 Td (3. Rental transaction economics: The rental checkout flow should clearly show annual rent,) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 294.00 Td (refundable security deposit, platform/admin fees, and remaining balance.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 279.00 Td (4. Future premium services: Property verification visits, lease documentation support, tenant) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 266.00 Td (screening upgrades, insurance, and credit/rental history products.) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 242.00 Td (5.3 Marketplace Health Goals) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 216.00 Td (1. Maintain a high verified-listing ratio.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 201.00 Td (2. Reduce fraudulent or unresponsive listings.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 186.00 Td (3. Improve landlord response quality.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 171.00 Td (4. Improve tenant application completeness.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 156.00 Td (5. Decrease time from property discovery to completed booking.) Tj ET
+54.00 136.00 m 558.00 136.00 l S
+BT /F2 16.00 Tf 0.00 g 54.00 109.00 Td (6. Success Metrics) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 73.00 Td (6.1 Acquisition) Tj ET
+BT /F1 8 Tf 0.45 g 288.00 28 Td (Page 4) Tj ET
+endstream
+endobj
+14 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> /Contents 13 0 R >>
+endobj
+15 0 obj
+<< /Length 3289 >>
+stream
+BT /F1 10.20 Tf 0.00 g 68.00 738.00 Td (- Visitor-to-registration conversion rate.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 723.00 Td (- Tenant registrations per week.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 708.00 Td (- Landlord registrations per week.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 693.00 Td (- Cost per verified user, if paid acquisition is used.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 678.00 Td (- Percentage of visitors using search filters.) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 654.00 Td (6.2 Activation) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 628.00 Td (- Email verification completion rate.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 613.00 Td (- Tenant profile completion rate.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 598.00 Td (- Landlord identity verification submission rate.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 583.00 Td (- Property document verification submission rate.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 568.00 Td (- First listing created per verified landlord.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 553.00 Td (- First enquiry sent per active tenant.) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 529.00 Td (6.3 Marketplace Liquidity) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 503.00 Td (- Verified active listings.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 488.00 Td (- Listings with complete media and location data.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 473.00 Td (- Search result click-through rate.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 458.00 Td (- Enquiry rate per listing.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 443.00 Td (- Average time from listing published to first enquiry.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 428.00 Td (- Average time from enquiry to booking.) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 404.00 Td (6.4 Transaction and Revenue) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 378.00 Td (- Booking creation rate.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 363.00 Td (- Payment initiation rate.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 348.00 Td (- Payment completion rate.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 333.00 Td (- Average paid amount per booking.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 318.00 Td (- Outstanding balance per active booking.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 303.00 Td (- Featured listing conversion rate.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 288.00 Td (- Subscription conversion rate by role and plan.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 273.00 Td (- Monthly recurring revenue from subscriptions.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 258.00 Td (- Featured listing revenue.) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 234.00 Td (6.5 Trust and Safety) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 208.00 Td (- Verification approval rate.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 193.00 Td (- Verification rejection rate and top rejection reasons.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 178.00 Td (- Fraud or scam reports.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 163.00 Td (- Support tickets per transaction.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 148.00 Td (- Payment disputes.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 133.00 Td (- Manual admin review backlog.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 118.00 Td (- Average verification turnaround time.) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 94.00 Td (6.6 Retention) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 68.00 Td (- Returning tenants with saved favourites.) Tj ET
+BT /F1 8 Tf 0.45 g 288.00 28 Td (Page 5) Tj ET
+endstream
+endobj
+16 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> /Contents 15 0 R >>
+endobj
+17 0 obj
+<< /Length 3613 >>
+stream
+BT /F1 10.20 Tf 0.00 g 68.00 738.00 Td (- Repeat landlord listing activity.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 723.00 Td (- Subscription renewal rate.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 708.00 Td (- Number of completed tenancies.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 693.00 Td (- Review submission rate.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 678.00 Td (- Tenant profile reuse across multiple applications.) Tj ET
+54.00 658.00 m 558.00 658.00 l S
+BT /F2 16.00 Tf 0.00 g 54.00 631.00 Td (7. Scope) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 595.00 Td (7.1 In Scope for Current Product) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 569.00 Td (- Public marketing and education pages.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 554.00 Td (- Public property search and listing discovery.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 539.00 Td (- Account registration, OTP email verification, login, logout, and session refresh.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 524.00 Td (- Role-based tenant, landlord, and admin experiences.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 509.00 Td (- Tenant profile and verification workflow.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 494.00 Td (- Landlord individual and corporate identity verification.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 479.00 Td (- Property document upload and verification.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 464.00 Td (- Listing creation, editing, viewing, search, and featured listing promotion.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 449.00 Td (- Favourites for tenants.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 434.00 Td (- Direct tenant-landlord messaging.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 419.00 Td (- Rental booking/application creation.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 404.00 Td (- Rent payment initiation and verification through Flutterwave.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 389.00 Td (- Bank transfer and hosted checkout payment flows.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 374.00 Td (- Payment history and receipt generation.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 359.00 Td (- Rental progress checklists for tenants and landlords.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 344.00 Td (- Landlord public profiles and landlord property pages.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 329.00 Td (- Subscription billing by user role and plan.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 314.00 Td (- Community chat access for eligible subscription plans.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 299.00 Td (- Support chat, complaint, issues, and feedback workflows.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 284.00 Td (- Admin dashboard, user/listing visibility, and verification review.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 269.00 Td (- Background payout readiness processing.) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 245.00 Td (7.2 Out of Scope for This PRD Version) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 219.00 Td (- Native mobile applications.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 204.00 Td (- Full property management accounting.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 189.00 Td (- Maintenance vendor marketplace.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 174.00 Td (- Formal credit bureau integration.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 159.00 Td (- AI-based listing valuation.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 144.00 Td (- Automated legal document generation beyond current rental support messaging.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 129.00 Td (- End-to-end dispute arbitration.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 114.00 Td (- Mortgage, rent-to-own, or property purchase workflows.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 99.00 Td (- Multi-country expansion.) Tj ET
+54.00 79.00 m 558.00 79.00 l S
+BT /F1 8 Tf 0.45 g 288.00 28 Td (Page 6) Tj ET
+endstream
+endobj
+18 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> /Contents 17 0 R >>
+endobj
+19 0 obj
+<< /Length 4144 >>
+stream
+BT /F2 16.00 Tf 0.00 g 54.00 738.00 Td (8. Product Requirements) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 706.00 Td (Requirement priorities:) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 683.00 Td (- P0: Required for a trustworthy launch-grade rental flow.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 668.00 Td (- P1: Important for growth, operational efficiency, or monetization.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 653.00 Td (- P2: Useful enhancement after core marketplace reliability is strong.) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 629.00 Td (8.1 Public Experience) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 603.00 Td (ID | Priority | Requirement) Tj ET
+BT /F3 7.30 Tf 0.30 g 58.00 593.00 Td (--------+----------+-----------------------------) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 583.00 Td (PUB-001 | P0 | Visitors must be able to vie) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 573.00 Td (PUB-002 | P0 | Visitors must be able to bro) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 563.00 Td (PUB-003 | P0 | Visitors must be able to vie) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 553.00 Td (PUB-004 | P0 | Visitors must be able to reg) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 543.00 Td (PUB-005 | P1 | Visitors should be able to v) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 533.00 Td (PUB-006 | P1 | Public pages should explain) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 514.00 Td (Acceptance criteria:) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 491.00 Td (- Search results return only listings suitable for public browsing.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 476.00 Td (- Public pages clearly communicate verification and direct-rental positioning.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 461.00 Td (- Calls to action route users into registration, login, search, or listing actions.) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 437.00 Td (8.2 Authentication and User Accounts) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 411.00 Td (ID | Priority | Requirement) Tj ET
+BT /F3 7.30 Tf 0.30 g 58.00 401.00 Td (---------+----------+-----------------------------) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 391.00 Td (AUTH-001 | P0 | Users must be able to regist) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 381.00 Td (AUTH-002 | P0 | New users must verify email) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 371.00 Td (AUTH-003 | P0 | Users must be able to log in) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 361.00 Td (AUTH-004 | P0 | Authenticated users must be) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 351.00 Td (AUTH-005 | P1 | Users must be able to update) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 341.00 Td (AUTH-006 | P1 | Users must be able to upload) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 322.00 Td (Acceptance criteria:) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 299.00 Td (- Unauthenticated users cannot access protected role dashboards.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 284.00 Td (- Tenant-only, landlord-only, and admin-only workflows enforce role rules at both frontend and) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 271.00 Td (API layers.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 256.00 Td (- OTP attempts and expiry should protect sensitive flows from abuse.) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 232.00 Td (8.3 Tenant Profile and Verification) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 206.00 Td (ID | Priority | Requirement) Tj ET
+BT /F3 7.30 Tf 0.30 g 58.00 196.00 Td (--------+----------+-----------------------------) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 186.00 Td (TEN-001 | P0 | Tenants must be able to subm) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 176.00 Td (TEN-002 | P0 | Tenant profile submission mu) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 166.00 Td (TEN-003 | P0 | RentDirect must store tenant) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 156.00 Td (TEN-004 | P1 | Landlords with a valid relat) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 146.00 Td (TEN-005 | P1 | Sensitive tenant financial f) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 136.00 Td (TEN-006 | P1 | Tenant profiles should gener) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 117.00 Td (Acceptance criteria:) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 94.00 Td (- Tenant profile data persists and can be edited where allowed.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 79.00 Td (- Tenant identity checks compare submitted profile data with verified identity data.) Tj ET
+BT /F1 8 Tf 0.45 g 288.00 28 Td (Page 7) Tj ET
+endstream
+endobj
+20 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> /Contents 19 0 R >>
+endobj
+21 0 obj
+<< /Length 4248 >>
+stream
+BT /F1 10.20 Tf 0.00 g 68.00 738.00 Td (- Landlord-facing tenant views do not expose unnecessary bank or highly sensitive financial) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 725.00 Td (details.) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 701.00 Td (8.4 Landlord Verification) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 675.00 Td (ID | Priority | Requirement) Tj ET
+BT /F3 7.30 Tf 0.30 g 58.00 665.00 Td (--------+----------+-----------------------------) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 655.00 Td (LAN-001 | P0 | Landlords must select indivi) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 645.00 Td (LAN-002 | P0 | Individual landlords must pr) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 635.00 Td (LAN-003 | P0 | Corporate landlords must pro) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 625.00 Td (LAN-004 | P0 | Landlords must be able to up) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 615.00 Td (LAN-005 | P0 | Admins must be able to appro) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 605.00 Td (LAN-006 | P1 | Verification status should b) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 586.00 Td (Acceptance criteria:) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 563.00 Td (- Landlord identity, property document, and physical property verification statuses can be) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 550.00 Td (tracked separately.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 535.00 Td (- Verified landlord state should determine access to trust-sensitive actions where applicable.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 520.00 Td (- Admin review actions must persist review status and timestamp.) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 496.00 Td (8.5 Listings) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 470.00 Td (ID | Priority | Requirement) Tj ET
+BT /F3 7.30 Tf 0.30 g 58.00 460.00 Td (--------+----------+-----------------------------) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 450.00 Td (LIS-001 | P0 | Verified or authorized landl) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 440.00 Td (LIS-002 | P0 | Listings must include title,) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 430.00 Td (LIS-003 | P0 | Landlords must be able to up) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 420.00 Td (LIS-004 | P0 | Tenants and visitors must be) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 410.00 Td (LIS-005 | P0 | Listing statuses must suppor) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 400.00 Td (LIS-006 | P1 | Landlords must be able to ed) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 390.00 Td (LIS-007 | P1 | Tenants must be able to save) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 380.00 Td (LIS-008 | P1 | Featured listings must be pr) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 361.00 Td (Acceptance criteria:) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 338.00 Td (- Search filters map consistently to API query parameters.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 323.00 Td (- A listing can expose cover and gallery image URLs.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 308.00 Td (- Only authorized landlords or admins can create or modify listings.) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 284.00 Td (8.6 Messaging and Enquiries) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 258.00 Td (ID | Priority | Requirement) Tj ET
+BT /F3 7.30 Tf 0.30 g 58.00 248.00 Td (--------+----------+-----------------------------) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 238.00 Td (MSG-001 | P0 | Tenants must be able to cont) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 228.00 Td (MSG-002 | P0 | Landlords must be able to vi) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 218.00 Td (MSG-003 | P1 | Users must be able to view c) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 208.00 Td (MSG-004 | P1 | The platform should detect a) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 198.00 Td (MSG-005 | P2 | Messaging should support not) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 179.00 Td (Acceptance criteria:) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 156.00 Td (- Messages are linked to sender, receiver, and optionally listing.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 141.00 Td (- Users can only access conversations they participate in.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 126.00 Td (- Messaging supports marketplace transparency and recordkeeping.) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 102.00 Td (8.7 Rental Application, Booking, and Progress) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 76.00 Td (ID | Priority | Requirement) Tj ET
+BT /F3 7.30 Tf 0.30 g 58.00 66.00 Td (---------+----------+-----------------------------) Tj ET
+BT /F1 8 Tf 0.45 g 288.00 28 Td (Page 8) Tj ET
+endstream
+endobj
+22 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> /Contents 21 0 R >>
+endobj
+23 0 obj
+<< /Length 4703 >>
+stream
+BT /F3 7.30 Tf 0.00 g 58.00 738.00 Td (RENT-001 | P0 | Authenticated tenants must b) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 728.00 Td (RENT-002 | P0 | Bookings must link tenant, l) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 718.00 Td (RENT-003 | P0 | Rental totals must be calcul) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 708.00 Td (RENT-004 | P0 | Tenants and landlords must b) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 698.00 Td (RENT-005 | P0 | Rental progress must include) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 688.00 Td (RENT-006 | P1 | Both parties' progress updat) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 678.00 Td (RENT-007 | P1 | Tenants and landlords should) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 659.00 Td (Acceptance criteria:) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 636.00 Td (- Rental progress updates are role-specific and cannot be edited by unauthorized users.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 621.00 Td (- Booking status and payment status remain consistent.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 606.00 Td (- The product clearly distinguishes annual rent, refundable security deposit, administration) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 593.00 Td (fee, paid amount, and remaining balance.) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 569.00 Td (8.8 Payments, Payouts, and Receipts) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 543.00 Td (ID | Priority | Requirement) Tj ET
+BT /F3 7.30 Tf 0.30 g 58.00 533.00 Td (--------+----------+-----------------------------) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 523.00 Td (PAY-001 | P0 | Tenants must be able to init) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 513.00 Td (PAY-002 | P0 | Supported payment methods mu) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 503.00 Td (PAY-003 | P0 | Payments must be processed a) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 493.00 Td (PAY-004 | P0 | Users must be able to see pa) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 483.00 Td (PAY-005 | P0 | Tenants must not be allowed) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 473.00 Td (PAY-006 | P1 | Tenants should be able to co) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 463.00 Td (PAY-007 | P1 | Tenants should be able to ge) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 453.00 Td (PAY-008 | P1 | RentDirect must track settle) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 443.00 Td (PAY-009 | P1 | Background workers must proc) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 424.00 Td (Acceptance criteria:) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 401.00 Td (- Payment verification updates booking paid amount and payment state safely.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 386.00 Td (- Webhook and return-url verification should be idempotent.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 371.00 Td (- Payout processing must avoid duplicate settlement transfers.) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 347.00 Td (8.9 Subscriptions and Feature Monetization) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 321.00 Td (ID | Priority | Requirement) Tj ET
+BT /F3 7.30 Tf 0.30 g 58.00 311.00 Td (---------+----------+-----------------------------) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 301.00 Td (SUB-001 | P1 | Tenants and landlords must b) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 291.00 Td (SUB-002 | P1 | Plans must support Bronze, S) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 281.00 Td (SUB-003 | P1 | Users must be able to reques) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 271.00 Td (SUB-004 | P1 | The system must track subscr) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 261.00 Td (SUB-005 | P1 | Bronze/free plan limitations) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 251.00 Td (SUB-006 | P1 | Gold and Platinum plans shou) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 241.00 Td (FEAT-001 | P1 | Landlords must be able to re) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 231.00 Td (FEAT-002 | P1 | Featured listing payments mu) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 212.00 Td (Acceptance criteria:) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 189.00 Td (- Current plan state is derived from completed, unexpired subscription payments.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 174.00 Td (- Featured listing status automatically syncs with completed featured payments and expiry.) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 150.00 Td (8.10 Support, Feedback, and Community) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 124.00 Td (ID | Priority | Requirement) Tj ET
+BT /F3 7.30 Tf 0.30 g 58.00 114.00 Td (--------+----------+-----------------------------) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 104.00 Td (SUP-001 | P1 | Tenants and landlords must b) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 94.00 Td (SUP-002 | P1 | Tenants and landlords must b) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 84.00 Td (SUP-003 | P1 | Authenticated users must be) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 74.00 Td (SUP-004 | P1 | Eligible users must be able) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 64.00 Td (SUP-005 | P2 | Admins should have a consoli) Tj ET
+BT /F1 8 Tf 0.45 g 288.00 28 Td (Page 9) Tj ET
+endstream
+endobj
+24 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> /Contents 23 0 R >>
+endobj
+25 0 obj
+<< /Length 4009 >>
+stream
+BT /F1 10.50 Tf 0.00 g 54.00 738.00 Td (Acceptance criteria:) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 715.00 Td (- Support messages are linked to the thread user and sender.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 700.00 Td (- Community chat access respects subscription eligibility.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 685.00 Td (- Feedback entries preserve user, role, topic, message, and timestamps.) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 661.00 Td (8.11 Admin and Operations) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 635.00 Td (ID | Priority | Requirement) Tj ET
+BT /F3 7.30 Tf 0.30 g 58.00 625.00 Td (--------+----------+-----------------------------) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 615.00 Td (ADM-001 | P0 | Admins must be able to log i) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 605.00 Td (ADM-002 | P0 | Admins must be able to view) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 595.00 Td (ADM-003 | P0 | Admins must be able to revie) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 585.00 Td (ADM-004 | P0 | Admins must be able to appro) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 575.00 Td (ADM-005 | P1 | Admins should be able to vie) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 565.00 Td (ADM-006 | P1 | Admin metrics should show ve) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 555.00 Td (ADM-007 | P2 | Admins should have operation) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 536.00 Td (Acceptance criteria:) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 513.00 Td (- Admin endpoints require admin role permissions.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 498.00 Td (- Verification decisions update user-facing status.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 483.00 Td (- Admin views support pending queues and review history.) Tj ET
+54.00 463.00 m 558.00 463.00 l S
+BT /F2 16.00 Tf 0.00 g 54.00 436.00 Td (9. User Journeys) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 400.00 Td (9.1 Tenant Journey) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 374.00 Td (1. Visitor lands on RentDirect and understands verified direct rentals.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 359.00 Td (2. Visitor searches listings by location, budget, rooms, and features.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 344.00 Td (3. Visitor registers as a tenant and verifies email by OTP.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 329.00 Td (4. Tenant completes profile and verification details.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 314.00 Td (5. Tenant saves properties and contacts landlords directly.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 299.00 Td (6. Tenant chooses a property and starts a rental booking.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 284.00 Td (7. Tenant reviews clear rent breakdown and agrees to terms.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 269.00 Td (8. Tenant pays deposit, rent, or remaining balance through Flutterwave-supported methods.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 254.00 Td (9. Tenant tracks rental progress until move-in steps are completed.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 239.00 Td (10. Tenant maintains records for future rental history and applications.) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 215.00 Td (9.2 Landlord Journey) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 189.00 Td (1. Landlord registers and verifies email.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 174.00 Td (2. Landlord completes individual or corporate verification.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 159.00 Td (3. Landlord uploads identity and property ownership documents.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 144.00 Td (4. Admin reviews and approves landlord verification.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 129.00 Td (5. Landlord creates listings with photos, rent, location, features, and availability.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 114.00 Td (6. Landlord receives enquiries and communicates with tenants.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 99.00 Td (7. Landlord reviews tenant profile and screening signals.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 84.00 Td (8. Landlord monitors payment and booking progress.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 69.00 Td (9. Landlord completes required rental progress milestones.) Tj ET
+BT /F1 8 Tf 0.45 g 288.00 28 Td (Page 10) Tj ET
+endstream
+endobj
+26 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> /Contents 25 0 R >>
+endobj
+27 0 obj
+<< /Length 4458 >>
+stream
+BT /F1 10.20 Tf 0.00 g 68.00 738.00 Td (10. Landlord receives payout once release conditions are satisfied.) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 714.00 Td (9.3 Admin Journey) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 688.00 Td (1. Admin logs in through admin routes.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 673.00 Td (2. Admin views dashboard statistics and verification queues.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 658.00 Td (3. Admin reviews submitted documents and identity/property verification evidence.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 643.00 Td (4. Admin approves or rejects requests with notes.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 628.00 Td (5. Admin monitors users, listings, support issues, and payment exceptions.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 613.00 Td (6. Admin escalates fraud, payment, or support issues according to operating policy.) Tj ET
+54.00 593.00 m 558.00 593.00 l S
+BT /F2 16.00 Tf 0.00 g 54.00 566.00 Td (10. Data Requirements) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 530.00 Td (10.1 Core Entities) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 504.00 Td (- User: email, name, role, verification status, photo, mobile, NIN/BVN fields, residence,) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 491.00 Td (settings OTP metadata, landlord or tenant verification profile.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 476.00 Td (- Listing: landlord, title, description, address, city, state, coordinates, property type,) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 463.00 Td (bedroom/bathroom/toilet counts, annual rent, deposit, amenities, status, featured state, media.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 448.00 Td (- Document: owner, title, content type, file, created timestamp.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 433.00 Td (- Verification request: user, documents, request type, status, identity status, property) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 420.00 Td (document status, physical property status, method, confidence score, notes, review timestamps.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 405.00 Td (- Tenant profile: biodata, residence, employment, finance, guarantor, landlord, rental history,) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 392.00 Td (household, social, criminal declaration, documents, status.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 377.00 Td (- Booking: tenant, listing, dates, status, total amount, paid amount, tenant progress, landlord) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 364.00 Td (progress, reminder timestamps.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 349.00 Td (- Payment: booking, amount, provider, method, transaction reference, channel details, virtual) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 336.00 Td (account details, status, provider payload, webhook data.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 321.00 Td (- Settlement: payment, purpose, amount, bank destination, transfer recipient, transfer) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 308.00 Td (reference, status, provider payload, transfer timestamp.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 293.00 Td (- Subscription payment: user, role, plan, cycle, amount, status, provider data, expiry.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 278.00 Td (- Featured payment: listing, landlord, amount, status, duration, expiry, provider data.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 263.00 Td (- Message: sender, receiver, listing, content, created timestamp.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 248.00 Td (- Review, feedback, favourite, community chat, support chat.) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 224.00 Td (10.2 Data Quality Rules) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 198.00 Td (- User email must be unique.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 183.00 Td (- Listings must belong to a landlord.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 168.00 Td (- Listing media should maintain a deterministic cover image.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 153.00 Td (- A tenant can favourite a listing only once.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 138.00 Td (- A tenant can review a listing only once.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 123.00 Td (- Verification requests should remain unique per user unless a new versioning model is) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 110.00 Td (introduced.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 95.00 Td (- Payment and settlement references must be idempotent and traceable.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 80.00 Td (- Sensitive identity and financial fields must not be overexposed in public or landlord-facing) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 67.00 Td (views.) Tj ET
+BT /F1 8 Tf 0.45 g 288.00 28 Td (Page 11) Tj ET
+endstream
+endobj
+28 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> /Contents 27 0 R >>
+endobj
+29 0 obj
+<< /Length 3229 >>
+stream
+54.00 738.00 m 558.00 738.00 l S
+BT /F2 16.00 Tf 0.00 g 54.00 711.00 Td (11. Pricing and Money Movement Requirements) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 675.00 Td (11.1 Rental Checkout) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 649.00 Td (The rental checkout must show a clear breakdown before payment:) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 626.00 Td (- Annual rent.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 611.00 Td (- Refundable security deposit.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 596.00 Td (- Administration/platform fee.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 581.00 Td (- Total amount due.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 566.00 Td (- Amount already paid.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 551.00 Td (- Remaining balance.) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 531.00 Td (The current product calculation uses:) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 508.00 Td (- Refundable security deposit: 10% of annual rent.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 493.00 Td (- Administration fee: 10% of annual rent.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 478.00 Td (- Total booking amount: annual rent + refundable security deposit + administration fee.) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 454.00 Td (11.2 Subscriptions) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 428.00 Td (The product supports tenant and landlord subscription plans:) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 405.00 Td (Role | Bronze | Silver | Gold | Platinum) Tj ET
+BT /F3 7.30 Tf 0.30 g 58.00 395.00 Td (-----------------+--------+--------+-------+---------) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 385.00 Td (Tenant monthly | 0 | 200 | 300 | 500) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 375.00 Td (Tenant yearly | 0 | 2,000 | 3,000 | 5,000) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 365.00 Td (Landlord monthly | 0 | 300 | 400 | 500) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 355.00 Td (Landlord yearly | 0 | 3,000 | 4,000 | 5,000) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 336.00 Td (Currency should be presented consistently in the UI according to the product's configured) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 322.00 Td (currency rules.) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 295.00 Td (11.3 Featured Listings) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 269.00 Td (Landlords should be able to promote properties through featured listing payments. Featured) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 255.00 Td (properties should appear in elevated discovery surfaces while active and revert automatically) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 241.00 Td (when expired or cancelled.) Tj ET
+54.00 218.00 m 558.00 218.00 l S
+BT /F2 16.00 Tf 0.00 g 54.00 191.00 Td (12. Non-Functional Requirements) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 155.00 Td (12.1 Security) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 129.00 Td (- Use secure authenticated sessions with HTTP-only cookie-based JWT handling.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 114.00 Td (- Enforce role-based access on frontend routes and backend endpoints.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 99.00 Td (- Protect OTP flows with expiry and attempt limits.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 84.00 Td (- Validate payment webhooks and payment provider callbacks.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 69.00 Td (- Keep sensitive documents and identity data private.) Tj ET
+BT /F1 8 Tf 0.45 g 288.00 28 Td (Page 12) Tj ET
+endstream
+endobj
+30 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> /Contents 29 0 R >>
+endobj
+31 0 obj
+<< /Length 3810 >>
+stream
+BT /F1 10.20 Tf 0.00 g 68.00 738.00 Td (- Minimize sensitive tenant financial data in landlord-facing views.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 723.00 Td (- Apply rate limiting to authentication, OTP, payment, and messaging endpoints.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 708.00 Td (- Maintain auditability for verification decisions and payment state changes.) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 684.00 Td (12.2 Reliability) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 658.00 Td (- Health checks must report database readiness and pending migration state.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 643.00 Td (- Payment verification must be idempotent.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 628.00 Td (- Background payout workers must tolerate retry and avoid duplicate transfers.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 613.00 Td (- Listing search and public pages should fail gracefully with useful empty states.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 598.00 Td (- Admin verification queues must remain usable during partial marketplace failure.) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 574.00 Td (12.3 Performance) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 548.00 Td (- Public listing search should respond quickly under normal marketplace traffic.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 533.00 Td (- Listing queries should use indexed fields for status, city, landlord, featured state, and) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 520.00 Td (price.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 505.00 Td (- Media should be served through the configured media delivery path.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 490.00 Td (- Frontend pages should avoid blocking core search, listing detail, and payment flows on) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 477.00 Td (nonessential data.) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 453.00 Td (12.4 Compliance and Privacy) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 427.00 Td (- Collect only identity, financial, and document data needed for rental trust and transaction) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 414.00 Td (workflows.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 399.00 Td (- Clearly disclose why NIN, BVN, documents, employment, financial, and guarantor information are) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 386.00 Td (collected.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 371.00 Td (- Retain payment and tenancy records according to legal and operational requirements.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 356.00 Td (- Allow admins to review sensitive data only under defined operational permissions.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 341.00 Td (- Establish data deletion, export, and correction policies before scaling.) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 317.00 Td (12.5 Accessibility and Usability) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 291.00 Td (- Core flows should be usable on mobile and desktop.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 276.00 Td (- Forms should provide clear labels, validation, and error feedback.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 261.00 Td (- Payment and verification states should not rely on color alone.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 246.00 Td (- Long forms should preserve user progress where practical.) Tj ET
+54.00 226.00 m 558.00 226.00 l S
+BT /F2 16.00 Tf 0.00 g 54.00 199.00 Td (13. Analytics and Instrumentation) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 167.00 Td (RentDirect should instrument the following events:) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 144.00 Td (- account_registered) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 129.00 Td (- email_otp_verified) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 114.00 Td (- tenant_profile_started) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 99.00 Td (- tenant_profile_submitted) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 84.00 Td (- landlord_verification_started) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 69.00 Td (- landlord_verification_submitted) Tj ET
+BT /F1 8 Tf 0.45 g 288.00 28 Td (Page 13) Tj ET
+endstream
+endobj
+32 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> /Contents 31 0 R >>
+endobj
+33 0 obj
+<< /Length 3334 >>
+stream
+BT /F1 10.20 Tf 0.00 g 68.00 738.00 Td (- listing_created) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 723.00 Td (- listing_published) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 708.00 Td (- search_performed) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 693.00 Td (- listing_viewed) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 678.00 Td (- listing_favourited) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 663.00 Td (- message_sent) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 648.00 Td (- booking_created) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 633.00 Td (- payment_started) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 618.00 Td (- payment_completed) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 603.00 Td (- payment_failed) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 588.00 Td (- rental_progress_updated) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 573.00 Td (- subscription_requested) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 558.00 Td (- subscription_completed) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 543.00 Td (- featured_listing_requested) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 528.00 Td (- featured_listing_completed) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 513.00 Td (- support_message_sent) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 498.00 Td (- verification_approved) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 483.00 Td (- verification_rejected) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 463.00 Td (Each event should include safe metadata such as user role, listing id, booking id, payment id,) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 449.00 Td (plan code, city/state, and status, while excluding raw NIN, BVN, bank account numbers, document) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 435.00 Td (contents, or sensitive profile details.) Tj ET
+54.00 412.00 m 558.00 412.00 l S
+BT /F2 16.00 Tf 0.00 g 54.00 385.00 Td (14. Release Strategy) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 349.00 Td (14.1 MVP Launch Criteria) Tj ET
+BT /F1 10.50 Tf 0.00 g 54.00 323.00 Td (The product should be considered MVP-ready when:) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 300.00 Td (- Tenants can register, verify email, search, view listings, contact landlords, create bookings,) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 287.00 Td (and pay.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 272.00 Td (- Landlords can register, verify identity/property, create listings, receive enquiries, view) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 259.00 Td (tenant details where authorized, and track bookings.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 244.00 Td (- Admins can review verification requests and view operational dashboards.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 229.00 Td (- Payments can be initiated, verified, and reflected in booking balances.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 214.00 Td (- Rental progress checklists support tenant and landlord milestone updates.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 199.00 Td (- Sensitive data exposure has been reviewed.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 184.00 Td (- Support and feedback channels exist for unresolved user issues.) Tj ET
+BT /F2 13.00 Tf 0.00 g 54.00 160.00 Td (14.2 Recommended Phases) Tj ET
+BT /F2 11.50 Tf 0.00 g 54.00 134.00 Td (Phase 1: Trustworthy Marketplace Core) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 111.00 Td (- Public discovery and listing detail.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 96.00 Td (- Registration, OTP, login, role routing.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 81.00 Td (- Landlord verification.) Tj ET
+BT /F1 8 Tf 0.45 g 288.00 28 Td (Page 14) Tj ET
+endstream
+endobj
+34 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> /Contents 33 0 R >>
+endobj
+35 0 obj
+<< /Length 3716 >>
+stream
+BT /F1 10.20 Tf 0.00 g 68.00 738.00 Td (- Tenant profile and verification.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 723.00 Td (- Listing creation and media.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 708.00 Td (- Messaging and enquiries.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 693.00 Td (- Booking and payment initiation.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 678.00 Td (- Admin verification review.) Tj ET
+BT /F2 11.50 Tf 0.00 g 54.00 658.00 Td (Phase 2: Transaction Depth) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 635.00 Td (- Payment retry and virtual account improvements.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 620.00 Td (- Receipt and payment history polish.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 605.00 Td (- Rental progress-driven payout readiness.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 590.00 Td (- Tenant screening summaries.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 575.00 Td (- Landlord public profile trust signals.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 560.00 Td (- Support chat and operational issue triage.) Tj ET
+BT /F2 11.50 Tf 0.00 g 54.00 540.00 Td (Phase 3: Monetization and Retention) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 517.00 Td (- Subscription plan packaging and upgrade prompts.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 502.00 Td (- Featured listings optimization.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 487.00 Td (- Community chat for premium users.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 472.00 Td (- Review and reputation loops.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 457.00 Td (- Renewal reminders.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 442.00 Td (- Marketplace health analytics.) Tj ET
+BT /F2 11.50 Tf 0.00 g 54.00 422.00 Td (Phase 4: Scale and Risk Controls) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 399.00 Td (- Advanced fraud monitoring.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 384.00 Td (- Admin payment and settlement dashboards.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 369.00 Td (- SLA tracking for verification and support.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 354.00 Td (- Automated landlord and property verification enhancements.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 339.00 Td (- Data retention and privacy self-service.) Tj ET
+54.00 319.00 m 558.00 319.00 l S
+BT /F2 16.00 Tf 0.00 g 54.00 292.00 Td (15. Risks and Mitigations) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 260.00 Td (Risk | Impact | Mitigation) Tj ET
+BT /F3 7.30 Tf 0.30 g 58.00 250.00 Td (-----------------------------+------------------------------+-----------------------------) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 240.00 Td (Fake listings or fraudulent | High loss of marketplace tru | Require landlord and propert) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 230.00 Td (Incomplete tenant profiles | Lower landlord confidence | Use progressive completion,) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 220.00 Td (Payment reconciliation error | Financial and support risk | Use idempotent provider refe) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 210.00 Td (Sensitive data leakage | Legal and trust risk | Minimize landlord-facing fie) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 200.00 Td (Verification backlog | Slower activation | Provide admin queues, metric) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 190.00 Td (Low listing supply | Poor tenant conversion | Focus landlord acquisition,) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 180.00 Td (Low tenant demand quality | Poor landlord retention | Strengthen tenant verificati) Tj ET
+BT /F3 7.30 Tf 0.00 g 58.00 170.00 Td (Subscription value unclear | Low conversion | Tie premium plans to concret) Tj ET
+54.00 151.00 m 558.00 151.00 l S
+BT /F2 16.00 Tf 0.00 g 54.00 124.00 Td (16. Dependencies) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 92.00 Td (- Django REST Framework API.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 77.00 Td (- React/Vite frontend.) Tj ET
+BT /F1 8 Tf 0.45 g 288.00 28 Td (Page 15) Tj ET
+endstream
+endobj
+36 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> /Contents 35 0 R >>
+endobj
+37 0 obj
+<< /Length 4271 >>
+stream
+BT /F1 10.20 Tf 0.00 g 68.00 738.00 Td (- PostgreSQL for core transactional data.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 723.00 Td (- Cache layer for production scalability and rate limiting.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 708.00 Td (- Media storage and delivery infrastructure.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 693.00 Td (- Flutterwave for payment checkout, virtual accounts, transaction verification, transfers, and) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 680.00 Td (webhooks.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 665.00 Td (- Dikript or equivalent identity/CAC verification provider.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 650.00 Td (- Email provider for OTP and transactional notifications.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 635.00 Td (- Background worker process for payout readiness and scheduled tasks.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 620.00 Td (- Admin operations team for verification and support workflows.) Tj ET
+54.00 600.00 m 558.00 600.00 l S
+BT /F2 16.00 Tf 0.00 g 54.00 573.00 Td (17. Open Questions) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 541.00 Td (1. Should standard listings require full landlord and property verification before appearing) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 528.00 Td (publicly, or should unverified listings appear with reduced trust indicators?) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 513.00 Td (2. What exact actions should each subscription tier unlock for tenants and landlords?) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 498.00 Td (3. Should the refundable security deposit be held, split, or transferred differently from annual) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 485.00 Td (rent?) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 470.00 Td (4. What operating policy determines when a landlord payout is released if tenant and landlord) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 457.00 Td (progress disagree?) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 442.00 Td (5. Should direct contact information always be blocked before payment, or only flagged for) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 429.00 Td (review?) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 414.00 Td (6. What is the target verification SLA for identity, property documents, and physical property) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 401.00 Td (checks?) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 386.00 Td (7. Should tenant screening scores be visible as exact numbers, bands, or qualitative badges?) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 371.00 Td (8. What legal documents should RentDirect generate or store for completed rentals?) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 356.00 Td (9. What data retention policy applies to NIN, BVN, documents, failed verification attempts, and) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 343.00 Td (payment provider payloads?) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 328.00 Td (10. Which geographic markets should be prioritized after initial Nigerian city coverage?) Tj ET
+54.00 308.00 m 558.00 308.00 l S
+endstream
+endobj
+38 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> /Contents 37 0 R >>
+endobj
+39 0 obj
+<< /Length 362 >>
+stream
+BT /F1 10.20 Tf 0.00 g 68.00 738.00 Td (- Subscription access rules: apps/api/core/subscription_access.py.) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 723.00 Td (- Application architecture context: apps/README.md,) Tj ET
+BT /F1 10.20 Tf 0.00 g 68.00 710.00 Td (apps/docs/architectural_review_and_recommendations.md.) Tj ET
+BT /F1 8 Tf 0.45 g 288.00 28 Td (Page 17) Tj ET
+endstream
+endobj
+40 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >> >> /Contents 39 0 R >>
+endobj
+xref
+0 41
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000234 00000 n 
+0000000304 00000 n 
+0000000379 00000 n 
+0000000447 00000 n 
+0000000525 00000 n 
+0000004531 00000 n 
+0000004687 00000 n 
+0000008521 00000 n 
+0000008678 00000 n 
+0000011980 00000 n 
+0000012138 00000 n 
+0000015591 00000 n 
+0000015749 00000 n 
+0000019091 00000 n 
+0000019249 00000 n 
+0000022915 00000 n 
+0000023073 00000 n 
+0000027270 00000 n 
+0000027428 00000 n 
+0000031729 00000 n 
+0000031887 00000 n 
+0000036643 00000 n 
+0000036801 00000 n 
+0000040863 00000 n 
+0000041021 00000 n 
+0000045532 00000 n 
+0000045690 00000 n 
+0000048972 00000 n 
+0000049130 00000 n 
+0000052993 00000 n 
+0000053151 00000 n 
+0000056538 00000 n 
+0000056696 00000 n 
+0000060465 00000 n 
+0000060623 00000 n 
+0000064947 00000 n 
+0000065105 00000 n 
+0000065519 00000 n 
+trailer
+<< /Size 41 /Root 1 0 R >>
+startxref
+65677
+%%EOF

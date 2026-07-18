@@ -1,0 +1,7 @@
+node_modules
+dist
+build
+.vite
+.cache
+tsconfig.tsbuildinfo
+npm-debug.log*

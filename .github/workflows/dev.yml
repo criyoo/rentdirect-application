@@ -1,0 +1,266 @@
+name: Deploy development
+
+on:
+  push:
+    branches:
+      - development
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  issues: write
+
+concurrency:
+  group: deploy-development
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: "eu-west-1"
+  AWS_USE_PROFILE: "0"
+  IMAGE_TAG: ${{ github.sha }}
+  LINUX_PLATFORM: "arm64"
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "24.0"
+  DJANGO_DEBUG: "1"
+  DJANGO_ENV: "test"
+  DJANGO_SECRET_KEY: "ci-secret-key"
+  VITE_API_URL: "https://api.development.rentdirect.homes/api/v1"
+  VITE_MEDIA_URL: "https://media.development.rentdirect.homes"
+  VITE_WS_URL: "wss://api.development.rentdirect.homes"
+
+jobs:
+  detect-web-changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    outputs:
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            web:
+              - "web/**"
+              - "web/public/**"
+              - "packages/**"
+              - "scripts/**"
+              - "package.json"
+              - "package-lock.json"
+              - "turbo.json"
+
+  check-web:
+    needs: detect-web-changes
+    if: github.event_name == 'workflow_dispatch' || needs.detect-web-changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: development
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install frontend dependencies
+        run: |
+          npm --prefix web ci
+          node scripts/ensure-rollup-native.cjs web
+
+      - name: Typecheck frontend
+        run: npm --prefix web exec -- tsc -b web/tsconfig.json --pretty false
+
+  test-web:
+    needs:
+      - detect-web-changes
+      - check-web
+    if: github.event_name == 'workflow_dispatch' || needs.detect-web-changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: development
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install frontend dependencies
+        run: |
+          npm --prefix web ci
+          node scripts/ensure-rollup-native.cjs web
+
+      - name: Test frontend
+        run: npm --prefix web run test --if-present
+
+  build-web:
+    needs:
+      - detect-web-changes
+      - test-web
+    if: github.event_name == 'workflow_dispatch' || needs.detect-web-changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: development
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install frontend dependencies
+        run: |
+          npm --prefix web ci
+          node scripts/ensure-rollup-native.cjs web
+
+      - name: Build frontend
+        run: npm --prefix web run build
+
+      - name: Upload web build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-build
+          path: |
+            web/dist
+            web/public
+            web/package.json
+            web/package-lock.json
+            web/vite.config.*
+            package.json
+            package-lock.json
+            turbo.json
+          retention-days: 1
+
+  deploy-web:
+    needs:
+      - detect-web-changes
+      - build-web
+    if: github.event_name == 'workflow_dispatch' || needs.detect-web-changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: development
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download web build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: web-build
+          path: .
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy Web
+        run: BUILD_WEB=0 INSTALL_DEPS=0 bash scripts/deploy/web.sh dev
+
+  detect-api-changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    outputs:
+      api: ${{ steps.filter.outputs.api }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            api:
+              - "api/**"
+              - "api/media/**"
+              - "api/staticfiles/**"
+              - "api/seed_demo_data/**"
+              - "api/uploads/**"
+              - "worker/**"
+              - "scripts/**"
+
+  check-api:
+    needs: detect-api-changes
+    if: github.event_name == 'workflow_dispatch' || needs.detect-api-changes.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: development
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "${{ env.PYTHON_VERSION }}"
+          cache: pip
+          cache-dependency-path: api/requirements.txt
+
+      - name: Install backend dependencies
+        run: |
+          python -m venv .venv
+          source .venv/bin/activate
+          python -m pip install --upgrade pip
+          pip install -r api/requirements.txt
+
+      - name: Check backend
+        run: |
+          source .venv/bin/activate
+          cd api
+          python manage.py makemigrations --check --dry-run
+          python manage.py check
+
+  test-api:
+    needs:
+      - detect-api-changes
+      - check-api
+    if: github.event_name == 'workflow_dispatch' || needs.detect-api-changes.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: development
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "${{ env.PYTHON_VERSION }}"
+          cache: pip
+          cache-dependency-path: api/requirements.txt
+
+      - name: Install backend dependencies
+        run: |
+          python -m venv .venv
+          source .venv/bin/activate
+          python -m pip install --upgrade pip
+          pip install -r api/requirements.txt
+
+      - name: Run backend tests
+        run: |
+          source .venv/bin/activate
+          cd api
+          python manage.py test
+
+  deploy-api:
+    needs:
+      - detect-api-changes
+      - test-api
+    if: github.event_name == 'workflow_dispatch' || needs.detect-api-changes.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: development
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: ${{ env.LINUX_PLATFORM }}
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy API
+        run: bash scripts/deploy/api.sh dev

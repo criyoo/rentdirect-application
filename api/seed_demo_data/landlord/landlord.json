@@ -1,0 +1,279 @@
+{
+    "christian": {
+        "email": "criyo.career+chris@gmail.com",
+        "full_name": "Christian Odezi Aluya",
+        "password": "ifG0dbi4mi",
+        "landlord": true,
+        "verification": {
+            "nin_number": "98376728472",
+            "identiifcation_document": "rentdirect/apps/api/seed_demo_data/landlord/christian/documents/identification.pdf",
+            "property_document": "rentdirect/apps/api/seed_demo_data/landlord/christian/documents/house_deed.pdf"
+        },
+        "profile": {
+            "full_name": "Christian Odezi Aluya",
+            "email": "criyo.career+chris@gmail.com",
+            "photo": "rentdirect/apps/api/seed_demo_data/landlord/christian/christian.jpg",
+            "mobile": "+234809848378",
+            "nin_number": "98376728472",
+            "bvn_number": "22347235093",
+            "state_of_origin": "Delta",
+            "residence": {
+                "state": "Lagos",
+                "city": "Ikoyi",
+                "address": "8 Rumens Road, Ikoyi, Lagos"
+            },
+            "landlord_verification_type": "individual",
+            "landlord_verification_profile": {
+                "first_name": "Christian",
+                "middle_name": "Odezi",
+                "last_name": "Aluya",
+                "date_of_birth": "1977-02-06",
+                "gender": "Male",
+                "nationality": "Nigeria",
+                "state_of_origin": "Delta",
+                "lga_of_origin": "Isoko North",
+                "preferred_contact_method": "whatsapp",
+                "bio": "Private landlord focused on well-maintained apartments in Ikoyi and nearby Lagos business districts.",
+                "about_me": "Private landlord focused on well-maintained apartments in Ikoyi and nearby Lagos business districts.",
+                "contact_number": "+234809848378",
+                "whatsapp_number": "+234809848378",
+                "email": "criyo.career+chris@gmail.com",
+                "nin": "98376728472",
+                "bvn": "22347235093",
+                "proof_of_address": [
+                    "Utility Bill",
+                    "Bank Statement"
+                ],
+                "ownership_types": [
+                    "Sole Owner",
+                    "Property Manager"
+                ],
+                "kyc": {
+                    "id_type": "National ID (NIN)",
+                    "id_number": "98376728472",
+                    "expiry_date": ""
+                },
+                "residential_information": {
+                    "country": "Nigeria",
+                    "state": "Lagos",
+                    "city": "Ikoyi",
+                    "address": "8 Rumens Road, Ikoyi, Lagos"
+                },
+                "banking_information": {
+                    "bank_name": "OPay",
+                    "account_name": "Christian Odezi Aluya",
+                    "account_number": "9041487757"
+                },
+                "rental_preferences": {
+                    "minimum_lease_duration": "12",
+                    "maximum_occupancy": "5",
+                    "pets_allowed": true,
+                    "smoking_allowed": false,
+                    "commercial_activities_allowed": false,
+                    "short_let_allowed": false,
+                    "student_tenants_allowed": false,
+                    "corp_members_allowed": true,
+                    "expatriates_allowed": true
+                },
+                "emergency_contact": {
+                    "first_name": "Grace",
+                    "middle_name": "Efe",
+                    "last_name": "Aluya",
+                    "phone_number": "+2348091122334",
+                    "email": "grace.aluya@example.com",
+                    "relationship": "Sibling",
+                    "address": "12 Admiralty Way, Lekki Phase 1, Lagos"
+                }
+            }
+        },
+        "listings": {
+            "01": {
+                "title": "Modern 4 bedroom Apartment",
+                "property_type": "Apartment",
+                "description": "A modern 4 bedroom apartment in the heart of ikoyi, lagos",
+                "address": "23 Gerald Road",
+                "city": "Ikoyi",
+                "postal_code": "100021",
+                "bedroom": 4,
+                "bathroom": 4,
+                "square_feet": 4000,
+                "price_per_year": 400,
+                "features": {
+                    "utilities_included": true,
+                    "pet_friendly": true,
+                    "furnished": true,
+                    "feature_property_checkbox": true,
+                    "amenities": [
+                        "swimming pool",
+                        "gym",
+                        "parking"
+                    ]
+                },
+                "cover_image": "rentdirect/apps/api/seed_demo_data/landlord/christian/listings/01/cover_image.jpg",
+                "additional_images": [
+                    "rentdirect/apps/api/seed_demo_data/landlord/christian/listings/01/*.{jpeg,jpg,png,webp}"
+                ]
+            },
+            "02": {
+                "title": "2 bedroom Flat",
+                "property_type": "Apartment",
+                "description": "A modern 2 bedroom flat in the heart of ikoyi, lagos",
+                "address": "23 Gerald Road",
+                "city": "Ikoyi",
+                "postal_code": "100021",
+                "bedroom": 2,
+                "bathroom": 2,
+                "square_feet": 2000,
+                "price_per_year": 200,
+                "features": {
+                    "utilities_included": true,
+                    "pet_friendly": true,
+                    "furnished": true,
+                    "feature_property_checkbox": true,
+                    "amenities": [
+                        "gym",
+                        "parking"
+                    ]
+                },
+                "cover_image": "rentdirect/apps/api/seed_demo_data/landlord/christian/listings/02/cover_image.webp",
+                "additional_images": [
+                    "rentdirect/apps/api/seed_demo_data/landlord/christian/listings/02/*.{jpeg,jpg,png,webp}"
+                ]
+            }
+        }
+    },
+    "femi": {
+        "email": "criyo.career+femi@gmail.com",
+        "full_name": "Femi Adewale Odukoya",
+        "password": "ifG0dbi4mi",
+        "landlord": true,
+        "verification": {
+            "nin_number": "78937873878",
+            "identiifcation_document": "rentdirect/apps/api/seed_demo_data/landlord/femi/documents/identification.pdf",
+            "property_document": "rentdirect/apps/api/seed_demo_data/landlord/femi/documents/house_deed.pdf"
+        },
+        "profile": {
+            "full_name": "Femi Adewale Odukoya",
+            "email": "criyo.career+femi@gmail.com",
+            "photo": "rentdirect/apps/api/seed_demo_data/landlord/femi/femi.jpg",
+            "mobile": "+234809848379",
+            "nin_number": "78937873878",
+            "bvn_number": "10987654321",
+            "state_of_origin": "Ogun",
+            "residence": {
+                "state": "Lagos",
+                "city": "Ikoyi",
+                "address": "15 Gerrard Road, Ikoyi, Lagos"
+            },
+            "landlord_verification_type": "corporate",
+            "landlord_verification_profile": {
+                "company_name": "Odukoya Homes Limited",
+                "business_state": "Lagos",
+                "business_city": "Ikoyi",
+                "business_address": "15 Gerrard Road, Ikoyi, Lagos",
+                "company_phone_number": "+234809848379",
+                "company_email": "criyo.career+femi@gmail.com",
+                "contact_person_name": "Femi Adewale Odukoya",
+                "contact_person_position": "Managing Director",
+                "cac_registration_number": "RC9463122",
+                "tax_identification_number": "TIN-45892317",
+                "nin": "78937873878",
+                "bvn": "10987654321",
+                "company_information": {
+                    "registered_company_name": "Odukoya Homes Limited",
+                    "trading_name": "Odukoya Homes",
+                    "cac_registration_number": "RC9463122",
+                    "tax_identification_number": "TIN-45892317",
+                    "vat_registration": "VAT-20938451",
+                    "date_of_incorporation": "2016-08-18",
+                    "business_classification": "Real Estate Management",
+                    "sector": "Real Estate",
+                    "company_type": "Private Limited Company"
+                },
+                "company_contact_information": {
+                    "company_email": "criyo.career+femi@gmail.com",
+                    "support_email": "support@odukoyahomes.example",
+                    "phone_number": "+234809848379",
+                    "website": "https://odukoyahomes.example",
+                    "state": "Lagos",
+                    "city": "Ikoyi",
+                    "office_address": "15 Gerrard Road, Ikoyi, Lagos"
+                },
+                "corporate_verification": {
+                    "documents": [
+                        "CAC Certificate",
+                        "CAC Status Report",
+                        "Memorandum & Articles"
+                    ]
+                },
+                "corporate_verification_documents": [
+                    "CAC Certificate",
+                    "CAC Status Report",
+                    "Memorandum & Articles"
+                ],
+                "authorized_representative": {
+                    "first_name": "Femi",
+                    "middle_name": "Adewale",
+                    "last_name": "Odukoya",
+                    "full_name": "Femi Adewale Odukoya",
+                    "position": "Managing Director",
+                    "phone_number": "+234809848379",
+                    "email": "criyo.career+femi@gmail.com",
+                    "state_of_origin": "Ogun",
+                    "lga_of_origin": "Abeokuta South",
+                    "residence": {
+                        "state": "Lagos",
+                        "city": "Ikoyi",
+                        "address": "15 Gerrard Road, Ikoyi, Lagos"
+                    }
+                },
+                "property_ownership_verification": {
+                    "documents": [
+                        "Deed of Assignment",
+                        "C of O",
+                        "Governor's Consent"
+                    ]
+                },
+                "property_ownership_verification_documents": [
+                    "Deed of Assignment",
+                    "C of O",
+                    "Governor's Consent"
+                ],
+                "banking_information": {
+                    "bank_name": "PalmPay",
+                    "account_name": "Odukoya Homes Limited",
+                    "account_number": "0123498765"
+                }
+            }
+        },
+        "listings": {
+            "01": {
+                "title": "Modern 3 bedroom flat",
+                "property_type": "Flat",
+                "description": "A modern 3 bedroom flat in the heart of ikoyi, lagos",
+                "address": "23 Gerald Road",
+                "city": "Ikoyi",
+                "postal_code": "100021",
+                "bedroom": 3,
+                "bathroom": 3,
+                "square_feet": 3000,
+                "price_per_year": 300,
+                "features": {
+                    "utilities_included": true,
+                    "pet_friendly": true,
+                    "furnished": true,
+                    "feature_property_checkbox": true,
+                    "amenities": [
+                        "swimming pool",
+                        "gym",
+                        "parking"
+                    ]
+                },
+                "cover_image": "rentdirect/apps/api/seed_demo_data/landlord/femi/listings/01/cover_image.jpg",
+                "additional_images": [
+                    "rentdirect/apps/api/seed_demo_data/landlord/femi/listings/01/*.{jpeg,jpg,png,webp}"
+                ]
+            }
+        }
+    }
+}
