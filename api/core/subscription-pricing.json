@@ -5,12 +5,12 @@
       "yearly": 0
     },
     "silver": {
-      "monthly": 200,
-      "yearly": 2000
-    },
-    "gold": {
       "monthly": 300,
       "yearly": 3000
+    },
+    "gold": {
+      "monthly": 400,
+      "yearly": 4000
     },
     "platinum": {
       "monthly": 500,
