@@ -1,9 +1,10 @@
 import base64
 import binascii
+import logging
+import re
 import uuid
 from calendar import monthrange
 from datetime import timedelta
-import logging
 from decimal import Decimal
 
 from django.conf import settings
@@ -14,7 +15,7 @@ from django.db import connection, transaction
 from django.db.migrations.executor import MigrationExecutor
 from django.db.models import Avg, Q, Sum
 from django.db.utils import OperationalError, ProgrammingError
-from django.http import FileResponse, Http404, JsonResponse
+from django.http import FileResponse, Http404, HttpResponse, JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.decorators import method_decorator
@@ -3491,6 +3492,61 @@ def homepage_video(request):
     if not video_path.exists():
         raise Http404("Homepage video not found")
 
+    file_size = video_path.stat().st_size
+    range_header = request.headers.get("Range", "")
+
+    if range_header:
+        match = re.fullmatch(r"bytes=(\d*)-(\d*)", range_header.strip())
+        if not match:
+            response = HttpResponse(status=416)
+            response["Content-Range"] = f"bytes */{file_size}"
+            response["Accept-Ranges"] = "bytes"
+            return response
+
+        start_text, end_text = match.groups()
+        if not start_text and not end_text:
+            response = HttpResponse(status=416)
+            response["Content-Range"] = f"bytes */{file_size}"
+            response["Accept-Ranges"] = "bytes"
+            return response
+
+        if start_text:
+            start = int(start_text)
+            end = int(end_text) if end_text else file_size - 1
+        else:
+            suffix_length = int(end_text)
+            start = max(file_size - suffix_length, 0)
+            end = file_size - 1
+
+        end = min(end, file_size - 1)
+        if start >= file_size or start > end:
+            response = HttpResponse(status=416)
+            response["Content-Range"] = f"bytes */{file_size}"
+            response["Accept-Ranges"] = "bytes"
+            return response
+
+        content_length = end - start + 1
+
+        def stream_video_range():
+            with video_path.open("rb") as video_file:
+                video_file.seek(start)
+                remaining = content_length
+                while remaining > 0:
+                    chunk = video_file.read(min(8192, remaining))
+                    if not chunk:
+                        break
+                    remaining -= len(chunk)
+                    yield chunk
+
+        response = StreamingHttpResponse(stream_video_range(), status=206, content_type="video/mp4")
+        response["Content-Length"] = str(content_length)
+        response["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+        response["Accept-Ranges"] = "bytes"
+        response["Cache-Control"] = "public, max-age=3600"
+        return response
+
     response = FileResponse(video_path.open("rb"), content_type="video/mp4")
+    response["Content-Length"] = str(file_size)
+    response["Accept-Ranges"] = "bytes"
     response["Cache-Control"] = "public, max-age=3600"
     return response

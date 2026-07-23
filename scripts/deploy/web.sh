@@ -29,12 +29,6 @@ invalidate_cloudfront() {
     --paths "/*" >/dev/null
 }
 
-
-if [ "${INVALIDATE_ONLY}" = "1" ]; then
-  invalidate_cloudfront
-  exit 0
-fi
-
 BUCKET_NAME="${BUCKET_NAME:-frontend-${NAME_PREFIX}}"
 
 aws_with_auth s3api head-bucket --region "${AWS_REGION}" --bucket "${BUCKET_NAME}" >/dev/null 2>&1 \
@@ -79,6 +73,12 @@ if [ -d "${WEB_DIR}/dist/assets" ]; then
     --cache-control "public,max-age=31536000,immutable"
 fi
 
+if [ "${INVALIDATE_ONLY}" = "1" ]; then
+  invalidate_cloudfront
+  exit 0
+fi
+
 if [ "${INVALIDATE_CLOUDFRONT}" = "1" ]; then
   invalidate_cloudfront
+  exit 0
 fi

@@ -50,10 +50,16 @@ export const api = axios.create({
 
 export function resolveMediaUrl(value?: string | null): string {
   if (!value) return '/placeholder.jpg'
-  if (value.startsWith('http://') || value.startsWith('https://')) return value
-  const base = value.startsWith('/uploads/') ? getMediaBaseUrl() : getApiUrl().replace(/\/api\/v1$/, '')
-  const normalizedValue = value.startsWith('/uploads/') ? value.replace(/^\/uploads/, '') : value
-  return `${base}${normalizedValue.startsWith('/') ? normalizedValue : `/${normalizedValue}`}`
+  const normalized = value.trim()
+  if (!normalized) return '/placeholder.jpg'
+  if (normalized.startsWith('http://') || normalized.startsWith('https://')) return normalized
+
+  const path = normalized.startsWith('/') ? normalized : `/${normalized}`
+  if (path.startsWith('/uploads/') || path.startsWith('/media/')) {
+    return `${getApiUrl().replace(/\/api\/v1$/, '')}${path}`
+  }
+
+  return `${getMediaBaseUrl()}${path}`
 }
 
 api.interceptors.response.use(

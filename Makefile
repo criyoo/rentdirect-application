@@ -38,9 +38,9 @@ invalidate:
 	INVALIDATE_ONLY=1 bash scripts/deploy/web.sh $(WORKSPACE)
 
 migrate:
-	@bash ../infra/scripts/migrate.sh $(WORKSPACE)
+	@bash scripts/migrate.sh $(WORKSPACE)
 
 admin:
-	@bash ../infra/scripts/create-admin-user.sh $(WORKSPACE)
+	@bash scripts/admin.sh $(WORKSPACE)
 
 deploy: api web

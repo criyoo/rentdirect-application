@@ -104,6 +104,23 @@ class HealthTests(TestCase):
                 self.assertEqual(response["Content-Type"], "video/mp4")
                 self.assertEqual(b"".join(response.streaming_content), b"fake video")
 
+    def test_homepage_video_supports_range_requests(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base_dir = Path(tmpdir)
+            video_dir = base_dir / "media" / "video"
+            video_dir.mkdir(parents=True)
+            (video_dir / "rentdirect.mp4").write_bytes(b"0123456789")
+
+            with override_settings(BASE_DIR=base_dir):
+                response = self.client.get("/api/v1/homepage-video", HTTP_RANGE="bytes=2-5")
+
+                self.assertEqual(response.status_code, 206)
+                self.assertEqual(response["Content-Type"], "video/mp4")
+                self.assertEqual(response["Content-Range"], "bytes 2-5/10")
+                self.assertEqual(response["Accept-Ranges"], "bytes")
+                self.assertEqual(response["Content-Length"], "4")
+                self.assertEqual(b"".join(response.streaming_content), b"2345")
+
 
 class AuthViewSetTests(TestCase):
     @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend", WEB_PUBLIC_URL="https://rentdirect.homes")

@@ -267,4 +267,27 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Deploy API
-        run: bash scripts/deploy/api.sh dev
+        run: SEED_DEMO_ACCOUNTS=1 MIGRATION_START_DB_INSTANCE=1 bash scripts/deploy/api.sh dev
+
+  django-superuser:
+    needs:
+      - detect-api-changes
+      - deploy-api
+    if: github.event_name == 'workflow_dispatch' || needs.detect-api-changes.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: development
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: ${{ env.LINUX_PLATFORM }}
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Create Django Superuser
+        run: bash scripts/admin.sh dev
