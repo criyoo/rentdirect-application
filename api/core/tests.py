@@ -99,11 +99,12 @@ class HealthTests(TestCase):
     def test_homepage_video_serves_packaged_media_file(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             base_dir = Path(tmpdir)
-            video_dir = base_dir / "media" / "video"
+            video_dir = base_dir / "uploads" / "seed" / "video"
+            media_root = base_dir / "media-root"
             video_dir.mkdir(parents=True)
             (video_dir / "rentdirect.mp4").write_bytes(b"fake video")
 
-            with override_settings(BASE_DIR=base_dir):
+            with override_settings(BASE_DIR=base_dir, MEDIA_ROOT=media_root, STORAGES=TEST_FILE_STORAGES):
                 response = self.client.get("/api/v1/homepage-video")
 
                 self.assertEqual(response.status_code, 200)
@@ -113,11 +114,12 @@ class HealthTests(TestCase):
     def test_homepage_video_supports_range_requests(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             base_dir = Path(tmpdir)
-            video_dir = base_dir / "media" / "video"
+            video_dir = base_dir / "uploads" / "seed" / "video"
+            media_root = base_dir / "media-root"
             video_dir.mkdir(parents=True)
             (video_dir / "rentdirect.mp4").write_bytes(b"0123456789")
 
-            with override_settings(BASE_DIR=base_dir):
+            with override_settings(BASE_DIR=base_dir, MEDIA_ROOT=media_root, STORAGES=TEST_FILE_STORAGES):
                 response = self.client.get("/api/v1/homepage-video", HTTP_RANGE="bytes=2-5")
 
                 self.assertEqual(response.status_code, 206)
@@ -126,6 +128,18 @@ class HealthTests(TestCase):
                 self.assertEqual(response["Accept-Ranges"], "bytes")
                 self.assertEqual(response["Content-Length"], "4")
                 self.assertEqual(b"".join(response.streaming_content), b"2345")
+
+    def test_homepage_video_redirects_to_remote_storage_url(self):
+        with patch("core.views.default_storage") as storage:
+            storage.exists.return_value = True
+            storage.path.side_effect = NotImplementedError
+            storage.url.return_value = "https://media.example.com/seed/video/rentdirect.mp4"
+
+            response = self.client.get("/api/v1/homepage-video")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], "https://media.example.com/seed/video/rentdirect.mp4")
+        self.assertEqual(response["Cache-Control"], "public, max-age=3600")
 
 
 class AuthViewSetTests(TestCase):
@@ -2722,6 +2736,45 @@ class SeedDemoTests(TestCase):
                 resolved = SeedDemoDataCommand().resolve_path("seed_demo_data/landlord/christian/listings/02/cover_image.webp")
 
         self.assertEqual(resolved, expected_path)
+
+    @override_settings(SEED_DEMO_ACCOUNTS=True)
+    def test_seed_demo_uploads_homepage_video_to_storage(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base_dir = Path(temp_dir) / "apps" / "api"
+            source_path = base_dir / "uploads" / "seed" / "video" / "rentdirect.mp4"
+            media_root = Path(temp_dir) / "media"
+            source_path.parent.mkdir(parents=True, exist_ok=True)
+            source_path.write_bytes(b"homepage video")
+
+            with override_settings(
+                BASE_DIR=base_dir,
+                MEDIA_ROOT=media_root,
+                STORAGES=TEST_FILE_STORAGES,
+                HOMEPAGE_VIDEO_SOURCE_PATH="uploads/seed/video/rentdirect.mp4",
+                HOMEPAGE_VIDEO_STORAGE_NAME="seed/video/rentdirect.mp4",
+            ):
+                SeedDemoDataCommand().seed_homepage_video()
+
+                self.assertEqual((media_root / "seed" / "video" / "rentdirect.mp4").read_bytes(), b"homepage video")
+
+    @override_settings(SEED_DEMO_ACCOUNTS=True)
+    def test_seed_demo_keeps_homepage_video_when_source_is_storage_file(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base_dir = Path(temp_dir) / "apps" / "api"
+            source_path = base_dir / "uploads" / "seed" / "video" / "rentdirect.mp4"
+            source_path.parent.mkdir(parents=True, exist_ok=True)
+            source_path.write_bytes(b"homepage video")
+
+            with override_settings(
+                BASE_DIR=base_dir,
+                MEDIA_ROOT=base_dir / "uploads",
+                STORAGES=TEST_FILE_STORAGES,
+                HOMEPAGE_VIDEO_SOURCE_PATH="uploads/seed/video/rentdirect.mp4",
+                HOMEPAGE_VIDEO_STORAGE_NAME="seed/video/rentdirect.mp4",
+            ):
+                SeedDemoDataCommand().seed_homepage_video()
+
+                self.assertEqual(source_path.read_bytes(), b"homepage video")
 
     @override_settings(SEED_DEMO_ACCOUNTS=True)
     def test_seed_demo_creates_default_landlords_tenants_and_featured_listings(self):

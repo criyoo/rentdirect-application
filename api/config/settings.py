@@ -357,6 +357,8 @@ DIKRIPT_LOOKUP_CACHE_TIMEOUT_SECONDS = env_int("DIKRIPT_LOOKUP_CACHE_TIMEOUT_SEC
 SEED_DEMO_ACCOUNTS = env_bool("SEED_DEMO_ACCOUNTS", ENVIRONMENT in {"dev", "development", "local"})
 SEED_LANDLORD_DATA_PATH = os.environ.get("SEED_LANDLORD_DATA_PATH", "seed_demo_data/landlord/landlord.json")
 SEED_TENANT_DATA_PATH = os.environ.get("SEED_TENANT_DATA_PATH", "seed_demo_data/tenants/tenants.json")
+HOMEPAGE_VIDEO_STORAGE_NAME = os.environ.get("HOMEPAGE_VIDEO_STORAGE_NAME", "seed/video/rentdirect.mp4").strip()
+HOMEPAGE_VIDEO_SOURCE_PATH = os.environ.get("HOMEPAGE_VIDEO_SOURCE_PATH", "uploads/seed/video/rentdirect.mp4").strip()
 
 LOGGING = {
     "version": 1,

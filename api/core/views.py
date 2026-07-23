@@ -6,16 +6,18 @@ import uuid
 from calendar import monthrange
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 
 from django.conf import settings
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.files.storage import default_storage
 from django.db import connection, transaction
 from django.db.migrations.executor import MigrationExecutor
 from django.db.models import Avg, Q, Sum
 from django.db.utils import OperationalError, ProgrammingError
-from django.http import FileResponse, Http404, HttpResponse, JsonResponse, StreamingHttpResponse
+from django.http import FileResponse, Http404, HttpResponse, HttpResponseRedirect, JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.decorators import method_decorator
@@ -3607,7 +3609,62 @@ def health(request):
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def homepage_video(request):
-    video_path = settings.BASE_DIR / "media" / "video" / "rentdirect.mp4"
+    storage_response = homepage_video_storage_response(request)
+    if storage_response is not None:
+        return storage_response
+
+    video_path = homepage_video_source_path()
+    if video_path is None:
+        raise Http404("Homepage video not found")
+
+    return homepage_video_file_response(request, video_path)
+
+
+def homepage_video_storage_response(request):
+    storage_name = str(getattr(settings, "HOMEPAGE_VIDEO_STORAGE_NAME", "") or "").strip()
+    if not storage_name:
+        return None
+
+    try:
+        if not default_storage.exists(storage_name):
+            return None
+
+        try:
+            video_path = Path(default_storage.path(storage_name))
+        except (AttributeError, NotImplementedError):
+            video_url = default_storage.url(storage_name)
+            if video_url.startswith("//"):
+                video_url = f"{request.scheme}:{video_url}"
+
+            response = HttpResponseRedirect(video_url)
+            response["Cache-Control"] = "public, max-age=3600"
+            return response
+
+        if video_path.exists():
+            return homepage_video_file_response(request, video_path)
+    except Exception:
+        logger.exception("Could not resolve homepage video from configured storage.")
+
+    return None
+
+
+def homepage_video_source_path() -> Path | None:
+    source_paths = []
+    source_path = str(getattr(settings, "HOMEPAGE_VIDEO_SOURCE_PATH", "") or "").strip()
+    if source_path:
+        path = Path(source_path)
+        source_paths.append(path if path.is_absolute() else settings.BASE_DIR / path)
+
+    source_paths.append(settings.BASE_DIR / "media" / "video" / "rentdirect.mp4")
+
+    for path in source_paths:
+        if path.exists():
+            return path
+
+    return None
+
+
+def homepage_video_file_response(request, video_path: Path):
     if not video_path.exists():
         raise Http404("Homepage video not found")
 

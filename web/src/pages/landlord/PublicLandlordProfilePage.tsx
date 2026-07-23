@@ -148,7 +148,7 @@ export default function PublicLandlordProfilePage() {
                                     {profile.metrics.average_rating ? `${profile.metrics.average_rating.toFixed(1)} / 5 rating` : 'No rating yet'}
                                 </span>
                                 <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-700">
-                                    {profile.metrics.properties_listed} listed properties
+                                    listed properties: {profile.metrics.properties_listed}
                                 </span>
                             </div>
                         </div>
@@ -225,15 +225,15 @@ export default function PublicLandlordProfilePage() {
                 </section>
 
                 <section className="card p-6">
-                    <h2 className="text-2xl font-bold text-blue-600">Response Metrics</h2>
+                    <h2 className="text-xl font-bold text-blue-600">Response Metrics</h2>
                     <div className="mt-5 grid gap-4 sm:grid-cols-2">
                         <div className="rounded-2xl bg-slate-50 p-4">
                             <p className="text-sm text-slate-500">Average Response Time</p>
-                            <p className="mt-2 text-2xl font-bold text-slate-900">{profile.metrics.average_response_time}</p>
+                            <p className="mt-2 text-xl font-bold text-slate-900">{profile.metrics.average_response_time}</p>
                         </div>
                         <div className="rounded-2xl bg-slate-50 p-4">
                             <p className="text-sm text-slate-500">Application Approval Rate</p>
-                            <p className="mt-2 text-2xl font-bold text-slate-900">{profile.metrics.application_approval_rate.toFixed(1)}%</p>
+                            <p className="mt-2 text-xl font-bold text-slate-900">{profile.metrics.application_approval_rate.toFixed(1)}%</p>
                         </div>
                     </div>
 
@@ -241,11 +241,11 @@ export default function PublicLandlordProfilePage() {
                     <div className="mt-5 grid gap-4 sm:grid-cols-2">
                         <div className="rounded-2xl bg-slate-50 p-4">
                             <p className="text-sm text-slate-500">Years on Platform</p>
-                            <p className="mt-2 text-2xl font-bold text-slate-900">{profile.metrics.years_on_platform.toFixed(1)}</p>
+                            <p className="mt-2 text-xl font-bold text-slate-900">{profile.metrics.years_on_platform.toFixed(1)}</p>
                         </div>
                         <div className="rounded-2xl bg-slate-50 p-4">
                             <p className="text-sm text-slate-500">Number of Successful Rentals</p>
-                            <p className="mt-2 text-2xl font-bold text-slate-900">{profile.metrics.successful_rentals}</p>
+                            <p className="mt-2 text-xl font-bold text-slate-900">{profile.metrics.successful_rentals}</p>
                         </div>
                     </div>
                 </section>

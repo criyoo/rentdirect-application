@@ -143,9 +143,6 @@ pytestdebug.log
 # Django
 # ================================
 media/
-!apps/api/media/
-!apps/api/media/video/
-!apps/api/media/video/rentdirect.mp4
 staticfiles/
 
 # ================================

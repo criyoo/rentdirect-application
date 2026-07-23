@@ -7,6 +7,7 @@ from pathlib import Path
 
 from django.conf import settings
 from django.core.files import File
+from django.core.files.storage import default_storage
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from django.utils.dateparse import parse_date
@@ -44,6 +45,8 @@ class Command(BaseCommand):
         created_users = 0
         created_listings = 0
 
+        self.seed_homepage_video()
+
         for path_value, role in seed_specs:
             seed_path = self.resolve_path(path_value)
             if not seed_path or not seed_path.exists():
@@ -64,6 +67,31 @@ class Command(BaseCommand):
                     self.seed_tenant_profile(seed_key, user, data)
 
         self.stdout.write(self.style.SUCCESS(f"Seed complete. Created {created_users} users and {created_listings} listings."))
+
+    def seed_homepage_video(self) -> None:
+        storage_name = str(getattr(settings, "HOMEPAGE_VIDEO_STORAGE_NAME", "") or "").strip()
+        source_path_value = str(getattr(settings, "HOMEPAGE_VIDEO_SOURCE_PATH", "") or "").strip()
+        if not storage_name or not source_path_value:
+            return
+
+        source_path = self.resolve_path(source_path_value)
+        if not source_path or not source_path.exists() or not source_path.is_file():
+            self.stdout.write(f"Homepage video source not found: {source_path_value}")
+            return
+
+        destination_path = None
+        try:
+            destination_path = Path(default_storage.path(storage_name))
+        except (AttributeError, NotImplementedError):
+            pass
+        if destination_path and source_path.resolve() == destination_path.resolve():
+            return
+
+        if default_storage.exists(storage_name):
+            default_storage.delete(storage_name)
+
+        with source_path.open("rb") as fh:
+            default_storage.save(storage_name, File(fh))
 
     def upsert_user(self, seed_key: str, data: dict, role: str, seed_path: Path):
         registration = self.get_seed_dict(data, "registration_credentials")
