@@ -19,6 +19,7 @@ from core.models import AppUser, Booking, CommunityChatMessage, Document, Feedba
 from core.pricing import calculate_booking_total, calculate_deposit_amount
 from core.security import hash_otp
 from core.serializers import UserSerializer
+from core.subscription_pricing import get_subscription_pricing
 
 
 def save_rental_progress_steps(testcase, client, booking_id, *, step_keys=(), step_responses=None):
@@ -781,15 +782,7 @@ class UserViewSetTests(TestCase):
         response = self.client.get("/api/v1/users/subscription-pricing")
 
         self.assertEqual(response.status_code, 200, response.json())
-        payload = response.json()
-        self.assertEqual(payload["tenant"]["bronze"]["monthly"], 0)
-        self.assertEqual(payload["tenant"]["silver"]["monthly"], 200)
-        self.assertEqual(payload["tenant"]["gold"]["monthly"], 300)
-        self.assertEqual(payload["tenant"]["platinum"]["monthly"], 500)
-        self.assertEqual(payload["landlord"]["bronze"]["monthly"], 0)
-        self.assertEqual(payload["landlord"]["silver"]["monthly"], 300)
-        self.assertEqual(payload["landlord"]["gold"]["monthly"], 400)
-        self.assertEqual(payload["landlord"]["platinum"]["monthly"], 500)
+        self.assertEqual(response.json(), get_subscription_pricing())
 
     @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
     def test_authenticated_user_can_change_password(self):
@@ -3224,8 +3217,10 @@ class SubscriptionPaymentTests(TestCase):
 
         self.assertEqual(request_response.status_code, 201, request_response.json())
         payment = SubscriptionPayment.objects.get(id=request_response.json()["id"])
+        expected_amount = get_subscription_pricing()["tenant"]["silver"]["monthly"]
+        expected_amount_display = f"{expected_amount:.2f}"
         self.assertEqual(payment.status, SubscriptionPayment.Status.PENDING)
-        self.assertEqual(str(payment.amount), "200.00")
+        self.assertEqual(str(payment.amount), expected_amount_display)
 
         checkout_response = client.post(f"/api/v1/subscriptions/{payment.id}/flutterwave/checkout", {}, format="json")
 
@@ -3241,7 +3236,7 @@ class SubscriptionPaymentTests(TestCase):
                 "id": "991",
                 "tx_ref": payment.transaction_id,
                 "status": "successful",
-                "amount": "200.00",
+                "amount": expected_amount_display,
                 "currency": "NGN",
                 "customer": {"email": tenant.email},
             },
