@@ -28,6 +28,11 @@ def env_list(name: str, default: str = "") -> list[str]:
     return [item.strip() for item in os.environ.get(name, default).split(",") if item.strip()]
 
 
+def url_protocol(value: str | None, default: str = "https:") -> str:
+    protocol = (value or default).strip() or default
+    return protocol if protocol.endswith(":") else f"{protocol}:"
+
+
 def database_url() -> str:
     explicit = os.environ.get("DATABASE_URL", "").strip()
     if explicit:
@@ -177,7 +182,7 @@ AWS_STORAGE_BUCKET_NAME = os.environ.get("AWS_STORAGE_BUCKET_NAME", "").strip()
 AWS_S3_REGION_NAME = os.environ.get("AWS_S3_REGION_NAME", os.environ.get("AWS_REGION", "eu-west-1")).strip()
 AWS_S3_CUSTOM_DOMAIN = os.environ.get("AWS_S3_CUSTOM_DOMAIN", "").strip()
 AWS_S3_ENDPOINT_URL = os.environ.get("AWS_S3_ENDPOINT_URL", "").strip() or None
-AWS_S3_URL_PROTOCOL = os.environ.get("AWS_S3_URL_PROTOCOL", "").strip()
+AWS_S3_URL_PROTOCOL = url_protocol(os.environ.get("AWS_S3_URL_PROTOCOL"))
 if AWS_STORAGE_BUCKET_NAME:
     s3_options = {
         "bucket_name": AWS_STORAGE_BUCKET_NAME,
@@ -187,16 +192,14 @@ if AWS_STORAGE_BUCKET_NAME:
         "default_acl": None,
         "file_overwrite": False,
         "querystring_auth": False,
+        "url_protocol": AWS_S3_URL_PROTOCOL,
     }
-    if AWS_S3_URL_PROTOCOL:
-        s3_options["url_protocol"] = AWS_S3_URL_PROTOCOL
     STORAGES["default"] = {
         "BACKEND": "storages.backends.s3.S3Storage",
         "OPTIONS": s3_options,
     }
     media_domain = AWS_S3_CUSTOM_DOMAIN or f"{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com"
-    protocol = AWS_S3_URL_PROTOCOL or "https"
-    MEDIA_URL = f"{protocol}://{media_domain}/"
+    MEDIA_URL = f"{AWS_S3_URL_PROTOCOL}//{media_domain}/"
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": ["core.authentication.CookieJWTAuthentication"],

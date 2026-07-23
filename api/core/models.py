@@ -1,8 +1,34 @@
 import uuid
+from pathlib import PurePath
 
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
 from django.utils import timezone
+
+
+def _file_extension(filename: str) -> str:
+    return PurePath(str(filename or "")).suffix.lower()
+
+
+def _resource_upload_path(prefix: str, resource_ids: list[str], label: str, filename: str) -> str:
+    safe_ids = [str(resource_id) for resource_id in resource_ids if resource_id]
+    return "/".join([prefix, *safe_ids, f"{label}-{uuid.uuid4().hex}{_file_extension(filename)}"])
+
+
+def profile_photo_upload_to(instance, filename: str) -> str:
+    return _resource_upload_path("profiles", [instance.pk], "profile", filename)
+
+
+def document_file_upload_to(instance, filename: str) -> str:
+    return _resource_upload_path("documents", [instance.owner_id, instance.pk], "document", filename)
+
+
+def listing_image_file_upload_to(instance, filename: str) -> str:
+    listing = instance._state.fields_cache.get("listing")
+    landlord_id = getattr(listing, "landlord_id", None)
+    if not landlord_id and instance.listing_id:
+        landlord_id = Listing.objects.filter(pk=instance.listing_id).values_list("landlord_id", flat=True).first()
+    return _resource_upload_path("listings", [landlord_id, instance.listing_id, instance.pk], "listing-image", filename)
 
 
 class AppUserManager(BaseUserManager):
@@ -39,7 +65,7 @@ class AppUser(AbstractBaseUser, PermissionsMixin):
     name = models.CharField(max_length=160)
     role = models.CharField(max_length=20, choices=Role.choices)
     email_verified = models.BooleanField(default=False)
-    profile_photo = models.ImageField(upload_to="profiles/%Y/%m/", blank=True, null=True)
+    profile_photo = models.ImageField(upload_to=profile_photo_upload_to, blank=True, null=True, max_length=512)
     mobile = models.CharField(max_length=40, blank=True, default="")
     nin_number = models.CharField(max_length=80, blank=True, default="")
     bvn_number = models.CharField(max_length=80, blank=True, default="")
@@ -366,7 +392,7 @@ class Listing(models.Model):
 class ListingImage(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     listing = models.ForeignKey(Listing, on_delete=models.CASCADE, related_name="images")
-    file = models.ImageField(upload_to="listings/%Y/%m/")
+    file = models.ImageField(upload_to=listing_image_file_upload_to, max_length=512)
     is_cover = models.BooleanField(default=False)
     sort_order = models.PositiveSmallIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -380,7 +406,7 @@ class Document(models.Model):
     owner = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name="documents")
     title = models.CharField(max_length=160)
     content_type = models.CharField(max_length=120, blank=True, default="")
-    file = models.FileField(upload_to="documents/%Y/%m/")
+    file = models.FileField(upload_to=document_file_upload_to, max_length=512)
     created_at = models.DateTimeField(auto_now_add=True)
 
     @property

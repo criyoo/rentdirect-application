@@ -984,17 +984,17 @@ class Command(BaseCommand):
                 listing.save(update_fields=["property_document_submission", "updated_at"])
 
             cover_path = self.resolve_path(listing_data.get("cover_image"))
-            desired_image_names = set()
+            desired_image_ids = set()
             if cover_path and cover_path.exists():
-                desired_image_names.add(self.ensure_listing_image(listing, cover_path, is_cover=True, sort_order=0))
+                desired_image_ids.add(self.ensure_listing_image(listing, cover_path, is_cover=True, sort_order=0))
 
             image_patterns = listing_data.get("additional_images") or []
             for index, image_path in enumerate(self.expand_patterns(image_patterns), start=1):
                 if cover_path and cover_path.exists() and image_path.resolve() == cover_path.resolve():
                     continue
-                desired_image_names.add(self.ensure_listing_image(listing, image_path, is_cover=False, sort_order=index))
+                desired_image_ids.add(self.ensure_listing_image(listing, image_path, is_cover=False, sort_order=index))
 
-            self.remove_stale_listing_images(listing, desired_image_names)
+            self.remove_stale_listing_images(listing, desired_image_ids)
 
         Listing.objects.filter(landlord=user).exclude(seed_key="").exclude(seed_key__in=desired_listing_keys).delete()
 
@@ -1109,13 +1109,8 @@ class Command(BaseCommand):
             listing.property_documents.add(*uploaded_documents)
         return len(uploaded_documents)
 
-    def build_seed_image_name(self, listing: Listing, source_path: Path) -> str:
-        return f"{listing.id}_{source_path.name}"
-
     def ensure_listing_image(self, listing: Listing, path: Path, *, is_cover: bool, sort_order: int) -> str:
-        target_name = self.build_seed_image_name(listing, path)
-        existing = {Path(image.file.name).name: image for image in listing.images.all() if image.file}
-        match = existing.get(target_name)
+        match = listing.images.filter(is_cover=is_cover, sort_order=sort_order).first()
 
         if match:
             updated = False
@@ -1125,28 +1120,28 @@ class Command(BaseCommand):
             if match.sort_order != sort_order:
                 match.sort_order = sort_order
                 updated = True
-            self.replace_model_file(match, "file", path, target_name=target_name)
+            self.replace_model_file(match, "file", path)
             if updated:
                 match.save(update_fields=["file", "is_cover", "sort_order"])
             else:
                 match.save(update_fields=["file"])
-            return Path(match.file.name).name
+            return str(match.id)
 
         image = ListingImage(
             listing=listing,
             is_cover=is_cover,
             sort_order=sort_order,
         )
-        self.replace_model_file(image, "file", path, target_name=target_name)
+        self.replace_model_file(image, "file", path)
         image.save()
-        return Path(image.file.name).name
+        return str(image.id)
 
-    def remove_stale_listing_images(self, listing: Listing, desired_image_names: set[str]) -> None:
+    def remove_stale_listing_images(self, listing: Listing, desired_image_ids: set[str]) -> None:
         for image in listing.images.all():
             if not image.file:
                 image.delete()
                 continue
-            if Path(image.file.name).name not in desired_image_names:
+            if str(image.id) not in desired_image_ids:
                 image.file.delete(save=False)
                 image.delete()
 
@@ -1244,17 +1239,11 @@ class Command(BaseCommand):
                 seen.add(key)
         return unique_candidates
 
-    def replace_model_file(self, instance, field_name: str, source_path: Path, *, target_name: str | None = None) -> None:
+    def replace_model_file(self, instance, field_name: str, source_path: Path) -> None:
         field = getattr(instance, field_name)
-        existing_name = field.name if field and field.name else ""
 
         if field and field.name:
             field.delete(save=False)
 
-        if target_name:
-            storage_name = instance._meta.get_field(field_name).generate_filename(instance, target_name)
-            if storage_name != existing_name:
-                field.storage.delete(storage_name)
-
         with source_path.open("rb") as fh:
-            field.save(target_name or source_path.name, File(fh), save=False)
+            field.save(source_path.name, File(fh), save=False)

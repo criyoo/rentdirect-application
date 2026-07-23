@@ -53,6 +53,7 @@ export function resolveMediaUrl(value?: string | null): string {
   const normalized = value.trim()
   if (!normalized) return '/placeholder.jpg'
   if (normalized.startsWith('http://') || normalized.startsWith('https://')) return normalized
+  if (normalized.startsWith('//')) return `${window.location.protocol}${normalized}`
 
   const path = normalized.startsWith('/') ? normalized : `/${normalized}`
   if (path.startsWith('/uploads/') || path.startsWith('/media/')) {

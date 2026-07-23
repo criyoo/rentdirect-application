@@ -22,6 +22,12 @@ from core.serializers import UserSerializer
 from core.subscription_pricing import get_subscription_pricing
 
 
+TEST_FILE_STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": settings.STORAGES["staticfiles"],
+}
+
+
 def save_rental_progress_steps(testcase, client, booking_id, *, step_keys=(), step_responses=None):
     response = None
     for step_key in step_keys:
@@ -424,6 +430,12 @@ class ListingTests(TestCase):
         document = listing.property_documents.get()
         self.assertLessEqual(len(document.title), Document._meta.get_field("title").max_length)
         self.assertIn("Office_Electric_Bill_EKEDC.pdf", document.title)
+        self.assertTrue(document.file.name.startswith(f"documents/{landlord.id}/{document.id}/document-"))
+        self.assertRegex(document.file.name, r"/document-[0-9a-f]{32}\.pdf$")
+        self.assertTrue(listing.images.filter(is_cover=True).exists())
+        cover = listing.images.get(is_cover=True)
+        self.assertTrue(cover.file.name.startswith(f"listings/{landlord.id}/{listing.id}/{cover.id}/listing-image-"))
+        self.assertRegex(cover.file.name, r"/listing-image-[0-9a-f]{32}\.gif$")
         self.assertEqual(
             listing.property_document_verification_status,
             VerificationRequest.VerificationProgressStatus.PENDING,
@@ -432,6 +444,29 @@ class ListingTests(TestCase):
         self.assertEqual(listing.maximum_occupancy, 4)
         self.assertTrue(listing.short_let_allowed)
         self.assertTrue(listing.student_tenants_allowed)
+
+    def test_resource_scoped_upload_paths_prevent_same_day_filename_clashes(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with override_settings(MEDIA_ROOT=tmpdir, STORAGES=TEST_FILE_STORAGES):
+                owner = AppUser.objects.create_user(
+                    email="upload-owner@example.com",
+                    password="password-123",
+                    name="Upload Owner",
+                    role=AppUser.Role.LANDLORD,
+                    email_verified=True,
+                )
+                first = Document(owner=owner, title="First")
+                first.file.save("same-name.pdf", SimpleUploadedFile("same-name.pdf", b"first"))
+                first.save()
+                second = Document(owner=owner, title="Second")
+                second.file.save("same-name.pdf", SimpleUploadedFile("same-name.pdf", b"second"))
+                second.save()
+
+        self.assertNotEqual(first.file.name, second.file.name)
+        self.assertTrue(first.file.name.startswith(f"documents/{owner.id}/{first.id}/document-"))
+        self.assertTrue(second.file.name.startswith(f"documents/{owner.id}/{second.id}/document-"))
+        self.assertRegex(first.file.name, r"/document-[0-9a-f]{32}\.pdf$")
+        self.assertRegex(second.file.name, r"/document-[0-9a-f]{32}\.pdf$")
 
     def test_landlord_listing_requires_property_documents_or_in_person_verification(self):
         landlord = AppUser.objects.create_user(
@@ -780,7 +815,7 @@ class UserSerializerValidationTests(TestCase):
 class UserViewSetTests(TestCase):
     def test_authenticated_user_can_upload_profile_photo(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            with override_settings(MEDIA_ROOT=tmpdir):
+            with override_settings(MEDIA_ROOT=tmpdir, STORAGES=TEST_FILE_STORAGES):
                 user = AppUser.objects.create_user(
                     email="photo-user@example.com",
                     password="password-123",
@@ -806,6 +841,8 @@ class UserViewSetTests(TestCase):
                 self.assertEqual(response.status_code, 200, response.json())
                 user.refresh_from_db()
                 self.assertTrue(user.profile_photo.name)
+                self.assertTrue(user.profile_photo.name.startswith(f"profiles/{user.id}/profile-"))
+                self.assertRegex(user.profile_photo.name, r"/profile-[0-9a-f]{32}\.jpg$")
                 self.assertTrue(response.json()["profile_photo_url"])
 
     def test_subscription_pricing_endpoint_returns_shared_catalog(self):
@@ -2688,7 +2725,7 @@ class SeedDemoTests(TestCase):
     @override_settings(SEED_DEMO_ACCOUNTS=True)
     def test_seed_demo_creates_default_landlords_tenants_and_featured_listings(self):
         with tempfile.TemporaryDirectory() as temp_media_root:
-            with override_settings(MEDIA_ROOT=temp_media_root):
+            with override_settings(MEDIA_ROOT=temp_media_root, STORAGES=TEST_FILE_STORAGES):
                 call_command("seed_demo_data")
                 call_command("seed_demo_data")
 
@@ -2727,6 +2764,8 @@ class SeedDemoTests(TestCase):
         self.assertEqual(jade_profile.rental_history[0]["move_out_date"], "2026-08-01")
         self.assertFalse(jade_profile.household_info["has_smokers"])
         self.assertFalse(jade_profile.criminal_declaration["convicted_of_crime"])
+        self.assertTrue(jade.profile_photo.name.startswith(f"profiles/{jade.id}/profile-"))
+        self.assertRegex(jade.profile_photo.name, r"/profile-[0-9a-f]{32}\.jpg$")
         jade_verification = VerificationRequest.objects.get(user=jade)
         self.assertEqual(jade_verification.status, VerificationRequest.Status.APPROVED)
         self.assertEqual(
@@ -2761,6 +2800,8 @@ class SeedDemoTests(TestCase):
         self.assertEqual(christian.landlord_verification_profile["hr_contact_name"], "Harriet Adams")
         self.assertEqual(christian.landlord_verification_profile["hr_contact_number"], "+2348091122334")
         self.assertEqual(christian.landlord_verification_profile["hr_contact_email"], "harriet.adams@conocophilips.com")
+        self.assertTrue(christian.profile_photo.name.startswith(f"profiles/{christian.id}/profile-"))
+        self.assertRegex(christian.profile_photo.name, r"/profile-[0-9a-f]{32}\.jpg$")
         christian_verification = VerificationRequest.objects.get(user=christian)
         self.assertEqual(christian_verification.status, VerificationRequest.Status.APPROVED)
         self.assertEqual(
@@ -2796,6 +2837,12 @@ class SeedDemoTests(TestCase):
         self.assertTrue(
             all(len(document.title) <= title_max_length for document in christian_listing.property_documents.all())
         )
+        self.assertTrue(
+            all(
+                document.file.name.startswith(f"documents/{christian.id}/{document.id}/document-")
+                for document in christian_listing.property_documents.all()
+            )
+        )
         self.assertEqual(christian_listing.property_document_verification_status, VerificationRequest.VerificationProgressStatus.VERIFIED)
         self.assertEqual(christian_listing.physical_property_status, VerificationRequest.VerificationProgressStatus.VERIFIED)
         self.assertEqual(str(christian_listing.deposit_amount), "80.00")
@@ -2807,6 +2854,12 @@ class SeedDemoTests(TestCase):
         self.assertTrue(christian_listing.furnished)
         self.assertTrue(christian_listing.expatriates_allowed)
         self.assertGreater(christian_listing.images.count(), 0)
+        self.assertTrue(
+            all(
+                image.file.name.startswith(f"listings/{christian.id}/{christian_listing.id}/{image.id}/listing-image-")
+                for image in christian_listing.images.all()
+            )
+        )
         self.assertTrue(christian_listing.cover_image_url)
 
         response = self.client.get("/api/v1/featured/listings")
@@ -2817,7 +2870,7 @@ class SeedDemoTests(TestCase):
     @override_settings(SEED_DEMO_ACCOUNTS=True)
     def test_seed_demo_removes_orphaned_listing_property_documents(self):
         with tempfile.TemporaryDirectory() as temp_media_root:
-            with override_settings(MEDIA_ROOT=temp_media_root):
+            with override_settings(MEDIA_ROOT=temp_media_root, STORAGES=TEST_FILE_STORAGES):
                 call_command("seed_demo_data")
                 listing = Listing.objects.get(landlord__email="criyo.career+chris@gmail.com", seed_key="01")
                 orphan = Document.objects.create(
@@ -2836,7 +2889,7 @@ class SeedDemoTests(TestCase):
     @override_settings(SEED_DEMO_ACCOUNTS=True)
     def test_seed_demo_restores_listing_images_when_storage_files_already_exist(self):
         with tempfile.TemporaryDirectory() as temp_media_root:
-            with override_settings(MEDIA_ROOT=temp_media_root):
+            with override_settings(MEDIA_ROOT=temp_media_root, STORAGES=TEST_FILE_STORAGES):
                 call_command("seed_demo_data")
 
                 listing = Listing.objects.get(landlord__email="criyo.career+chris@gmail.com", seed_key="01")
@@ -2851,13 +2904,13 @@ class SeedDemoTests(TestCase):
                 image_names = list(listing.images.values_list("file", flat=True))
 
         self.assertGreater(len(image_names), 0)
-        self.assertTrue(any(name.endswith("_cover_image.jpg") for name in image_names))
+        self.assertTrue(any(re.search(r"/listing-image-[0-9a-f]{32}\.jpg$", name) for name in image_names))
         self.assertTrue(listing.cover_image_url)
 
     @override_settings(SEED_DEMO_ACCOUNTS=True)
     def test_seed_demo_updates_existing_seeded_listing_instead_of_creating_duplicate(self):
         with tempfile.TemporaryDirectory() as temp_media_root:
-            with override_settings(MEDIA_ROOT=temp_media_root):
+            with override_settings(MEDIA_ROOT=temp_media_root, STORAGES=TEST_FILE_STORAGES):
                 call_command("seed_demo_data")
 
                 listing = Listing.objects.get(landlord__email="criyo.career+chris@gmail.com", seed_key="01")
@@ -2935,6 +2988,7 @@ class SeedDemoTests(TestCase):
 
             with override_settings(
                 MEDIA_ROOT=temp_dir,
+                STORAGES=TEST_FILE_STORAGES,
                 SEED_LANDLORD_DATA_PATH=landlord_seed_path,
                 SEED_TENANT_DATA_PATH=tenant_seed_path,
             ):
@@ -3018,6 +3072,7 @@ class SeedDemoTests(TestCase):
 
             with override_settings(
                 MEDIA_ROOT=temp_dir,
+                STORAGES=TEST_FILE_STORAGES,
                 SEED_LANDLORD_DATA_PATH=landlord_seed_path,
                 SEED_TENANT_DATA_PATH=tenant_seed_path,
             ):
