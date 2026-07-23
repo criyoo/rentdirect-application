@@ -76,6 +76,11 @@ class HealthTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.content.decode(), "Invalid host header")
 
+    def test_development_api_host_can_reach_admin(self):
+        response = self.client.get("/admin/", HTTP_HOST="api.development.rentdirect.homes")
+        self.assertEqual(response.status_code, 302)
+        self.assertNotEqual(response.content.decode(), "Invalid host header")
+
     @patch(
         "core.views.database_healthcheck",
         return_value=(False, {"status": "unhealthy", "environment": "test", "database": "pending_migrations"}),

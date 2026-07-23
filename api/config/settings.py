@@ -61,6 +61,7 @@ DJANGO_ALLOWED_HOSTS = env_list(
     "DJANGO_ALLOWED_HOSTS",
     "localhost,127.0.0.1,api.rentdirect.homes,api.development.rentdirect.homes",
 )
+ALLOWED_HOSTS = DJANGO_ALLOWED_HOSTS
 
 INSTALLED_APPS = [
     "django.contrib.admin",
