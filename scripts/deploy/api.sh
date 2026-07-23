@@ -17,6 +17,7 @@ DEPLOY_ECS="${DEPLOY_ECS:-1}"
 RUN_MIGRATIONS="${RUN_MIGRATIONS:-1}"
 WAIT_FOR_STABLE="${WAIT_FOR_STABLE:-1}"
 API_DESIRED_COUNT="${API_DESIRED_COUNT:-1}"
+API_HEALTH_CHECK_GRACE_PERIOD_SECONDS="${API_HEALTH_CHECK_GRACE_PERIOD_SECONDS:-180}"
 BUILDER_NAME="${BUILDER_NAME:-rentdirect-multiarch}"
 DOCKER_PLATFORM="linux/arm64"
 ECS_CLUSTER_NAME="${NAME_PREFIX}-cluster"
@@ -57,7 +58,7 @@ if [ "${RUN_MIGRATIONS}" = "1" ]; then
   bash "${APPLICATION_ROOT}/scripts/migrate.sh" "${ENVIRONMENT}"
 fi
 
-services=("${NAME_PREFIX}-api" "${NAME_PREFIX}-worker")
+services=("${NAME_PREFIX}-api" "${NAME_PREFIX}-payout-worker")
 deployed_services=()
 
 for service_name in "${services[@]}"; do
@@ -77,7 +78,15 @@ for service_name in "${services[@]}"; do
       --region "${AWS_REGION}" \
       --cluster "${ECS_CLUSTER_NAME}" \
       --service "${service_name}" \
+      --health-check-grace-period-seconds "${API_HEALTH_CHECK_GRACE_PERIOD_SECONDS}" \
       --desired-count "${API_DESIRED_COUNT}" \
+      --force-new-deployment >/dev/null
+  elif [ "${service_name}" = "${NAME_PREFIX}-api" ]; then
+    aws_with_auth ecs update-service \
+      --region "${AWS_REGION}" \
+      --cluster "${ECS_CLUSTER_NAME}" \
+      --service "${service_name}" \
+      --health-check-grace-period-seconds "${API_HEALTH_CHECK_GRACE_PERIOD_SECONDS}" \
       --force-new-deployment >/dev/null
   else
     aws_with_auth ecs update-service \
