@@ -28,6 +28,7 @@ import {
 
 import { useAuth } from '@/hooks/useAuth'
 import { useAppPopup } from '@/contexts/AppPopupContext'
+import DashboardBackButton from '@/components/DashboardBackButton'
 import { api, resolveMediaUrl } from '@/lib/api'
 import { hasBronzeAccess, SubscriptionPaymentRecord } from '@/lib/subscriptions'
 import { Booking } from '@/types'
@@ -111,6 +112,7 @@ export default function LandlordDashboardPage() {
     const totalExpecting = activeBookings.reduce((sum, booking) => sum + getBookingFinancials(booking).expectingAmount, 0)
     const outstandingBalance = activeBookings.reduce((sum, booking) => sum + getBookingFinancials(booking).remainingAmount, 0)
     const isBronzeLandlord = user?.role === 'landlord' && subscriptionPaymentResponse !== undefined && hasBronzeAccess(subscriptionPaymentResponse)
+    const landlordFirstName = user?.name?.trim().split(/\s+/)[0] || 'Landlord'
     const dashboardActions = [
         { to: '/landlord/enquiries', label: 'Enquiries', Icon: HiChat, colorClass: 'text-green-600' },
         { to: '/landlord/verification', label: 'Verification', Icon: HiShieldCheck, colorClass: 'text-purple-600' },
@@ -146,10 +148,13 @@ export default function LandlordDashboardPage() {
         <div className="min-h-screen bg-gray-50">
             <div className="container-modern py-8">
                 <div className="mb-8">
+                    <div className="mb-5">
+                        <DashboardBackButton fallbackTo="/" />
+                    </div>
                     <div className="flex items-center justify-between mb-6">
                         <div>
                             <h1 className="text-4xl font-bold text-gray-900 mb-2">
-                                Welcome, {user?.name || 'Landlord'}!
+                                Welcome back, {landlordFirstName}
                             </h1>
                             <p className="text-lg text-gray-600">
                                 Manage your properties and track your rental business

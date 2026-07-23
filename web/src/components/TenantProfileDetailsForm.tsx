@@ -124,6 +124,12 @@ const schema = z.object({
         same_as_current_address: z.boolean().optional(),
         property_manager_name: z.string().optional(),
         property_manager_phone: z.string().optional(),
+        property_manager_email: z.string().optional(),
+        property_manager_address: z.string().optional(),
+        property_manager_same_as_landlord_name: z.boolean().optional(),
+        property_manager_same_as_landlord_phone: z.boolean().optional(),
+        property_manager_same_as_landlord_email: z.boolean().optional(),
+        property_manager_same_as_landlord_address: z.boolean().optional(),
     }).optional(),
     rental_history_same_as_current_residence: z.boolean().optional(),
     rental_history: z.array(rentalHistoryItemSchema).optional(),
@@ -231,17 +237,38 @@ function SectionCard({ title, children, step, activeStep, setActiveStep }: Secti
     )
 }
 
-function InputRow({ label, children, error }: { label: string; children: React.ReactNode; error?: string }) {
+function InputRow({ label, children, error, action }: { label: string; children: React.ReactNode; error?: string; action?: React.ReactNode }) {
     return (
         <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+            <div className="mb-1 flex items-center justify-between gap-3">
+                <label className="block text-sm font-medium text-gray-700">{label}</label>
+                {action}
+            </div>
             {children}
             {error && <p className="mt-1 text-sm text-red-600">{error}</p>}
         </div>
     )
 }
 
-function TextInput({ register, name, placeholder, error, type = 'text', min, step }: { register: any; name: string; placeholder?: string; error?: string; type?: string; min?: string; step?: string }) {
+function TextInput({
+    register,
+    name,
+    placeholder,
+    error,
+    type = 'text',
+    min,
+    step,
+    disabled = false,
+}: {
+    register: any
+    name: string
+    placeholder?: string
+    error?: string
+    type?: string
+    min?: string
+    step?: string
+    disabled?: boolean
+}) {
     return (
         <input
             {...register(name)}
@@ -249,8 +276,22 @@ function TextInput({ register, name, placeholder, error, type = 'text', min, ste
             min={min}
             step={step}
             placeholder={placeholder}
-            className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${error ? 'border-red-300' : 'border-gray-300'}`}
+            readOnly={disabled}
+            className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${error ? 'border-red-300' : disabled ? 'border-gray-200 bg-gray-100 text-gray-500' : 'border-gray-300'}`}
         />
+    )
+}
+
+function SameAsLandlordCheckbox({ register, name }: { register: any; name: string }) {
+    return (
+        <label className="flex items-center gap-2 text-xs text-gray-700">
+            <span>Same as landlord&apos;s</span>
+            <input
+                type="checkbox"
+                {...register(name)}
+                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+        </label>
     )
 }
 
@@ -541,7 +582,11 @@ function getStepForPath(path: string): number {
     return 11
 }
 
-export default function TenantProfileDetailsForm() {
+type TenantProfileDetailsFormProps = {
+    onSaved?: (profile: FormValues & { status: string; supporting_document_urls?: string[] }) => void
+}
+
+export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetailsFormProps = {}) {
     const { user } = useAuth()
     const qc = useQueryClient()
     const [activeStep, setActiveStep] = useState(1)
@@ -550,7 +595,7 @@ export default function TenantProfileDetailsForm() {
     const [fileMap, setFileMap] = useState<FileMap>({})
 
     const { data: existingProfile } = useQuery({
-        queryKey: ['tenant-profile', user?.id],
+        queryKey: ['users', 'me', 'tenant-profile'],
         queryFn: async () => {
             try {
                 const res = await api.get('/users/me/tenant-profile')
@@ -603,6 +648,14 @@ export default function TenantProfileDetailsForm() {
     const employmentStatus = watch('employment_status')
     const hasPets = watch('household_info.has_pets')
     const sameAsCurrent = watch('landlord_info.same_as_current_address')
+    const landlordName = watch('landlord_info.name')
+    const landlordMobile = watch('landlord_info.mobile')
+    const landlordEmail = watch('landlord_info.email')
+    const landlordAddress = watch('landlord_info.address')
+    const propertyManagerSameAsLandlordName = watch('landlord_info.property_manager_same_as_landlord_name')
+    const propertyManagerSameAsLandlordPhone = watch('landlord_info.property_manager_same_as_landlord_phone')
+    const propertyManagerSameAsLandlordEmail = watch('landlord_info.property_manager_same_as_landlord_email')
+    const propertyManagerSameAsLandlordAddress = watch('landlord_info.property_manager_same_as_landlord_address')
     const nationality = watch('nationality')
     const stateOfOrigin = watch('state_of_origin')
     const lgaOfOrigin = watch('lga')
@@ -711,6 +764,34 @@ export default function TenantProfileDetailsForm() {
         setValue('landlord_info.address', residenceAddress || '')
     }, [residenceAddress, sameAsCurrent, setValue])
 
+    useEffect(() => {
+        if (!propertyManagerSameAsLandlordName) {
+            return
+        }
+        setValue('landlord_info.property_manager_name', landlordName || '')
+    }, [landlordName, propertyManagerSameAsLandlordName, setValue])
+
+    useEffect(() => {
+        if (!propertyManagerSameAsLandlordPhone) {
+            return
+        }
+        setValue('landlord_info.property_manager_phone', landlordMobile || '')
+    }, [landlordMobile, propertyManagerSameAsLandlordPhone, setValue])
+
+    useEffect(() => {
+        if (!propertyManagerSameAsLandlordEmail) {
+            return
+        }
+        setValue('landlord_info.property_manager_email', landlordEmail || '')
+    }, [landlordEmail, propertyManagerSameAsLandlordEmail, setValue])
+
+    useEffect(() => {
+        if (!propertyManagerSameAsLandlordAddress) {
+            return
+        }
+        setValue('landlord_info.property_manager_address', landlordAddress || '')
+    }, [landlordAddress, propertyManagerSameAsLandlordAddress, setValue])
+
     const uploadFiles = useMutation({
         mutationFn: async (files: File[]) => {
             const ids: string[] = []
@@ -763,6 +844,12 @@ export default function TenantProfileDetailsForm() {
                 rental_history: normalizeRentalHistory(data),
             }
             delete payload.rental_history_same_as_current_residence
+            const landlordInfo = asRecord(payload.landlord_info)
+            delete landlordInfo.property_manager_same_as_landlord_name
+            delete landlordInfo.property_manager_same_as_landlord_phone
+            delete landlordInfo.property_manager_same_as_landlord_email
+            delete landlordInfo.property_manager_same_as_landlord_address
+            payload.landlord_info = landlordInfo
             if (allFiles.length > 0) {
                 const uploaded = await uploadFiles.mutateAsync(allFiles)
                 payload.document_ids = uploaded
@@ -772,12 +859,13 @@ export default function TenantProfileDetailsForm() {
             return res.data
         },
         onSuccess: (profile) => {
-            qc.setQueryData(['tenant-profile', user?.id], profile)
+            qc.setQueryData(['users', 'me', 'tenant-profile'], profile)
             qc.invalidateQueries({ queryKey: ['tenant-profile'] })
             qc.invalidateQueries({ queryKey: ['verification', 'status'] })
             alert('Tenant profile updated successfully.')
             setFileMap({})
             setSubmitError('')
+            onSaved?.(profile)
         },
         onError: (err: any) => {
             setSubmitError(err?.response?.data?.detail || err.message || 'Submission failed. Please try again.')
@@ -1121,25 +1209,15 @@ export default function TenantProfileDetailsForm() {
 
                     {/* 6. Landlord Information */}
                     <SectionCard title="Current Landlord Information" step={6} activeStep={activeStep} setActiveStep={setActiveStep}>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <InputRow label="Name">
-                                <TextInput register={register} name="landlord_info.name" placeholder="Current landlord name" />
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <InputRow label="Full Name">
+                                <TextInput register={register} name="landlord_info.name" placeholder="Landlord full name" />
                             </InputRow>
                             <InputRow label="Mobile">
                                 <TextInput register={register} name="landlord_info.mobile" placeholder="Landlord phone" />
                             </InputRow>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                             <InputRow label="Email">
-                                <TextInput register={register} name="landlord_info.email" placeholder="Landlord email" />
-                            </InputRow>
-                            <InputRow label="Property Manager Name">
-                                <TextInput register={register} name="landlord_info.property_manager_name" placeholder="Property manager name" />
-                            </InputRow>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                            <InputRow label="Property Manager Phone">
-                                <TextInput register={register} name="landlord_info.property_manager_phone" placeholder="Property manager phone" />
+                                <TextInput register={register} name="landlord_info.email" type="email" placeholder="Landlord email" />
                             </InputRow>
                         </div>
                         <div className="mt-4">
@@ -1158,9 +1236,59 @@ export default function TenantProfileDetailsForm() {
                                 {...register('landlord_info.address')}
                                 placeholder="Landlord address"
                                 rows={2}
-                                disabled={sameAsCurrent}
+                                readOnly={sameAsCurrent}
                                 className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${sameAsCurrent ? 'border-gray-200 bg-gray-100 text-gray-500' : 'border-gray-300'}`}
                             />
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                            <InputRow
+                                label="Property Manager Name"
+                                action={<SameAsLandlordCheckbox register={register} name="landlord_info.property_manager_same_as_landlord_name" />}
+                            >
+                                <TextInput
+                                    register={register}
+                                    name="landlord_info.property_manager_name"
+                                    placeholder="Property manager name"
+                                    disabled={propertyManagerSameAsLandlordName}
+                                />
+                            </InputRow>
+                            <InputRow
+                                label="Property Manager Phone"
+                                action={<SameAsLandlordCheckbox register={register} name="landlord_info.property_manager_same_as_landlord_phone" />}
+                            >
+                                <TextInput
+                                    register={register}
+                                    name="landlord_info.property_manager_phone"
+                                    placeholder="Property manager phone"
+                                    disabled={propertyManagerSameAsLandlordPhone}
+                                />
+                            </InputRow>
+                            <InputRow
+                                label="Property Manager Email"
+                                action={<SameAsLandlordCheckbox register={register} name="landlord_info.property_manager_same_as_landlord_email" />}
+                            >
+                                <TextInput
+                                    register={register}
+                                    name="landlord_info.property_manager_email"
+                                    type="email"
+                                    placeholder="Property manager email"
+                                    disabled={propertyManagerSameAsLandlordEmail}
+                                />
+                            </InputRow>
+                        </div>
+                        <div className="mt-4">
+                            <InputRow
+                                label="Property Manager Address"
+                                action={<SameAsLandlordCheckbox register={register} name="landlord_info.property_manager_same_as_landlord_address" />}
+                            >
+                                <textarea
+                                    {...register('landlord_info.property_manager_address')}
+                                    placeholder="Property manager address"
+                                    rows={2}
+                                    readOnly={propertyManagerSameAsLandlordAddress}
+                                    className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${propertyManagerSameAsLandlordAddress ? 'border-gray-200 bg-gray-100 text-gray-500' : 'border-gray-300'}`}
+                                />
+                            </InputRow>
                         </div>
                     </SectionCard>
 

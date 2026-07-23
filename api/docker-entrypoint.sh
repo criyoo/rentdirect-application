@@ -18,7 +18,8 @@ if [ "$should_prepare" = "1" ] && [ "${MIGRATE_ON_STARTUP:-0}" = "1" ]; then
   python manage.py migrate --noinput
 fi
 
-if [ "$should_prepare" = "1" ] && [ "${SEED_DEMO_ACCOUNTS:-0}" = "1" ]; then
+seed_on_startup="${SEED_DEMO_ACCOUNTS_ON_STARTUP:-${SEED_DEMO_ACCOUNTS:-0}}"
+if [ "$should_prepare" = "1" ] && [ "$seed_on_startup" = "1" ]; then
   python manage.py seed_demo_data
 fi
 

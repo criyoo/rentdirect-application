@@ -78,7 +78,6 @@ class AppUser(AbstractBaseUser, PermissionsMixin):
         if self.role == self.Role.LANDLORD:
             return self.verification_requests.filter(
                 identity_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
-                property_document_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
             ).exists()
 
         tenant_profile = getattr(self, "tenant_profile", None)
@@ -131,7 +130,7 @@ BOOKING_PROGRESS_STEP_DEFINITIONS = {
         ("rental_payment_notification_received", "Received email notification of rental full payment from Rentdirect?"),
         ("check_in_inventory_completed", "Check-in house inventory completed?"),
         ("tenant_collected_house_key", "Tenant collected house Key?"),
-        ("net_payment_notification_received", "Bank & Email notification of total payment (less fees) received?"),
+        ("net_payment_notification_received", "Bank & Email notification of total rent amount received?"),
     ),
     AppUser.Role.TENANT: (
         ("viewing_appointment_booked", "Viewing appointment booked?"),
@@ -141,8 +140,8 @@ BOOKING_PROGRESS_STEP_DEFINITIONS = {
         ("tenant_paid_rent_in_full", "Tenant has paid rent in full?"),
         ("check_in_inventory_completed", "Check-in house inventory completed?"),
         ("tenant_collected_house_key", "Tenant collected House Key?"),
-        ("rentdirect_transfer_to_landlord", "Can RentDirect transfer rent to Landlord?"),
-        # ("final_rent_payment_email_received", "Email of final rent payment to landlord received?"),
+        ("rentdirect_transfer_to_landlord", "Can RentDirect transfer rent amount to Landlord?"),
+        ("final_rent_payment_email_received", "Email of final rent payment to landlord received?"),
     ),
 }
 
@@ -159,6 +158,12 @@ BOOKING_PROGRESS_LEGACY_KEY_ALIASES = {
 
 TENANT_DEPOSIT_PROGRESS_KEY = "tenant_paid_deposit"
 LANDLORD_DEPOSIT_PROGRESS_KEY = "deposit_payment_notification_received"
+
+VERIFICATION_PROGRESS_STATUS_CHOICES = (
+    ("unverified", "Unverified"),
+    ("pending", "Pending"),
+    ("verified", "Verified"),
+)
 
 BOOKING_PROGRESS_FIELD_BY_ROLE = {
     AppUser.Role.LANDLORD: "landlord_rental_progress",
@@ -305,6 +310,28 @@ class Listing(models.Model):
     pet_friendly = models.BooleanField(default=False)
     furnished = models.BooleanField(default=False)
     amenities = models.JSONField(default=list, blank=True)
+    ownership_status = models.CharField(max_length=80, blank=True, default="")
+    ownership_types = models.JSONField(default=list, blank=True)
+    property_ownership_documents = models.JSONField(default=list, blank=True)
+    property_documents = models.ManyToManyField("Document", blank=True, related_name="listing_property_documents")
+    property_document_submission = models.JSONField(blank=True, null=True)
+    property_document_verification_status = models.CharField(
+        max_length=20,
+        choices=VERIFICATION_PROGRESS_STATUS_CHOICES,
+        default="unverified",
+    )
+    physical_property_status = models.CharField(
+        max_length=20,
+        choices=VERIFICATION_PROGRESS_STATUS_CHOICES,
+        default="unverified",
+    )
+    minimum_rental_duration = models.CharField(max_length=80, blank=True, default="")
+    maximum_occupancy = models.PositiveSmallIntegerField(null=True, blank=True)
+    smoking_allowed = models.BooleanField(default=False)
+    commercial_activities_allowed = models.BooleanField(default=False)
+    short_let_allowed = models.BooleanField(default=False)
+    student_tenants_allowed = models.BooleanField(default=False)
+    expatriates_allowed = models.BooleanField(default=False)
     available_from = models.DateField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.AVAILABLE)
     featured = models.BooleanField(default=False)
@@ -545,6 +572,7 @@ class PaymentSettlement(models.Model):
         PENDING = "pending", "Pending"
         RECIPIENT_CREATED = "recipient_created", "Recipient Created"
         READY = "ready", "Ready"
+        PROCESSING = "processing", "Processing"
         PAID = "paid", "Paid"
         FAILED = "failed", "Failed"
 
@@ -642,6 +670,40 @@ class FeaturedPayment(models.Model):
             listing.save(update_fields=updates)
 
 
+class SubscriptionPaymentMethod(models.Model):
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Active"
+        INACTIVE = "inactive", "Inactive"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name="subscription_payment_methods")
+    provider = models.CharField(max_length=40, default="flutterwave")
+    provider_customer_id = models.CharField(max_length=120, db_index=True)
+    provider_payment_method_id = models.CharField(max_length=120, unique=True)
+    payment_type = models.CharField(max_length=40, default="card")
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
+    card_first6 = models.CharField(max_length=6, blank=True, default="")
+    card_last4 = models.CharField(max_length=4, blank=True, default="")
+    card_network = models.CharField(max_length=40, blank=True, default="")
+    card_expiry_month = models.PositiveSmallIntegerField(null=True, blank=True)
+    card_expiry_year = models.PositiveSmallIntegerField(null=True, blank=True)
+    provider_payload = models.JSONField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["user", "status"], name="core_subpm_user_status_idx"),
+            models.Index(fields=["provider_payment_method_id"], name="core_subpm_provider_idx"),
+        ]
+
+    def __str__(self) -> str:
+        label = self.provider_payment_method_id
+        if self.card_last4:
+            label = f"{self.card_network or 'card'} ending {self.card_last4}"
+        return f"{self.user.email} {label}"
+
+
 class SubscriptionPayment(models.Model):
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"
@@ -670,6 +732,23 @@ class SubscriptionPayment(models.Model):
     provider = models.CharField(max_length=40, default="flutterwave")
     transaction_id = models.CharField(max_length=120, unique=True, null=True, blank=True)
     cashier_url = models.URLField(blank=True, default="")
+    payment_method = models.ForeignKey(
+        SubscriptionPaymentMethod,
+        on_delete=models.SET_NULL,
+        related_name="subscription_payments",
+        null=True,
+        blank=True,
+    )
+    provider_charge_id = models.CharField(max_length=120, blank=True, default="", db_index=True)
+    recurring_enabled = models.BooleanField(default=False)
+    billing_reason = models.CharField(max_length=30, blank=True, default="manual")
+    renewed_from = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        related_name="renewal_payments",
+        null=True,
+        blank=True,
+    )
     provider_payload = models.JSONField(blank=True, null=True)
     webhook_data = models.JSONField(blank=True, null=True)
     payment_date = models.DateTimeField(null=True, blank=True)

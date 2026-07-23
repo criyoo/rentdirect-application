@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { api } from '@/lib/api'
 import AdminLayout from '@/components/admin/AdminLayout'
+import DashboardBackButton from '@/components/DashboardBackButton'
 
 interface SystemStats
 {
@@ -71,6 +72,9 @@ export default function AdminDashboardPage()
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 {/* Dashboard Header */}
                 <div className="mb-8">
+                    <div className="mb-5">
+                        <DashboardBackButton fallbackTo="/" />
+                    </div>
                     <div className="flex justify-between items-center">
                         <div>
                             <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>

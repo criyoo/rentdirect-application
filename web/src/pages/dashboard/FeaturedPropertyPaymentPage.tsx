@@ -3,6 +3,7 @@ import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { getApiUrl } from '@/lib/api'
 import { HostedCheckoutPayload, launchHostedCheckout } from '@/lib/payments'
 import { formatCurrencyWithSymbol } from '@/utils/currency'
+import DashboardBackButton from '@/components/DashboardBackButton'
 
 type FeaturedCheckoutResponse = {
     payment: any
@@ -109,6 +110,9 @@ export default function FeaturedPropertyPaymentPage() {
     if (error) return (
         <div className="min-h-screen bg-gray-50 flex items-center justify-center">
             <div className="text-center">
+                <div className="mb-5 flex justify-center">
+                    <DashboardBackButton fallbackTo="/dashboard/featured-properties" />
+                </div>
                 <div className="text-red-600 text-6xl mb-4">⚠️</div>
                 <h1 className="text-2xl font-bold text-gray-900 mb-2">Payment Error</h1>
                 <p className="text-gray-600 mb-4">{error}</p>
@@ -124,6 +128,9 @@ export default function FeaturedPropertyPaymentPage() {
     return (
         <div className="min-h-screen bg-gray-50 py-8">
             <div className="container-modern">
+                <div className="mb-5">
+                    <DashboardBackButton fallbackTo="/dashboard/featured-properties" />
+                </div>
                 <div className="max-w-xl mx-auto bg-white rounded-lg shadow-lg p-6">
                     <h1 className="text-2xl font-bold text-gray-900 mb-2">Featured Property Payment</h1>
                     <div className="text-sm text-gray-600 mb-6">Payment ID: {paymentId}</div>

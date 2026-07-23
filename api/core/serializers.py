@@ -36,6 +36,7 @@ from .models import (
     PaymentSettlement,
     Review,
     SubscriptionPayment,
+    SubscriptionPaymentMethod,
     SupportChatMessage,
     TenantProfile,
     VerificationRequest,
@@ -155,6 +156,45 @@ class UserSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError({"landlord_verification_profile": {"bvn": "BVN must be exactly 11 digits."}})
                 attrs.setdefault("bvn_number", profile_bvn)
 
+            profile_name = " ".join(
+                str(verification_profile.get(part) or "").strip()
+                for part in ("first_name", "middle_name", "last_name")
+            ).strip()
+            if profile_name:
+                attrs.setdefault("name", " ".join(profile_name.split()))
+
+            profile_mobile = str(verification_profile.get("contact_number") or "").strip()
+            if profile_mobile:
+                if not is_valid_mobile(profile_mobile):
+                    raise serializers.ValidationError({"landlord_verification_profile": {"contact_number": "Enter a valid mobile number."}})
+                attrs.setdefault("mobile", profile_mobile)
+
+            profile_state_of_origin = str(verification_profile.get("state_of_origin") or "").strip()
+            if profile_state_of_origin:
+                try:
+                    attrs.setdefault("state_of_origin", normalize_state_of_origin(profile_state_of_origin))
+                except ValueError as exc:
+                    raise serializers.ValidationError({"landlord_verification_profile": {"state_of_origin": str(exc)}}) from exc
+
+            profile_residential_information = verification_profile.get("residential_information")
+            if isinstance(profile_residential_information, dict):
+                profile_residence = {
+                    "state": str(profile_residential_information.get("state") or "").strip(),
+                    "city": str(profile_residential_information.get("city") or "").strip(),
+                    "address": str(profile_residential_information.get("address") or "").strip(),
+                }
+                if all(profile_residence.values()):
+                    try:
+                        attrs.setdefault(
+                            "residence",
+                            normalize_residence(
+                                attrs.get("state_of_origin", getattr(instance, "state_of_origin", "")),
+                                profile_residence,
+                            ),
+                        )
+                    except ValueError as exc:
+                        raise serializers.ValidationError({"landlord_verification_profile": {"residential_information": str(exc)}}) from exc
+
         return attrs
 
 
@@ -249,6 +289,10 @@ class AmenitiesField(serializers.ListField):
 
 
 class ListingSerializer(serializers.ModelSerializer):
+    PROPERTY_VERIFICATION_METHOD_DOCUMENTS = "documents"
+    PROPERTY_VERIFICATION_METHOD_IN_PERSON = "in_person"
+    DEPOSIT_RATE = Decimal("0.20")
+
     landlord_id = serializers.UUIDField(source="landlord.id", read_only=True)
     landlord_name = serializers.CharField(source="landlord.name", read_only=True)
     landlord_profile_photo_url = serializers.CharField(source="landlord.profile_photo_url", read_only=True)
@@ -256,6 +300,14 @@ class ListingSerializer(serializers.ModelSerializer):
     image_urls = serializers.ListField(child=serializers.CharField(), read_only=True)
     images = ListingImageSerializer(many=True, read_only=True)
     amenities = AmenitiesField(required=False)
+    ownership_types = AmenitiesField(required=False)
+    property_ownership_documents = AmenitiesField(required=False)
+    property_documents = serializers.SerializerMethodField()
+    property_verification_method = serializers.ChoiceField(
+        choices=[PROPERTY_VERIFICATION_METHOD_DOCUMENTS, PROPERTY_VERIFICATION_METHOD_IN_PERSON],
+        write_only=True,
+        required=False,
+    )
 
     class Meta:
         model = Listing
@@ -280,6 +332,21 @@ class ListingSerializer(serializers.ModelSerializer):
             "pet_friendly",
             "furnished",
             "amenities",
+            "ownership_status",
+            "ownership_types",
+            "property_ownership_documents",
+            "property_documents",
+            "property_document_submission",
+            "property_document_verification_status",
+            "physical_property_status",
+            "property_verification_method",
+            "minimum_rental_duration",
+            "maximum_occupancy",
+            "smoking_allowed",
+            "commercial_activities_allowed",
+            "short_let_allowed",
+            "student_tenants_allowed",
+            "expatriates_allowed",
             "available_from",
             "status",
             "featured",
@@ -293,10 +360,25 @@ class ListingSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "featured", "featured_until", "created_at", "updated_at"]
+        read_only_fields = [
+            "id",
+            "featured",
+            "featured_until",
+            "property_documents",
+            "property_document_submission",
+            "property_document_verification_status",
+            "physical_property_status",
+            "created_at",
+            "updated_at",
+        ]
+
+    @classmethod
+    def calculate_deposit_amount(cls, price_per_year):
+        return (Decimal(price_per_year) * cls.DEPOSIT_RATE).quantize(Decimal("0.01"))
 
     def validate(self, attrs):
-        if attrs.get("price_per_year", Decimal("1")) <= 0:
+        price_per_year = attrs.get("price_per_year")
+        if price_per_year is not None and price_per_year <= 0:
             raise serializers.ValidationError({"price_per_year": "Price must be positive"})
         if attrs.get("bedrooms", 1) <= 0:
             raise serializers.ValidationError({"bedrooms": "Bedrooms must be positive"})
@@ -304,7 +386,124 @@ class ListingSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"bathrooms": "Bathrooms must be positive"})
         if attrs.get("toilets") is not None and attrs.get("toilets", 1) <= 0:
             raise serializers.ValidationError({"toilets": "Toilets must be positive"})
+        if attrs.get("maximum_occupancy") is not None and attrs.get("maximum_occupancy", 1) <= 0:
+            raise serializers.ValidationError({"maximum_occupancy": "Maximum occupancy must be positive"})
+
+        price_for_deposit = price_per_year or getattr(self.instance, "price_per_year", None)
+        if price_for_deposit is not None:
+            attrs["deposit_amount"] = self.calculate_deposit_amount(price_for_deposit)
+
+        request = self.context.get("request")
+        if (
+            request
+            and request.method == "POST"
+            and getattr(request.user, "role", None) == AppUser.Role.LANDLORD
+        ):
+            errors = {}
+            required_text_fields = {
+                "title": "Title",
+                "description": "Description",
+                "address": "Address",
+                "city": "City",
+                "state": "State",
+                "postal_code": "Postal code",
+                "property_type": "Property type",
+                "minimum_rental_duration": "Minimum rental duration",
+            }
+            for field, label in required_text_fields.items():
+                if not str(attrs.get(field) or "").strip():
+                    errors[field] = f"{label} is required."
+
+            required_number_fields = {
+                "bedrooms": "Bedrooms",
+                "bathrooms": "Bathrooms",
+                "toilets": "Toilets",
+                "price_per_year": "Price per year",
+                "deposit_amount": "Deposit amount",
+                "maximum_occupancy": "Maximum occupancy",
+            }
+            for field, label in required_number_fields.items():
+                if attrs.get(field) is None:
+                    errors[field] = f"{label} is required."
+
+            if attrs.get("available_from") is None:
+                errors["available_from"] = "Available date is required."
+            if not attrs.get("amenities"):
+                errors["amenities"] = "Add at least one amenity."
+            if not attrs.get("ownership_types"):
+                errors["ownership_types"] = "Select at least one ownership type."
+            if not request.FILES.get("cover_image"):
+                errors["cover_image"] = "Cover image is required."
+            if not request.FILES.getlist("images"):
+                errors["images"] = "Upload at least one additional image."
+
+            verification_method = attrs.get("property_verification_method") or request.data.get("property_verification_method")
+            property_documents = request.FILES.getlist("property_documents")
+            if verification_method == self.PROPERTY_VERIFICATION_METHOD_DOCUMENTS:
+                if not attrs.get("property_ownership_documents"):
+                    errors["property_ownership_documents"] = "Select at least one property ownership document type."
+                if not property_documents:
+                    errors["property_documents"] = "Upload at least one property document."
+            elif verification_method != self.PROPERTY_VERIFICATION_METHOD_IN_PERSON:
+                errors["property_verification_method"] = "Choose document upload or in-person property verification."
+
+            if errors:
+                raise serializers.ValidationError(errors)
         return attrs
+
+    def get_property_documents(self, obj):
+        return [
+            {
+                "id": str(document.id),
+                "title": document.title,
+                "content_type": document.content_type,
+                "file_url": document.file_url,
+                "created_at": document.created_at,
+            }
+            for document in obj.property_documents.all()
+        ]
+
+    def _apply_property_document_submission(self, listing, verification_method: str):
+        request = self.context["request"]
+        uploaded_documents = []
+        property_files = request.FILES.getlist("property_documents")
+
+        for upload in property_files:
+            title_suffix = ", ".join(listing.property_ownership_documents or []) or "Property Document"
+            uploaded_documents.append(
+                Document.objects.create(
+                    owner=request.user,
+                    title=f"Listing Property Document: {listing.id} - {title_suffix} - {upload.name}",
+                    file=upload,
+                    content_type=getattr(upload, "content_type", ""),
+                )
+            )
+
+        if uploaded_documents:
+            listing.property_documents.add(*uploaded_documents)
+
+        if verification_method or uploaded_documents:
+            listing.property_document_submission = {
+                "document_types": listing.property_ownership_documents or [],
+                "ownership_types": listing.ownership_types or [],
+                "in_person_verification_requested": verification_method == self.PROPERTY_VERIFICATION_METHOD_IN_PERSON,
+                "uploaded_document_count": len(uploaded_documents),
+                "submitted_at": timezone.now().isoformat(),
+            }
+            listing.property_document_verification_status = VerificationRequest.VerificationProgressStatus.PENDING
+            listing.physical_property_status = (
+                VerificationRequest.VerificationProgressStatus.PENDING
+                if verification_method == self.PROPERTY_VERIFICATION_METHOD_IN_PERSON
+                else VerificationRequest.VerificationProgressStatus.UNVERIFIED
+            )
+            listing.save(
+                update_fields=[
+                    "property_document_submission",
+                    "property_document_verification_status",
+                    "physical_property_status",
+                    "updated_at",
+                ]
+            )
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -327,19 +526,26 @@ class ListingSerializer(serializers.ModelSerializer):
     @transaction.atomic
     def create(self, validated_data):
         request = self.context["request"]
+        property_verification_method = validated_data.pop("property_verification_method", "")
         validated_data.setdefault("amenities", [])
+        validated_data.setdefault("ownership_types", [])
+        validated_data.setdefault("property_ownership_documents", [])
         listing = Listing.objects.create(landlord=request.user, **validated_data)
         cover = request.FILES.get("cover_image")
         if cover:
             ListingImage.objects.create(listing=listing, file=cover, is_cover=True, sort_order=0)
         for index, image in enumerate(request.FILES.getlist("images")[:9], start=1):
             ListingImage.objects.create(listing=listing, file=image, sort_order=index)
+        self._apply_property_document_submission(listing, property_verification_method)
         return listing
 
     @transaction.atomic
     def update(self, instance, validated_data):
         request = self.context["request"]
+        property_verification_method = validated_data.pop("property_verification_method", "")
         validated_data.setdefault("amenities", instance.amenities or [])
+        validated_data.setdefault("ownership_types", instance.ownership_types or [])
+        validated_data.setdefault("property_ownership_documents", instance.property_ownership_documents or [])
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
@@ -359,6 +565,7 @@ class ListingSerializer(serializers.ModelSerializer):
                     sort_order=index,
                 )
 
+        self._apply_property_document_submission(instance, property_verification_method)
         return instance
 
 
@@ -503,6 +710,7 @@ class BookingSerializer(serializers.ModelSerializer):
             statuses={
                 PaymentSettlement.Status.RECIPIENT_CREATED,
                 PaymentSettlement.Status.READY,
+                PaymentSettlement.Status.PROCESSING,
                 PaymentSettlement.Status.PAID,
             },
         )
@@ -515,6 +723,7 @@ class BookingSerializer(serializers.ModelSerializer):
             exclude_statuses={
                 PaymentSettlement.Status.RECIPIENT_CREATED,
                 PaymentSettlement.Status.READY,
+                PaymentSettlement.Status.PROCESSING,
                 PaymentSettlement.Status.PAID,
             },
         )
@@ -742,10 +951,66 @@ class FeaturedPaymentSerializer(serializers.ModelSerializer):
 class SubscriptionPaymentRequestSerializer(serializers.Serializer):
     plan_code = serializers.ChoiceField(choices=SubscriptionPayment.PlanCode.choices)
     billing_cycle = serializers.ChoiceField(choices=SubscriptionPayment.BillingCycle.choices)
+    recurring = serializers.BooleanField(required=False, default=False)
+    payment_method_id = serializers.UUIDField(required=False)
+    card = serializers.DictField(required=False)
+
+    def validate_card(self, value):
+        required_fields = {
+            "encrypted_card_number",
+            "encrypted_expiry_month",
+            "encrypted_expiry_year",
+            "encrypted_cvv",
+            "nonce",
+        }
+        missing_fields = [field for field in required_fields if not str(value.get(field) or "").strip()]
+        if missing_fields:
+            raise serializers.ValidationError(f"Encrypted card payload is missing: {', '.join(sorted(missing_fields))}.")
+        return {field: str(value.get(field) or "").strip() for field in required_fields}
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if attrs.get("recurring"):
+            has_existing_method = bool(attrs.get("payment_method_id"))
+            has_card = bool(attrs.get("card"))
+            if not has_existing_method and not has_card:
+                raise serializers.ValidationError({"card": "Card details are required to enable recurring payments."})
+            if has_existing_method and has_card:
+                raise serializers.ValidationError({"card": "Choose a saved card or submit a new card, not both."})
+        return attrs
+
+
+class SubscriptionPaymentMethodSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SubscriptionPaymentMethod
+        fields = [
+            "id",
+            "provider",
+            "payment_type",
+            "status",
+            "card_last4",
+            "card_network",
+            "card_expiry_month",
+            "card_expiry_year",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
 
 
 class SubscriptionPaymentSerializer(serializers.ModelSerializer):
     user_id = serializers.UUIDField(source="user.id", read_only=True)
+    payment_method = SubscriptionPaymentMethodSerializer(read_only=True)
+    next_action_url = serializers.SerializerMethodField()
+
+    def get_next_action_url(self, obj):
+        payload = obj.provider_payload if isinstance(obj.provider_payload, dict) else {}
+        charge_payload = payload.get("charge") if isinstance(payload.get("charge"), dict) else payload
+        try:
+            from .flutterwave import extract_next_action_url
+        except ImportError:
+            return ""
+        return extract_next_action_url(charge_payload)
 
     class Meta:
         model = SubscriptionPayment
@@ -761,6 +1026,11 @@ class SubscriptionPaymentSerializer(serializers.ModelSerializer):
             "provider",
             "transaction_id",
             "cashier_url",
+            "provider_charge_id",
+            "recurring_enabled",
+            "billing_reason",
+            "payment_method",
+            "next_action_url",
             "expires_at",
             "payment_date",
             "created_at",

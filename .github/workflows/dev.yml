@@ -52,7 +52,7 @@ jobs:
 
   check-web:
     needs: detect-web-changes
-    if: github.event_name == 'workflow_dispatch' || needs.detect-web-changes.outputs.web == 'true'
+    if: (github.event_name == 'workflow_dispatch' || github.event_name == 'push') && needs.detect-web-changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: development
@@ -77,7 +77,7 @@ jobs:
     needs:
       - detect-web-changes
       - check-web
-    if: github.event_name == 'workflow_dispatch' || needs.detect-web-changes.outputs.web == 'true'
+    if: (github.event_name == 'workflow_dispatch' || github.event_name == 'push') && needs.detect-web-changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: development
@@ -102,7 +102,7 @@ jobs:
     needs:
       - detect-web-changes
       - test-web
-    if: github.event_name == 'workflow_dispatch' || needs.detect-web-changes.outputs.web == 'true'
+    if: (github.event_name == 'workflow_dispatch' || github.event_name == 'push') && needs.detect-web-changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: development
@@ -142,7 +142,7 @@ jobs:
     needs:
       - detect-web-changes
       - build-web
-    if: github.event_name == 'workflow_dispatch' || needs.detect-web-changes.outputs.web == 'true'
+    if: (github.event_name == 'workflow_dispatch' || github.event_name == 'push') && needs.detect-web-changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: development
@@ -185,7 +185,7 @@ jobs:
 
   check-api:
     needs: detect-api-changes
-    if: github.event_name == 'workflow_dispatch' || needs.detect-api-changes.outputs.api == 'true'
+    if: (github.event_name == 'workflow_dispatch' || github.event_name == 'push') && needs.detect-web-changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: development
@@ -216,7 +216,7 @@ jobs:
     needs:
       - detect-api-changes
       - check-api
-    if: github.event_name == 'workflow_dispatch' || needs.detect-api-changes.outputs.api == 'true'
+    if: (github.event_name == 'workflow_dispatch' || github.event_name == 'push') && needs.detect-web-changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: development
@@ -246,7 +246,7 @@ jobs:
     needs:
       - detect-api-changes
       - test-api
-    if: github.event_name == 'workflow_dispatch' || needs.detect-api-changes.outputs.api == 'true'
+    if: (github.event_name == 'workflow_dispatch' || github.event_name == 'push') && needs.detect-web-changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: development

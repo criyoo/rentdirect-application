@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { useAuth } from '@/hooks/useAuth'
+import { useAppPopup } from '@/contexts/AppPopupContext'
 import { api } from '@/lib/api'
 import { isNigeriaSelection, nigeriaStateLgaMap, nigerianStates, worldCountryOptions } from '@/lib/locations'
 import { LandlordVerificationType, User } from '@/types'
@@ -76,6 +77,16 @@ type UploadedDocument = {
     file_url?: string
 }
 
+type VerificationProgress = {
+    status?: string
+    submitted_at?: string | null
+}
+
+type VerificationStatusResponse = {
+    status?: string
+    identification?: VerificationProgress
+}
+
 type IndividualForm = {
     first_name: string
     middle_name: string
@@ -89,48 +100,12 @@ type IndividualForm = {
     gender: string
     contact_number: string
     email: string
-    employment_status: string
-    ownership_status: string
     nin: string
     bvn: string
     residential_address: string
     bank_name: string
     account_name: string
     account_number: string
-    employer_name: string
-    job_title: string
-    employment_type: string
-    work_address: string
-    work_email: string
-    years_employed: string
-    profession: string
-    trading_name: string
-    nature_of_work: string
-    years_self_employed: string
-    business_website: string
-    income_range: string
-    business_name: string
-    business_registration_number: string
-    industry: string
-    position_in_business: string
-    years_in_business: string
-    company_website: string
-    primary_service: string
-    platform_used: string
-    years_freelancing: string
-    portfolio_website: string
-    previous_occupation: string
-    previous_employer: string
-    retirement_year: string
-    pension_provider: string
-    currently_seeking_employment: string
-    source_of_income: string
-    institution: string
-    course_of_study: string
-    level: string
-    graduation_year: string
-    sponsorship_source: string
-    business_address: string
 }
 
 type CorporateForm = {
@@ -166,48 +141,12 @@ const emptyIndividualForm: IndividualForm = {
     gender: '',
     contact_number: '',
     email: '',
-    employment_status: '',
-    ownership_status: '',
     nin: '',
     bvn: '',
     residential_address: '',
     bank_name: '',
     account_name: '',
     account_number: '',
-    employer_name: '',
-    job_title: '',
-    employment_type: '',
-    work_address: '',
-    work_email: '',
-    years_employed: '',
-    profession: '',
-    trading_name: '',
-    years_self_employed: '',
-    business_website: '',
-    income_range: '',
-    business_name: '',
-    business_registration_number: '',
-    industry: '',
-    position_in_business: '',
-    years_in_business: '',
-    primary_service: '',
-    platform_used: '',
-    years_freelancing: '',
-    portfolio_website: '',
-    previous_occupation: '',
-    previous_employer: '',
-    retirement_year: '',
-    pension_provider: '',
-    source_of_income: '',
-    institution: '',
-    course_of_study: '',
-    level: '',
-    graduation_year: '',
-    sponsorship_source: '',
-    business_address: '',
-    nature_of_work: '',
-    currently_seeking_employment: '',
-    company_website: '',
 }
 
 const emptyCorporateForm: CorporateForm = {
@@ -314,10 +253,51 @@ function buildCorporateProfilePayload(form: CorporateForm) {
     }
 }
 
-function buildIndividualProfilePayload(form: IndividualForm) {
+function buildIndividualProfilePayload(form: IndividualForm, savedProfile: Record<string, any> = {}) {
+    const savedKyc = savedProfile.kyc && typeof savedProfile.kyc === 'object' ? savedProfile.kyc : {}
+    const savedResidentialInformation = savedProfile.residential_information && typeof savedProfile.residential_information === 'object'
+        ? savedProfile.residential_information
+        : {}
+    const savedBankingInformation = savedProfile.banking_information && typeof savedProfile.banking_information === 'object'
+        ? savedProfile.banking_information
+        : {}
+
     return {
-        ...form,
+        ...savedProfile,
+        first_name: form.first_name,
+        middle_name: form.middle_name,
+        last_name: form.last_name,
         date_of_birth: dateInputValue(form.date_of_birth),
+        country_of_birth: form.country_of_birth,
+        state_of_birth: form.state_of_birth,
+        nationality: form.nationality,
+        state_of_origin: form.state_of_origin,
+        lga_of_origin: form.lga_of_origin,
+        gender: form.gender,
+        contact_number: form.contact_number,
+        email: form.email,
+        nin: form.nin,
+        bvn: form.bvn,
+        residential_address: form.residential_address,
+        bank_name: form.bank_name,
+        account_name: form.account_name,
+        account_number: form.account_number,
+        kyc: {
+            ...savedKyc,
+            id_type: form.nin ? 'National ID (NIN)' : '',
+            id_number: form.nin,
+            expiry_date: savedKyc.expiry_date || '',
+        },
+        residential_information: {
+            ...savedResidentialInformation,
+            address: form.residential_address,
+        },
+        banking_information: {
+            ...savedBankingInformation,
+            bank_name: form.bank_name,
+            account_name: form.account_name,
+            account_number: form.account_number,
+        },
     }
 }
 
@@ -339,48 +319,12 @@ function buildInitialIndividualForm(me?: User): IndividualForm {
         gender: String(savedProfile.gender || ''),
         contact_number: String(savedProfile.contact_number || me?.mobile || ''),
         email: String(savedProfile.email || me?.email || ''),
-        employment_status: String(savedProfile.employment_status || ''),
-        ownership_status: String(savedProfile.ownership_status || ''),
         nin: String(savedProfile.nin || me?.nin_number || ''),
         bvn: String(savedProfile.bvn || me?.bvn_number || ''),
         residential_address: String(savedProfile.residential_address || me?.residence?.address || ''),
         bank_name: String(savedProfile.bank_name || ''),
         account_name: String(savedProfile.account_name || ''),
         account_number: String(savedProfile.account_number || ''),
-        employer_name: String(savedProfile.employer_name || ''),
-        job_title: String(savedProfile.job_title || ''),
-        employment_type: String(savedProfile.employment_type || ''),
-        work_address: String(savedProfile.work_address || ''),
-        work_email: String(savedProfile.work_email || ''),
-        years_employed: String(savedProfile.years_employed || ''),
-        profession: String(savedProfile.profession || ''),
-        trading_name: String(savedProfile.trading_name || ''),
-        years_self_employed: String(savedProfile.years_self_employed || ''),
-        business_website: String(savedProfile.business_website || ''),
-        income_range: String(savedProfile.income_range || ''),
-        business_name: String(savedProfile.business_name || ''),
-        business_registration_number: String(savedProfile.business_registration_number || ''),
-        industry: String(savedProfile.industry || ''),
-        position_in_business: String(savedProfile.position_in_business || ''),
-        years_in_business: String(savedProfile.years_in_business || ''),
-        primary_service: String(savedProfile.primary_service || ''),
-        platform_used: String(savedProfile.platform_used || ''),
-        years_freelancing: String(savedProfile.years_freelancing || ''),
-        portfolio_website: String(savedProfile.portfolio_website || ''),
-        previous_occupation: String(savedProfile.previous_occupation || ''),
-        previous_employer: String(savedProfile.previous_employer || ''),
-        retirement_year: String(savedProfile.retirement_year || ''),
-        pension_provider: String(savedProfile.pension_provider || ''),
-        source_of_income: String(savedProfile.source_of_income || ''),
-        institution: String(savedProfile.institution || ''),
-        course_of_study: String(savedProfile.course_of_study || ''),
-        level: String(savedProfile.level || ''),
-        graduation_year: String(savedProfile.graduation_year || ''),
-        sponsorship_source: String(savedProfile.sponsorship_source || ''),
-        business_address: String(savedProfile.business_address || ''),
-        nature_of_work: String(savedProfile.nature_of_work || ''),
-        currently_seeking_employment: String(savedProfile.currently_seeking_employment || ''),
-        company_website: String(savedProfile.company_website || ''),
     }
 }
 
@@ -418,6 +362,7 @@ export default function LandlordIdentityVerificationPage() {
     const queryClient = useQueryClient()
     const [searchParams] = useSearchParams()
     const { user } = useAuth()
+    const { confirm } = useAppPopup()
     const [individualForm, setIndividualForm] = useState<IndividualForm>(emptyIndividualForm)
     const [corporateForm, setCorporateForm] = useState<CorporateForm>(emptyCorporateForm)
     const [identificationFiles, setIdentificationFiles] = useState<File[]>([])
@@ -433,6 +378,11 @@ export default function LandlordIdentityVerificationPage() {
         queryFn: async () => (await api.get<UploadedDocument[] | PaginatedResponse<UploadedDocument>>('/documents')).data,
     })
 
+    const { data: verificationStatus } = useQuery({
+        queryKey: ['verification', 'status'],
+        queryFn: async () => (await api.get<VerificationStatusResponse>('/landlord-verification-requests/status')).data,
+    })
+
     const documents = normalizeResults(documentResponse)
     const existingIdentificationDocuments = useMemo(
         () => documents.filter((document) => document.title.startsWith('Landlord Identification:')),
@@ -442,6 +392,11 @@ export default function LandlordIdentityVerificationPage() {
     const routeType = normalizeVerificationType(searchParams.get('type'))
     const savedType = normalizeVerificationType(me?.landlord_verification_type)
     const verificationType = routeType || savedType
+    const isVerificationLocked = Boolean(
+        me?.is_verified
+        || verificationStatus?.identification?.status === 'verified'
+        || verificationStatus?.status === 'approved',
+    )
     const countryOfBirthIsNigeria = isNigeriaSelection(individualForm.country_of_birth)
     const nationalityIsNigeria = isNigeriaSelection(individualForm.nationality)
     const lgaOfOriginOptions = nationalityIsNigeria && individualForm.state_of_origin
@@ -596,7 +551,6 @@ export default function LandlordIdentityVerificationPage() {
                 'gender',
                 'contact_number',
                 'email',
-                'employment_status',
                 'residential_address',
                 'nin',
                 'bvn',
@@ -670,12 +624,23 @@ export default function LandlordIdentityVerificationPage() {
             }
 
             const profilePayload = verificationType === 'individual'
-                ? buildIndividualProfilePayload(individualForm)
+                ? buildIndividualProfilePayload(individualForm, me?.landlord_verification_profile || {})
                 : buildCorporateProfilePayload(corporateForm)
 
             const payload: Record<string, any> = {
                 landlord_verification_type: verificationType,
                 landlord_verification_profile: profilePayload,
+            }
+            if (verificationType === 'individual') {
+                payload.name = [individualForm.first_name, individualForm.middle_name, individualForm.last_name]
+                    .map((part) => part.trim())
+                    .filter(Boolean)
+                    .join(' ')
+                payload.email = individualForm.email.trim()
+                payload.mobile = individualForm.contact_number.trim()
+                payload.nin_number = individualForm.nin.trim()
+                payload.bvn_number = individualForm.bvn.trim()
+                payload.state_of_origin = individualForm.state_of_origin.trim()
             }
             if (verificationType === 'corporate') {
                 payload.nin_number = corporateForm.nin.trim()
@@ -712,8 +677,23 @@ export default function LandlordIdentityVerificationPage() {
                 queryClient.invalidateQueries({ queryKey: ['documents', 'me'] }),
             ])
             localStorage.removeItem(LANDLORD_IDENTITY_ONBOARDING_KEY)
-            alert('Identification details submitted successfully.')
-            navigate(`/profile/${me?.id || user?.id}?onboarding=landlord`)
+
+            const profileUserId = me?.id || user?.id
+            const profilePath = profileUserId ? `/profile/${profileUserId}?onboarding=landlord` : '/dashboard/settings'
+            const shouldGoToProfile = await confirm(
+                'Landlord verification submitted successfully.',
+                {
+                    title: 'Verification Successful',
+                    variant: 'success',
+                    confirmLabel: 'Go to Profile',
+                    cancelLabel: 'Cancel and Stay',
+                    autoConfirmSeconds: 10,
+                },
+            )
+
+            if (shouldGoToProfile) {
+                navigate(profilePath)
+            }
         },
         onError: (error: any) => {
             alert(parseErrorMessage(error, 'Unable to submit identification details.'))
@@ -721,6 +701,9 @@ export default function LandlordIdentityVerificationPage() {
     })
 
     const formLabelDefault = 'form-label text-[13px] text-gray-400'
+    const lockedFormClassName = isVerificationLocked
+        ? 'text-gray-500 [&_h2]:text-gray-600 [&_input]:cursor-not-allowed [&_input]:border-gray-200 [&_input]:bg-gray-100 [&_input]:text-gray-500 [&_select]:cursor-not-allowed [&_select]:border-gray-200 [&_select]:bg-gray-100 [&_select]:text-gray-500 [&_textarea]:cursor-not-allowed [&_textarea]:border-gray-200 [&_textarea]:bg-gray-100 [&_textarea]:text-gray-500'
+        : ''
 
     if (isLoading) {
         return (
@@ -762,8 +745,9 @@ export default function LandlordIdentityVerificationPage() {
                 </div>
 
                 <div className="rounded-2xl border bg-white p-6 shadow-sm">
-                    {verificationType === 'individual' ? (
-                        <div className="space-y-8">
+                    <fieldset disabled={isVerificationLocked} className={lockedFormClassName}>
+                        {verificationType === 'individual' ? (
+                            <div className="space-y-8">
                             <section className="space-y-6">
                                 <label className="form-label text-xl font-semibold">Personal Information</label>
                                 <div className="grid gap-4 md:grid-cols-3">
@@ -886,35 +870,6 @@ export default function LandlordIdentityVerificationPage() {
 
                                 <div className="grid gap-4 md:grid-cols-2">
                                     <div>
-                                        <label className={formLabelDefault}>Employment Status</label>
-                                        <select className="form-input" name="employment_status" value={individualForm.employment_status} onChange={handleIndividualChange}>
-                                            <option value="">Select employment status</option>
-                                            <option value="Employed">Employed</option>
-                                            <option value="Self Employed">Self Employed</option>
-                                            <option value="Business Owner">Business Owner</option>
-                                            <option value="Freelancer">Freelancer</option>
-                                            <option value="Retired">Retired</option>
-                                            <option value="Unemployed">Unemployed</option>
-                                            <option value="Student">Student</option>
-                                        </select>
-                                        {fieldErrors.employment_status && <p className="form-error">{fieldErrors.employment_status}</p>}
-                                    </div>
-                                    <div>
-                                        <label className={formLabelDefault}>Ownership Status</label>
-                                        <select className="form-input" name="ownership_status" value={individualForm.ownership_status} onChange={handleIndividualChange}>
-                                            <option value="">Select ownership status</option>
-                                            <option value="Owned">Owned</option>
-                                            <option value="Rented">Rented</option>
-                                            <option value="Family Property">Family Property</option>
-                                            <option value="Employer Provided">Employer Provided</option>
-                                            <option value="Other">Other</option>
-                                        </select>
-                                        {fieldErrors.ownership_status && <p className="form-error">{fieldErrors.ownership_status}</p>}
-                                    </div>
-                                </div>
-
-                                <div className="grid gap-4 md:grid-cols-2">
-                                    <div>
                                         <label className={formLabelDefault}>National Identification Number (NIN)</label>
                                         <input className="form-input" name="nin" value={individualForm.nin} onChange={handleIndividualChange} />
                                         {fieldErrors.nin && <p className="form-error">{fieldErrors.nin}</p>}
@@ -960,268 +915,9 @@ export default function LandlordIdentityVerificationPage() {
                                     {fieldErrors.residential_address && <p className="form-error">{fieldErrors.residential_address}</p>}
                                 </div>
                             </section>
-
-                            <section className="space-y-6 border-t border-gray-200 pt-6">
-                                {individualForm.employment_status && (
-                                    <label className="form-label text-xl font-semibold">
-                                        {individualForm.employment_status === 'Employed' && 'Employment Information'}
-                                        {individualForm.employment_status === 'Self Employed' && 'Business Information'}
-                                        {individualForm.employment_status === 'Business Owner' && 'Business Information'}
-                                        {individualForm.employment_status === 'Freelancer' && 'Freelancer Information'}
-                                        {individualForm.employment_status === 'Retired' && 'Retirement Information'}
-                                        {individualForm.employment_status === 'Unemployed' && 'Unemployment Information'}
-                                        {individualForm.employment_status === 'Student' && 'Student Information'}
-                                    </label>
-                                )}
-                                {individualForm.employment_status === 'Employed' && (
-                                    <>
-                                        <div className="grid gap-4 md:grid-cols-2">
-                                            <div>
-                                                <label className={formLabelDefault}>Employer Name</label>
-                                                <input className="form-input" name="employer_name" value={individualForm.employer_name} onChange={handleIndividualChange} />
-                                                {fieldErrors.employer_name && <p className="form-error">{fieldErrors.employer_name}</p>}
-                                            </div>
-                                            <div>
-                                                <label className={formLabelDefault}>Job Title</label>
-                                                <input className="form-input" name="job_title" value={individualForm.job_title} onChange={handleIndividualChange} />
-                                                {fieldErrors.job_title && <p className="form-error">{fieldErrors.job_title}</p>}
-                                            </div>
-                                        </div>
-                                        <div className="grid gap-4 md:grid-cols-2">
-                                            <div>
-                                                <label className={formLabelDefault}>Employment Type</label>
-                                                <select className="form-input" name="employment_type" value={individualForm.employment_type} onChange={handleIndividualChange}>
-                                                    <option value="">Select employment type</option>
-                                                    <option value="Permanent">Permanent</option>
-                                                    <option value="Contract">Contract</option>
-                                                </select>
-                                                {fieldErrors.employment_type && <p className="form-error">{fieldErrors.employment_type}</p>}
-                                            </div>
-                                            <div>
-                                                <label className={formLabelDefault}>Years Employed</label>
-                                                <input className="form-input" type="number" name="years_employed" value={individualForm.years_employed} onChange={handleIndividualChange} />
-                                                {fieldErrors.years_employed && <p className="form-error">{fieldErrors.years_employed}</p>}
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <label className={formLabelDefault}>Work Address</label>
-                                            <textarea className="form-input min-h-24" name="work_address" value={individualForm.work_address} onChange={handleIndividualChange} />
-                                            {fieldErrors.work_address && <p className="form-error">{fieldErrors.work_address}</p>}
-                                        </div>
-                                        <div>
-                                            <label className={formLabelDefault}>Work Email (optional)</label>
-                                            <input className="form-input" type="email" name="work_email" value={individualForm.work_email} onChange={handleIndividualChange} />
-                                            {fieldErrors.work_email && <p className="form-error">{fieldErrors.work_email}</p>}
-                                        </div>
-                                    </>
-                                )}
-                                {individualForm.employment_status === 'Self Employed' && (
-                                    <>
-                                        <div className="grid gap-4 md:grid-cols-2">
-                                            <div>
-                                                <label className={formLabelDefault}>Profession</label>
-                                                <input className="form-input" name="profession" value={individualForm.profession} onChange={handleIndividualChange} />
-                                                {fieldErrors.profession && <p className="form-error">{fieldErrors.profession}</p>}
-                                            </div>
-                                            <div>
-                                                <label className={formLabelDefault}>Trading Name (optional)</label>
-                                                <input className="form-input" name="trading_name" value={individualForm.trading_name} onChange={handleIndividualChange} />
-                                                {fieldErrors.trading_name && <p className="form-error">{fieldErrors.trading_name}</p>}
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <label className={formLabelDefault}>Nature of Work (optional)</label>
-                                            <input className="form-input" name="nature_of_work" value={individualForm.nature_of_work} onChange={handleIndividualChange} />
-                                            {fieldErrors.nature_of_work && <p className="form-error">{fieldErrors.nature_of_work}</p>}
-                                        </div>
-                                        <div className="grid gap-4 md:grid-cols-2">
-                                            <div>
-                                                <label className={formLabelDefault}>Years Self-Employed</label>
-                                                <input className="form-input" type="number" name="years_self_employed" value={individualForm.years_self_employed} onChange={handleIndividualChange} />
-                                                {fieldErrors.years_self_employed && <p className="form-error">{fieldErrors.years_self_employed}</p>}
-                                            </div>
-                                            <div>
-                                                <label className={formLabelDefault}>Business Website (optional)</label>
-                                                <input className="form-input" name="business_website" value={individualForm.business_website} onChange={handleIndividualChange} />
-                                                {fieldErrors.business_website && <p className="form-error">{fieldErrors.business_website}</p>}
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <label className={formLabelDefault}>Business Address</label>
-                                            <textarea className="form-input min-h-24" name="business_address" value={individualForm.business_address} onChange={handleIndividualChange} />
-                                            {fieldErrors.business_address && <p className="form-error">{fieldErrors.business_address}</p>}
-                                        </div>
-                                    </>
-                                )}
-                                {individualForm.employment_status === 'Business Owner' && (
-                                    <>
-                                        <div className="grid gap-4 md:grid-cols-2">
-                                            <div>
-                                                <label className={formLabelDefault}>Business Name</label>
-                                                <input className="form-input" name="business_name" value={individualForm.business_name} onChange={handleIndividualChange} />
-                                                {fieldErrors.business_name && <p className="form-error">{fieldErrors.business_name}</p>}
-                                            </div>
-                                            <div>
-                                                <label className={formLabelDefault}>Business Registration Number</label>
-                                                <input className="form-input" name="business_registration_number" value={individualForm.business_registration_number} onChange={handleIndividualChange} />
-                                                {fieldErrors.business_registration_number && <p className="form-error">{fieldErrors.business_registration_number}</p>}
-                                            </div>
-                                        </div>
-                                        <div className="grid gap-4 md:grid-cols-2">
-                                            <div>
-                                                <label className={formLabelDefault}>Industry</label>
-                                                <input className="form-input" name="industry" value={individualForm.industry} onChange={handleIndividualChange} />
-                                                {fieldErrors.industry && <p className="form-error">{fieldErrors.industry}</p>}
-                                            </div>
-                                            <div>
-                                                <label className={formLabelDefault}>Position in Business</label>
-                                                <input className="form-input" name="position_in_business" value={individualForm.position_in_business} onChange={handleIndividualChange} />
-                                                {fieldErrors.position_in_business && <p className="form-error">{fieldErrors.position_in_business}</p>}
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <label className={formLabelDefault}>Business Address</label>
-                                            <textarea className="form-input min-h-24" name="business_address" value={individualForm.business_address} onChange={handleIndividualChange} />
-                                            {fieldErrors.business_address && <p className="form-error">{fieldErrors.business_address}</p>}
-                                        </div>
-                                        <div>
-                                            <label className={formLabelDefault}>Company Website (optional)</label>
-                                            <input className="form-input" name="company_website" value={individualForm.company_website} onChange={handleIndividualChange} />
-                                            {fieldErrors.company_website && <p className="form-error">{fieldErrors.company_website}</p>}
-                                        </div>
-                                        <div>
-                                            <label className={formLabelDefault}>Years in Business</label>
-                                            <input className="form-input" type="number" name="years_in_business" value={individualForm.years_in_business} onChange={handleIndividualChange} />
-                                            {fieldErrors.years_in_business && <p className="form-error">{fieldErrors.years_in_business}</p>}
-                                        </div>
-                                    </>
-                                )}
-                                {individualForm.employment_status === 'Freelancer' && (
-                                    <>
-                                        <div className="grid gap-4 md:grid-cols-2">
-                                            <div>
-                                                <label className={formLabelDefault}>Profession</label>
-                                                <input className="form-input" name="profession" value={individualForm.profession} onChange={handleIndividualChange} />
-                                                {fieldErrors.profession && <p className="form-error">{fieldErrors.profession}</p>}
-                                            </div>
-                                            <div>
-                                                <label className={formLabelDefault}>Primary Service</label>
-                                                <input className="form-input" name="primary_service" value={individualForm.primary_service} onChange={handleIndividualChange} />
-                                                {fieldErrors.primary_service && <p className="form-error">{fieldErrors.primary_service}</p>}
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <label className={formLabelDefault}>Platform Used (optional)</label>
-                                            <input className="form-input" name="platform_used" value={individualForm.platform_used} onChange={handleIndividualChange} placeholder="Upwork, Fiverr, etc." />
-                                            {fieldErrors.platform_used && <p className="form-error">{fieldErrors.platform_used}</p>}
-                                        </div>
-                                        <div className="grid gap-4 md:grid-cols-2">
-                                            <div>
-                                                <label className={formLabelDefault}>Years Freelancing</label>
-                                                <input className="form-input" type="number" name="years_freelancing" value={individualForm.years_freelancing} onChange={handleIndividualChange} />
-                                                {fieldErrors.years_freelancing && <p className="form-error">{fieldErrors.years_freelancing}</p>}
-                                            </div>
-                                            <div>
-                                                <label className={formLabelDefault}>Portfolio Website (optional)</label>
-                                                <input className="form-input" name="portfolio_website" value={individualForm.portfolio_website} onChange={handleIndividualChange} />
-                                                {fieldErrors.portfolio_website && <p className="form-error">{fieldErrors.portfolio_website}</p>}
-                                            </div>
-                                        </div>
-                                    </>
-                                )}
-                                {individualForm.employment_status === 'Retired' && (
-                                    <>
-                                        <div className="grid gap-4 md:grid-cols-2">
-                                            <div>
-                                                <label className={formLabelDefault}>Previous Occupation</label>
-                                                <input className="form-input" name="previous_occupation" value={individualForm.previous_occupation} onChange={handleIndividualChange} />
-                                                {fieldErrors.previous_occupation && <p className="form-error">{fieldErrors.previous_occupation}</p>}
-                                            </div>
-                                            <div>
-                                                <label className={formLabelDefault}>Previous Employer (optional)</label>
-                                                <input className="form-input" name="previous_employer" value={individualForm.previous_employer} onChange={handleIndividualChange} />
-                                                {fieldErrors.previous_employer && <p className="form-error">{fieldErrors.previous_employer}</p>}
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <label className={formLabelDefault}>Retirement Year</label>
-                                            <input className="form-input" type="number" name="retirement_year" value={individualForm.retirement_year} onChange={handleIndividualChange} />
-                                            {fieldErrors.retirement_year && <p className="form-error">{fieldErrors.retirement_year}</p>}
-                                        </div>
-                                        <div>
-                                            <label className={formLabelDefault}>Pension Provider (optional)</label>
-                                            <input className="form-input" name="pension_provider" value={individualForm.pension_provider} onChange={handleIndividualChange} />
-                                            {fieldErrors.pension_provider && <p className="form-error">{fieldErrors.pension_provider}</p>}
-                                        </div>
-                                    </>
-                                )}
-                                {individualForm.employment_status === 'Unemployed' && (
-                                    <>
-                                        <div>
-                                            <label className={formLabelDefault}>Previous Occupation (optional)</label>
-                                            <input className="form-input" name="previous_occupation" value={individualForm.previous_occupation} onChange={handleIndividualChange} />
-                                            {fieldErrors.previous_occupation && <p className="form-error">{fieldErrors.previous_occupation}</p>}
-                                        </div>
-                                        <div>
-                                            <label className={formLabelDefault}>Previously Employed By (optional)</label>
-                                            <input className="form-input" name="previous_employer" value={individualForm.previous_employer} onChange={handleIndividualChange} placeholder="Last employer (optional)" />
-                                            {fieldErrors.previous_employer && <p className="form-error">{fieldErrors.previous_employer}</p>}
-                                        </div>
-                                        <div className="grid gap-4 md:grid-cols-2">
-                                            <div>
-                                                <label className={formLabelDefault}>Currently Seeking Employment?</label>
-                                                <select className="form-input" name="currently_seeking_employment" value={individualForm.currently_seeking_employment} onChange={handleIndividualChange}>
-                                                    <option value="">Select option</option>
-                                                    <option value="Yes">Yes</option>
-                                                    <option value="No">No</option>
-                                                </select>
-                                                {fieldErrors.currently_seeking_employment && <p className="form-error">{fieldErrors.currently_seeking_employment}</p>}
-                                            </div>
-                                            <div>
-                                                <label className={formLabelDefault}>Source of Income (optional)</label>
-                                                <input className="form-input" name="source_of_income" value={individualForm.source_of_income} onChange={handleIndividualChange} />
-                                                {fieldErrors.source_of_income && <p className="form-error">{fieldErrors.source_of_income}</p>}
-                                            </div>
-                                        </div>
-                                    </>
-                                )}
-                                {individualForm.employment_status === 'Student' && (
-                                    <>
-                                        <div className="grid gap-4 md:grid-cols-2">
-                                            <div>
-                                                <label className={formLabelDefault}>Institution</label>
-                                                <input className="form-input" name="institution" value={individualForm.institution} onChange={handleIndividualChange} />
-                                                {fieldErrors.institution && <p className="form-error">{fieldErrors.institution}</p>}
-                                            </div>
-                                            <div>
-                                                <label className={formLabelDefault}>Course of Study</label>
-                                                <input className="form-input" name="course_of_study" value={individualForm.course_of_study} onChange={handleIndividualChange} />
-                                                {fieldErrors.course_of_study && <p className="form-error">{fieldErrors.course_of_study}</p>}
-                                            </div>
-                                        </div>
-                                        <div className="grid gap-4 md:grid-cols-2">
-                                            <div>
-                                                <label className={formLabelDefault}>Level</label>
-                                                <input className="form-input" name="level" value={individualForm.level} onChange={handleIndividualChange} placeholder="100, 200, etc." />
-                                                {fieldErrors.level && <p className="form-error">{fieldErrors.level}</p>}
-                                            </div>
-                                            <div>
-                                                <label className={formLabelDefault}>Expected Graduation Year</label>
-                                                <input className="form-input" type="number" name="graduation_year" value={individualForm.graduation_year} onChange={handleIndividualChange} />
-                                                {fieldErrors.graduation_year && <p className="form-error">{fieldErrors.graduation_year}</p>}
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <label className={formLabelDefault}>Sponsorship Source (optional)</label>
-                                            <input className="form-input" name="sponsorship_source" value={individualForm.sponsorship_source} onChange={handleIndividualChange} />
-                                            {fieldErrors.sponsorship_source && <p className="form-error">{fieldErrors.sponsorship_source}</p>}
-                                        </div>
-                                    </>
-                                )}
-                            </section>
-                        </div>
-                    ) : (
-                        <div className="space-y-6">
+                            </div>
+                        ) : (
+                            <div className="space-y-6">
                             <div>
                                 <label className={formLabelDefault}>Company Name</label>
                                 <input className="form-input" name="company_name" value={corporateForm.company_name} onChange={handleCorporateChange} />
@@ -1359,15 +1055,16 @@ export default function LandlordIdentityVerificationPage() {
                                     {fieldErrors.account_number && <p className="form-error">{fieldErrors.account_number}</p>}
                                 </div>
                             </div>
-                        </div>
-                    )}
+                            </div>
+                        )}
 
-                    <div className="mt-8 rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-5">
+                        <div className="mt-8 rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-5">
                         <div className="flex flex-wrap items-center justify-between gap-3">
                             <div>
                                 <h2 className="text-lg font-semibold text-gray-900">Upload Identification Documents</h2>
                                 <p className="mt-1 text-sm text-gray-600">
-                                    Upload CAC document and government-issued ID e.g. Int'l Passport, NIN Slip or Card.
+                                    Upload government-issued ID<br />
+                                    (e.g. NIN Card or Int'l passport for individual Landlords or CAC documents for Corporate Landlords)
                                 </p>
                             </div>
                             {existingIdentificationDocuments.length > 0 && (
@@ -1398,21 +1095,22 @@ export default function LandlordIdentityVerificationPage() {
                                 ))}
                             </ul>
                         )}
-                    </div>
+                        </div>
 
-                    <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
+                        <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
                         <p className="text-sm text-gray-500">
                             Identification submission is saved for review. Next step is completing your profile page.
                         </p>
                         <button
                             type="button"
                             onClick={() => submitIdentity.mutate()}
-                            disabled={submitIdentity.isPending}
+                            disabled={isVerificationLocked || submitIdentity.isPending}
                             className="btn btn-primary px-6 py-3 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                            {submitIdentity.isPending ? 'Submitting...' : 'Submit Identification and Continue'}
+                            {isVerificationLocked ? 'Identification Verified' : submitIdentity.isPending ? 'Submitting...' : 'Submit Identification and Continue'}
                         </button>
-                    </div>
+                        </div>
+                    </fieldset>
                 </div>
             </div>
         </div>

@@ -15,8 +15,8 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from core.management.commands.seed_demo_data import Command as SeedDemoDataCommand
-from core.models import AppUser, Booking, CommunityChatMessage, Document, Feedback, FeaturedPayment, Listing, Message, Payment, PaymentSettlement, Review, SubscriptionPayment, SupportChatMessage, TenantProfile, VerificationRequest
-from core.pricing import calculate_booking_total
+from core.models import AppUser, Booking, CommunityChatMessage, Document, Feedback, FeaturedPayment, Listing, Message, Payment, PaymentSettlement, Review, SubscriptionPayment, SubscriptionPaymentMethod, SupportChatMessage, TenantProfile, VerificationRequest
+from core.pricing import calculate_booking_total, calculate_deposit_amount
 from core.security import hash_otp
 from core.serializers import UserSerializer
 
@@ -341,6 +341,17 @@ class ListingTests(TestCase):
             b"\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;",
             content_type="image/gif",
         )
+        additional_image = SimpleUploadedFile(
+            "room.gif",
+            b"GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff!\xf9\x04\x00"
+            b"\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;",
+            content_type="image/gif",
+        )
+        property_document = SimpleUploadedFile(
+            "deed.pdf",
+            b"property-document",
+            content_type="application/pdf",
+        )
 
         response = client.post(
             "/api/v1/listings",
@@ -349,13 +360,28 @@ class ListingTests(TestCase):
                 "description": "A bright apartment in Ikoyi",
                 "address": "23 Gerald Road",
                 "city": "Ikoyi",
+                "state": "Lagos",
                 "postal_code": "100021",
                 "property_type": "Apartment",
                 "bedrooms": 2,
                 "bathrooms": 2,
+                "toilets": 2,
                 "price_per_year": "2500000",
                 "amenities": ["gym", "parking"],
+                "ownership_types": ["Sole Owner"],
+                "property_ownership_documents": ["Deed of Assignment"],
+                "property_verification_method": "documents",
+                "property_documents": property_document,
+                "minimum_rental_duration": "6 months",
+                "maximum_occupancy": "4",
+                "available_from": "2026-08-01",
+                "smoking_allowed": "false",
+                "commercial_activities_allowed": "false",
+                "short_let_allowed": "true",
+                "student_tenants_allowed": "true",
+                "expatriates_allowed": "false",
                 "cover_image": cover_image,
+                "images": additional_image,
             },
             format="multipart",
         )
@@ -363,6 +389,139 @@ class ListingTests(TestCase):
         self.assertEqual(response.status_code, 201, response.json())
         listing = Listing.objects.get(title="Ikoyi Apartment")
         self.assertEqual(listing.amenities, ["gym", "parking"])
+        self.assertEqual(listing.ownership_types, ["Sole Owner"])
+        self.assertEqual(listing.property_ownership_documents, ["Deed of Assignment"])
+        self.assertEqual(str(listing.deposit_amount), "500000.00")
+        self.assertEqual(listing.property_documents.count(), 1)
+        self.assertEqual(
+            listing.property_document_verification_status,
+            VerificationRequest.VerificationProgressStatus.PENDING,
+        )
+        self.assertEqual(listing.minimum_rental_duration, "6 months")
+        self.assertEqual(listing.maximum_occupancy, 4)
+        self.assertTrue(listing.short_let_allowed)
+        self.assertTrue(listing.student_tenants_allowed)
+
+    def test_landlord_listing_requires_property_documents_or_in_person_verification(self):
+        landlord = AppUser.objects.create_user(
+            email="landlord-doc-required@example.com",
+            password="password-123",
+            name="Document Required Landlord",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+        )
+        VerificationRequest.objects.create(
+            user=landlord,
+            status=VerificationRequest.Status.APPROVED,
+            identity_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
+        )
+        client = APIClient()
+        client.force_authenticate(user=landlord)
+        cover_image = SimpleUploadedFile(
+            "cover.gif",
+            b"GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff!\xf9\x04\x00"
+            b"\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;",
+            content_type="image/gif",
+        )
+        additional_image = SimpleUploadedFile(
+            "room.gif",
+            b"GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff!\xf9\x04\x00"
+            b"\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;",
+            content_type="image/gif",
+        )
+
+        response = client.post(
+            "/api/v1/listings",
+            {
+                "title": "No Document Listing",
+                "description": "Should require property verification choice",
+                "address": "23 Gerald Road",
+                "city": "Ikoyi",
+                "state": "Lagos",
+                "postal_code": "100021",
+                "property_type": "Apartment",
+                "bedrooms": 2,
+                "bathrooms": 2,
+                "toilets": 2,
+                "price_per_year": "2500000",
+                "amenities": ["parking"],
+                "ownership_types": ["Sole Owner"],
+                "property_verification_method": "documents",
+                "property_ownership_documents": ["Deed of Assignment"],
+                "minimum_rental_duration": "6 months",
+                "maximum_occupancy": "4",
+                "available_from": "2026-08-01",
+                "cover_image": cover_image,
+                "images": additional_image,
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 400, response.json())
+        self.assertIn("property_documents", response.json())
+
+    def test_landlord_can_choose_in_person_verification_without_property_documents(self):
+        landlord = AppUser.objects.create_user(
+            email="landlord-in-person@example.com",
+            password="password-123",
+            name="In Person Landlord",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+        )
+        VerificationRequest.objects.create(
+            user=landlord,
+            status=VerificationRequest.Status.APPROVED,
+            identity_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
+        )
+        client = APIClient()
+        client.force_authenticate(user=landlord)
+        cover_image = SimpleUploadedFile(
+            "cover.gif",
+            b"GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff!\xf9\x04\x00"
+            b"\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;",
+            content_type="image/gif",
+        )
+        additional_image = SimpleUploadedFile(
+            "room.gif",
+            b"GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff!\xf9\x04\x00"
+            b"\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;",
+            content_type="image/gif",
+        )
+
+        response = client.post(
+            "/api/v1/listings",
+            {
+                "title": "In Person Listing",
+                "description": "Should not require uploaded property documents",
+                "address": "45 Admiralty Road",
+                "city": "Lekki",
+                "state": "Lagos",
+                "postal_code": "100022",
+                "property_type": "Apartment",
+                "bedrooms": 2,
+                "bathrooms": 2,
+                "toilets": 2,
+                "price_per_year": "1800000",
+                "amenities": ["parking"],
+                "ownership_types": ["Sole Owner"],
+                "property_verification_method": "in_person",
+                "minimum_rental_duration": "6 months",
+                "maximum_occupancy": "3",
+                "available_from": "2026-08-01",
+                "cover_image": cover_image,
+                "images": additional_image,
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 201, response.json())
+        listing = Listing.objects.get(title="In Person Listing")
+        self.assertEqual(str(listing.deposit_amount), "360000.00")
+        self.assertEqual(listing.property_documents.count(), 0)
+        self.assertEqual(
+            listing.physical_property_status,
+            VerificationRequest.VerificationProgressStatus.PENDING,
+        )
 
     def test_bronze_landlord_cannot_create_second_active_listing(self):
         landlord = AppUser.objects.create_user(
@@ -393,6 +552,18 @@ class ListingTests(TestCase):
 
         client = APIClient()
         client.force_authenticate(user=landlord)
+        cover_image = SimpleUploadedFile(
+            "cover.gif",
+            b"GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff!\xf9\x04\x00"
+            b"\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;",
+            content_type="image/gif",
+        )
+        additional_image = SimpleUploadedFile(
+            "room.gif",
+            b"GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff!\xf9\x04\x00"
+            b"\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;",
+            content_type="image/gif",
+        )
         response = client.post(
             "/api/v1/listings",
             {
@@ -400,10 +571,21 @@ class ListingTests(TestCase):
                 "description": "Should be blocked",
                 "address": "2 Bronze Road",
                 "city": "Lagos",
+                "state": "Lagos",
+                "postal_code": "100001",
                 "property_type": "Apartment",
                 "bedrooms": 2,
                 "bathrooms": 2,
+                "toilets": 2,
                 "price_per_year": "2500000",
+                "amenities": ["parking"],
+                "ownership_types": ["Sole Owner"],
+                "property_verification_method": "in_person",
+                "minimum_rental_duration": "6 months",
+                "maximum_occupancy": "4",
+                "available_from": "2026-08-01",
+                "cover_image": cover_image,
+                "images": additional_image,
             },
             format="multipart",
         )
@@ -727,6 +909,55 @@ class UserViewSetTests(TestCase):
         self.assertEqual(user.landlord_verification_type, "individual")
         self.assertEqual(user.landlord_verification_profile["first_name"], "Identity")
 
+    def test_landlord_can_save_profile_employment_details(self):
+        user = AppUser.objects.create_user(
+            email="profile-employment-user@example.com",
+            password="password-123",
+            name="Profile Employment User",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+            landlord_verification_type=AppUser.LandlordVerificationType.INDIVIDUAL,
+        )
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        response = client.patch(
+            "/api/v1/users/me",
+            {
+                "landlord_verification_type": "individual",
+                "landlord_verification_profile": {
+                    "first_name": "Profile",
+                    "last_name": "Employment",
+                    "contact_number": "08012345678",
+                    "email": "profile-employment-user@example.com",
+                    "nin": "12345678901",
+                    "bvn": "10987654321",
+                    "employment_status": "Employed",
+                    "occupation": "Cloud Engineer",
+                    "employer_name": "Conoco Philips",
+                    "job_title": "Software Engineer",
+                    "employment_type": "Full-time",
+                    "work_address": "13 Ajose Adeogun, Victoria Island, Lagos",
+                    "work_email": "profile.work@example.com",
+                    "years_employed": "5",
+                    "hr_contact_name": "Harriet Adams",
+                    "hr_contact_number": "+2348091122334",
+                    "hr_contact_email": "harriet@example.com",
+                },
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()["landlord_verification_profile"]
+        self.assertEqual(payload["employment_status"], "Employed")
+        self.assertEqual(payload["work_email"], "profile.work@example.com")
+        self.assertEqual(payload["hr_contact_name"], "Harriet Adams")
+        self.assertEqual(payload["hr_contact_number"], "+2348091122334")
+        self.assertEqual(payload["hr_contact_email"], "harriet@example.com")
+        self.assertNotIn("ownership_types", payload)
+        self.assertNotIn("rental_preferences", payload)
+
     def test_landlord_can_save_corporate_identity_bank_and_id_details(self):
         user = AppUser.objects.create_user(
             email="corporate-identity-user@example.com",
@@ -863,6 +1094,66 @@ class AdminSiteTests(TestCase):
         self.assertContains(response, landlord.email)
         self.assertNotContains(response, "tenant-profile@example.com")
 
+    def test_landlord_change_form_shows_individual_verification_fields_only(self):
+        landlord = AppUser.objects.create_user(
+            email="landlord-verification@example.com",
+            password="password-123",
+            name="Identity Landlord",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+            landlord_verification_type=AppUser.LandlordVerificationType.INDIVIDUAL,
+            landlord_verification_profile={
+                "first_name": "Identity",
+                "last_name": "Landlord",
+                "country_of_birth": "Nigeria",
+                "state_of_birth": "Lagos",
+                "nin": "12345678901",
+                "bvn": "10987654321",
+                "employment_status": "Employed",
+            },
+        )
+
+        response = self.client.get(f"/admin/core/landlord/{landlord.id}/change/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Landlord Verification Track")
+        self.assertContains(response, 'name="country_of_birth"')
+        self.assertContains(response, 'name="state_of_birth"')
+        self.assertContains(response, 'name="nin"')
+        self.assertContains(response, 'name="bvn"')
+        self.assertNotContains(response, "Employment Information")
+        self.assertNotContains(response, "Property Ownership Verification")
+        self.assertNotContains(response, "Rental Preferences")
+
+    def test_landlord_change_form_shows_corporate_verification_fields(self):
+        landlord = AppUser.objects.create_user(
+            email="corporate-verification@example.com",
+            password="password-123",
+            name="Corporate Verification",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+            landlord_verification_type=AppUser.LandlordVerificationType.CORPORATE,
+            landlord_verification_profile={
+                "company_name": "Verification Homes Limited",
+                "business_state": "Lagos",
+                "business_city": "Ikeja",
+                "cac_registration_number": "RC123456",
+                "cac_registration_date": "2026-04-02",
+                "nin": "12345678901",
+                "bvn": "10987654321",
+            },
+        )
+
+        response = self.client.get(f"/admin/core/landlord/{landlord.id}/change/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Corporate Landlord Information")
+        self.assertContains(response, 'name="company_name"')
+        self.assertContains(response, 'name="cac_registration_date"')
+        self.assertContains(response, 'name="nin"')
+        self.assertContains(response, 'name="bvn"')
+        self.assertNotContains(response, "Property Ownership Verification")
+
     def test_landlord_profile_change_form_shows_individual_profile_fields(self):
         landlord = AppUser.objects.create_user(
             email="individual-landlord@example.com",
@@ -875,8 +1166,13 @@ class AdminSiteTests(TestCase):
                 "first_name": "Ada",
                 "last_name": "Example",
                 "preferred_contact_method": "email",
+                "employment_status": "Employed",
+                "occupation": "Architect",
+                "work_email": "ada.work@example.com",
+                "hr_contact_name": "HR Manager",
+                "hr_contact_number": "+2348091122334",
+                "hr_contact_email": "hr@example.com",
                 "proof_of_address": ["Utility Bill"],
-                "ownership_types": ["Sole Owner"],
             },
         )
 
@@ -884,10 +1180,18 @@ class AdminSiteTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Personal Information")
+        self.assertContains(response, "Employment Information")
         self.assertContains(response, 'name="first_name"')
         self.assertContains(response, 'name="preferred_contact_method"')
-        self.assertContains(response, "Property Ownership Verification")
-        self.assertContains(response, 'name="ownership_types"')
+        self.assertContains(response, 'name="employment_status"')
+        self.assertContains(response, 'name="work_email"')
+        self.assertContains(response, 'name="hr_contact_name"')
+        self.assertContains(response, 'name="hr_contact_number"')
+        self.assertContains(response, 'name="hr_contact_email"')
+        self.assertNotContains(response, "Property Ownership Verification")
+        self.assertNotContains(response, "Rental Preferences")
+        self.assertNotContains(response, 'name="ownership_types"')
+        self.assertNotContains(response, 'name="corp_members_allowed"')
 
     def test_landlord_profile_change_form_shows_corporate_profile_fields(self):
         landlord = AppUser.objects.create_user(
@@ -903,6 +1207,7 @@ class AdminSiteTests(TestCase):
                 "business_city": "Ikeja",
                 "contact_person_name": "Acme Admin",
                 "cac_registration_number": "RC123456",
+                "cac_registration_date": "2026-04-02",
             },
         )
 
@@ -914,6 +1219,8 @@ class AdminSiteTests(TestCase):
         self.assertContains(response, 'name="business_city"')
         self.assertContains(response, 'name="contact_person_name"')
         self.assertContains(response, 'name="cac_registration_number"')
+        self.assertContains(response, 'name="cac_registration_date"')
+        self.assertNotContains(response, "Property Ownership Verification")
 
 
 class VerificationRequestViewSetTests(TestCase):
@@ -1358,7 +1665,7 @@ class VerificationRequestViewSetTests(TestCase):
         self.assertEqual(VerificationRequest.objects.filter(user=user).count(), 1)
         self.assertEqual(str(existing.id), response.json()["id"])
 
-    def test_submit_accepts_property_document_request_type_and_physical_status(self):
+    def test_submit_rejects_property_document_request_type_for_landlord_identity_verification(self):
         user = AppUser.objects.create_user(
             email="verification-user@example.com",
             password="password-123",
@@ -1379,14 +1686,9 @@ class VerificationRequestViewSetTests(TestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, 201, response.json())
-        request = VerificationRequest.objects.get(id=response.json()["id"])
-        self.assertEqual(request.request_type, VerificationRequest.RequestType.PROPERTY_DOCUMENTS)
-        self.assertEqual(
-            request.property_document_verification_status,
-            VerificationRequest.VerificationProgressStatus.PENDING,
-        )
-        self.assertEqual(request.physical_property_status, VerificationRequest.VerificationProgressStatus.PENDING)
+        self.assertEqual(response.status_code, 400, response.json())
+        self.assertIn("request_type", response.json())
+        self.assertFalse(VerificationRequest.objects.filter(user=user).exists())
 
     def test_status_returns_each_landlord_verification_track(self):
         user = AppUser.objects.create_user(
@@ -1415,7 +1717,7 @@ class VerificationRequestViewSetTests(TestCase):
         self.assertEqual(payload["property_documents"]["status"], "pending")
         self.assertEqual(payload["physical_property"]["status"], "pending")
 
-    def test_landlord_is_verified_requires_identity_and_property_document_verification(self):
+    def test_landlord_is_verified_requires_identity_verification_only(self):
         user = AppUser.objects.create_user(
             email="landlord-verified@example.com",
             password="password-123",
@@ -1430,7 +1732,7 @@ class VerificationRequestViewSetTests(TestCase):
             identity_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
             property_document_verification_status=VerificationRequest.VerificationProgressStatus.PENDING,
         )
-        self.assertFalse(user.is_verified)
+        self.assertTrue(user.is_verified)
 
         VerificationRequest.objects.filter(user=user).update(
             property_document_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
@@ -1448,6 +1750,13 @@ class BookingPaymentTests(TestCase):
             name="Booking Landlord",
             role=AppUser.Role.LANDLORD,
             email_verified=True,
+            landlord_verification_profile={
+                "banking_information": {
+                    "bank_name": "Monie Point",
+                    "account_name": "Booking Landlord",
+                    "account_number": "1234567890",
+                }
+            },
         )
         self.tenant = AppUser.objects.create_user(
             email="booking-tenant@example.com",
@@ -1577,9 +1886,9 @@ class BookingPaymentTests(TestCase):
             {"status": "success", "data": {"id": "recipient_landlord"}},
         ]
         create_bank_transfer_mock.side_effect = [
-            {"status": "success", "data": {"id": "transfer_ops"}},
-            {"status": "success", "data": {"id": "transfer_caution"}},
-            {"status": "success", "data": {"id": "transfer_landlord"}},
+            {"status": "success", "data": {"id": "transfer_ops", "status": "NEW"}},
+            {"status": "success", "data": {"id": "transfer_caution", "status": "NEW"}},
+            {"status": "success", "data": {"id": "transfer_landlord", "status": "NEW"}},
         ]
         booking = Booking.objects.create(
             tenant=self.tenant,
@@ -1588,12 +1897,15 @@ class BookingPaymentTests(TestCase):
             end_date=date(2027, 6, 19),
             total_amount=calculate_booking_total(self.listing.price_per_year),
         )
+        deposit_amount = calculate_deposit_amount(self.listing.price_per_year)
+        total_amount = calculate_booking_total(self.listing.price_per_year)
+        final_payment_amount = total_amount - deposit_amount
 
         payment_response = self.client.post(
             "/api/v1/payments",
             {
                 "booking_id": str(booking.id),
-                "amount": "600000.00",
+                "amount": str(deposit_amount),
                 "payment_method": "bank",
             },
             format="json",
@@ -1619,7 +1931,7 @@ class BookingPaymentTests(TestCase):
                 "id": "91234",
                 "tx_ref": payment_payload["payment"]["transaction_id"],
                 "status": "successful",
-                "amount": "600000.00",
+                "amount": str(deposit_amount),
                 "currency": "NGN",
                 "customer": {"email": self.tenant.email},
                 "authorization": {"bank": "Test Bank", "last4": "4242"},
@@ -1643,27 +1955,11 @@ class BookingPaymentTests(TestCase):
         self.assertEqual(set(payment_email.cc), {self.tenant.email, "info@rentdirect.homes"})
         self.assertIn("Rental Payment Received", payment_email.subject)
         booking.refresh_from_db()
-        self.assertEqual(str(booking.paid_amount), "600000.00")
+        self.assertEqual(booking.paid_amount, deposit_amount)
         self.assertEqual(booking.status, Booking.Status.PENDING)
         settlements = PaymentSettlement.objects.filter(payment__transaction_id=payment_payload["payment"]["transaction_id"])
-        self.assertEqual(settlements.count(), 3)
-        self.assertEqual(
-            str(settlements.get(purpose=PaymentSettlement.Purpose.OPERATIONS).amount),
-            "50000.00",
-        )
-        self.assertEqual(
-            str(settlements.get(purpose=PaymentSettlement.Purpose.CAUTION_FEE).amount),
-            "50000.00",
-        )
-        self.assertEqual(
-            str(settlements.get(purpose=PaymentSettlement.Purpose.LANDLORD_RENT).amount),
-            "500000.00",
-        )
+        self.assertEqual(settlements.count(), 0)
         self.assertFalse(create_transfer_recipient_mock.called)
-        self.assertSetEqual(
-            set(settlements.values_list("status", flat=True)),
-            {PaymentSettlement.Status.PENDING},
-        )
 
         landlord_client = APIClient()
         landlord_client.force_authenticate(user=self.landlord)
@@ -1701,46 +1997,96 @@ class BookingPaymentTests(TestCase):
         self.assertFalse(create_transfer_recipient_mock.called)
         self.assertFalse(create_bank_transfer_mock.called)
         settlements = PaymentSettlement.objects.filter(payment__transaction_id=payment_payload["payment"]["transaction_id"])
-        self.assertSetEqual(
-            set(settlements.values_list("status", flat=True)),
-            {PaymentSettlement.Status.PENDING},
-        )
-        self.assertTrue(all("Waiting for Flutterwave payout balance availability" in value for value in settlements.values_list("last_error", flat=True)))
+        self.assertEqual(settlements.count(), 0)
 
-        payment = Payment.objects.get(transaction_id=payment_payload["payment"]["transaction_id"])
-        payment.payment_date = timezone.now() - timedelta(hours=25)
-        payment.save(update_fields=["payment_date", "updated_at"])
+        final_payment_response = self.client.post(
+            "/api/v1/payments",
+            {
+                "booking_id": str(booking.id),
+                "amount": str(final_payment_amount),
+                "payment_method": "bank",
+            },
+            format="json",
+        )
+        self.assertEqual(final_payment_response.status_code, 201, final_payment_response.json())
+        final_payment_payload = final_payment_response.json()
+        query_transaction_mock.return_value = {
+            "status": "success",
+            "data": {
+                "id": "91235",
+                "tx_ref": final_payment_payload["payment"]["transaction_id"],
+                "status": "successful",
+                "amount": str(final_payment_amount),
+                "currency": "NGN",
+                "customer": {"email": self.tenant.email},
+                "authorization": {"bank": "Test Bank", "last4": "4242"},
+            },
+        }
+        final_verify_response = self.client.get(
+            "/api/v1/payments/flutterwave/verify",
+            {
+                "reference": final_payment_payload["payment"]["transaction_id"],
+                "transaction_id": "91235",
+                "status": "successful",
+            },
+        )
+        self.assertEqual(final_verify_response.status_code, 200, final_verify_response.json())
+        booking.refresh_from_db()
+        self.assertEqual(booking.paid_amount, total_amount)
+        self.assertEqual(booking.status, Booking.Status.CONFIRMED)
+        self.assertEqual(PaymentSettlement.objects.filter(payment__booking=booking).count(), 0)
+        self.assertFalse(create_transfer_recipient_mock.called)
+        self.assertFalse(create_bank_transfer_mock.called)
+
+        deposit_payment = Payment.objects.get(transaction_id=payment_payload["payment"]["transaction_id"])
+        deposit_payment.payment_date = timezone.now() - timedelta(hours=26)
+        deposit_payment.save(update_fields=["payment_date", "updated_at"])
+        final_payment = Payment.objects.get(transaction_id=final_payment_payload["payment"]["transaction_id"])
+        final_payment.payment_date = timezone.now() - timedelta(hours=25)
+        final_payment.save(update_fields=["payment_date", "updated_at"])
         call_command("process_ready_payouts")
 
         self.assertEqual(create_transfer_recipient_mock.call_count, 3)
         self.assertEqual(create_bank_transfer_mock.call_count, 3)
-        self.assertEqual(len(mail.outbox), 4)
-        landlord_transfer_emails = [message for message in mail.outbox[1:] if message.to == [self.landlord.email]]
-        internal_transfer_emails = [message for message in mail.outbox[1:] if message.to == ["info@rentdirect.homes"]]
+        self.assertEqual(len(mail.outbox), 5)
+        landlord_transfer_emails = [message for message in mail.outbox if "Landlord Payout Initiated" in message.subject]
+        internal_transfer_emails = [message for message in mail.outbox if "Internal Transfer Initiated" in message.subject]
         self.assertEqual(len(landlord_transfer_emails), 1)
+        self.assertEqual(landlord_transfer_emails[0].to, [self.landlord.email])
         self.assertEqual(set(landlord_transfer_emails[0].cc), {self.tenant.email, "info@rentdirect.homes"})
-        self.assertIn("Landlord Payout Initiated", landlord_transfer_emails[0].subject)
         self.assertEqual(len(internal_transfer_emails), 2)
         for internal_email in internal_transfer_emails:
+            self.assertEqual(internal_email.to, ["info@rentdirect.homes"])
             self.assertEqual(internal_email.cc, [])
-            self.assertIn("Internal Transfer Initiated", internal_email.subject)
-        settlements = PaymentSettlement.objects.filter(payment__transaction_id=payment_payload["payment"]["transaction_id"])
+        settlements = PaymentSettlement.objects.filter(payment__transaction_id=final_payment_payload["payment"]["transaction_id"])
+        self.assertEqual(
+            str(settlements.get(purpose=PaymentSettlement.Purpose.OPERATIONS).amount),
+            "120000.00",
+        )
+        self.assertEqual(
+            str(settlements.get(purpose=PaymentSettlement.Purpose.CAUTION_FEE).amount),
+            "120000.00",
+        )
+        landlord_settlement = settlements.get(purpose=PaymentSettlement.Purpose.LANDLORD_RENT)
+        self.assertEqual(str(landlord_settlement.amount), "1200000.00")
+        self.assertEqual(landlord_settlement.bank_name, "Monie Point")
+        self.assertEqual(landlord_settlement.account_number, "1234567890")
         self.assertSetEqual(
             set(settlements.values_list("status", flat=True)),
-            {PaymentSettlement.Status.PAID},
+            {PaymentSettlement.Status.PROCESSING},
         )
         self.assertTrue(all(settlements.values_list("transfer_reference", flat=True)))
-        self.assertTrue(all(settlements.values_list("transferred_at", flat=True)))
+        self.assertFalse(any(settlements.values_list("transferred_at", flat=True)))
 
         booking_response = self.client.get(f"/api/v1/bookings/listing/{self.listing.id}")
         self.assertEqual(booking_response.status_code, 200, booking_response.json())
-        self.assertEqual(booking_response.json()["remaining_amount"], 840000.0)
+        self.assertEqual(booking_response.json()["remaining_amount"], 0.0)
 
         overpayment_response = self.client.post(
             "/api/v1/payments",
             {
                 "booking_id": str(booking.id),
-                "amount": "900000.00",
+                "amount": "1.00",
                 "payment_method": "card",
             },
             format="json",
@@ -1748,6 +2094,86 @@ class BookingPaymentTests(TestCase):
 
         self.assertEqual(overpayment_response.status_code, 400, overpayment_response.json())
         self.assertIn("amount", overpayment_response.json())
+
+    def test_card_payment_above_flutterwave_limit_is_rejected_before_checkout(self):
+        self.listing.price_per_year = 7000000
+        self.listing.save(update_fields=["price_per_year", "updated_at"])
+        total_amount = calculate_booking_total(self.listing.price_per_year)
+        booking = Booking.objects.create(
+            tenant=self.tenant,
+            listing=self.listing,
+            start_date=date(2026, 6, 19),
+            end_date=date(2027, 6, 19),
+            total_amount=total_amount,
+        )
+
+        response = self.client.post(
+            "/api/v1/payments",
+            {
+                "booking_id": str(booking.id),
+                "amount": str(total_amount),
+                "payment_method": "card",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400, response.json())
+        self.assertIn("payment_method", response.json())
+        self.assertIn("Bank Transfer", str(response.json()["payment_method"]))
+
+    @override_settings(
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        ENFORCE_FLUTTERWAVE_WEBHOOK_SIGNATURE=False,
+        FLUTTERWAVE_WEBHOOK_SECRET_HASH="",
+    )
+    def test_flutterwave_transfer_webhook_marks_processing_settlement_paid(self):
+        booking = Booking.objects.create(
+            tenant=self.tenant,
+            listing=self.listing,
+            start_date=date(2026, 6, 19),
+            end_date=date(2027, 6, 19),
+            total_amount=calculate_booking_total(self.listing.price_per_year),
+            paid_amount=calculate_booking_total(self.listing.price_per_year),
+        )
+        payment = Payment.objects.create(
+            booking=booking,
+            amount=calculate_booking_total(self.listing.price_per_year),
+            payment_method="bank",
+            status="completed",
+            transaction_id="WEBHOOKTRANSFERPAYMENT",
+            provider="flutterwave",
+            currency="NGN",
+        )
+        settlement = PaymentSettlement.objects.create(
+            payment=payment,
+            purpose=PaymentSettlement.Purpose.LANDLORD_RENT,
+            amount=self.listing.price_per_year,
+            currency="NGN",
+            bank_name="Monie Point",
+            account_number="1234567890",
+            account_name="Booking Landlord",
+            transfer_reference="WEBHOOKTRANSFERPAYMENT-LANDLORDRENT",
+            status=PaymentSettlement.Status.PROCESSING,
+        )
+
+        response = self.client.post(
+            "/api/v1/payments/webhook/flutterwave",
+            {
+                "type": "transfer.disburse",
+                "data": {
+                    "reference": settlement.transfer_reference,
+                    "status": "SUCCESSFUL",
+                    "amount": float(settlement.amount),
+                    "currency": "NGN",
+                },
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        settlement.refresh_from_db()
+        self.assertEqual(settlement.status, PaymentSettlement.Status.PAID)
+        self.assertIsNotNone(settlement.transferred_at)
 
     @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
     @patch("core.views.create_bank_transfer")
@@ -1759,17 +2185,18 @@ class BookingPaymentTests(TestCase):
             {"status": "success", "data": {"id": "recipient_landlord_worker"}},
         ]
         create_bank_transfer_mock.side_effect = [
-            {"status": "success", "data": {"id": "transfer_ops_worker"}},
-            {"status": "success", "data": {"id": "transfer_caution_worker"}},
-            {"status": "success", "data": {"id": "transfer_landlord_worker"}},
+            {"status": "success", "data": {"id": "transfer_ops_worker", "status": "NEW"}},
+            {"status": "success", "data": {"id": "transfer_caution_worker", "status": "NEW"}},
+            {"status": "success", "data": {"id": "transfer_landlord_worker", "status": "NEW"}},
         ]
+        total_amount = calculate_booking_total(self.listing.price_per_year)
         booking = Booking.objects.create(
             tenant=self.tenant,
             listing=self.listing,
             start_date=date(2026, 6, 19),
             end_date=date(2027, 6, 19),
-            total_amount=calculate_booking_total(self.listing.price_per_year),
-            paid_amount=600000,
+            total_amount=total_amount,
+            paid_amount=total_amount,
             tenant_rental_progress={
                 "tenant_collected_house_key": timezone.now().isoformat(),
                 "rentdirect_transfer_to_landlord": {
@@ -1783,7 +2210,7 @@ class BookingPaymentTests(TestCase):
         )
         Payment.objects.create(
             booking=booking,
-            amount=600000,
+            amount=total_amount,
             payment_method="bank",
             status="completed",
             transaction_id="WORKERPAYOUTREADY1",
@@ -1800,7 +2227,7 @@ class BookingPaymentTests(TestCase):
         self.assertEqual(create_bank_transfer_mock.call_count, 3)
         self.assertSetEqual(
             set(settlements.values_list("status", flat=True)),
-            {PaymentSettlement.Status.PAID},
+            {PaymentSettlement.Status.PROCESSING},
         )
         self.assertTrue(all(settlements.values_list("transfer_reference", flat=True)))
         self.assertEqual(len(mail.outbox), 3)
@@ -1851,7 +2278,7 @@ class BookingRentalProgressTests(TestCase):
         self.assertEqual(initial_response.status_code, 200, initial_response.json())
         self.assertEqual(initial_response.json()["landlord_name"], self.landlord.name)
         self.assertEqual(initial_response.json()["rental_progress"]["progress_percent"], 0.0)
-        self.assertEqual(len(initial_response.json()["rental_progress"]["steps"]), 8)
+        self.assertEqual(len(initial_response.json()["rental_progress"]["steps"]), 9)
 
         update_response = client.patch(
             f"/api/v1/bookings/{self.booking.id}/rental-progress",
@@ -1862,7 +2289,7 @@ class BookingRentalProgressTests(TestCase):
         self.assertEqual(update_response.status_code, 200, update_response.json())
         payload = update_response.json()
         self.assertEqual(payload["rental_progress"]["completed_count"], 1)
-        self.assertEqual(payload["rental_progress"]["progress_percent"], 12.5)
+        self.assertEqual(payload["rental_progress"]["progress_percent"], 11.1)
         first_completed_at = next(
             step["completed_at"]
             for step in payload["rental_progress"]["steps"]
@@ -1879,7 +2306,7 @@ class BookingRentalProgressTests(TestCase):
         self.assertEqual(next_response.status_code, 200, next_response.json())
         next_payload = next_response.json()
         self.assertEqual(next_payload["rental_progress"]["completed_count"], 2)
-        self.assertEqual(next_payload["rental_progress"]["progress_percent"], 25.0)
+        self.assertEqual(next_payload["rental_progress"]["progress_percent"], 22.2)
         first_step = next(
             step
             for step in next_payload["rental_progress"]["steps"]
@@ -2214,6 +2641,13 @@ class TenantScreeningSummaryTests(TestCase):
 
 
 class SeedDemoTests(TestCase):
+    @override_settings(SEED_DEMO_ACCOUNTS=True, ENVIRONMENT="production")
+    def test_seed_demo_skips_production_environment(self):
+        call_command("seed_demo_data")
+
+        self.assertEqual(AppUser.objects.count(), 0)
+        self.assertEqual(VerificationRequest.objects.count(), 0)
+
     @override_settings(SEED_DEMO_ACCOUNTS=True)
     def test_seed_demo_resolves_seed_assets_with_alternate_extensions(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -2235,12 +2669,12 @@ class SeedDemoTests(TestCase):
                 call_command("seed_demo_data")
                 call_command("seed_demo_data")
 
-        self.assertEqual(AppUser.objects.filter(role=AppUser.Role.LANDLORD).count(), 2)
-        self.assertEqual(AppUser.objects.filter(role=AppUser.Role.TENANT).count(), 2)
-        self.assertEqual(Listing.objects.count(), 3)
-        self.assertEqual(Document.objects.count(), 4)
-        self.assertEqual(VerificationRequest.objects.count(), 4)
-        self.assertEqual(Listing.objects.filter(featured=True).count(), 3)
+        self.assertEqual(AppUser.objects.filter(role=AppUser.Role.LANDLORD).count(), 1)
+        self.assertEqual(AppUser.objects.filter(role=AppUser.Role.TENANT).count(), 1)
+        self.assertEqual(Listing.objects.count(), 1)
+        self.assertEqual(Document.objects.count(), 1)
+        self.assertEqual(VerificationRequest.objects.count(), 2)
+        self.assertEqual(Listing.objects.filter(featured=True).count(), 1)
 
         jade = AppUser.objects.get(email="criyo.career+jade@gmail.com")
         self.assertEqual(jade.role, AppUser.Role.TENANT)
@@ -2255,16 +2689,20 @@ class SeedDemoTests(TestCase):
         self.assertEqual(jade.tenant_verification_profile["nin_number"], "98311128454")
         self.assertTrue(jade.profile_photo.name.endswith(".jpg"))
         self.assertTrue(jade.is_verified)
-        self.assertEqual(TenantProfile.objects.count(), 2)
+        self.assertEqual(TenantProfile.objects.count(), 1)
         jade_profile = TenantProfile.objects.get(user=jade)
         self.assertEqual(jade_profile.status, TenantProfile.Status.APPROVED)
         self.assertEqual(jade_profile.first_name, "Jade")
         self.assertEqual(str(jade_profile.date_of_birth), "1990-01-01")
         self.assertEqual(jade_profile.residence_city, "Ibadan")
         self.assertEqual(jade_profile.employment_info["company_name"], "Bluebird Analytics Limited")
-        self.assertEqual(jade_profile.financial_info["current_rent_amount"], "15000000")
-        self.assertEqual(jade_profile.financial_info["current_move_in_date"], "2019-01-01")
+        self.assertEqual(jade_profile.financial_info["current_rent_amount"], "1500000")
+        self.assertEqual(jade_profile.financial_info["current_move_in_date"], "2000-01-01")
+        self.assertEqual(jade_profile.landlord_info["name"], "Mr. Adewale Balogun")
+        self.assertEqual(jade_profile.landlord_info["property_manager_email"], "soma@propertymanagement.example.com")
         self.assertEqual(jade_profile.rental_history[0]["property_address"], "123 Main Street, Jericho, Ibadan")
+        self.assertEqual(jade_profile.rental_history[0]["move_out_date"], "2026-08-01")
+        self.assertFalse(jade_profile.household_info["has_smokers"])
         self.assertFalse(jade_profile.criminal_declaration["convicted_of_crime"])
         jade_verification = VerificationRequest.objects.get(user=jade)
         self.assertEqual(jade_verification.status, VerificationRequest.Status.APPROVED)
@@ -2273,12 +2711,14 @@ class SeedDemoTests(TestCase):
             VerificationRequest.VerificationProgressStatus.VERIFIED,
         )
         self.assertEqual(jade_verification.verification_method, VerificationRequest.Method.AUTOMATED)
-
-        subomi = AppUser.objects.get(email="criyo.career+funke@gmail.com")
-        subomi_profile = TenantProfile.objects.get(user=subomi)
-        self.assertEqual(subomi_profile.employment_status, "Self Employed")
-        self.assertEqual(subomi_profile.financial_info["business_name"], "Subomi Home Essentials")
-        self.assertEqual(len(subomi_profile.rental_history), 2)
+        self.assertEqual(
+            jade_verification.property_document_verification_status,
+            VerificationRequest.VerificationProgressStatus.VERIFIED,
+        )
+        self.assertEqual(
+            jade_verification.physical_property_status,
+            VerificationRequest.VerificationProgressStatus.VERIFIED,
+        )
 
         christian = AppUser.objects.get(email="criyo.career+chris@gmail.com")
         self.assertEqual(christian.role, AppUser.Role.LANDLORD)
@@ -2286,20 +2726,60 @@ class SeedDemoTests(TestCase):
         self.assertEqual(christian.landlord_verification_type, AppUser.LandlordVerificationType.INDIVIDUAL)
         self.assertEqual(christian.landlord_verification_profile["first_name"], "Christian")
         self.assertEqual(christian.landlord_verification_profile["kyc"]["id_number"], "98376728472")
-        self.assertEqual(christian.landlord_verification_profile["banking_information"]["account_number"], "9041487757")
-        self.assertTrue(christian.landlord_verification_profile["rental_preferences"]["pets_allowed"])
-
-        femi = AppUser.objects.get(email="criyo.career+femi@gmail.com")
-        self.assertEqual(femi.landlord_verification_type, AppUser.LandlordVerificationType.CORPORATE)
-        self.assertEqual(femi.name, "Femi Adewale Odukoya")
-        self.assertEqual(femi.nin_number, "78937873878")
-        self.assertEqual(femi.landlord_verification_profile["company_information"]["registered_company_name"], "Odukoya Homes Limited")
-        self.assertEqual(femi.landlord_verification_profile["authorized_representative"]["lga_of_origin"], "Abeokuta South")
-        self.assertEqual(femi.landlord_verification_profile["banking_information"]["account_number"], "0123498765")
+        self.assertEqual(christian.landlord_verification_profile["banking_information"]["account_number"], "8099446062")
+        self.assertEqual(christian.landlord_verification_profile["employment_status"], "Employed")
+        self.assertEqual(christian.landlord_verification_profile["occupation"], "Cloud Engineer")
+        self.assertEqual(christian.landlord_verification_profile["employer_name"], "Conoco Philips")
+        self.assertEqual(christian.landlord_verification_profile["job_title"], "Software Engineer")
+        self.assertEqual(christian.landlord_verification_profile["employment_type"], "Full-time")
+        self.assertEqual(christian.landlord_verification_profile["years_employed"], "5")
+        self.assertEqual(christian.landlord_verification_profile["work_address"], "13 Ajose Adeogun, Victoria Island, Lagos, Nigeria")
+        self.assertEqual(christian.landlord_verification_profile["work_email"], "christian.aluya@conocophilips.com")
+        self.assertEqual(christian.landlord_verification_profile["hr_contact_name"], "Harriet Adams")
+        self.assertEqual(christian.landlord_verification_profile["hr_contact_number"], "+2348091122334")
+        self.assertEqual(christian.landlord_verification_profile["hr_contact_email"], "harriet.adams@conocophilips.com")
+        christian_verification = VerificationRequest.objects.get(user=christian)
+        self.assertEqual(christian_verification.status, VerificationRequest.Status.APPROVED)
+        self.assertEqual(
+            christian_verification.identity_verification_status,
+            VerificationRequest.VerificationProgressStatus.VERIFIED,
+        )
+        self.assertEqual(
+            christian_verification.property_document_verification_status,
+            VerificationRequest.VerificationProgressStatus.VERIFIED,
+        )
+        self.assertEqual(
+            christian_verification.physical_property_status,
+            VerificationRequest.VerificationProgressStatus.VERIFIED,
+        )
+        self.assertEqual(christian_verification.verification_method, VerificationRequest.Method.AUTOMATED)
+        client = APIClient()
+        client.force_authenticate(user=christian)
+        status_response = client.get("/api/v1/landlord-verification-requests/status")
+        self.assertEqual(status_response.status_code, 200, status_response.json())
+        status_payload = status_response.json()
+        self.assertEqual(status_payload["identification"]["status"], "verified")
+        self.assertEqual(status_payload["property_documents"]["status"], "verified")
+        self.assertEqual(status_payload["physical_property"]["status"], "verified")
+        self.assertEqual(status_payload["verification_method"], "automated")
+        christian_listing = Listing.objects.get(landlord=christian, seed_key="01")
+        self.assertEqual(christian_listing.ownership_status, "")
+        self.assertEqual(christian_listing.ownership_types, ["Sole Owner"])
+        self.assertEqual(christian_listing.property_ownership_documents, ["Certificat of Occupancy (Cof)", "Deed of Assignment", "Governor's Consent"])
+        self.assertTrue(christian_listing.property_document_submission["in_person_verification_requested"])
+        self.assertEqual(christian_listing.property_documents.count(), 0)
+        self.assertEqual(christian_listing.property_document_verification_status, VerificationRequest.VerificationProgressStatus.VERIFIED)
+        self.assertEqual(christian_listing.physical_property_status, VerificationRequest.VerificationProgressStatus.VERIFIED)
+        self.assertEqual(str(christian_listing.deposit_amount), "80.00")
+        self.assertEqual(str(christian_listing.available_from), "2026-08-12")
+        self.assertEqual(christian_listing.minimum_rental_duration, "12")
+        self.assertEqual(christian_listing.maximum_occupancy, 5)
+        self.assertTrue(christian_listing.pet_friendly)
+        self.assertTrue(christian_listing.expatriates_allowed)
 
         response = self.client.get("/api/v1/featured/listings")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.json()), 3)
+        self.assertEqual(len(response.json()), 1)
 
     @override_settings(SEED_DEMO_ACCOUNTS=True)
     def test_seed_demo_updates_existing_seeded_listing_instead_of_creating_duplicate(self):
@@ -2316,7 +2796,7 @@ class SeedDemoTests(TestCase):
                 call_command("seed_demo_data")
 
         refreshed = Listing.objects.get(id=original_id)
-        self.assertEqual(Listing.objects.filter(landlord__email="criyo.career+chris@gmail.com").count(), 2)
+        self.assertEqual(Listing.objects.filter(landlord__email="criyo.career+chris@gmail.com").count(), 1)
         self.assertEqual(refreshed.seed_key, "01")
         self.assertEqual(refreshed.title, "Modern 4 bedroom Apartment")
 
@@ -2783,6 +3263,170 @@ class SubscriptionPaymentTests(TestCase):
         self.assertEqual(payment.status, SubscriptionPayment.Status.COMPLETED)
         self.assertEqual(payment.provider, "flutterwave")
         self.assertIsNotNone(payment.payment_date)
+
+    @override_settings(
+        FLUTTERWAVE_PUBLIC_KEY="test-public-key",
+        FLUTTERWAVE_SECRET_KEY="test-secret-key",
+        FLUTTERWAVE_CLIENT_ID="test-client-id",
+        FLUTTERWAVE_CLIENT_SECRET="test-client-secret",
+        FLUTTERWAVE_API_BASE_URL="https://developersandbox-api.flutterwave.com",
+        FLUTTERWAVE_ENCRYPTION_KEY="MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+        WEB_PUBLIC_URL="http://localhost:5173",
+    )
+    @patch("core.views.create_charge")
+    @patch("core.views.create_card_payment_method")
+    @patch("core.views.create_customer")
+    def test_landlord_can_start_recurring_subscription_with_tokenized_card(
+        self,
+        create_customer_mock,
+        create_card_payment_method_mock,
+        create_charge_mock,
+    ):
+        landlord = AppUser.objects.create_user(
+            email="landlord-recurring-subscription@example.com",
+            password="password-123",
+            name="Recurring Landlord",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+        )
+        create_customer_mock.return_value = {"status": "success", "data": {"id": "cus_recurring_123"}}
+        create_card_payment_method_mock.return_value = {
+            "status": "success",
+            "data": {
+                "id": "pmd_recurring_123",
+                "customer_id": "cus_recurring_123",
+                "type": "card",
+                "card": {
+                    "first6": "539983",
+                    "last4": "8381",
+                    "network": "mastercard",
+                    "expiry_month": 8,
+                    "expiry_year": 32,
+                },
+            },
+        }
+
+        def charge_response(**kwargs):
+            return {
+                "status": "success",
+                "data": {
+                    "id": "chg_recurring_123",
+                    "reference": kwargs["reference"],
+                    "status": "succeeded",
+                    "amount": str(kwargs["amount"]),
+                    "currency": kwargs["currency"],
+                    "customer": {"email": landlord.email},
+                    "payment_method": {
+                        "id": "pmd_recurring_123",
+                        "type": "card",
+                        "card": {
+                            "last4": "8381",
+                            "network": "mastercard",
+                        },
+                    },
+                },
+            }
+
+        create_charge_mock.side_effect = charge_response
+
+        client = APIClient()
+        client.force_authenticate(user=landlord)
+        response = client.post(
+            "/api/v1/subscriptions/request",
+            {
+                "plan_code": "gold",
+                "billing_cycle": "monthly",
+                "recurring": True,
+                "card": {
+                    "nonce": "abc123def456",
+                    "encrypted_card_number": "encrypted-card",
+                    "encrypted_expiry_month": "encrypted-month",
+                    "encrypted_expiry_year": "encrypted-year",
+                    "encrypted_cvv": "encrypted-cvv",
+                },
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.json())
+        payload = response.json()
+        self.assertEqual(payload["status"], SubscriptionPayment.Status.COMPLETED)
+        self.assertTrue(payload["recurring_enabled"])
+        self.assertEqual(payload["payment_method"]["card_last4"], "8381")
+        payment = SubscriptionPayment.objects.get(id=payload["id"])
+        self.assertEqual(payment.provider_charge_id, "chg_recurring_123")
+        self.assertEqual(payment.billing_reason, "recurring_initial")
+        self.assertEqual(payment.payment_method.provider_payment_method_id, "pmd_recurring_123")
+        self.assertEqual(SubscriptionPaymentMethod.objects.filter(user=landlord).count(), 1)
+        self.assertEqual(create_charge_mock.call_args.kwargs["recurring"], True)
+
+    @override_settings(
+        FLUTTERWAVE_PUBLIC_KEY="test-public-key",
+        FLUTTERWAVE_SECRET_KEY="test-secret-key",
+        FLUTTERWAVE_CLIENT_ID="test-client-id",
+        FLUTTERWAVE_CLIENT_SECRET="test-client-secret",
+        FLUTTERWAVE_API_BASE_URL="https://developersandbox-api.flutterwave.com",
+        WEB_PUBLIC_URL="http://localhost:5173",
+    )
+    @patch("core.views.create_charge")
+    def test_due_recurring_subscription_is_renewed_with_saved_payment_method(self, create_charge_mock):
+        tenant = AppUser.objects.create_user(
+            email="tenant-recurring-renewal@example.com",
+            password="password-123",
+            name="Recurring Renewal Tenant",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        payment_method = SubscriptionPaymentMethod.objects.create(
+            user=tenant,
+            provider_customer_id="cus_renewal_123",
+            provider_payment_method_id="pmd_renewal_123",
+            card_last4="4242",
+            card_network="visa",
+        )
+        initial_payment = SubscriptionPayment.objects.create(
+            user=tenant,
+            role=tenant.role,
+            plan_code=SubscriptionPayment.PlanCode.SILVER,
+            billing_cycle=SubscriptionPayment.BillingCycle.MONTHLY,
+            amount="200.00",
+            currency="NGN",
+            status=SubscriptionPayment.Status.COMPLETED,
+            provider="flutterwave",
+            transaction_id="SUBRECURINIT001",
+            payment_date=timezone.now() - timedelta(days=31),
+            expires_at=timezone.now() - timedelta(minutes=5),
+            payment_method=payment_method,
+            recurring_enabled=True,
+            billing_reason="recurring_initial",
+        )
+
+        def charge_response(**kwargs):
+            return {
+                "status": "success",
+                "data": {
+                    "id": "chg_renewal_123",
+                    "reference": kwargs["reference"],
+                    "status": "succeeded",
+                    "amount": "200.00",
+                    "currency": kwargs["currency"],
+                    "customer": {"email": tenant.email},
+                },
+            }
+
+        create_charge_mock.side_effect = charge_response
+
+        from core.views import process_due_subscription_renewals
+
+        result = process_due_subscription_renewals()
+
+        self.assertEqual(result, {"checked": 1, "renewed": 1, "failed": 0})
+        renewal = SubscriptionPayment.objects.get(renewed_from=initial_payment)
+        self.assertEqual(renewal.status, SubscriptionPayment.Status.COMPLETED)
+        self.assertTrue(renewal.recurring_enabled)
+        self.assertEqual(renewal.provider_charge_id, "chg_renewal_123")
+        self.assertEqual(renewal.payment_method, payment_method)
+        self.assertEqual(create_charge_mock.call_args.kwargs["payment_method_id"], "pmd_renewal_123")
 
 
 class DashboardTests(TestCase):

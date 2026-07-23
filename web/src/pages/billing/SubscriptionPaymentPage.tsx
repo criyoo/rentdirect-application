@@ -14,6 +14,8 @@ type SubscriptionPayment = {
     amount: number | string
     currency: string
     status: string
+    recurring_enabled?: boolean
+    next_action_url?: string
     payment_date: string | null
 }
 
@@ -62,6 +64,10 @@ export default function SubscriptionPaymentPage() {
 
             const payload: SubscriptionCheckoutResponse = await response.json()
             setPayment(payload.payment)
+            if (payload.payment.next_action_url) {
+                window.location.assign(payload.payment.next_action_url)
+                return
+            }
             const launched = await launchHostedCheckout(payload.checkout)
             if (!launched) {
                 throw new Error('Unable to start Flutterwave checkout')
@@ -179,7 +185,7 @@ export default function SubscriptionPaymentPage() {
     }, [checkoutReference, checkoutStatus, checkoutTransactionId])
 
     useEffect(() => {
-        if (!paymentId || !payment || payment.status !== 'pending' || checkoutReference || hasAttemptedAutoStart || isStarting) {
+        if (!paymentId || !payment || payment.status !== 'pending' || payment.recurring_enabled || checkoutReference || hasAttemptedAutoStart || isStarting) {
             return
         }
 
@@ -251,11 +257,23 @@ export default function SubscriptionPaymentPage() {
                         </div>
                     ) : (
                         <div className="p-4 rounded-lg bg-blue-50 text-blue-800 mb-4">
-                            Redirecting to payment page to complete your subscription payment.
+                            {payment?.recurring_enabled
+                                ? 'Recurring card charge is pending provider confirmation.'
+                                : 'Redirecting to payment page to complete your subscription payment.'}
                         </div>
                     )}
 
-                    {payment?.status === 'pending' && (
+                    {payment?.status === 'pending' && payment.next_action_url && (
+                        <button
+                            type="button"
+                            onClick={() => window.location.assign(payment.next_action_url || '')}
+                            className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors"
+                        >
+                            Complete Authentication
+                        </button>
+                    )}
+
+                    {payment?.status === 'pending' && !payment.recurring_enabled && !payment.next_action_url && (
                         <div className="grid gap-3 sm:grid-cols-2">
                             <button
                                 onClick={() => void startCheckout()}

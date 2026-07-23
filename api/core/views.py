@@ -1,3 +1,5 @@
+import base64
+import binascii
 import uuid
 from calendar import monthrange
 from datetime import timedelta
@@ -42,6 +44,7 @@ from .models import (
     PaymentSettlement,
     Review,
     SubscriptionPayment,
+    SubscriptionPaymentMethod,
     SupportChatMessage,
     TenantProfile,
     VerificationRequest,
@@ -49,12 +52,16 @@ from .models import (
 from .flutterwave import (
     FlutterwaveError,
     build_checkout_payload,
+    create_card_payment_method,
+    create_charge,
     create_customer,
     create_bank_transfer,
     create_dynamic_virtual_account,
     create_transfer_recipient,
     extract_customer_email,
+    extract_next_action_url,
     extract_payment_channel_details,
+    extract_payment_method_card_details,
     extract_payment_state,
     extract_provider_transaction_id,
     extract_resource_id,
@@ -63,6 +70,7 @@ from .flutterwave import (
     map_redirect_status,
     normalize_decimal_amount,
     query_transaction,
+    should_use_v4,
     verify_webhook_signature,
 )
 from .dikript import verify_cac, verify_nin_and_bvn
@@ -72,7 +80,7 @@ from .notifications import (
     send_rentdirect_internal_transfer_notification,
 )
 from .permissions import IsAdminRole, IsLandlordOrAdmin
-from .pricing import calculate_remaining_balance, resolve_booking_total
+from .pricing import calculate_deposit_amount, calculate_remaining_balance, resolve_booking_total
 from .security import OTP_MAX_ATTEMPTS, OTP_TTL_MINUTES, contains_contact_info, generate_otp, hash_otp, otp_matches
 from .tenant_verification import normalize_tenant_verification_profile
 from .throttling import production_ratelimit
@@ -96,6 +104,7 @@ from .serializers import (
     SettingsPasswordSerializer,
     SubscriptionPaymentRequestSerializer,
     SubscriptionPaymentSerializer,
+    SubscriptionPaymentMethodSerializer,
     SupportChatMessageSerializer,
     TenantProfileSerializer,
     UserSerializer,
@@ -126,9 +135,13 @@ def build_booking_payment_reference() -> str:
     return f"BOOK{uuid.uuid4().hex[:20].upper()}"
 
 
+def build_subscription_payment_reference() -> str:
+    return f"SUB{uuid.uuid4().hex[:20].upper()}"
+
+
 def is_valid_flutterwave_reference(reference: str) -> bool:
     normalized = str(reference or "").strip()
-    return 6 <= len(normalized) <= 42 and normalized.isalnum()
+    return 6 <= len(normalized) <= 42 and all(character.isalnum() or character == "-" for character in normalized)
 
 
 def verify_tenant_identity_or_raise(user, profile_data: dict, nin_number: str, bvn_number: str) -> tuple[dict, dict]:
@@ -627,8 +640,7 @@ def build_landlord_public_profile_payload(landlord: AppUser) -> dict:
         and latest_verification.identity_verification_status == VerificationRequest.VerificationProgressStatus.VERIFIED
     )
     house_ownership_verified = bool(
-        latest_verification
-        and latest_verification.property_document_verification_status == VerificationRequest.VerificationProgressStatus.VERIFIED
+        listings.filter(property_document_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED).exists()
     )
     phone_verified = bool((landlord.mobile or "").strip())
     email_verified = bool(landlord.email_verified)
@@ -730,6 +742,28 @@ def build_booking_virtual_account_payload(payment: Payment) -> dict:
     }
 
 
+def clear_payment_virtual_account_fields(payment: Payment) -> list[str]:
+    fields = [
+        "virtual_account_reference",
+        "virtual_account_id",
+        "virtual_account_number",
+        "virtual_account_bank_name",
+        "virtual_account_bank_code",
+    ]
+    changed_fields = []
+    for field in fields:
+        if getattr(payment, field):
+            setattr(payment, field, "")
+            changed_fields.append(field)
+    if payment.virtual_account_payload is not None:
+        payment.virtual_account_payload = None
+        changed_fields.append("virtual_account_payload")
+    if payment.virtual_account_expiry is not None:
+        payment.virtual_account_expiry = None
+        changed_fields.append("virtual_account_expiry")
+    return changed_fields
+
+
 def ensure_booking_virtual_account(payment: Payment) -> dict:
     if payment.virtual_account_number:
         return build_booking_virtual_account_payload(payment)
@@ -802,6 +836,14 @@ def ensure_booking_virtual_account(payment: Payment) -> dict:
     return build_booking_virtual_account_payload(payment)
 
 
+def prepare_booking_payment_checkout(payment: Payment) -> tuple[dict, str, list[str]]:
+    if payment.payment_method == "bank":
+        return ensure_booking_virtual_account(payment), "dynamic_virtual_account", []
+
+    cleared_fields = clear_payment_virtual_account_fields(payment)
+    return build_booking_checkout(payment), "inline_checkout", cleared_fields
+
+
 def build_featured_checkout(payment: FeaturedPayment) -> dict:
     listing = payment.listing
     return build_checkout_payload(
@@ -826,7 +868,7 @@ def build_featured_checkout(payment: FeaturedPayment) -> dict:
 
 def build_subscription_checkout(payment: SubscriptionPayment) -> dict:
     return build_checkout_payload(
-        reference=payment.transaction_id or f"SUB_{uuid.uuid4().hex[:20].upper()}",
+        reference=payment.transaction_id or build_subscription_payment_reference(),
         amount=payment.amount,
         currency=payment.currency,
         email=payment.user.email,
@@ -845,6 +887,207 @@ def build_subscription_checkout(payment: SubscriptionPayment) -> dict:
         customer_phone=payment.user.mobile,
         webhook_url=build_flutterwave_webhook_url(),
     )
+
+
+def subscription_duration_days(billing_cycle: str) -> int:
+    return 30 if billing_cycle == SubscriptionPayment.BillingCycle.MONTHLY else 365
+
+
+def ensure_flutterwave_recurring_configured() -> None:
+    ensure_flutterwave_recurring_charge_configured()
+    if not flutterwave_encryption_key_is_configured():
+        raise ValidationError("Flutterwave card encryption is not configured on the server.")
+
+
+def ensure_flutterwave_recurring_charge_configured() -> None:
+    if not should_use_v4():
+        raise ValidationError("Flutterwave recurring card payments require v4 client credentials.")
+
+
+def flutterwave_encryption_key_is_configured() -> bool:
+    encryption_key = str(getattr(settings, "FLUTTERWAVE_ENCRYPTION_KEY", "") or "").strip()
+    if not encryption_key:
+        return False
+    try:
+        decoded_key = base64.b64decode(encryption_key, validate=True)
+    except (ValueError, binascii.Error):
+        return False
+    return len(decoded_key) in {16, 24, 32}
+
+
+def upsert_subscription_payment_method(
+    *,
+    user: AppUser,
+    customer_id: str,
+    payment_method_response: dict,
+) -> SubscriptionPaymentMethod:
+    card_details = extract_payment_method_card_details(payment_method_response)
+    provider_payment_method_id = card_details["id"]
+    if not provider_payment_method_id:
+        raise FlutterwaveError("Flutterwave did not return a payment method id.")
+
+    existing_method = SubscriptionPaymentMethod.objects.filter(
+        provider_payment_method_id=provider_payment_method_id,
+    ).first()
+    if existing_method and existing_method.user_id != user.id:
+        raise ValidationError("This payment method belongs to another account.")
+
+    stored_customer_id = card_details["customer_id"] or customer_id
+    payment_method, _ = SubscriptionPaymentMethod.objects.update_or_create(
+        provider_payment_method_id=provider_payment_method_id,
+        defaults={
+            "user": user,
+            "provider": "flutterwave",
+            "provider_customer_id": stored_customer_id,
+            "payment_type": card_details["type"] or "card",
+            "status": SubscriptionPaymentMethod.Status.ACTIVE,
+            "card_first6": card_details["first6"],
+            "card_last4": card_details["last4"],
+            "card_network": card_details["network"],
+            "card_expiry_month": card_details["expiry_month"] or None,
+            "card_expiry_year": card_details["expiry_year"] or None,
+            "provider_payload": payment_method_response,
+        },
+    )
+    return payment_method
+
+
+def resolve_subscription_payment_method(user: AppUser, validated_data: dict) -> SubscriptionPaymentMethod:
+    payment_method_id = validated_data.get("payment_method_id")
+    if payment_method_id:
+        return get_object_or_404(
+            SubscriptionPaymentMethod,
+            id=payment_method_id,
+            user=user,
+            provider="flutterwave",
+            status=SubscriptionPaymentMethod.Status.ACTIVE,
+        )
+
+    encrypted_card = validated_data.get("card")
+    if not encrypted_card:
+        raise ValidationError({"card": "Card details are required to enable recurring payments."})
+
+    ensure_flutterwave_recurring_configured()
+    customer_response = create_customer(
+        email=user.email,
+        full_name=user.name,
+        phone_number=user.mobile,
+        metadata={"user_id": str(user.id), "role": user.role, "purpose": "subscription_recurring"},
+        idempotency_key=f"sub-recurring-customer-{user.id}",
+    )
+    customer_id = extract_resource_id(customer_response)
+    if not customer_id:
+        raise FlutterwaveError("Flutterwave did not return a customer id for recurring payments.")
+
+    payment_method_response = create_card_payment_method(
+        customer_id=customer_id,
+        encrypted_card=encrypted_card,
+        metadata={"user_id": str(user.id), "role": user.role, "purpose": "subscription_recurring"},
+        idempotency_key=f"sub-recurring-card-{user.id}-{encrypted_card.get('nonce')}",
+    )
+    return upsert_subscription_payment_method(
+        user=user,
+        customer_id=customer_id,
+        payment_method_response=payment_method_response,
+    )
+
+
+def charge_subscription_with_payment_method(payment: SubscriptionPayment, *, source: str) -> SubscriptionPayment:
+    if not payment.payment_method:
+        raise ValidationError("A saved card is required for recurring subscription charges.")
+    ensure_flutterwave_recurring_charge_configured()
+    if not payment.transaction_id:
+        payment.transaction_id = build_subscription_payment_reference()
+        payment.save(update_fields=["transaction_id", "updated_at"])
+
+    payment_method = payment.payment_method
+    charge_payload = create_charge(
+        reference=payment.transaction_id,
+        amount=payment.amount,
+        currency=payment.currency,
+        customer_id=payment_method.provider_customer_id,
+        payment_method_id=payment_method.provider_payment_method_id,
+        redirect_url=build_subscription_payment_return_url(payment),
+        recurring=True,
+        metadata={
+            "subscription_payment_id": str(payment.id),
+            "user_id": str(payment.user_id),
+            "customer_type": payment.role,
+            "plan_code": payment.plan_code,
+            "billing_cycle": payment.billing_cycle,
+            "billing_reason": payment.billing_reason,
+        },
+        idempotency_key=f"{payment.transaction_id}-recurring-charge",
+    )
+    payment.provider_charge_id = extract_provider_transaction_id(charge_payload)
+    payment.provider_payload = update_payment_provider_payload(
+        payment.provider_payload,
+        charge_payload,
+        recurring={"source": source, "charged_at": timezone.now().isoformat()},
+    )
+    payment.provider = "flutterwave"
+    payment.save(update_fields=["provider_charge_id", "provider_payload", "provider", "updated_at"])
+    return sync_subscription_payment(payment, payload=charge_payload, source=source)
+
+
+def process_due_subscription_renewals(*, now=None) -> dict[str, int]:
+    now = now or timezone.now()
+    due_payments = (
+        SubscriptionPayment.objects.select_related("user", "payment_method")
+        .filter(
+            status=SubscriptionPayment.Status.COMPLETED,
+            recurring_enabled=True,
+            amount__gt=0,
+            expires_at__lte=now,
+            payment_method__status=SubscriptionPaymentMethod.Status.ACTIVE,
+        )
+        .filter(renewal_payments__isnull=True)
+        .order_by("expires_at", "created_at")
+    )
+
+    checked = 0
+    renewed = 0
+    failed = 0
+    for payment in due_payments:
+        checked += 1
+        renewal = SubscriptionPayment.objects.create(
+            user=payment.user,
+            role=payment.role,
+            plan_code=payment.plan_code,
+            billing_cycle=payment.billing_cycle,
+            amount=payment.amount,
+            currency=payment.currency,
+            provider="flutterwave",
+            status=SubscriptionPayment.Status.PENDING,
+            transaction_id=build_subscription_payment_reference(),
+            expires_at=payment.expires_at + timedelta(days=subscription_duration_days(payment.billing_cycle)),
+            payment_method=payment.payment_method,
+            recurring_enabled=True,
+            billing_reason="recurring_renewal",
+            renewed_from=payment,
+        )
+        try:
+            renewal = charge_subscription_with_payment_method(renewal, source="recurring_renewal")
+        except (FlutterwaveError, ValidationError) as exc:
+            renewal.status = SubscriptionPayment.Status.FAILED
+            renewal.recurring_enabled = False
+            renewal.provider_payload = update_payment_provider_payload(
+                renewal.provider_payload,
+                None,
+                recurring_error={"message": str(exc), "failed_at": timezone.now().isoformat()},
+            )
+            renewal.save(update_fields=["status", "recurring_enabled", "provider_payload", "updated_at"])
+            payment.recurring_enabled = False
+            payment.save(update_fields=["recurring_enabled", "updated_at"])
+            failed += 1
+            continue
+
+        if renewal.status == SubscriptionPayment.Status.COMPLETED:
+            renewed += 1
+        else:
+            failed += 1
+
+    return {"checked": checked, "renewed": renewed, "failed": failed}
 
 
 def verify_flutterwave_request_signature(request) -> Response | None:
@@ -912,23 +1155,84 @@ def resolve_landlord_payout_account(landlord: AppUser) -> dict:
         if account["bank_name"] and account["account_number"]:
             return account
 
-    return resolve_account_payload(
-        bank_name=settings.DEFAULT_LANDLORD_PAYOUT_BANK_NAME,
-        bank_code=settings.DEFAULT_LANDLORD_PAYOUT_BANK_CODE,
-        account_number=settings.DEFAULT_LANDLORD_PAYOUT_ACCOUNT_NUMBER,
-        account_name=settings.DEFAULT_LANDLORD_PAYOUT_ACCOUNT_NAME or landlord.name,
+    return resolve_account_payload(bank_name="", account_number="", account_name=landlord.name)
+
+
+CARD_PAYMENT_LIMIT_NGN = Decimal("7000000.00")
+
+
+def booking_payments_card_limit_exceeded(amount: Decimal) -> bool:
+    return normalize_decimal_amount(amount) > CARD_PAYMENT_LIMIT_NGN
+
+
+def completed_booking_payment_queryset(booking: Booking):
+    return (
+        Payment.objects
+        .filter(booking=booking, status="completed")
+        .order_by("payment_date", "created_at", "id")
     )
+
+
+def get_booking_full_payment_completion(booking: Booking) -> tuple[Payment | None, object | None]:
+    total_due = resolve_booking_total(booking.listing.price_per_year, booking.total_amount)
+    cumulative_paid = Decimal("0")
+
+    for completed_payment in completed_booking_payment_queryset(booking):
+        cumulative_paid += normalize_decimal_amount(completed_payment.amount)
+        if cumulative_paid >= total_due:
+            paid_at = completed_payment.payment_date or completed_payment.updated_at or completed_payment.created_at
+            return completed_payment, paid_at
+
+    return None, None
+
+
+def booking_is_fully_paid(booking: Booking) -> bool:
+    completion_payment, _completed_at = get_booking_full_payment_completion(booking)
+    return completion_payment is not None
+
+
+def validate_booking_payment_amount(booking: Booking, amount: Decimal, payment_method: str) -> None:
+    normalized_amount = normalize_decimal_amount(amount)
+    total_amount = resolve_booking_total(booking.listing.price_per_year, booking.total_amount)
+    remaining_balance = calculate_remaining_balance(total_amount, booking.paid_amount)
+
+    if normalized_amount <= 0:
+        raise ValidationError({"amount": "Amount must be greater than zero."})
+    if normalized_amount > remaining_balance:
+        raise ValidationError({"amount": "Amount exceeds the remaining balance."})
+
+    deposit_amount = calculate_deposit_amount(booking.listing.price_per_year)
+    paid_amount = normalize_decimal_amount(booking.paid_amount)
+    valid_initial_deposit = paid_amount == Decimal("0.00") and normalized_amount == deposit_amount
+    valid_full_balance = normalized_amount == remaining_balance
+    if not (valid_initial_deposit or valid_full_balance):
+        raise ValidationError(
+            {
+                "amount": (
+                    "Payment must be either the 20% deposit "
+                    f"({deposit_amount}) or the full remaining balance ({remaining_balance})."
+                )
+            }
+        )
+
+    if payment_method == "card" and booking_payments_card_limit_exceeded(normalized_amount):
+        raise ValidationError(
+            {
+                "payment_method": (
+                    "Flutterwave card payments are limited to NGN 7,000,000 per transaction. "
+                    "Please use Bank Transfer for this payment."
+                )
+            }
+        )
 
 
 def build_payment_settlement_specs(payment: Payment) -> list[dict]:
     annual_rent = normalize_decimal_amount(payment.booking.listing.price_per_year)
-    total_due = resolve_booking_total(payment.booking.listing.price_per_year, payment.booking.total_amount)
-    ratio = Decimal("0") if total_due <= 0 else normalize_decimal_amount(payment.amount) / total_due
     landlord_account = resolve_landlord_payout_account(payment.booking.listing.landlord)
-    specs = [
+    target_specs = [
         {
             "purpose": PaymentSettlement.Purpose.OPERATIONS,
-            "amount": normalize_decimal_amount(annual_rent * Decimal("0.10") * ratio),
+            "target_amount": normalize_decimal_amount(annual_rent * Decimal("0.10")),
             **resolve_account_payload(
                 bank_name=settings.RENTDIRECT_OPERATING_BANK_NAME,
                 bank_code=settings.RENTDIRECT_OPERATING_BANK_CODE,
@@ -938,7 +1242,7 @@ def build_payment_settlement_specs(payment: Payment) -> list[dict]:
         },
         {
             "purpose": PaymentSettlement.Purpose.CAUTION_FEE,
-            "amount": normalize_decimal_amount(annual_rent * Decimal("0.10") * ratio),
+            "target_amount": normalize_decimal_amount(annual_rent * Decimal("0.10")),
             **resolve_account_payload(
                 bank_name=settings.TENANT_CAUTION_HOLDING_BANK_NAME,
                 bank_code=settings.TENANT_CAUTION_HOLDING_BANK_CODE,
@@ -948,10 +1252,23 @@ def build_payment_settlement_specs(payment: Payment) -> list[dict]:
         },
         {
             "purpose": PaymentSettlement.Purpose.LANDLORD_RENT,
-            "amount": normalize_decimal_amount(annual_rent * ratio),
+            "target_amount": annual_rent,
             **landlord_account,
         },
     ]
+
+    specs = []
+    for spec in target_specs:
+        already_paid = PaymentSettlement.objects.filter(
+            payment__booking=payment.booking,
+            purpose=spec["purpose"],
+            status=PaymentSettlement.Status.PAID,
+        ).exclude(payment=payment).aggregate(total=Sum("amount"))["total"] or Decimal("0")
+        amount = normalize_decimal_amount(max(spec["target_amount"] - normalize_decimal_amount(already_paid), Decimal("0")))
+        if amount <= 0:
+            continue
+        specs.append({**spec, "amount": amount})
+
     missing_accounts = [
         spec["purpose"]
         for spec in specs
@@ -972,8 +1289,8 @@ def booking_payout_release_conditions_met(booking: Booking) -> bool:
     )
 
 
-def payment_payout_balance_available(payment: Payment, now=None) -> bool:
-    paid_at = payment.payment_date or payment.updated_at or payment.created_at
+def booking_payout_balance_available(booking: Booking, now=None) -> bool:
+    _completion_payment, paid_at = get_booking_full_payment_completion(booking)
     if not paid_at:
         return False
     payout_balance_delay = timedelta(hours=max(int(getattr(settings, "FLUTTERWAVE_PAYOUT_BALANCE_DELAY_HOURS", 24)), 0))
@@ -986,24 +1303,33 @@ def build_settlement_transfer_reference(payment: Payment, settlement: PaymentSet
     return f"{base_reference}-{suffix}"[:120]
 
 
-def update_settlement_tracking_for_waiting_balance(payment: Payment) -> None:
-    payout_balance_delay = timedelta(hours=max(int(getattr(settings, "FLUTTERWAVE_PAYOUT_BALANCE_DELAY_HOURS", 24)), 0))
-    payout_available_at = (payment.payment_date or timezone.now()) + payout_balance_delay
-    PaymentSettlement.objects.filter(
-        payment=payment,
-        status__in=[
-            PaymentSettlement.Status.PENDING,
-            PaymentSettlement.Status.RECIPIENT_CREATED,
-            PaymentSettlement.Status.READY,
-            PaymentSettlement.Status.FAILED,
-        ],
-    ).update(
-        last_error=f"Waiting for Flutterwave payout balance availability at {payout_available_at.isoformat()}",
-        updated_at=timezone.now(),
-    )
+def map_transfer_status_to_settlement_status(payload: dict | None) -> str:
+    provider_state = extract_payment_state(payload)
+    if provider_state == "completed":
+        return PaymentSettlement.Status.PAID
+    if provider_state in {"failed", "cancelled"}:
+        return PaymentSettlement.Status.FAILED
+    return PaymentSettlement.Status.PROCESSING
+
+
+def sync_payment_settlement_transfer(settlement: PaymentSettlement, payload: dict | None) -> PaymentSettlement:
+    next_status = map_transfer_status_to_settlement_status(payload)
+    settlement.transfer_payload = payload
+    settlement.last_error = "" if next_status != PaymentSettlement.Status.FAILED else "Flutterwave transfer failed."
+    settlement.status = next_status
+    update_fields = ["transfer_payload", "last_error", "status", "updated_at"]
+    if next_status == PaymentSettlement.Status.PAID and settlement.transferred_at is None:
+        settlement.transferred_at = timezone.now()
+        update_fields.append("transferred_at")
+    settlement.save(update_fields=update_fields)
+    return settlement
 
 
 def ensure_payment_settlement_records(payment: Payment) -> None:
+    PaymentSettlement.objects.filter(payment__booking=payment.booking).exclude(payment=payment).exclude(
+        status=PaymentSettlement.Status.PAID,
+    ).delete()
+
     for spec in build_payment_settlement_specs(payment):
         defaults = {
             "amount": spec["amount"],
@@ -1029,13 +1355,15 @@ def trigger_payment_settlements(payment: Payment) -> None:
     if payment.status != "completed" or not booking_payout_release_conditions_met(payment.booking):
         return
 
-    ensure_payment_settlement_records(payment)
-    if not payment_payout_balance_available(payment):
-        update_settlement_tracking_for_waiting_balance(payment)
+    completion_payment, _full_payment_completed_at = get_booking_full_payment_completion(payment.booking)
+    if not completion_payment or completion_payment.pk != payment.pk:
+        return
+    if not booking_payout_balance_available(payment.booking):
         return
 
+    ensure_payment_settlement_records(payment)
     for settlement in PaymentSettlement.objects.filter(payment=payment).order_by("purpose"):
-        if settlement.status == PaymentSettlement.Status.PAID and settlement.transfer_reference:
+        if settlement.status in {PaymentSettlement.Status.PAID, PaymentSettlement.Status.PROCESSING} and settlement.transfer_reference:
             continue
         if settlement.transfer_recipient_id:
             if settlement.status == PaymentSettlement.Status.RECIPIENT_CREATED:
@@ -1101,19 +1429,19 @@ def trigger_payment_settlements(payment: Payment) -> None:
 
         settlement.transfer_reference = transfer_reference
         settlement.transfer_payload = transfer_response
-        settlement.status = PaymentSettlement.Status.PAID
+        settlement.status = map_transfer_status_to_settlement_status(transfer_response)
         settlement.last_error = ""
-        settlement.transferred_at = timezone.now()
-        settlement.save(
-            update_fields=[
-                "transfer_reference",
-                "transfer_payload",
-                "status",
-                "last_error",
-                "transferred_at",
-                "updated_at",
-            ]
-        )
+        settlement_update_fields = [
+            "transfer_reference",
+            "transfer_payload",
+            "status",
+            "last_error",
+            "updated_at",
+        ]
+        if settlement.status == PaymentSettlement.Status.PAID:
+            settlement.transferred_at = timezone.now()
+            settlement_update_fields.append("transferred_at")
+        settlement.save(update_fields=settlement_update_fields)
 
         # Send settlement notification emails after successful recipient creation
         try:
@@ -1163,13 +1491,14 @@ def trigger_booking_payouts_if_ready(booking: Booking) -> None:
     if not booking_payout_release_conditions_met(booking):
         return
 
-    payments = (
+    completion_payment, _full_payment_completed_at = get_booking_full_payment_completion(booking)
+    if not completion_payment:
+        return
+    trigger_payment_settlements(
         Payment.objects
         .select_related("booking", "booking__tenant", "booking__listing", "booking__listing__landlord")
-        .filter(booking=booking, status="completed")
+        .get(pk=completion_payment.pk)
     )
-    for payment in payments:
-        trigger_payment_settlements(payment)
 
 
 def update_booking_after_completed_payment(payment: Payment) -> Payment:
@@ -1208,7 +1537,6 @@ def update_booking_after_completed_payment(payment: Payment) -> Payment:
         payment.status = "completed"
         payment.payment_date = timezone.now()
         payment.save(update_fields=["status", "payment_date", "updated_at"])
-        ensure_payment_settlement_records(payment)
 
         # Email #1: Notify landlord of successful tenant payment, CC tenant and RentDirect
         try:
@@ -1448,6 +1776,7 @@ def sync_subscription_payment(payment: SubscriptionPayment, *, transaction_id: s
         },
     )
     payment.provider = "flutterwave"
+    payment.provider_charge_id = extract_provider_transaction_id(charge_payload) or payment.provider_charge_id
     if source == "webhook":
         payment.webhook_data = charge_payload
 
@@ -1456,7 +1785,7 @@ def sync_subscription_payment(payment: SubscriptionPayment, *, transaction_id: s
         next_state = SubscriptionPayment.Status.FAILED
 
     if next_state == SubscriptionPayment.Status.COMPLETED:
-        payment.save(update_fields=["provider_payload", "provider", "webhook_data", "updated_at"])
+        payment.save(update_fields=["provider_payload", "provider", "provider_charge_id", "webhook_data", "updated_at"])
         return complete_subscription_payment(
             payment,
             webhook_data=charge_payload if source == "webhook" else payment.webhook_data,
@@ -1469,7 +1798,7 @@ def sync_subscription_payment(payment: SubscriptionPayment, *, transaction_id: s
         if next_state == SubscriptionPayment.Status.FAILED
         else SubscriptionPayment.Status.PENDING
     )
-    payment.save(update_fields=["status", "provider_payload", "provider", "webhook_data", "updated_at"])
+    payment.save(update_fields=["status", "provider_payload", "provider", "provider_charge_id", "webhook_data", "updated_at"])
     return payment
 
 
@@ -1876,7 +2205,7 @@ class ListingViewSet(viewsets.ModelViewSet):
         return [AllowAny()]
 
     def get_queryset(self):
-        qs = Listing.objects.select_related("landlord").prefetch_related("images")
+        qs = Listing.objects.select_related("landlord").prefetch_related("images", "property_documents")
         if (
             self.action == "retrieve"
             and getattr(self.request.user, "is_authenticated", False)
@@ -1899,7 +2228,7 @@ class ListingViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         if self.request.user.role == "landlord" and not self.request.user.is_verified:
-            raise PermissionDenied("Your account must be verified before listing properties. Please submit your verification documents.")
+            raise PermissionDenied("Your account identity must be verified before listing properties.")
         if self.request.user.role == AppUser.Role.LANDLORD and user_has_bronze_access(self.request.user):
             active_listing_count = Listing.objects.filter(landlord=self.request.user).exclude(status=Listing.Status.ARCHIVED).count()
             if active_listing_count >= 1:
@@ -2047,13 +2376,7 @@ class VerificationRequestBaseViewSet(viewsets.GenericViewSet):
         )
         physical_property_status = latest.physical_property_status or VerificationRequest.VerificationProgressStatus.UNVERIFIED
         overall_progress = VerificationRequest.VerificationProgressStatus.UNVERIFIED
-        if (
-            identification_status == VerificationRequest.VerificationProgressStatus.VERIFIED
-            and (
-                latest.user.role == AppUser.Role.TENANT
-                or property_document_status == VerificationRequest.VerificationProgressStatus.VERIFIED
-            )
-        ):
+        if identification_status == VerificationRequest.VerificationProgressStatus.VERIFIED:
             overall_progress = VerificationRequest.VerificationProgressStatus.VERIFIED
         elif (
             identification_status == VerificationRequest.VerificationProgressStatus.PENDING
@@ -2122,6 +2445,7 @@ class VerificationRequestBaseViewSet(viewsets.GenericViewSet):
             "physical_property_status",
             VerificationRequest.VerificationProgressStatus.UNVERIFIED,
         )
+        self.validate_submission(request, request_type, physical_property_status)
         docs = self.get_documents(request.user, doc_ids)
         verification = self.get_or_create_user_verification(request.user)
 
@@ -2140,6 +2464,9 @@ class VerificationRequestBaseViewSet(viewsets.GenericViewSet):
 
     def apply_submission(self, request, verification, request_type, physical_property_status, update_fields):
         raise NotImplementedError
+
+    def validate_submission(self, request, request_type, physical_property_status):
+        return None
 
     @action(detail=False, methods=["get"], url_path="pending", permission_classes=[IsAdminRole])
     def pending(self, request):
@@ -2223,7 +2550,14 @@ class VerificationRequestBaseViewSet(viewsets.GenericViewSet):
 class LandlordVerificationRequestViewSet(VerificationRequestBaseViewSet):
     user_role = AppUser.Role.LANDLORD
 
+    def validate_submission(self, request, request_type, physical_property_status):
+        if request_type == VerificationRequest.RequestType.PROPERTY_DOCUMENTS:
+            raise ValidationError({"request_type": "Property document verification is submitted from each listing."})
+
     def apply_submission(self, request, verification, request_type, physical_property_status, update_fields):
+        if request_type == VerificationRequest.RequestType.PROPERTY_DOCUMENTS:
+            raise ValidationError({"request_type": "Property document verification is submitted from each listing."})
+
         if request_type == VerificationRequest.RequestType.IDENTIFICATION:
             if request.user.role == AppUser.Role.LANDLORD and request.user.landlord_verification_profile:
                 verify_landlord_identity_or_raise(request.user)
@@ -2242,6 +2576,10 @@ class LandlordVerificationRequestViewSet(VerificationRequestBaseViewSet):
 
 class TenantVerificationRequestViewSet(VerificationRequestBaseViewSet):
     user_role = AppUser.Role.TENANT
+
+    def validate_submission(self, request, request_type, physical_property_status):
+        if request_type == VerificationRequest.RequestType.PROPERTY_DOCUMENTS:
+            raise ValidationError({"request_type": "Tenant verification requests do not accept property documents."})
 
     def apply_submission(self, request, verification, request_type, physical_property_status, update_fields):
         if request_type == VerificationRequest.RequestType.PROPERTY_DOCUMENTS:
@@ -2320,13 +2658,8 @@ class PaymentViewSet(viewsets.ModelViewSet):
             tenant=request.user,
         )
         amount = serializer.validated_data["amount"]
-        if amount <= 0:
-            raise ValidationError({"amount": "Amount must be greater than zero."})
-
-        total_amount = resolve_booking_total(booking.listing.price_per_year, booking.total_amount)
-        remaining_balance = calculate_remaining_balance(total_amount, booking.paid_amount)
-        if Decimal(amount) > remaining_balance:
-            raise ValidationError({"amount": "Amount exceeds the remaining balance."})
+        payment_method = serializer.validated_data["payment_method"]
+        validate_booking_payment_amount(booking, amount, payment_method)
 
         payment = (
             Payment.objects.filter(booking=booking, status__in=OPEN_PAYMENT_STATUSES)
@@ -2338,7 +2671,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
             payment = Payment.objects.create(
                 booking=booking,
                 amount=amount,
-                payment_method=serializer.validated_data["payment_method"],
+                payment_method=payment_method,
                 transaction_id=build_booking_payment_reference(),
                 currency="NGN",
                 provider="flutterwave",
@@ -2346,21 +2679,20 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 payment_date=timezone.now(),
             )
         else:
-            if normalize_decimal_amount(payment.amount) != normalize_decimal_amount(amount):
-                payment.virtual_account_reference = ""
-                payment.virtual_account_id = ""
-                payment.virtual_account_number = ""
-                payment.virtual_account_bank_name = ""
-                payment.virtual_account_bank_code = ""
-                payment.virtual_account_expiry = None
-                payment.virtual_account_payload = None
+            amount_changed = normalize_decimal_amount(payment.amount) != normalize_decimal_amount(amount)
+            method_changed = payment.payment_method != payment_method
+            if amount_changed:
+                payment.transaction_id = build_booking_payment_reference()
+                clear_payment_virtual_account_fields(payment)
+            elif method_changed:
+                clear_payment_virtual_account_fields(payment)
             payment.amount = amount
-            payment.payment_method = serializer.validated_data["payment_method"]
+            payment.payment_method = payment_method
             payment.provider = "flutterwave"
             payment.status = "pending"
 
         try:
-            checkout = ensure_booking_virtual_account(payment)
+            checkout, collection_mode, cleared_checkout_fields = prepare_booking_payment_checkout(payment)
         except FlutterwaveError as exc:
             return Response({"detail": str(exc)}, status=502)
         payment.provider_payload = update_payment_provider_payload(
@@ -2368,14 +2700,15 @@ class PaymentViewSet(viewsets.ModelViewSet):
             None,
             checkout=checkout,
             return_url=build_booking_payment_return_url(payment),
-            collection_mode="dynamic_virtual_account",
+            collection_mode=collection_mode,
         )
         payment.save(
-            update_fields=[
+            update_fields=list(dict.fromkeys([
                 "amount",
                 "payment_method",
                 "provider",
                 "status",
+                "transaction_id",
                 "virtual_account_reference",
                 "virtual_account_id",
                 "virtual_account_number",
@@ -2385,7 +2718,8 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 "virtual_account_payload",
                 "provider_payload",
                 "updated_at",
-            ]
+                *cleared_checkout_fields,
+            ]))
         )
 
         return Response(
@@ -2401,9 +2735,18 @@ class PaymentViewSet(viewsets.ModelViewSet):
         payment = self.get_object()
         if payment.status not in OPEN_PAYMENT_STATUSES:
             raise ValidationError("Payment is no longer pending.")
+        if payment.payment_method == "card" and booking_payments_card_limit_exceeded(payment.amount):
+            raise ValidationError(
+                {
+                    "payment_method": (
+                        "Flutterwave card payments are limited to NGN 7,000,000 per transaction. "
+                        "Please use Bank Transfer for this payment."
+                    )
+                }
+            )
 
         try:
-            checkout = ensure_booking_virtual_account(payment)
+            checkout, collection_mode, cleared_checkout_fields = prepare_booking_payment_checkout(payment)
         except FlutterwaveError as exc:
             return Response({"detail": str(exc)}, status=502)
         payment.provider_payload = update_payment_provider_payload(
@@ -2411,9 +2754,9 @@ class PaymentViewSet(viewsets.ModelViewSet):
             None,
             checkout=checkout,
             return_url=build_booking_payment_return_url(payment),
-            collection_mode="dynamic_virtual_account",
+            collection_mode=collection_mode,
         )
-        payment.save(update_fields=["provider_payload", "updated_at"])
+        payment.save(update_fields=list(dict.fromkeys(["provider_payload", "updated_at", *cleared_checkout_fields])))
         return Response({"payment": self.get_serializer(payment).data, "checkout": checkout})
 
     @action(detail=True, methods=["post"], url_path="cancel")
@@ -2460,13 +2803,43 @@ class PaymentViewSet(viewsets.ModelViewSet):
             return signature_error
 
         body = request.data
+        transfer_data = body.get("data") if isinstance(body, dict) else {}
+        if isinstance(transfer_data, dict):
+            transfer_reference = str(transfer_data.get("reference") or transfer_data.get("transfer_reference") or "").strip()
+            if transfer_reference:
+                settlement = PaymentSettlement.objects.select_related(
+                    "payment",
+                    "payment__booking",
+                    "payment__booking__tenant",
+                    "payment__booking__listing",
+                    "payment__booking__listing__landlord",
+                ).filter(transfer_reference=transfer_reference).first()
+                if settlement:
+                    sync_payment_settlement_transfer(settlement, body)
+                    return Response({"status": "ok", "reference": transfer_reference})
+
         reference = extract_reference(body)
-        if not reference:
+        provider_transaction_id = extract_provider_transaction_id(body)
+        if not reference and not provider_transaction_id:
             return Response({"status": "ok"})
 
         payment = Payment.objects.select_related("booking", "booking__listing", "booking__tenant").filter(transaction_id=reference).first()
         featured = FeaturedPayment.objects.select_related("listing", "landlord").filter(transaction_id=reference).first()
-        subscription = SubscriptionPayment.objects.select_related("user").filter(transaction_id=reference).first()
+        subscription = (
+            SubscriptionPayment.objects.select_related("user")
+            .filter(Q(transaction_id=reference) | Q(provider_charge_id=provider_transaction_id))
+            .first()
+        )
+        settlement = PaymentSettlement.objects.select_related(
+            "payment",
+            "payment__booking",
+            "payment__booking__tenant",
+            "payment__booking__listing",
+            "payment__booking__listing__landlord",
+        ).filter(transfer_reference=reference).first()
+        if settlement and not payment and not featured and not subscription:
+            sync_payment_settlement_transfer(settlement, body)
+            return Response({"status": "ok", "reference": reference})
         if not payment and not featured and not subscription:
             return Response({"status": "error", "message": "Payment not found"}, status=404)
 
@@ -2474,21 +2847,21 @@ class PaymentViewSet(viewsets.ModelViewSet):
             if payment:
                 sync_booking_payment(
                     payment,
-                    transaction_id=extract_provider_transaction_id(body) or None,
+                    transaction_id=provider_transaction_id or None,
                     payload=body,
                     source="webhook",
                 )
             if featured:
                 sync_featured_payment(
                     featured,
-                    transaction_id=extract_provider_transaction_id(body) or None,
+                    transaction_id=provider_transaction_id or None,
                     payload=body,
                     source="webhook",
                 )
             if subscription:
                 sync_subscription_payment(
                     subscription,
-                    transaction_id=extract_provider_transaction_id(body) or None,
+                    transaction_id=provider_transaction_id or None,
                     payload=body,
                     source="webhook",
                 )
@@ -2510,6 +2883,24 @@ class SubscriptionPaymentViewSet(viewsets.GenericViewSet, mixins.ListModelMixin)
         payment = self.get_queryset().get(id=pk)
         return Response(self.get_serializer(payment).data)
 
+    @action(detail=False, methods=["get"], url_path="recurring/config")
+    def recurring_config(self, request):
+        ensure_supported_subscription_role(request.user)
+        encryption_key = str(getattr(settings, "FLUTTERWAVE_ENCRYPTION_KEY", "") or "").strip()
+        enabled = should_use_v4() and flutterwave_encryption_key_is_configured()
+        return Response(
+            {
+                "enabled": enabled,
+                "encryption_key": encryption_key if enabled else "",
+            }
+        )
+
+    @action(detail=False, methods=["get"], url_path="payment-methods")
+    def payment_methods(self, request):
+        ensure_supported_subscription_role(request.user)
+        queryset = SubscriptionPaymentMethod.objects.filter(user=request.user).order_by("-updated_at")
+        return Response(SubscriptionPaymentMethodSerializer(queryset, many=True).data)
+
     @action(detail=False, methods=["post"], url_path="request")
     def request_subscription(self, request):
         ensure_supported_subscription_role(request.user)
@@ -2518,6 +2909,7 @@ class SubscriptionPaymentViewSet(viewsets.GenericViewSet, mixins.ListModelMixin)
 
         plan_code = serializer.validated_data["plan_code"]
         billing_cycle = serializer.validated_data["billing_cycle"]
+        recurring_requested = bool(serializer.validated_data.get("recurring"))
 
         try:
             amount_value = get_subscription_pricing()[request.user.role][plan_code][billing_cycle]
@@ -2526,6 +2918,12 @@ class SubscriptionPaymentViewSet(viewsets.GenericViewSet, mixins.ListModelMixin)
 
         amount_decimal = Decimal(str(amount_value))
         is_free_plan = amount_decimal == 0
+        if recurring_requested and is_free_plan:
+            raise ValidationError("Recurring payments are available only for paid subscription plans.")
+        try:
+            payment_method = resolve_subscription_payment_method(request.user, serializer.validated_data) if recurring_requested else None
+        except FlutterwaveError as exc:
+            return Response({"detail": str(exc)}, status=502)
         duration_days = 14 if is_free_plan else 30 if billing_cycle == SubscriptionPayment.BillingCycle.MONTHLY else 365
         next_status = SubscriptionPayment.Status.COMPLETED if is_free_plan else SubscriptionPayment.Status.PENDING
         next_provider = "free" if is_free_plan else "flutterwave"
@@ -2551,9 +2949,12 @@ class SubscriptionPaymentViewSet(viewsets.GenericViewSet, mixins.ListModelMixin)
                 currency="NGN",
                 provider=next_provider,
                 status=next_status,
-                transaction_id=f"SUB_{uuid.uuid4().hex[:20].upper()}",
+                transaction_id=build_subscription_payment_reference(),
                 payment_date=next_payment_date,
                 expires_at=timezone.now() + timedelta(days=duration_days),
+                payment_method=payment_method,
+                recurring_enabled=recurring_requested,
+                billing_reason="recurring_initial" if recurring_requested else "manual",
             )
         else:
             payment.role = request.user.role
@@ -2561,8 +2962,12 @@ class SubscriptionPaymentViewSet(viewsets.GenericViewSet, mixins.ListModelMixin)
             payment.currency = "NGN"
             payment.provider = next_provider
             payment.status = next_status
-            payment.transaction_id = payment.transaction_id or f"SUB_{uuid.uuid4().hex[:20].upper()}"
+            payment.transaction_id = payment.transaction_id or build_subscription_payment_reference()
             payment.cashier_url = ""
+            payment.payment_method = payment_method
+            payment.provider_charge_id = ""
+            payment.recurring_enabled = recurring_requested
+            payment.billing_reason = "recurring_initial" if recurring_requested else "manual"
             payment.provider_payload = None
             payment.webhook_data = None
             payment.payment_date = next_payment_date
@@ -2576,6 +2981,10 @@ class SubscriptionPaymentViewSet(viewsets.GenericViewSet, mixins.ListModelMixin)
                     "status",
                     "transaction_id",
                     "cashier_url",
+                    "payment_method",
+                    "provider_charge_id",
+                    "recurring_enabled",
+                    "billing_reason",
                     "provider_payload",
                     "webhook_data",
                     "payment_date",
@@ -2584,16 +2993,51 @@ class SubscriptionPaymentViewSet(viewsets.GenericViewSet, mixins.ListModelMixin)
                 ]
             )
 
+        if recurring_requested:
+            try:
+                payment = charge_subscription_with_payment_method(payment, source="recurring_initial")
+            except (FlutterwaveError, ValidationError) as exc:
+                payment.status = SubscriptionPayment.Status.FAILED
+                payment.recurring_enabled = False
+                payment.provider_payload = update_payment_provider_payload(
+                    payment.provider_payload,
+                    None,
+                    recurring_error={"message": str(exc), "failed_at": timezone.now().isoformat()},
+                )
+                payment.save(update_fields=["status", "recurring_enabled", "provider_payload", "updated_at"])
+                response_status = 400 if isinstance(exc, ValidationError) else 502
+                return Response({"detail": str(exc), "payment": self.get_serializer(payment).data}, status=response_status)
+
         return Response(self.get_serializer(payment).data, status=201 if created else 200)
+
+    @action(detail=True, methods=["post"], url_path="disable-recurring")
+    def disable_recurring(self, request, pk=None):
+        payment = self.get_queryset().get(id=pk)
+        if not payment.recurring_enabled:
+            return Response(self.get_serializer(payment).data)
+
+        payment.recurring_enabled = False
+        payment.provider_payload = update_payment_provider_payload(
+            payment.provider_payload,
+            None,
+            recurring_disabled={
+                "disabled_at": timezone.now().isoformat(),
+                "reason": "disabled_by_user",
+            },
+        )
+        payment.save(update_fields=["recurring_enabled", "provider_payload", "updated_at"])
+        return Response(self.get_serializer(payment).data)
 
     @action(detail=True, methods=["post"], url_path="flutterwave/checkout")
     def flutterwave_checkout(self, request, pk=None):
         payment = self.get_queryset().get(id=pk)
         if payment.status != SubscriptionPayment.Status.PENDING:
             raise ValidationError("Payment is not pending")
+        if payment.recurring_enabled:
+            raise ValidationError("Recurring subscription payments are charged with the saved card.")
 
         if not payment.transaction_id:
-            payment.transaction_id = f"SUB_{uuid.uuid4().hex[:20].upper()}"
+            payment.transaction_id = build_subscription_payment_reference()
 
         checkout = build_subscription_checkout(payment)
         payment.provider_payload = update_payment_provider_payload(

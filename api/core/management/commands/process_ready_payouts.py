@@ -1,7 +1,12 @@
 from django.core.management.base import BaseCommand
 
 from core.models import Booking
-from core.views import booking_payout_release_conditions_met, trigger_booking_payouts_if_ready
+from core.views import (
+    booking_is_fully_paid,
+    booking_payout_balance_available,
+    booking_payout_release_conditions_met,
+    trigger_booking_payouts_if_ready,
+)
 
 
 class Command(BaseCommand):
@@ -22,7 +27,11 @@ class Command(BaseCommand):
 
         for booking in bookings:
             checked_count += 1
-            if not booking_payout_release_conditions_met(booking):
+            if (
+                not booking_is_fully_paid(booking)
+                or not booking_payout_balance_available(booking)
+                or not booking_payout_release_conditions_met(booking)
+            ):
                 continue
             ready_count += 1
             trigger_booking_payouts_if_ready(booking)

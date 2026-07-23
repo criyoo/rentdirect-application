@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Link } from 'react-router-dom'
 import { getApiUrl, resolveMediaUrl } from '@/lib/api'
 import { useAppPopup } from '@/contexts/AppPopupContext'
+import DashboardBackButton from '@/components/DashboardBackButton'
 import { formatCurrencyWithSymbol } from '@/utils/currency'
 
 interface FeaturedPayment
@@ -214,6 +215,9 @@ export default function FeaturedPropertiesPage()
 
     return (
         <div className="container-modern py-8">
+            <div className="mb-5">
+                <DashboardBackButton fallbackTo={currentUserId ? `/dashboard/landlord/${currentUserId}` : '/'} />
+            </div>
             <div className="mb-6">
                 <h1 className="text-3xl font-bold text-gray-900">My Featured Properties</h1>
                 <p className="text-gray-600 mt-2">

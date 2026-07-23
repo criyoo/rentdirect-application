@@ -22,6 +22,7 @@ import {
 } from 'react-icons/hi'
 
 import { useAuth } from '@/hooks/useAuth'
+import DashboardBackButton from '@/components/DashboardBackButton'
 import { api, resolveMediaUrl } from '@/lib/api'
 import { Booking, Listing } from '@/types'
 import { formatCurrencyWithSymbol } from '@/utils/currency'
@@ -74,7 +75,7 @@ export default function TenantDashboardPage() {
         { to: '/favourites', label: 'Favourites', Icon: HiHeart, colorClass: 'text-red-600' },
         { to: '/enquiries', label: 'Enquiries', Icon: HiChat, colorClass: 'text-green-600' },
         { to: '/verify', label: 'Verification', Icon: HiShieldCheck, colorClass: 'text-purple-600' },
-        { to: user ? `/profile/${user.id}` : '#', label: 'Profile', Icon: HiUser, colorClass: 'text-orange-600' },
+        { to: user ? `/tenants/${user.id}/profile` : '#', label: 'Profile', Icon: HiUser, colorClass: 'text-orange-600' },
         { to: '/billing', label: 'Billing', Icon: HiCash, colorClass: 'text-emerald-600' },
         { to: '/complaint', label: 'Complaint', Icon: HiExclamationCircle, colorClass: 'text-red-700' },
         { to: '/support', label: 'Support', Icon: HiSupport, colorClass: 'text-blue-700' },
@@ -88,10 +89,13 @@ export default function TenantDashboardPage() {
         <div className="min-h-screen bg-gray-50">
             <div className="container-modern py-8">
                 <div className="mb-8">
+                    <div className="mb-5">
+                        <DashboardBackButton fallbackTo="/" />
+                    </div>
                     <div className="mb-6 flex items-center justify-between">
                         <div>
                             <h1 className="text-4xl font-bold text-gray-900 mb-2">
-                                Welcome, {tenantFirstName}!
+                                Welcome back, {tenantFirstName}!
                             </h1>
                             <p className="text-sm text-gray-600">
                                 Find your perfect home and manage your rental journey

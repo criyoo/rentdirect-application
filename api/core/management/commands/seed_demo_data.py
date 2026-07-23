@@ -1,6 +1,8 @@
 import glob
 import json
 import mimetypes
+from datetime import date, datetime
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from django.conf import settings
@@ -56,18 +58,34 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(f"Seed complete. Created {created_users} users and {created_listings} listings."))
 
     def upsert_user(self, seed_key: str, data: dict, role: str, seed_path: Path):
-        login = data.get("login") or {}
+        registration = self.get_seed_dict(data, "registration_credentials")
+        login = self.get_seed_dict(data, "login", "login_credentials")
         profile = data.get("profile") or {}
         verification = data.get("verification") or {}
-        email = (login.get("email") or profile.get("email") or verification.get("email") or data.get("email") or "").strip().lower()
+        profile_personal = self.get_seed_dict(profile, "personal_information")
+        landlord_identification = self.get_seed_dict(verification, "landlord_identification")
+        landlord_identification_personal = self.get_seed_dict(landlord_identification, "personal_information")
+        identity_and_bank_verification = self.get_seed_dict(profile, "identity_and_bank_verification")
+        email = self.seed_text(
+            login.get("email"),
+            registration.get("email"),
+            profile.get("email"),
+            profile_personal.get("email"),
+            verification.get("email"),
+            landlord_identification_personal.get("email"),
+            data.get("email"),
+        ).lower()
         if not email:
             raise ValueError(f"Seed entry {seed_key} is missing an email address")
 
         name = (
             login.get("full_name")
+            or registration.get("full_name")
             or profile.get("full_name")
             or profile.get("name")
             or data.get("full_name")
+            or self.build_full_name_from_seed(profile_personal)
+            or self.build_full_name_from_seed(landlord_identification_personal)
             or seed_key.replace("_", " ").title()
         ).strip()
         user, created = AppUser.objects.get_or_create(
@@ -78,20 +96,53 @@ class Command(BaseCommand):
         user.name = name
         user.role = role
         user.email_verified = True
-        user.mobile = (profile.get("mobile") or verification.get("mobile") or "").strip()
-        user.nin_number = (profile.get("nin_number") or verification.get("nin_number") or verification.get("nin") or "").strip()
-        user.bvn_number = (profile.get("bvn_number") or verification.get("bvn_number") or verification.get("bvn") or "").strip()
+        user.mobile = self.seed_text(
+            profile.get("mobile"),
+            profile_personal.get("contact_number"),
+            verification.get("mobile"),
+            landlord_identification_personal.get("contact_number"),
+            profile_personal.get("phone_number"),
+        )
+        user.nin_number = self.seed_text(
+            profile.get("nin_number"),
+            profile_personal.get("national_identity_number"),
+            identity_and_bank_verification.get("id_number")
+            if self.seed_text(identity_and_bank_verification.get("id_type")) == "National ID (NIN)"
+            else "",
+            verification.get("nin_number"),
+            verification.get("nin"),
+            landlord_identification_personal.get("national_identity_number"),
+        )
+        user.bvn_number = self.seed_text(
+            profile.get("bvn_number"),
+            profile_personal.get("bank_verification_number"),
+            verification.get("bvn_number"),
+            verification.get("bvn"),
+            landlord_identification_personal.get("bank_verification_number"),
+        )
         if user.mobile and not is_valid_mobile(user.mobile):
             raise ValueError(f"Seed entry {seed_key} has an invalid mobile number")
         if user.nin_number and not is_valid_nin(user.nin_number):
             raise ValueError(f"Seed entry {seed_key} has an invalid NIN number")
-        user.state_of_origin = normalize_state_of_origin(profile.get("state_of_origin") or verification.get("state_of_origin"))
-        user.residence = normalize_residence(user.state_of_origin, profile.get("residence"))
+        user.state_of_origin = normalize_state_of_origin(
+            self.seed_text(
+                profile.get("state_of_origin"),
+                profile_personal.get("state_of_origin"),
+                verification.get("state_of_origin"),
+                landlord_identification_personal.get("state_of_origin"),
+            )
+        )
+        user.residence = normalize_residence(
+            user.state_of_origin,
+            profile.get("residence")
+            or self.get_seed_dict(profile, "residential_information")
+            or self.build_residence_from_current_residence(self.get_seed_dict(profile, "current_residence")),
+        )
         if role == AppUser.Role.TENANT:
             user.tenant_verification_profile = normalize_tenant_verification_profile(verification, user)
         elif role == AppUser.Role.LANDLORD:
             self.seed_landlord_profile_fields(seed_key, user, data, profile)
-        password = login.get("password") or data.get("password")
+        password = login.get("password") or registration.get("password") or data.get("password")
         if password:
             user.set_password(password)
 
@@ -103,14 +154,7 @@ class Command(BaseCommand):
         return user, created
 
     def seed_landlord_profile_fields(self, seed_key: str, user: AppUser, data: dict, profile: dict) -> None:
-        verification_type = self.seed_text(
-            profile.get("landlord_verification_type"),
-            data.get("landlord_verification_type"),
-        ).lower()
-        if "landlord_verification_profile" in profile:
-            verification_profile = profile.get("landlord_verification_profile")
-        else:
-            verification_profile = data.get("landlord_verification_profile")
+        verification_type, verification_profile = self.build_landlord_verification_profile(data, profile)
 
         if not verification_type and not verification_profile:
             user.landlord_verification_type = ""
@@ -121,6 +165,7 @@ class Command(BaseCommand):
             AppUser.LandlordVerificationType.INDIVIDUAL,
             AppUser.LandlordVerificationType.CORPORATE,
         }
+        verification_type = self.normalize_landlord_verification_type(verification_type)
         if verification_type not in valid_types:
             raise ValueError(f"Seed entry {seed_key} has an invalid landlord verification type")
         if not isinstance(verification_profile, dict):
@@ -146,6 +191,163 @@ class Command(BaseCommand):
 
         user.landlord_verification_type = verification_type
         user.landlord_verification_profile = verification_profile
+
+    def build_landlord_verification_profile(self, data: dict, profile: dict) -> tuple[str, dict | None]:
+        if "landlord_verification_profile" in profile:
+            verification_profile = profile.get("landlord_verification_profile")
+        else:
+            verification_profile = data.get("landlord_verification_profile")
+        verification_type = self.seed_text(
+            profile.get("landlord_verification_type"),
+            data.get("landlord_verification_type"),
+        )
+        if verification_profile:
+            return verification_type, verification_profile
+
+        verification = data.get("verification") or {}
+        landlord_identification = self.get_seed_dict(verification, "landlord_identification")
+        verification_personal = self.get_seed_dict(landlord_identification, "personal_information")
+        profile_personal = self.get_seed_dict(profile, "personal_information")
+        employment_information = self.get_seed_dict(profile, "employment_information", "employment_info")
+        identity_and_bank = self.get_seed_dict(profile, "identity_and_bank_verification")
+        residential_information = self.get_seed_dict(profile, "residential_information")
+        emergency_contact = self.get_seed_dict(profile, "emergency_contact")
+        if not any([
+            landlord_identification,
+            verification_personal,
+            profile_personal,
+            employment_information,
+            identity_and_bank,
+            residential_information,
+            emergency_contact,
+        ]):
+            return verification_type, None
+
+        verification_type = self.seed_text(
+            verification_type,
+            landlord_identification.get("type"),
+            AppUser.LandlordVerificationType.INDIVIDUAL,
+        )
+        kyc_id_type = self.seed_text(identity_and_bank.get("id_type"))
+        nin = self.seed_text(
+            identity_and_bank.get("id_number") if kyc_id_type == "National ID (NIN)" else "",
+            profile_personal.get("national_identity_number"),
+            verification_personal.get("national_identity_number"),
+        )
+        bvn = self.seed_text(
+            profile_personal.get("bank_verification_number"),
+            verification_personal.get("bank_verification_number"),
+            identity_and_bank.get("bank_verification_number"),
+            identity_and_bank.get("bvn"),
+        )
+        bio = self.seed_text(profile_personal.get("bio_about_me"), profile_personal.get("bio"), profile_personal.get("about_me"))
+        payload = {
+            "first_name": self.seed_text(profile_personal.get("first_name"), verification_personal.get("first_name")),
+            "middle_name": self.seed_text(profile_personal.get("middle_name"), verification_personal.get("middle_name")),
+            "last_name": self.seed_text(profile_personal.get("last_name"), verification_personal.get("last_name")),
+            "date_of_birth": self.seed_text(profile_personal.get("date_of_birth"), verification_personal.get("date_of_birth")),
+            "gender": self.seed_text(profile_personal.get("gender"), verification_personal.get("gender")),
+            "nationality": self.seed_text(profile_personal.get("nationality"), verification_personal.get("nationality")),
+            "country_of_birth": self.seed_text(profile_personal.get("country_of_birth"), verification_personal.get("country_of_birth")),
+            "state_of_birth": self.seed_text(profile_personal.get("state_of_birth"), verification_personal.get("state_of_birth")),
+            "state_of_origin": self.seed_text(profile_personal.get("state_of_origin"), verification_personal.get("state_of_origin")),
+            "lga_of_origin": self.seed_text(profile_personal.get("lga_of_origin"), verification_personal.get("lga_of_origin")),
+            "preferred_contact_method": self.seed_text(profile_personal.get("preferred_contact_method")),
+            "bio": bio,
+            "about_me": bio,
+            "contact_number": self.seed_text(profile_personal.get("contact_number"), verification_personal.get("contact_number"), profile_personal.get("phone_number")),
+            "whatsapp_number": self.seed_text(profile_personal.get("whatsapp_number")),
+            "email": self.seed_text(profile_personal.get("email"), verification_personal.get("email")),
+            "employment_status": self.seed_text(employment_information.get("employment_status"), profile_personal.get("employment_status"), verification_personal.get("employment_status")),
+            "occupation": self.seed_text(employment_information.get("occupation"), profile_personal.get("occupation"), verification_personal.get("occupation")),
+            "employer_name": self.seed_text(employment_information.get("employer_name")),
+            "job_title": self.seed_text(employment_information.get("job_title")),
+            "employment_type": self.seed_text(employment_information.get("employment_type")),
+            "work_address": self.seed_text(employment_information.get("work_address")),
+            "work_email": self.seed_text(
+                employment_information.get("work_email"),
+                employment_information.get("work_email_address"),
+                profile_personal.get("work_email"),
+                verification_personal.get("work_email"),
+            ),
+            "years_employed": self.seed_text(employment_information.get("years_employed")),
+            "hr_contact_name": self.seed_text(employment_information.get("hr_contact_name")),
+            "hr_contact_number": self.seed_text(
+                employment_information.get("hr_contact_number"),
+                employment_information.get("hr_contact_phone"),
+                employment_information.get("hr_phone"),
+            ),
+            "hr_contact_email": self.seed_text(
+                employment_information.get("hr_contact_email"),
+                employment_information.get("hr_email"),
+                employment_information.get("hr_contact_mail"),
+            ),
+            "profession": self.seed_text(employment_information.get("profession")),
+            "trading_name": self.seed_text(employment_information.get("trading_name")),
+            "nature_of_work": self.seed_text(employment_information.get("nature_of_work")),
+            "years_self_employed": self.seed_text(employment_information.get("years_self_employed")),
+            "business_website": self.seed_text(employment_information.get("business_website")),
+            "business_name": self.seed_text(employment_information.get("business_name")),
+            "business_registration_number": self.seed_text(employment_information.get("business_registration_number")),
+            "industry": self.seed_text(employment_information.get("industry")),
+            "position_in_business": self.seed_text(employment_information.get("position_in_business")),
+            "years_in_business": self.seed_text(employment_information.get("years_in_business")),
+            "company_website": self.seed_text(employment_information.get("company_website")),
+            "primary_service": self.seed_text(employment_information.get("primary_service")),
+            "platform_used": self.seed_text(employment_information.get("platform_used")),
+            "years_freelancing": self.seed_text(employment_information.get("years_freelancing")),
+            "portfolio_website": self.seed_text(employment_information.get("portfolio_website")),
+            "previous_occupation": self.seed_text(employment_information.get("previous_occupation")),
+            "previous_employer": self.seed_text(employment_information.get("previous_employer")),
+            "retirement_year": self.seed_text(employment_information.get("retirement_year")),
+            "pension_provider": self.seed_text(employment_information.get("pension_provider")),
+            "currently_seeking_employment": self.seed_text(employment_information.get("currently_seeking_employment")),
+            "source_of_income": self.seed_text(employment_information.get("source_of_income")),
+            "institution": self.seed_text(employment_information.get("institution")),
+            "course_of_study": self.seed_text(employment_information.get("course_of_study")),
+            "level": self.seed_text(employment_information.get("level")),
+            "graduation_year": self.seed_text(employment_information.get("graduation_year")),
+            "sponsorship_source": self.seed_text(employment_information.get("sponsorship_source")),
+            "business_address": self.seed_text(employment_information.get("business_address")),
+            "nin": nin,
+            "bvn": bvn,
+            "kyc": {
+                "id_type": kyc_id_type or ("National ID (NIN)" if nin else ""),
+                "id_number": self.seed_text(identity_and_bank.get("id_number"), nin),
+                "expiry_date": self.seed_text(identity_and_bank.get("expiry_date")),
+            },
+            "residential_information": {
+                "country": self.seed_text(residential_information.get("country")),
+                "state": self.seed_text(residential_information.get("state")),
+                "city": self.seed_text(residential_information.get("city")),
+                "address": self.seed_text(residential_information.get("address"), verification_personal.get("residential_address")),
+            },
+            "proof_of_address": self.get_seed_list(residential_information, "proof_of_address"),
+            "banking_information": {
+                "bank_name": self.seed_text(identity_and_bank.get("bank_name"), profile_personal.get("bank_name"), verification_personal.get("bank_name")),
+                "account_name": self.seed_text(identity_and_bank.get("account_name"), profile_personal.get("account_name"), verification_personal.get("account_name")),
+                "account_number": self.seed_text(identity_and_bank.get("account_number"), profile_personal.get("account_number"), verification_personal.get("account_number")),
+            },
+            "emergency_contact": {
+                "first_name": self.seed_text(emergency_contact.get("first_name")),
+                "middle_name": self.seed_text(emergency_contact.get("middle_name")),
+                "last_name": self.seed_text(emergency_contact.get("last_name")),
+                "phone_number": self.seed_text(emergency_contact.get("phone_number")),
+                "email": self.seed_text(emergency_contact.get("email")),
+                "relationship": self.seed_text(emergency_contact.get("relationship")),
+                "address": self.seed_text(emergency_contact.get("address")),
+            },
+        }
+        return verification_type, payload
+
+    def normalize_landlord_verification_type(self, value: str) -> str:
+        text = self.seed_text(value).lower()
+        text = text.replace(" landlord", "").replace("_landlord", "").strip()
+        if text in {"individual", "personal"}:
+            return AppUser.LandlordVerificationType.INDIVIDUAL
+        if text in {"corporate", "company", "business"}:
+            return AppUser.LandlordVerificationType.CORPORATE
+        return text
 
     def resolve_profile_photo_path(self, seed_key: str, data: dict, login: dict, profile: dict, seed_path: Path) -> Path | None:
         for raw_photo in (
@@ -185,33 +387,52 @@ class Command(BaseCommand):
             doc.save()
             docs.append(doc)
 
-        if docs:
-            request = VerificationRequest.objects.filter(user=user).order_by("-submitted_at").first()
-            if not request:
-                request = VerificationRequest.objects.create(
-                    user=user,
-                    status=VerificationRequest.Status.APPROVED,
-                    identity_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
-                    property_document_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
-                    physical_property_status=VerificationRequest.VerificationProgressStatus.UNVERIFIED,
-                    reviewed_at=timezone.now(),
-                )
-            else:
-                request.status = VerificationRequest.Status.APPROVED
-                request.identity_verification_status = VerificationRequest.VerificationProgressStatus.VERIFIED
-                request.property_document_verification_status = VerificationRequest.VerificationProgressStatus.VERIFIED
-                request.physical_property_status = VerificationRequest.VerificationProgressStatus.UNVERIFIED
-                request.reviewed_at = request.reviewed_at or timezone.now()
-                request.save(
-                    update_fields=[
-                        "status",
-                        "identity_verification_status",
-                        "property_document_verification_status",
-                        "physical_property_status",
-                        "reviewed_at",
-                    ]
+        for raw_path in self.iter_landlord_identity_document_paths(data):
+            path = self.resolve_path(raw_path)
+            if not path or not path.exists():
+                continue
+
+            title = path.stem.replace("_", " ").title()
+            content_type = mimetypes.guess_type(path.name)[0] or ""
+            doc, _ = Document.objects.get_or_create(
+                owner=user,
+                title=title,
+                defaults={"content_type": content_type},
             )
-            request.documents.set(docs)
+            self.replace_model_file(doc, "file", path)
+            doc.content_type = content_type
+            doc.save()
+            if doc not in docs:
+                docs.append(doc)
+
+        if not docs and not verification and not user.landlord_verification_profile:
+            return
+
+        request, _ = VerificationRequest.objects.get_or_create(
+            user=user,
+            defaults={
+                "request_type": VerificationRequest.RequestType.IDENTIFICATION,
+            },
+        )
+        request.request_type = VerificationRequest.RequestType.IDENTIFICATION
+        request.status = VerificationRequest.Status.APPROVED
+        request.identity_verification_status = VerificationRequest.VerificationProgressStatus.VERIFIED
+        request.property_document_verification_status = VerificationRequest.VerificationProgressStatus.VERIFIED
+        request.physical_property_status = VerificationRequest.VerificationProgressStatus.VERIFIED
+        request.verification_method = VerificationRequest.Method.AUTOMATED
+        request.reviewed_at = request.reviewed_at or timezone.now()
+        request.save(
+            update_fields=[
+                "request_type",
+                "status",
+                "identity_verification_status",
+                "property_document_verification_status",
+                "physical_property_status",
+                "verification_method",
+                "reviewed_at",
+            ]
+        )
+        request.documents.set(docs)
 
     def seed_tenant_verification(self, user: AppUser, data: dict) -> None:
         verification = data.get("verification") or {}
@@ -227,8 +448,8 @@ class Command(BaseCommand):
         request.request_type = VerificationRequest.RequestType.IDENTIFICATION
         request.status = VerificationRequest.Status.APPROVED
         request.identity_verification_status = VerificationRequest.VerificationProgressStatus.VERIFIED
-        request.property_document_verification_status = VerificationRequest.VerificationProgressStatus.UNVERIFIED
-        request.physical_property_status = VerificationRequest.VerificationProgressStatus.UNVERIFIED
+        request.property_document_verification_status = VerificationRequest.VerificationProgressStatus.VERIFIED
+        request.physical_property_status = VerificationRequest.VerificationProgressStatus.VERIFIED
         request.verification_method = VerificationRequest.Method.AUTOMATED
         request.reviewed_at = request.reviewed_at or timezone.now()
         request.save(
@@ -270,11 +491,15 @@ class Command(BaseCommand):
         employment_info = self.get_seed_dict(profile, "employment_info", "employment_information")
         financial_info = self.get_seed_dict(profile, "financial_info", "financial_verification")
         guarantor_details = self.get_seed_dict(profile, "guarantor_details")
-        landlord_info = self.get_seed_dict(profile, "landlord_info")
-        household_info = self.get_seed_dict(profile, "household_info")
+        landlord_info = self.normalize_tenant_landlord_info(
+            self.get_seed_dict(profile, "landlord_info", "current_landlord_information")
+        )
+        household_info = self.normalize_tenant_household_info(
+            self.get_seed_dict(profile, "household_info", "household_information")
+        )
         social_presence = self.get_seed_dict(profile, "social_presence")
         criminal_declaration = self.get_seed_dict(profile, "criminal_declaration")
-        rental_history = self.get_seed_list(profile, "rental_history")
+        rental_history = self.build_tenant_rental_history(profile, current_residence)
 
         current_financial_defaults = {
             "current_rent_amount": self.first_seed_value(
@@ -361,6 +586,178 @@ class Command(BaseCommand):
 
         return payload
 
+    def build_full_name_from_seed(self, source: dict) -> str:
+        return " ".join(
+            part
+            for part in (
+                self.seed_text(source.get("first_name")),
+                self.seed_text(source.get("middle_name")),
+                self.seed_text(source.get("last_name")),
+            )
+            if part
+        )
+
+    def iter_landlord_identity_document_paths(self, data: dict):
+        profile = data.get("profile") or {}
+        verification = data.get("verification") or {}
+        profile_personal = self.get_seed_dict(profile, "personal_information")
+        identity_and_bank = self.get_seed_dict(profile, "identity_and_bank_verification")
+        landlord_identification = self.get_seed_dict(verification, "landlord_identification")
+        landlord_identification_personal = self.get_seed_dict(landlord_identification, "personal_information")
+        seen = set()
+        for raw_path in (
+            profile_personal.get("identity_document"),
+            identity_and_bank.get("identity_document"),
+            landlord_identification_personal.get("identity_document"),
+        ):
+            raw_text = self.seed_text(raw_path)
+            if raw_text and raw_text not in seen:
+                seen.add(raw_text)
+                yield raw_text
+
+    def build_residence_from_current_residence(self, current_residence: dict) -> dict:
+        if not current_residence:
+            return {}
+        return {
+            "state": self.seed_text(current_residence.get("residence_state"), current_residence.get("state")),
+            "city": self.seed_text(current_residence.get("residence_city"), current_residence.get("city")),
+            "address": self.seed_text(current_residence.get("residence_address"), current_residence.get("address")),
+        }
+
+    def normalize_tenant_landlord_info(self, landlord_info: dict) -> dict:
+        if not landlord_info:
+            return {}
+
+        normalized = dict(landlord_info)
+        aliases = {
+            "name": ("full_name", "landlord_name"),
+            "mobile": ("phone", "phone_number", "mobile_number", "landlord_phone"),
+            "property_manager_phone": ("property_manager_mobile", "property_manager_phone_number", "property_manager_mobile_number"),
+        }
+        for canonical_key, alias_keys in aliases.items():
+            if self.has_seed_value(normalized.get(canonical_key)):
+                continue
+            for alias_key in alias_keys:
+                if self.has_seed_value(normalized.get(alias_key)):
+                    normalized[canonical_key] = normalized[alias_key]
+                    break
+
+        for alias_key in ("full_name", "landlord_name", "phone", "phone_number", "mobile_number", "landlord_phone"):
+            normalized.pop(alias_key, None)
+        for alias_key in ("property_manager_mobile", "property_manager_phone_number", "property_manager_mobile_number"):
+            normalized.pop(alias_key, None)
+        return normalized
+
+    def normalize_tenant_household_info(self, household_info: dict) -> dict:
+        if not household_info:
+            return {}
+
+        normalized = dict(household_info)
+        aliases = {
+            "has_smokers": ("any_smokers", "smokers", "has_any_smokers"),
+            "has_pets": ("pets",),
+        }
+        for canonical_key, alias_keys in aliases.items():
+            if self.has_seed_value(normalized.get(canonical_key)):
+                continue
+            for alias_key in alias_keys:
+                if self.has_seed_value(normalized.get(alias_key)):
+                    normalized[canonical_key] = normalized[alias_key]
+                    break
+
+        for alias_key in ("any_smokers", "smokers", "has_any_smokers", "pets"):
+            normalized.pop(alias_key, None)
+        return normalized
+
+    def build_tenant_rental_history(self, profile: dict, current_residence: dict) -> list[dict]:
+        raw_history = profile.get("rental_history")
+        if raw_history is None:
+            return []
+
+        same_as_current_residence = False
+        history_items = []
+        if isinstance(raw_history, list):
+            history_items = raw_history
+        elif isinstance(raw_history, dict):
+            same_as_current_residence = bool(raw_history.get("same_as_current_residence"))
+            history_items = raw_history.get("properties") or []
+            if not isinstance(history_items, list):
+                raise ValueError("rental_history.properties must be an array")
+        else:
+            raise ValueError("rental_history must be an array or object")
+
+        rental_history = []
+        if same_as_current_residence:
+            current_residence_history = self.build_current_residence_rental_history_entry(current_residence)
+            if any(self.has_seed_value(value) for value in current_residence_history.values()):
+                rental_history.append(current_residence_history)
+
+        for item in history_items:
+            if not isinstance(item, dict):
+                raise ValueError("rental_history entries must be objects")
+            normalized_item = self.normalize_tenant_rental_history_item(item)
+            if any(self.has_seed_value(value) for value in normalized_item.values()):
+                rental_history.append(normalized_item)
+
+        return rental_history
+
+    def build_current_residence_rental_history_entry(self, current_residence: dict) -> dict:
+        return {
+            "property_address": self.seed_text(
+                current_residence.get("property_address"),
+                current_residence.get("residence_address"),
+                current_residence.get("address"),
+            ),
+            "annual_rent": self.seed_text(
+                current_residence.get("annual_rent"),
+                current_residence.get("current_rent_amount"),
+            ),
+            "service_charge": self.seed_text(
+                current_residence.get("service_charge"),
+                current_residence.get("current_service_charge"),
+            ),
+            "move_in_date": self.normalized_seed_date_string(
+                self.first_seed_value(
+                    current_residence.get("move_in_date"),
+                    current_residence.get("current_move_in_date"),
+                )
+            ),
+            "move_out_date": self.normalized_seed_date_string(
+                self.first_seed_value(
+                    current_residence.get("move_out_date"),
+                    current_residence.get("expected_move_out_date"),
+                )
+            ),
+            "reason_for_leave": self.seed_text(
+                current_residence.get("reason_for_leave"),
+                current_residence.get("reason_for_leaving"),
+                current_residence.get("reason_for_wanting_to_leave"),
+            ),
+        }
+
+    def normalize_tenant_rental_history_item(self, item: dict) -> dict:
+        normalized = dict(item)
+        field_aliases = {
+            "property_address": ("address", "residence_address"),
+            "annual_rent": ("rent", "current_rent_amount"),
+            "service_charge": ("current_service_charge",),
+            "move_in_date": ("current_move_in_date",),
+            "move_out_date": ("expected_move_out_date",),
+            "reason_for_leave": ("reason_for_leaving", "reason_for_wanting_to_leave"),
+        }
+        for canonical_key, alias_keys in field_aliases.items():
+            if self.has_seed_value(normalized.get(canonical_key)):
+                continue
+            for alias_key in alias_keys:
+                if self.has_seed_value(normalized.get(alias_key)):
+                    normalized[canonical_key] = normalized[alias_key]
+                    break
+
+        for date_key in ("move_in_date", "move_out_date"):
+            if self.has_seed_value(normalized.get(date_key)):
+                normalized[date_key] = self.normalized_seed_date_string(normalized[date_key])
+        return normalized
+
     def get_seed_dict(self, source: dict, *field_names: str) -> dict:
         for field_name in field_names:
             value = source.get(field_name)
@@ -396,6 +793,22 @@ class Command(BaseCommand):
         value = self.first_seed_value(*values)
         return str(value).strip()
 
+    def seed_optional_int(self, value) -> int | None:
+        if not self.has_seed_value(value):
+            return None
+        return int(value)
+
+    def seed_decimal(self, value, *, default: Decimal | None = None) -> Decimal | None:
+        if not self.has_seed_value(value):
+            return default
+        try:
+            return Decimal(str(value))
+        except (InvalidOperation, ValueError) as exc:
+            raise ValueError(f"Invalid decimal seed value: {value}") from exc
+
+    def calculate_seed_deposit_amount(self, price_per_year: Decimal) -> Decimal:
+        return (price_per_year * Decimal("0.20")).quantize(Decimal("0.01"))
+
     def normalized_seed_date_string(self, value) -> str:
         if not self.has_seed_value(value):
             return ""
@@ -407,6 +820,24 @@ class Command(BaseCommand):
         if not parsed_value:
             raise ValueError(f"Tenant seed profile {seed_key} has an invalid {field_name}")
         return parsed_value
+
+    def parse_listing_date(self, value, seed_key: str, field_name: str) -> date | None:
+        if not self.has_seed_value(value):
+            return None
+        if isinstance(value, date):
+            return value
+
+        raw_value = str(value).strip()
+        parsed_value = parse_date(raw_value)
+        if parsed_value:
+            return parsed_value
+
+        for date_format in ("%d/%m/%Y", "%m/%d/%Y"):
+            try:
+                return datetime.strptime(raw_value, date_format).date()
+            except ValueError:
+                continue
+        raise ValueError(f"Listing seed {seed_key} has an invalid {field_name}")
 
     def seed_tenant_profile_status(self, value) -> str:
         status = self.seed_text(value) or TenantProfile.Status.APPROVED
@@ -425,7 +856,8 @@ class Command(BaseCommand):
         )
         used_listing_ids = set()
 
-        for listing_key, listing_data in seed_listings:
+        for listing_key, raw_listing_data in seed_listings:
+            listing_data = self.normalize_listing_seed_data(raw_listing_data)
             title = (listing_data.get("title") or listing_key.replace("_", " ").title()).strip()
             listing = Listing.objects.filter(landlord=user, seed_key=listing_key).first()
             if not listing:
@@ -453,6 +885,10 @@ class Command(BaseCommand):
                 created_listings += 1
 
             features = listing_data.get("features") or {}
+            rental_preferences = listing_data.get("rental_preferences") or {}
+            property_verification = listing_data.get("property_verification") or {}
+            price_per_year = self.seed_decimal(listing_data.get("price_per_year"), default=Decimal("0"))
+            verification_method = self.resolve_listing_verification_method(property_verification)
             listing.title = title
             listing.description = listing_data.get("description", "")
             listing.address = listing_data.get("address", "")
@@ -464,15 +900,54 @@ class Command(BaseCommand):
             listing.bathrooms = listing_data.get("bathrooms") or listing_data.get("bathroom") or 1
             listing.toilets = listing_data.get("toilets") or listing.bathrooms
             listing.square_feet = listing_data.get("square_feet")
-            listing.price_per_year = listing_data.get("price_per_year") or 0
+            listing.price_per_year = price_per_year
+            listing.deposit_amount = self.calculate_seed_deposit_amount(price_per_year)
             listing.utilities_included = features.get("utilities_included", False)
-            listing.pet_friendly = features.get("pet_friendly", False)
+            listing.pet_friendly = self.first_seed_value(rental_preferences.get("pets_allowed"), features.get("pet_friendly", False))
             listing.furnished = features.get("furnished", False)
             listing.amenities = features.get("amenities", [])
+            listing.ownership_status = ""
+            listing.ownership_types = self.get_seed_list(property_verification, "ownership_types")
+            listing.property_ownership_documents = self.get_seed_list(property_verification, "ownership_documents") or self.get_seed_list(
+                property_verification,
+                "property_ownership_documents",
+            )
+            listing.property_document_submission = self.build_listing_property_document_submission(
+                listing,
+                verification_method,
+                uploaded_document_count=0,
+            )
+            listing.property_document_verification_status = (
+                VerificationRequest.VerificationProgressStatus.VERIFIED
+            )
+            listing.physical_property_status = (
+                VerificationRequest.VerificationProgressStatus.VERIFIED
+            )
+            listing.minimum_rental_duration = self.seed_text(
+                rental_preferences.get("minimum_rental_duration"),
+                rental_preferences.get("minimum_lease_duration"),
+            )
+            listing.maximum_occupancy = self.seed_optional_int(rental_preferences.get("maximum_occupancy"))
+            listing.smoking_allowed = bool(rental_preferences.get("smoking_allowed", False))
+            listing.commercial_activities_allowed = bool(rental_preferences.get("commercial_activities_allowed", False))
+            listing.short_let_allowed = bool(rental_preferences.get("short_let_allowed", False))
+            listing.student_tenants_allowed = bool(rental_preferences.get("student_tenants_allowed", False))
+            listing.expatriates_allowed = bool(rental_preferences.get("expatriates_allowed", False))
+            listing.available_from = self.parse_listing_date(listing_data.get("available_from"), listing_key, "available_from")
             listing.featured = features.get("feature_property_checkbox", True)
             listing.featured_until = None
             listing.status = Listing.Status.AVAILABLE
             listing.save()
+
+            uploaded_property_documents = self.sync_listing_property_documents(
+                user,
+                listing,
+                property_verification,
+                verification_method,
+            )
+            if listing.property_document_submission:
+                listing.property_document_submission["uploaded_document_count"] = uploaded_property_documents
+                listing.save(update_fields=["property_document_submission", "updated_at"])
 
             cover_path = self.resolve_path(listing_data.get("cover_image"))
             desired_image_names = set()
@@ -482,6 +957,8 @@ class Command(BaseCommand):
 
             image_patterns = listing_data.get("additional_images") or []
             for index, image_path in enumerate(self.expand_patterns(image_patterns), start=1):
+                if cover_path and cover_path.exists() and image_path.resolve() == cover_path.resolve():
+                    continue
                 self.ensure_listing_image(listing, image_path, is_cover=False, sort_order=index)
                 desired_image_names.add(self.build_seed_image_name(listing, image_path))
 
@@ -490,6 +967,89 @@ class Command(BaseCommand):
         Listing.objects.filter(landlord=user).exclude(seed_key="").exclude(seed_key__in=desired_listing_keys).delete()
 
         return created_listings
+
+    def normalize_listing_seed_data(self, listing_data: dict) -> dict:
+        normalized = dict(listing_data)
+        property_information = self.get_seed_dict(listing_data, "property_information")
+        if property_information:
+            normalized.update(property_information)
+
+        property_verification = self.get_seed_dict(
+            listing_data,
+            "property_ownership_verification",
+            "property_ownership verification",
+            "property_verification",
+        )
+        normalized["property_verification"] = property_verification
+        normalized["features"] = self.get_seed_dict(listing_data, "features")
+        normalized["rental_preferences"] = self.get_seed_dict(listing_data, "rental_preferences")
+        return normalized
+
+    def resolve_listing_verification_method(self, property_verification: dict) -> str:
+        method = property_verification.get("property_verification_method") or property_verification.get("verification_method")
+        if isinstance(method, dict):
+            if method.get("upload_documents"):
+                return "documents"
+            if method.get("in_person_verification"):
+                return "in_person"
+            return ""
+
+        normalized = self.seed_text(method).lower().replace("-", "_").replace(" ", "_")
+        if normalized in {"documents", "upload_documents", "document_upload"}:
+            return "documents"
+        if normalized in {"in_person", "in_person_verification", "physical", "physical_verification"}:
+            return "in_person"
+        return ""
+
+    def build_listing_property_document_submission(self, listing: Listing, verification_method: str, *, uploaded_document_count: int) -> dict | None:
+        if not verification_method and not listing.ownership_types and not listing.property_ownership_documents:
+            return None
+        return {
+            "document_types": listing.property_ownership_documents or [],
+            "ownership_types": listing.ownership_types or [],
+            "in_person_verification_requested": verification_method == "in_person",
+            "uploaded_document_count": uploaded_document_count,
+            "submitted_at": timezone.now().isoformat(),
+        }
+
+    def sync_listing_property_documents(self, user: AppUser, listing: Listing, property_verification: dict, verification_method: str) -> int:
+        existing_documents = list(listing.property_documents.all())
+        listing.property_documents.clear()
+        for document in existing_documents:
+            if document.title.startswith(f"Listing Property Document: {listing.id}"):
+                document.file.delete(save=False)
+                document.delete()
+
+        if verification_method != "documents":
+            return 0
+
+        raw_paths = self.get_seed_list(property_verification, "property_documents") or self.get_seed_list(property_verification, "documents")
+        property_paths = []
+        for raw_path in raw_paths:
+            raw_text = str(raw_path)
+            if any(marker in raw_text for marker in ("*", "{")):
+                property_paths.extend(self.expand_patterns([raw_text]))
+                continue
+            path = self.resolve_path(raw_text)
+            if path and path.exists() and path.is_file():
+                property_paths.append(path)
+
+        uploaded_documents = []
+        title_suffix = ", ".join(listing.property_ownership_documents or []) or "Property Document"
+        for path in property_paths:
+            content_type = mimetypes.guess_type(path.name)[0] or ""
+            document = Document(
+                owner=user,
+                title=f"Listing Property Document: {listing.id} - {title_suffix} - {path.name}",
+                content_type=content_type,
+            )
+            self.replace_model_file(document, "file", path)
+            document.save()
+            uploaded_documents.append(document)
+
+        if uploaded_documents:
+            listing.property_documents.add(*uploaded_documents)
+        return len(uploaded_documents)
 
     def build_seed_image_name(self, listing: Listing, source_path: Path) -> str:
         return f"{listing.id}_{source_path.name}"

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { useAppPopup } from '@/contexts/AppPopupContext'
 import { useAuth } from '@/hooks/useAuth'
+import DashboardBackButton from '@/components/DashboardBackButton'
 import { api } from '@/lib/api'
 import { stateOfOriginOptions, validateMobile, validateNin, validateResidence } from '@/lib/profile'
 import { User, UserResidence } from '@/types'
@@ -445,6 +446,9 @@ export default function SettingsPage() {
 
     return (
         <div className="container-modern py-8">
+            <div className="mb-5">
+                <DashboardBackButton fallbackTo={dashboardPath} />
+            </div>
             <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
                 <div>
                     <p className="text-sm font-medium uppercase tracking-[0.2em] text-blue-600">Dashboard Settings</p>

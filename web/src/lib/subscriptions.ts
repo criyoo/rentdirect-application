@@ -10,6 +10,7 @@ export type SubscriptionPaymentRecord = {
     status: string
     expires_at?: string | null
     payment_date?: string | null
+    recurring_enabled?: boolean
     created_at: string
 }
 

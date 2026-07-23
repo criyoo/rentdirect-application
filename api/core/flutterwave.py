@@ -223,12 +223,17 @@ def extract_payment_channel_details(payload: dict[str, Any] | None) -> tuple[str
     data = extract_provider_data(payload)
     authorization = data.get("authorization") if isinstance(data.get("authorization"), dict) else {}
     card = data.get("card") if isinstance(data.get("card"), dict) else {}
+    payment_method = data.get("payment_method") if isinstance(data.get("payment_method"), dict) else {}
+    payment_method_card = payment_method.get("card") if isinstance(payment_method.get("card"), dict) else {}
 
     bank_name = str(
         authorization.get("bank")
         or authorization.get("issuer")
         or card.get("issuer")
         or card.get("bank")
+        or payment_method_card.get("issuer")
+        or payment_method_card.get("bank")
+        or payment_method_card.get("network")
         or ""
     ).strip()
     card_last4 = str(
@@ -236,9 +241,44 @@ def extract_payment_channel_details(payload: dict[str, Any] | None) -> tuple[str
         or authorization.get("last_4digits")
         or card.get("last4")
         or card.get("last_4digits")
+        or payment_method_card.get("last4")
+        or payment_method_card.get("last_4digits")
         or ""
     ).strip()
     return bank_name, card_last4[-4:]
+
+
+def extract_next_action_url(payload: dict[str, Any] | None) -> str:
+    data = extract_provider_data(payload)
+    next_action = data.get("next_action") if isinstance(data.get("next_action"), dict) else {}
+    redirect_url = next_action.get("redirect_url")
+    if isinstance(redirect_url, dict):
+        return str(redirect_url.get("url") or "").strip()
+    return str(redirect_url or "").strip()
+
+
+def extract_payment_method_card_details(payload: dict[str, Any] | None) -> dict[str, Any]:
+    data = extract_provider_data(payload)
+    payment_method = data.get("payment_method") if isinstance(data.get("payment_method"), dict) else {}
+    card = data.get("card") if isinstance(data.get("card"), dict) else {}
+    if not card and isinstance(payment_method.get("card"), dict):
+        card = payment_method["card"]
+
+    return {
+        "id": str(
+            data.get("id")
+            or data.get("payment_method_id")
+            or payment_method.get("id")
+            or ""
+        ).strip(),
+        "customer_id": str(data.get("customer_id") or payment_method.get("customer_id") or "").strip(),
+        "type": str(data.get("type") or payment_method.get("type") or "card").strip(),
+        "first6": str(card.get("first6") or card.get("first_6digits") or "").strip()[:6],
+        "last4": str(card.get("last4") or card.get("last_4digits") or "").strip()[-4:],
+        "network": str(card.get("network") or card.get("brand") or "").strip(),
+        "expiry_month": card.get("expiry_month"),
+        "expiry_year": card.get("expiry_year"),
+    }
 
 
 def format_customer_phone_number(phone_number: str) -> str:
@@ -386,6 +426,74 @@ def create_customer(
             "message": "Customer already exists",
             "data": existing_customer,
         }
+
+
+def create_card_payment_method(
+    *,
+    customer_id: str,
+    encrypted_card: dict[str, Any],
+    metadata: dict[str, Any] | None = None,
+    idempotency_key: str | None = None,
+) -> dict[str, Any]:
+    required_fields = (
+        "encrypted_card_number",
+        "encrypted_expiry_month",
+        "encrypted_expiry_year",
+        "encrypted_cvv",
+        "nonce",
+    )
+    card_payload = {field: str(encrypted_card.get(field) or "").strip() for field in required_fields}
+    missing_fields = [field for field, value in card_payload.items() if not value]
+    if missing_fields:
+        raise FlutterwaveError(f"Encrypted card payload is missing: {', '.join(missing_fields)}.")
+
+    payload: dict[str, Any] = {
+        "type": "card",
+        "card": card_payload,
+        "meta": {key: str(value) for key, value in (metadata or {}).items()},
+    }
+    if customer_id:
+        payload["customer_id"] = customer_id
+
+    return _request_json_v4(
+        method="POST",
+        path="/payment-methods",
+        payload=payload,
+        idempotency_key=idempotency_key,
+    )
+
+
+def create_charge(
+    *,
+    amount: Decimal,
+    currency: str,
+    reference: str,
+    customer_id: str,
+    payment_method_id: str,
+    redirect_url: str = "",
+    recurring: bool = False,
+    metadata: dict[str, Any] | None = None,
+    idempotency_key: str | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "reference": reference,
+        "currency": currency,
+        "customer_id": customer_id,
+        "payment_method_id": payment_method_id,
+        "amount": float(normalize_decimal_amount(amount)),
+        "meta": {key: str(value) for key, value in (metadata or {}).items()},
+    }
+    if redirect_url:
+        payload["redirect_url"] = redirect_url
+    if recurring:
+        payload["recurring"] = True
+
+    return _request_json_v4(
+        method="POST",
+        path="/charges",
+        payload=payload,
+        idempotency_key=idempotency_key or reference,
+    )
 
 
 def find_customer_by_email(email: str) -> dict[str, Any] | None:

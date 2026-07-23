@@ -163,6 +163,32 @@ export interface Listing {
     pet_friendly: boolean
     furnished: boolean
     amenities?: string[]
+    ownership_status?: string
+    ownership_types?: string[]
+    property_ownership_documents?: string[]
+    property_documents?: Array<{
+        id: string
+        title: string
+        content_type?: string
+        file_url?: string
+        created_at?: string
+    }>
+    property_document_submission?: {
+        document_types?: string[]
+        ownership_types?: string[]
+        in_person_verification_requested?: boolean
+        uploaded_document_count?: number
+        submitted_at?: string
+    } | null
+    property_document_verification_status?: string
+    physical_property_status?: string
+    minimum_rental_duration?: string
+    maximum_occupancy?: number | null
+    smoking_allowed?: boolean
+    commercial_activities_allowed?: boolean
+    short_let_allowed?: boolean
+    student_tenants_allowed?: boolean
+    expatriates_allowed?: boolean
     available_from?: string
     status: string
     cover_image_url?: string

@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 
 import { useAuth } from '@/hooks/useAuth'
+import { useAppPopup } from '@/contexts/AppPopupContext'
 import { api } from '@/lib/api'
 import { isNigeriaSelection, nigeriaStateLgaMap, nigerianStates, worldCountryOptions } from '@/lib/locations'
 import { validateMobile, validateNin } from '@/lib/profile'
@@ -30,6 +31,16 @@ const schema = z.object({
 
 type VerificationFormValues = z.infer<typeof schema>
 type ExistingTenantProfile = Partial<VerificationFormValues> & Record<string, any>
+
+type VerificationProgress = {
+    status?: string
+    submitted_at?: string | null
+}
+
+type VerificationStatusResponse = {
+    status?: string
+    identification?: VerificationProgress
+}
 
 const genderOptions = ['Male', 'Female']
 const employmentOptions = ['Employed', 'Self Employed', 'Business Owner', 'Freelancer', 'Retired', 'Unemployed', 'Student']
@@ -128,6 +139,7 @@ function SelectInput({ register, name, options, placeholder, error }: { register
 
 export default function VerifyMePage() {
     const { user } = useAuth()
+    const { confirm } = useAppPopup()
     const navigate = useNavigate()
     const queryClient = useQueryClient()
     const [submitError, setSubmitError] = useState('')
@@ -138,7 +150,7 @@ export default function VerifyMePage() {
     })
 
     const { data: existingProfile } = useQuery({
-        queryKey: ['tenant-profile', user?.id],
+        queryKey: ['users', 'me', 'tenant-profile'],
         queryFn: async () => {
             try {
                 return (await api.get<ExistingTenantProfile>('/users/me/tenant-profile')).data
@@ -147,6 +159,12 @@ export default function VerifyMePage() {
             }
         },
         enabled: Boolean(user),
+    })
+
+    const { data: verificationStatus } = useQuery({
+        queryKey: ['verification', 'status', 'tenant'],
+        queryFn: async () => (await api.get<VerificationStatusResponse>('/tenant-verification-requests/status')).data,
+        enabled: Boolean(user?.role === 'tenant'),
     })
 
     const defaultValues = useMemo<VerificationFormValues>(() => {
@@ -184,6 +202,16 @@ export default function VerifyMePage() {
     const lga = watch('lga')
     const nationalityIsNigeria = isNigeriaSelection(nationality)
     const lgaOptions = nationalityIsNigeria && stateOfOrigin ? nigeriaStateLgaMap[stateOfOrigin] || [] : []
+    const identityVerificationStatus = verificationStatus?.identification?.status
+    const isVerificationLocked = Boolean(
+        me?.is_verified
+        || identityVerificationStatus === 'verified'
+        || verificationStatus?.status === 'approved'
+        || existingProfile?.status === 'approved',
+    )
+    const lockedFormClassName = isVerificationLocked
+        ? 'text-gray-500 [&_input]:cursor-not-allowed [&_input]:border-gray-200 [&_input]:bg-gray-100 [&_input]:text-gray-500 [&_select]:cursor-not-allowed [&_select]:border-gray-200 [&_select]:bg-gray-100 [&_select]:text-gray-500 [&_label]:text-gray-400'
+        : ''
 
     useEffect(() => {
         if (!nationalityIsNigeria) {
@@ -230,13 +258,28 @@ export default function VerifyMePage() {
             const method = existingProfile ? 'put' : 'post'
             return (await api[method]('/users/me/tenant-profile', payload)).data
         },
-        onSuccess: (profile) => {
+        onSuccess: async (profile) => {
             queryClient.invalidateQueries({ queryKey: ['users', 'me'] })
-            queryClient.setQueryData(['tenant-profile', user?.id], profile)
+            queryClient.setQueryData(['users', 'me', 'tenant-profile'], profile)
             queryClient.invalidateQueries({ queryKey: ['tenant-profile'] })
             queryClient.invalidateQueries({ queryKey: ['verification', 'status'] })
             setSubmitError('')
-            navigate(user?.id ? `/dashboard/tenant/${user.id}` : '/search')
+
+            const profilePath = user?.id ? `/tenants/${user.id}/profile?edit=1` : '/search'
+            const shouldGoToProfile = await confirm(
+                'Tenant verification completed successfully.',
+                {
+                    title: 'Verification Successful',
+                    variant: 'success',
+                    confirmLabel: 'Go to Profile',
+                    cancelLabel: 'Cancel and Stay',
+                    autoConfirmSeconds: 10,
+                },
+            )
+
+            if (shouldGoToProfile) {
+                navigate(profilePath)
+            }
         },
         onError: (error: any) => {
             setSubmitError(error?.response?.data?.detail || error?.message || 'Verification failed. Please try again.')
@@ -257,81 +300,86 @@ export default function VerifyMePage() {
                     </div>
                 )}
 
-                <form onSubmit={handleSubmit((data) => saveVerification.mutateAsync(data))} className="rounded-xl border bg-white p-6 shadow-sm">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <InputRow label="First Name" error={errors.first_name?.message}>
-                            <TextInput register={register} name="first_name" placeholder="First name" error={errors.first_name?.message} />
-                        </InputRow>
-                        <InputRow label="Middle Name">
-                            <TextInput register={register} name="middle_name" placeholder="Middle name" />
-                        </InputRow>
-                        <InputRow label="Last Name" error={errors.last_name?.message}>
-                            <TextInput register={register} name="last_name" placeholder="Last name" error={errors.last_name?.message} />
-                        </InputRow>
-                    </div>
+                <form
+                    onSubmit={handleSubmit((data) => (isVerificationLocked ? undefined : saveVerification.mutateAsync(data)))}
+                    className={`rounded-xl border bg-white p-6 shadow-sm ${lockedFormClassName}`}
+                >
+                    <fieldset disabled={isVerificationLocked}>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <InputRow label="First Name" error={errors.first_name?.message}>
+                                <TextInput register={register} name="first_name" placeholder="First name" error={errors.first_name?.message} />
+                            </InputRow>
+                            <InputRow label="Middle Name">
+                                <TextInput register={register} name="middle_name" placeholder="Middle name" />
+                            </InputRow>
+                            <InputRow label="Last Name" error={errors.last_name?.message}>
+                                <TextInput register={register} name="last_name" placeholder="Last name" error={errors.last_name?.message} />
+                            </InputRow>
+                        </div>
 
-                    <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <InputRow label="Country of Birth" error={errors.country_of_birth?.message}>
-                            <SelectInput register={register} name="country_of_birth" options={[...worldCountryOptions]} placeholder="Select country of birth" error={errors.country_of_birth?.message} />
-                        </InputRow>
-                        <InputRow label="Date of Birth" error={errors.date_of_birth?.message}>
-                            <TextInput register={register} name="date_of_birth" type="date" error={errors.date_of_birth?.message} />
-                        </InputRow>
-                        <InputRow label="Gender" error={errors.gender?.message}>
-                            <SelectInput register={register} name="gender" options={genderOptions} placeholder="Select gender" error={errors.gender?.message} />
-                        </InputRow>
-                    </div>
+                        <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <InputRow label="Country of Birth" error={errors.country_of_birth?.message}>
+                                <SelectInput register={register} name="country_of_birth" options={[...worldCountryOptions]} placeholder="Select country of birth" error={errors.country_of_birth?.message} />
+                            </InputRow>
+                            <InputRow label="Date of Birth" error={errors.date_of_birth?.message}>
+                                <TextInput register={register} name="date_of_birth" type="date" error={errors.date_of_birth?.message} />
+                            </InputRow>
+                            <InputRow label="Gender" error={errors.gender?.message}>
+                                <SelectInput register={register} name="gender" options={genderOptions} placeholder="Select gender" error={errors.gender?.message} />
+                            </InputRow>
+                        </div>
 
-                    <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <InputRow label="Nationality" error={errors.nationality?.message}>
-                            <SelectInput register={register} name="nationality" options={[...worldCountryOptions]} placeholder="Select nationality" error={errors.nationality?.message} />
-                        </InputRow>
-                        <InputRow label="State of Origin" error={errors.state_of_origin?.message}>
-                            {nationalityIsNigeria ? (
-                                <SelectInput register={register} name="state_of_origin" options={nigerianStates} placeholder="Select state" error={errors.state_of_origin?.message} />
-                            ) : (
-                                <TextInput register={register} name="state_of_origin" placeholder="State of origin" error={errors.state_of_origin?.message} />
-                            )}
-                        </InputRow>
-                        <InputRow label="LGA" error={errors.lga?.message}>
-                            {nationalityIsNigeria ? (
-                                <SelectInput register={register} name="lga" options={lgaOptions} placeholder={stateOfOrigin ? 'Select LGA' : 'Select state first'} error={errors.lga?.message} />
-                            ) : (
-                                <TextInput register={register} name="lga" placeholder="Local Government Area" error={errors.lga?.message} />
-                            )}
-                        </InputRow>
-                    </div>
+                        <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <InputRow label="Nationality" error={errors.nationality?.message}>
+                                <SelectInput register={register} name="nationality" options={[...worldCountryOptions]} placeholder="Select nationality" error={errors.nationality?.message} />
+                            </InputRow>
+                            <InputRow label="State of Origin" error={errors.state_of_origin?.message}>
+                                {nationalityIsNigeria ? (
+                                    <SelectInput register={register} name="state_of_origin" options={nigerianStates} placeholder="Select state" error={errors.state_of_origin?.message} />
+                                ) : (
+                                    <TextInput register={register} name="state_of_origin" placeholder="State of origin" error={errors.state_of_origin?.message} />
+                                )}
+                            </InputRow>
+                            <InputRow label="LGA" error={errors.lga?.message}>
+                                {nationalityIsNigeria ? (
+                                    <SelectInput register={register} name="lga" options={lgaOptions} placeholder={stateOfOrigin ? 'Select LGA' : 'Select state first'} error={errors.lga?.message} />
+                                ) : (
+                                    <TextInput register={register} name="lga" placeholder="Local Government Area" error={errors.lga?.message} />
+                                )}
+                            </InputRow>
+                        </div>
 
-                    <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <InputRow label="National Identification Number (NIN)" error={errors.nin_number?.message}>
-                            <TextInput register={register} name="nin_number" placeholder="11 digit NIN" error={errors.nin_number?.message} />
-                        </InputRow>
-                        <InputRow label="Bank Verification Number (BVN)" error={errors.bvn_number?.message}>
-                            <TextInput register={register} name="bvn_number" placeholder="11 digit BVN" error={errors.bvn_number?.message} />
-                        </InputRow>
-                    </div>
+                        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <InputRow label="National Identification Number (NIN)" error={errors.nin_number?.message}>
+                                <TextInput register={register} name="nin_number" placeholder="11 digit NIN" error={errors.nin_number?.message} />
+                            </InputRow>
+                            <InputRow label="Bank Verification Number (BVN)" error={errors.bvn_number?.message}>
+                                <TextInput register={register} name="bvn_number" placeholder="11 digit BVN" error={errors.bvn_number?.message} />
+                            </InputRow>
+                        </div>
 
-                    <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <InputRow label="Email" error={errors.email?.message}>
-                            <TextInput register={register} name="email" type="email" placeholder="Email address" error={errors.email?.message} />
-                        </InputRow>
-                        <InputRow label="Mobile" error={errors.mobile?.message}>
-                            <TextInput register={register} name="mobile" placeholder="Mobile number" error={errors.mobile?.message} />
-                        </InputRow>
-                        <InputRow label="Employment Status" error={errors.employment_status?.message}>
-                            <SelectInput register={register} name="employment_status" options={employmentOptions} placeholder="Select employment status" error={errors.employment_status?.message} />
-                        </InputRow>
-                    </div>
+                        <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <InputRow label="Email" error={errors.email?.message}>
+                                <TextInput register={register} name="email" type="email" placeholder="Email address" error={errors.email?.message} />
+                            </InputRow>
+                            <InputRow label="Mobile" error={errors.mobile?.message}>
+                                <TextInput register={register} name="mobile" placeholder="Mobile number" error={errors.mobile?.message} />
+                            </InputRow>
+                            <InputRow label="Employment Status" error={errors.employment_status?.message}>
+                                <SelectInput register={register} name="employment_status" options={employmentOptions} placeholder="Select employment status" error={errors.employment_status?.message} />
+                            </InputRow>
+                        </div>
 
-                    <div className="mt-8 flex justify-end">
-                        <button
-                            type="submit"
-                            disabled={isSubmitting || saveVerification.isPending}
-                            className="rounded-lg bg-blue-600 px-8 py-3 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition"
-                        >
-                            {isSubmitting || saveVerification.isPending ? 'Saving...' : 'Submit Verification'}
-                        </button>
-                    </div>
+                        <div className="mt-8 flex justify-end">
+                            <button
+                                type="submit"
+                                disabled={isVerificationLocked || isSubmitting || saveVerification.isPending}
+                                className="rounded-lg bg-blue-600 px-8 py-3 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 transition"
+                            >
+                                {isVerificationLocked ? 'Verified' : isSubmitting || saveVerification.isPending ? 'Saving...' : 'Submit Verification'}
+                            </button>
+                        </div>
+                    </fieldset>
                 </form>
             </div>
         </div>

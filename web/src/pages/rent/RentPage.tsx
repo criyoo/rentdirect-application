@@ -15,6 +15,9 @@ type PaymentCheckoutResponse = {
     checkout: HostedCheckoutPayload
 }
 
+const CARD_PAYMENT_LIMIT_NGN = 7000000
+const CARD_PAYMENT_LIMIT_MESSAGE = 'Flutterwave card payments are limited to ₦7,000,000 per transaction. Please use Bank Transfer for this payment.'
+
 export default function RentPage() {
     const { id } = useParams()
     const { user } = useAuth()
@@ -69,6 +72,7 @@ export default function RentPage() {
         remainingBalance,
     } = calculateRentBreakdown(annualRent, paidAmount)
     const isFullyPaid = remainingBalance <= 0
+    const canPayInitialDeposit = Boolean(booking && paidAmount <= 0 && depositAmount > 0 && depositAmount < remainingBalance)
 
     useEffect(() => {
         if (remainingBalance > 0) {
@@ -254,7 +258,29 @@ export default function RentPage() {
             alert('Payment amount cannot exceed the remaining balance.')
             return
         }
+        if (selectedPaymentMethod === 'card' && paymentAmount > CARD_PAYMENT_LIMIT_NGN) {
+            alert(CARD_PAYMENT_LIMIT_MESSAGE)
+            setSelectedPaymentMethod('bank')
+            return
+        }
         processPayment.mutate(paymentAmount)
+    }
+
+    const handlePaymentMethodChange = (method: 'card' | 'bank') => {
+        if (method === 'card' && paymentAmount > CARD_PAYMENT_LIMIT_NGN) {
+            alert(CARD_PAYMENT_LIMIT_MESSAGE)
+            setSelectedPaymentMethod('bank')
+            return
+        }
+        setSelectedPaymentMethod(method)
+    }
+
+    const selectPaymentAmount = (amount: number) => {
+        setPaymentAmount(amount)
+        if (selectedPaymentMethod === 'card' && amount > CARD_PAYMENT_LIMIT_NGN) {
+            alert(CARD_PAYMENT_LIMIT_MESSAGE)
+            setSelectedPaymentMethod('bank')
+        }
     }
 
     const handleVirtualAccountPayment = async () => {
@@ -399,7 +425,7 @@ export default function RentPage() {
                                                 name="paymentMethod"
                                                 value="card"
                                                 checked={selectedPaymentMethod === 'card'}
-                                                onChange={(event) => setSelectedPaymentMethod(event.target.value as 'card' | 'bank')}
+                                                onChange={() => handlePaymentMethodChange('card')}
                                                 className="text-blue-600"
                                             />
                                             <div className="flex items-center space-x-2">
@@ -415,7 +441,7 @@ export default function RentPage() {
                                                 name="paymentMethod"
                                                 value="bank"
                                                 checked={selectedPaymentMethod === 'bank'}
-                                                onChange={(event) => setSelectedPaymentMethod(event.target.value as 'card' | 'bank')}
+                                                onChange={() => handlePaymentMethodChange('bank')}
                                                 className="text-blue-600"
                                             />
                                             <div className="flex items-center space-x-2">
@@ -429,24 +455,44 @@ export default function RentPage() {
 
                                     <div className="mt-5">
                                         <label className="block text-sm font-medium text-gray-700 mb-2">Amount to pay</label>
+                                        <div className="mb-3 grid gap-3 sm:grid-cols-2">
+                                            {canPayInitialDeposit && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => selectPaymentAmount(depositAmount)}
+                                                    className={`rounded-lg border px-4 py-3 text-left text-sm transition ${paymentAmount === depositAmount ? 'border-blue-600 bg-blue-50 text-blue-900' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'}`}
+                                                >
+                                                    <span className="block font-semibold">Pay 20% Deposit</span>
+                                                    <span>{formatCurrencyWithSymbol(depositAmount)}</span>
+                                                </button>
+                                            )}
+                                            <button
+                                                type="button"
+                                                onClick={() => selectPaymentAmount(remainingBalance)}
+                                                className={`rounded-lg border px-4 py-3 text-left text-sm transition ${paymentAmount === remainingBalance ? 'border-blue-600 bg-blue-50 text-blue-900' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'}`}
+                                            >
+                                                <span className="block font-semibold">Pay Full Balance</span>
+                                                <span>{formatCurrencyWithSymbol(remainingBalance)}</span>
+                                            </button>
+                                        </div>
                                         <input
                                             type="number"
                                             min="1"
                                             step="0.01"
                                             max={remainingBalance}
                                             value={paymentAmount}
-                                            onChange={(event) => setPaymentAmount(Number(event.target.value))}
-                                            className="w-full rounded-lg border border-gray-300 px-4 py-3"
+                                            readOnly
+                                            className="w-full rounded-lg border border-gray-200 bg-gray-100 px-4 py-3 text-gray-600"
                                         />
                                         <p className="mt-2 text-sm text-gray-500">
-                                            You can pay any amount up to the remaining balance of {formatCurrencyWithSymbol(remainingBalance)}.
+                                            Choose either the 20% deposit or the full remaining balance of {formatCurrencyWithSymbol(remainingBalance)}.
                                         </p>
                                     </div>
 
                                     {selectedPaymentMethod === 'card' && (
                                         <div className="mt-4 p-4 bg-gray-50 rounded-lg">
                                             <p className="text-sm text-gray-600">
-                                                Rent payments are collected through a unique Flutterwave virtual account for this booking.
+                                                Card payments are collected through Flutterwave checkout into RentDirect&apos;s Flutterwave collection balance.
                                             </p>
                                         </div>
                                     )}

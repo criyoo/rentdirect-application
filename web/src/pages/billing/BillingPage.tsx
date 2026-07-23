@@ -6,6 +6,7 @@ import { api } from '@/lib/api'
 import { useAppPopup } from '@/contexts/AppPopupContext'
 import { User } from '@/types'
 import { formatCurrencyWithSymbol } from '@/utils/currency'
+import { EncryptedFlutterwaveCard, encryptFlutterwaveCard, validateCardDetails } from '@/lib/flutterwaveEncryption'
 
 type Payment = {
     id: string
@@ -28,7 +29,25 @@ type SubscriptionPaymentRecord = {
     expires_at?: string | null
     payment_date?: string | null
     transaction_id?: string | null
+    recurring_enabled?: boolean
+    next_action_url?: string
+    payment_method?: SubscriptionPaymentMethod | null
     created_at: string
+}
+
+type SubscriptionPaymentMethod = {
+    id: string
+    payment_type: string
+    status: string
+    card_last4?: string
+    card_network?: string
+    card_expiry_month?: number | null
+    card_expiry_year?: number | null
+}
+
+type RecurringConfig = {
+    enabled: boolean
+    encryption_key: string
 }
 
 type BillingHistoryRecord = {
@@ -238,6 +257,15 @@ export default function BillingPage() {
     const [billingCycle, setBillingCycle] = useState<BillingCycle>('monthly')
     const [from, setFrom] = useState('')
     const [to, setTo] = useState('')
+    const [autoRenew, setAutoRenew] = useState(false)
+    const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState('')
+    const [isPreparingRecurringPayment, setIsPreparingRecurringPayment] = useState(false)
+    const [cardForm, setCardForm] = useState({
+        cardNumber: '',
+        expiryMonth: '',
+        expiryYear: '',
+        cvv: '',
+    })
 
     const { data: me, isLoading: isUserLoading, isError: isUserError } = useQuery({
         queryKey: ['users', 'me'],
@@ -246,6 +274,16 @@ export default function BillingPage() {
     const { data: subscriptionPricingCatalog, isLoading: isPricingLoading, isError: isPricingError } = useQuery({
         queryKey: ['subscription-pricing'],
         queryFn: async () => (await api.get<SubscriptionPricingCatalog>('/users/subscription-pricing')).data,
+    })
+    const { data: recurringConfig } = useQuery({
+        queryKey: ['subscription-recurring-config'],
+        queryFn: async () => (await api.get<RecurringConfig>('/subscriptions/recurring/config')).data,
+        enabled: Boolean(me?.role === 'tenant' || me?.role === 'landlord'),
+    })
+    const { data: paymentMethods = [] } = useQuery({
+        queryKey: ['subscription-payment-methods'],
+        queryFn: async () => (await api.get<SubscriptionPaymentMethod[]>('/subscriptions/payment-methods')).data,
+        enabled: Boolean(me?.role === 'tenant' || me?.role === 'landlord'),
     })
 
     const { data: paymentResponse, isLoading: isPaymentsLoading } = useQuery({
@@ -342,16 +380,32 @@ export default function BillingPage() {
         : tenantSubscriptionBlueprints
     const subscriptionPricing = subscriptionPricingCatalog?.[activeBillingRole]
     const startSubscriptionCheckout = useMutation({
-        mutationFn: async ({ planCode, cycle }: { planCode: PlanCode; cycle: BillingCycle }) => {
+        mutationFn: async ({ planCode, cycle, recurring, card, paymentMethodId }: { planCode: PlanCode; cycle: BillingCycle; recurring?: boolean; card?: EncryptedFlutterwaveCard; paymentMethodId?: string }) => {
             const response = await api.post<SubscriptionPaymentRecord>('/subscriptions/request', {
                 plan_code: planCode,
                 billing_cycle: cycle,
+                recurring: Boolean(recurring),
+                ...(card ? { card } : {}),
+                ...(paymentMethodId ? { payment_method_id: paymentMethodId } : {}),
             })
             return response.data
         },
         onSuccess: (payment) => {
             void queryClient.invalidateQueries({ queryKey: ['subscription-payments'] })
+            void queryClient.invalidateQueries({ queryKey: ['subscription-payment-methods'] })
+            if (payment.status === 'failed') {
+                alert('Recurring subscription payment failed. Check the card details or use standard checkout.')
+                return
+            }
             if (payment.status === 'completed') {
+                return
+            }
+            if (payment.next_action_url) {
+                window.location.assign(payment.next_action_url)
+                return
+            }
+            if (payment.recurring_enabled) {
+                alert('Recurring payment was submitted and is pending provider confirmation.')
                 return
             }
             navigate(`/billing/subscriptions/pay/${payment.id}`)
@@ -391,12 +445,34 @@ export default function BillingPage() {
             alert(extractErrorMessage(error, 'Unable to retry payment.'))
         },
     })
+    const disableRecurringPayment = useMutation({
+        mutationFn: async (paymentId: string) => {
+            const response = await api.post<SubscriptionPaymentRecord>(`/subscriptions/${paymentId}/disable-recurring`)
+            return response.data
+        },
+        onSuccess: () => {
+            void queryClient.invalidateQueries({ queryKey: ['subscription-payments'] })
+        },
+        onError: (error) => {
+            alert(extractErrorMessage(error, 'Unable to turn off auto-renew.'))
+        },
+    })
     const isSubscriptionActionPending =
         startSubscriptionCheckout.isPending ||
+        isPreparingRecurringPayment ||
         cancelSubscriptionPayment.isPending ||
-        retrySubscriptionPayment.isPending
+        retrySubscriptionPayment.isPending ||
+        disableRecurringPayment.isPending
 
     const continueSubscriptionPayment = (payment: SubscriptionPaymentRecord) => {
+        if (payment.next_action_url) {
+            window.location.assign(payment.next_action_url)
+            return
+        }
+        if (payment.recurring_enabled) {
+            void queryClient.invalidateQueries({ queryKey: ['subscription-payments'] })
+            return
+        }
         navigate(`/billing/subscriptions/pay/${payment.id}`)
     }
 
@@ -427,6 +503,21 @@ export default function BillingPage() {
         )
         if (shouldCancel) {
             cancelSubscriptionPayment.mutate(payment.id)
+        }
+    }
+
+    const turnOffAutoRenew = async (payment: SubscriptionPaymentRecord) => {
+        const shouldDisable = await confirm(
+            `This will stop automatic renewal for your ${capitalizePlanName(payment.plan_code)} subscription. Your current access remains active until it expires.`,
+            {
+                title: 'Turn off auto-renew?',
+                variant: 'warning',
+                cancelLabel: 'Cancel',
+                confirmLabel: 'Turn Off',
+            },
+        )
+        if (shouldDisable) {
+            disableRecurringPayment.mutate(payment.id)
         }
     }
 
@@ -472,6 +563,39 @@ export default function BillingPage() {
             if (!shouldContinue) {
                 return
             }
+        }
+
+        const selectedAmount = Number(subscriptionPricing?.[plan.code]?.[cycle] || 0)
+        if (autoRenew && selectedAmount > 0) {
+            if (selectedPaymentMethodId) {
+                startSubscriptionCheckout.mutate({
+                    planCode: plan.code,
+                    cycle,
+                    recurring: true,
+                    paymentMethodId: selectedPaymentMethodId,
+                })
+                return
+            }
+            if (!recurringConfig?.enabled || !recurringConfig.encryption_key) {
+                alert('Recurring card payments are not configured right now. Use standard checkout for this payment.')
+                return
+            }
+            const validationError = validateCardDetails(cardForm)
+            if (validationError) {
+                alert(validationError)
+                return
+            }
+
+            setIsPreparingRecurringPayment(true)
+            try {
+                const encryptedCard = await encryptFlutterwaveCard(cardForm, recurringConfig.encryption_key)
+                startSubscriptionCheckout.mutate({ planCode: plan.code, cycle, recurring: true, card: encryptedCard })
+            } catch (error: any) {
+                alert(error?.message || 'Unable to encrypt card details.')
+            } finally {
+                setIsPreparingRecurringPayment(false)
+            }
+            return
         }
 
         startSubscriptionCheckout.mutate({ planCode: plan.code, cycle })
@@ -673,6 +797,110 @@ export default function BillingPage() {
                     </section>
                 )}
 
+                <section className="mt-10 rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-sm">
+                    <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                        <div>
+                            <p className="text-sm font-medium uppercase tracking-[0.24em] text-blue-700">Recurring subscription</p>
+                            <h2 className="mt-2 text-2xl font-bold text-slate-950">Auto-renew paid plans</h2>
+                            {currentSubscription?.recurring_enabled ? (
+                                <p className="mt-2 text-sm text-slate-600">
+                                    {capitalizePlanName(currentSubscription.plan_code)} renews with {currentSubscription.payment_method?.card_network || 'card'}
+                                    {currentSubscription.payment_method?.card_last4 ? ` ending ${currentSubscription.payment_method.card_last4}` : ''}.
+                                </p>
+                            ) : (
+                                <p className="mt-2 text-[16px] text-slate-600">Save your card for recurring payment.</p>
+                            )}
+                            <p className="mt-2 text-[12px] text-blue-600">Note: Card details are not saved in our system, only an encrypted hash is used in the payment process.</p>
+                        </div>
+
+                        {currentSubscription?.recurring_enabled && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    void turnOffAutoRenew(currentSubscription)
+                                }}
+                                disabled={isSubscriptionActionPending}
+                                className="rounded-full border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                {disableRecurringPayment.isPending ? 'Turning off...' : 'Turn Off Auto-Renew'}
+                            </button>
+                        )}
+                    </div>
+
+                    <label className="mt-6 flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <input
+                            type="checkbox"
+                            checked={autoRenew}
+                            onChange={(event) => setAutoRenew(event.target.checked)}
+                            className="h-5 w-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="text-sm font-semibold text-slate-800">Save card and auto-renew future subscription payments</span>
+                    </label>
+
+                    {autoRenew && (
+                        <div className="mt-5 space-y-4">
+                            {paymentMethods.filter((method) => method.status === 'active').length > 0 && (
+                                <select
+                                    value={selectedPaymentMethodId}
+                                    onChange={(event) => setSelectedPaymentMethodId(event.target.value)}
+                                    className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm text-slate-800"
+                                >
+                                    <option value="">Use a new card</option>
+                                    {paymentMethods
+                                        .filter((method) => method.status === 'active')
+                                        .map((method) => (
+                                            <option key={method.id} value={method.id}>
+                                                {(method.card_network || method.payment_type || 'Card').toUpperCase()}
+                                                {method.card_last4 ? ` ending ${method.card_last4}` : ''}
+                                            </option>
+                                        ))}
+                                </select>
+                            )}
+
+                            {!selectedPaymentMethodId && (
+                                <div className="grid gap-4 md:grid-cols-4">
+                                    <input
+                                        type="text"
+                                        inputMode="numeric"
+                                        autoComplete="cc-number"
+                                        value={cardForm.cardNumber}
+                                        onChange={(event) => setCardForm((current) => ({ ...current, cardNumber: event.target.value.replace(/[^\d\s-]/g, '').slice(0, 23) }))}
+                                        placeholder="Card number"
+                                        className="rounded-2xl border border-slate-300 px-4 py-3 text-sm text-slate-800 md:col-span-2"
+                                    />
+                                    <input
+                                        type="text"
+                                        inputMode="numeric"
+                                        autoComplete="cc-exp-month"
+                                        value={cardForm.expiryMonth}
+                                        onChange={(event) => setCardForm((current) => ({ ...current, expiryMonth: event.target.value.replace(/\D/g, '').slice(0, 2) }))}
+                                        placeholder="MM"
+                                        className="rounded-2xl border border-slate-300 px-4 py-3 text-sm text-slate-800"
+                                    />
+                                    <input
+                                        type="text"
+                                        inputMode="numeric"
+                                        autoComplete="cc-exp-year"
+                                        value={cardForm.expiryYear}
+                                        onChange={(event) => setCardForm((current) => ({ ...current, expiryYear: event.target.value.replace(/\D/g, '').slice(0, 4) }))}
+                                        placeholder="YY"
+                                        className="rounded-2xl border border-slate-300 px-4 py-3 text-sm text-slate-800"
+                                    />
+                                    <input
+                                        type="password"
+                                        inputMode="numeric"
+                                        autoComplete="cc-csc"
+                                        value={cardForm.cvv}
+                                        onChange={(event) => setCardForm((current) => ({ ...current, cvv: event.target.value.replace(/\D/g, '').slice(0, 4) }))}
+                                        placeholder="CVV"
+                                        className="rounded-2xl border border-slate-300 px-4 py-3 text-sm text-slate-800 md:col-span-1"
+                                    />
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </section>
+
                 <section className="mt-10">
                     <div className="mb-6 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
                         <div>
@@ -691,6 +919,7 @@ export default function BillingPage() {
                                 (payment) => payment.plan_code === plan.code && payment.billing_cycle === billingCycle,
                             )
                             const hasOtherPendingPayment = pendingSubscriptionPayments.length > 0 && !pendingForPlan
+                            const paidPlanSelected = Number(subscriptionPricing[plan.code][billingCycle]) > 0
                             const planButtonLabel = isCurrentPlan
                                 ? 'Current Plan'
                                 : startSubscriptionCheckout.isPending
@@ -699,7 +928,9 @@ export default function BillingPage() {
                                         ? 'Continue Payment'
                                         : hasOtherPendingPayment
                                             ? 'Pending payment exists'
-                                            : 'Choose Plan'
+                                            : autoRenew && paidPlanSelected
+                                                ? 'Subscribe & Save Card'
+                                                : 'Choose Plan'
 
                             return (
                                 <article

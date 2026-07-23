@@ -16,6 +16,7 @@ type PopupOptions = {
     variant?: PopupVariant
     confirmLabel?: string
     cancelLabel?: string
+    autoConfirmSeconds?: number
 }
 
 type PopupRequest = Required<Pick<PopupOptions, 'confirmLabel' | 'cancelLabel'>> & {
@@ -24,6 +25,7 @@ type PopupRequest = Required<Pick<PopupOptions, 'confirmLabel' | 'cancelLabel'>>
     title: string
     message: string
     variant: PopupVariant
+    autoConfirmSeconds?: number
     resolve: (value: boolean) => void
 }
 
@@ -90,6 +92,7 @@ function variantStyles(variant: PopupVariant) {
 
 export function AppPopupProvider({ children }: { children: ReactNode }) {
     const [popup, setPopup] = useState<PopupRequest | null>(null)
+    const [countdownSeconds, setCountdownSeconds] = useState<number | null>(null)
 
     const openPopup = useCallback((mode: PopupMode, message: string, options: PopupOptions = {}) => (
         new Promise<boolean>((resolve) => {
@@ -102,6 +105,7 @@ export function AppPopupProvider({ children }: { children: ReactNode }) {
                 variant,
                 confirmLabel: options.confirmLabel || (mode === 'confirm' ? 'Confirm' : 'OK'),
                 cancelLabel: options.cancelLabel || 'Cancel',
+                autoConfirmSeconds: options.autoConfirmSeconds,
                 resolve,
             })
         })
@@ -125,14 +129,49 @@ export function AppPopupProvider({ children }: { children: ReactNode }) {
         }
     }, [alert])
 
+    const closePopup = useCallback((accepted: boolean) => {
+        setPopup((current) => {
+            if (current) {
+                current.resolve(accepted)
+            }
+            return null
+        })
+        setCountdownSeconds(null)
+    }, [])
+
+    useEffect(() => {
+        if (!popup?.autoConfirmSeconds || popup.mode !== 'confirm') {
+            setCountdownSeconds(null)
+            return
+        }
+
+        const deadline = Date.now() + popup.autoConfirmSeconds * 1000
+        setCountdownSeconds(popup.autoConfirmSeconds)
+
+        const intervalId = window.setInterval(() => {
+            const remainingSeconds = Math.max(0, Math.ceil((deadline - Date.now()) / 1000))
+            setCountdownSeconds(remainingSeconds)
+
+            if (remainingSeconds <= 0) {
+                window.clearInterval(intervalId)
+                closePopup(true)
+            }
+        }, 250)
+
+        return () => {
+            window.clearInterval(intervalId)
+        }
+    }, [closePopup, popup?.autoConfirmSeconds, popup?.id, popup?.mode])
+
     const value = useMemo(() => ({ alert, confirm }), [alert, confirm])
     const styles = popup ? variantStyles(popup.variant) : null
     const Icon = styles?.icon
 
-    const closePopup = (accepted: boolean) => {
+    const countdownLabel = countdownSeconds === 1 ? 'second' : 'seconds'
+
+    const handleClosePopup = (accepted: boolean) => {
         if (!popup) return
-        popup.resolve(accepted)
-        setPopup(null)
+        closePopup(accepted)
     }
 
     return (
@@ -153,7 +192,7 @@ export function AppPopupProvider({ children }: { children: ReactNode }) {
                                         {popup.mode === 'alert' && (
                                             <button
                                                 type="button"
-                                                onClick={() => closePopup(true)}
+                                                onClick={() => handleClosePopup(true)}
                                                 className="rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
                                                 aria-label="Close"
                                             >
@@ -162,13 +201,18 @@ export function AppPopupProvider({ children }: { children: ReactNode }) {
                                         )}
                                     </div>
                                     <p className="mt-3 whitespace-pre-line text-sm leading-6 text-gray-600">{popup.message}</p>
+                                    {popup.autoConfirmSeconds && countdownSeconds !== null && (
+                                        <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">
+                                            Redirecting automatically in {countdownSeconds} {countdownLabel}.
+                                        </p>
+                                    )}
                                 </div>
                             </div>
                             <div className="mt-6 flex justify-end gap-3">
                                 {popup.mode === 'confirm' && (
                                     <button
                                         type="button"
-                                        onClick={() => closePopup(false)}
+                                        onClick={() => handleClosePopup(false)}
                                         className="btn btn-secondary"
                                     >
                                         {popup.cancelLabel}
@@ -176,7 +220,7 @@ export function AppPopupProvider({ children }: { children: ReactNode }) {
                                 )}
                                 <button
                                     type="button"
-                                    onClick={() => closePopup(true)}
+                                    onClick={() => handleClosePopup(true)}
                                     className={popup.variant === 'error' ? 'btn btn-danger' : 'btn btn-primary'}
                                 >
                                     {popup.confirmLabel}
