@@ -290,4 +290,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Create Django Superuser
+        env:
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          DJANGO_SUPERUSER_PASSWORD: ${{ secrets.DJANGO_SUPERUSER_PASSWORD }}
         run: bash scripts/admin.sh dev

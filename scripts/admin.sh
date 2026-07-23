@@ -63,18 +63,33 @@ aws_with_auth() {
 }
 
 read_superuser_password() {
+  local parameter_name
+  local parameter_value
+  local parameter_names
+
   if [ -n "${DJANGO_SUPERUSER_PASSWORD}" ]; then
     return
   fi
 
-  DJANGO_SUPERUSER_PASSWORD="$(
-    aws_with_auth ssm get-parameter \
+  parameter_names=(
+    "/${PROJECT_NAME}/${ENVIRONMENT}/DJANGO_SUPERUSER_PASSWORD"
+    "/${PROJECT_NAME}/${ENVIRONMENT}/ADMIN_PASSWORD"
+    "/${PROJECT_NAME}/secret/${ENVIRONMENT}/DJANGO_SUPERUSER_PASSWORD"
+  )
+
+  for parameter_name in "${parameter_names[@]}"; do
+    if parameter_value="$(aws_with_auth ssm get-parameter \
       --region "${REGION}" \
-      --name "/rentdirect/secret/${ENVIRONMENT}/DJANGO_SUPERUSER_PASSWORD" \
+      --name "${parameter_name}" \
       --with-decryption \
       --query "Parameter.Value" \
-      --output text
-  )"
+      --output text 2>/dev/null)"; then
+      if [ -n "${parameter_value}" ] && [ "${parameter_value}" != "None" ]; then
+        DJANGO_SUPERUSER_PASSWORD="${parameter_value}"
+        return
+      fi
+    fi
+  done
 }
 
 build_overrides_json() {
