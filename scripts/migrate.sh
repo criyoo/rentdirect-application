@@ -2,12 +2,13 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-INFRA_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 WORKSPACE="${1:-${WORKSPACE:-dev}}"
-AWS_WORKLOAD_PROFILE="${AWS_WORKLOAD_PROFILE:-${WORKSPACE}-rentdirect}"
+PROJECT_NAME="${PROJECT_NAME:-rentdirect}"
+ENVIRONMENT="${ENVIRONMENT:-${WORKSPACE}}"
 AWS_REGION="${AWS_REGION:-eu-west-1}"
-TFVARS_FILE="${TFVARS_FILE:-${INFRA_DIR}/terraform/envs/${WORKSPACE}.tfvars}"
+REGION="${AWS_REGION}"
+AWS_WORKLOAD_PROFILE="${AWS_WORKLOAD_PROFILE:-${ENVIRONMENT}-${PROJECT_NAME}}"
 PUBLIC_SUBNET_IDS="${PUBLIC_SUBNET_IDS:-}"
 APP_SECURITY_GROUP_ID="${APP_SECURITY_GROUP_ID:-}"
 ECS_CLUSTER_NAME="${ECS_CLUSTER_NAME:-}"
@@ -56,16 +57,6 @@ set_aws_auth_mode() {
 
 aws_with_auth() {
   aws "${AWS_PROFILE_ARGS[@]}" "$@"
-}
-
-read_tfvars_string() {
-  local key="$1"
-  local value
-
-  grep -qE "^${key}[[:space:]]*=[[:space:]]*\"[^\"]*\"[[:space:]]*$" "${TFVARS_FILE}" ||
-    fail "Could not read ${key} from ${TFVARS_FILE}"
-  value="$(sed -nE "s/^${key}[[:space:]]*=[[:space:]]*\"([^\"]*)\"[[:space:]]*$/\\1/p" "${TFVARS_FILE}" | head -n 1)"
-  printf '%s\n' "${value}"
 }
 
 json_escape() {
@@ -366,20 +357,13 @@ ensure_db_available() {
 }
 
 require_cmd aws
-require_cmd grep
 require_cmd mktemp
 require_cmd python3
-require_cmd sed
 require_cmd tr
-
-[ -f "${TFVARS_FILE}" ] || fail "Missing Terraform variables file: ${TFVARS_FILE}"
 
 set_aws_auth_mode
 
-PROJECT_NAME="${PROJECT_NAME:-$(read_tfvars_string project_name)}"
-ENVIRONMENT="$(read_tfvars_string environment)"
-REGION="${AWS_REGION:-$(read_tfvars_string region)}"
-NAME_PREFIX="${PROJECT_NAME}-${ENVIRONMENT}"
+NAME_PREFIX="${NAME_PREFIX:-${PROJECT_NAME}-${ENVIRONMENT}}"
 CLUSTER_NAME="${ECS_CLUSTER_NAME:-${NAME_PREFIX}-cluster}"
 TASK_DEFINITION="${MIGRATION_TASK_DEFINITION:-${NAME_PREFIX}-migration}"
 MIGRATION_LOG_GROUP="${MIGRATION_LOG_GROUP:-/ecs/${NAME_PREFIX}/migration}"
