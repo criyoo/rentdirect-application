@@ -605,7 +605,7 @@ export default function ListingDetailPage() {
                                     </li>
                                     <li>{listing.pet_friendly && (
                                         <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full">
-                                            Pet Friendly
+                                            Pet Friendly?
                                         </span>
                                     )}
                                     </li>

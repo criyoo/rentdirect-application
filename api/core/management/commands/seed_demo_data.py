@@ -776,6 +776,18 @@ class Command(BaseCommand):
             raise ValueError(f"{field_name} must be an array")
         return value
 
+    def get_seed_path_values(self, source: dict, *field_names: str) -> list:
+        values = []
+        for field_name in field_names:
+            value = source.get(field_name)
+            if not self.has_seed_value(value):
+                continue
+            if isinstance(value, list):
+                values.extend(value)
+            else:
+                values.append(value)
+        return values
+
     def first_seed_value(self, *values):
         for value in values:
             if self.has_seed_value(value):
@@ -792,6 +804,20 @@ class Command(BaseCommand):
     def seed_text(self, *values) -> str:
         value = self.first_seed_value(*values)
         return str(value).strip()
+
+    def seed_bool(self, *values, default: bool = False) -> bool:
+        value = self.first_seed_value(*values)
+        if value == "":
+            return default
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"1", "true", "yes", "on"}:
+                return True
+            if normalized in {"0", "false", "no", "off"}:
+                return False
+        return bool(value)
 
     def seed_optional_int(self, value) -> int | None:
         if not self.has_seed_value(value):
@@ -902,9 +928,9 @@ class Command(BaseCommand):
             listing.square_feet = listing_data.get("square_feet")
             listing.price_per_year = price_per_year
             listing.deposit_amount = self.calculate_seed_deposit_amount(price_per_year)
-            listing.utilities_included = features.get("utilities_included", False)
-            listing.pet_friendly = self.first_seed_value(rental_preferences.get("pets_allowed"), features.get("pet_friendly", False))
-            listing.furnished = features.get("furnished", False)
+            listing.utilities_included = self.seed_bool(features.get("utilities_included"))
+            listing.pet_friendly = self.seed_bool(features.get("pet_friendly"), rental_preferences.get("pets_allowed"))
+            listing.furnished = self.seed_bool(features.get("furnished"))
             listing.amenities = features.get("amenities", [])
             listing.ownership_status = ""
             listing.ownership_types = self.get_seed_list(property_verification, "ownership_types")
@@ -928,13 +954,13 @@ class Command(BaseCommand):
                 rental_preferences.get("minimum_lease_duration"),
             )
             listing.maximum_occupancy = self.seed_optional_int(rental_preferences.get("maximum_occupancy"))
-            listing.smoking_allowed = bool(rental_preferences.get("smoking_allowed", False))
-            listing.commercial_activities_allowed = bool(rental_preferences.get("commercial_activities_allowed", False))
-            listing.short_let_allowed = bool(rental_preferences.get("short_let_allowed", False))
-            listing.student_tenants_allowed = bool(rental_preferences.get("student_tenants_allowed", False))
-            listing.expatriates_allowed = bool(rental_preferences.get("expatriates_allowed", False))
+            listing.smoking_allowed = self.seed_bool(rental_preferences.get("smoking_allowed"))
+            listing.commercial_activities_allowed = self.seed_bool(rental_preferences.get("commercial_activities_allowed"))
+            listing.short_let_allowed = self.seed_bool(rental_preferences.get("short_let_allowed"))
+            listing.student_tenants_allowed = self.seed_bool(rental_preferences.get("student_tenants_allowed"))
+            listing.expatriates_allowed = self.seed_bool(rental_preferences.get("expatriates_allowed"))
             listing.available_from = self.parse_listing_date(listing_data.get("available_from"), listing_key, "available_from")
-            listing.featured = features.get("feature_property_checkbox", True)
+            listing.featured = self.seed_bool(features.get("feature_property_checkbox"), default=True)
             listing.featured_until = None
             listing.status = Listing.Status.AVAILABLE
             listing.save()
@@ -979,8 +1005,21 @@ class Command(BaseCommand):
             "property_verification",
         )
         normalized["property_verification"] = property_verification
-        normalized["features"] = self.get_seed_dict(listing_data, "features")
-        normalized["rental_preferences"] = self.get_seed_dict(listing_data, "rental_preferences")
+
+        rental_preferences = self.get_seed_dict(listing_data, "rental_preferences")
+        images = self.get_seed_dict(listing_data, "images")
+        features = {
+            **self.get_seed_dict(listing_data, "features"),
+            **self.get_seed_dict(rental_preferences, "features"),
+            **self.get_seed_dict(listing_data, "feature_property"),
+        }
+
+        normalized["features"] = features
+        normalized["rental_preferences"] = rental_preferences
+        if images.get("cover_image") and not normalized.get("cover_image"):
+            normalized["cover_image"] = images["cover_image"]
+        if images.get("additional_images") and not normalized.get("additional_images"):
+            normalized["additional_images"] = images["additional_images"]
         return normalized
 
     def resolve_listing_verification_method(self, property_verification: dict) -> str:
@@ -1018,10 +1057,16 @@ class Command(BaseCommand):
                 document.file.delete(save=False)
                 document.delete()
 
-        if verification_method != "documents":
+        raw_paths = self.get_seed_path_values(
+            property_verification,
+            "property_documents",
+            "documents",
+            "property_document",
+        )
+
+        if verification_method != "documents" and not raw_paths:
             return 0
 
-        raw_paths = self.get_seed_list(property_verification, "property_documents") or self.get_seed_list(property_verification, "documents")
         property_paths = []
         for raw_path in raw_paths:
             raw_text = str(raw_path)

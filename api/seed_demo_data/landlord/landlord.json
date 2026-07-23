@@ -30,9 +30,9 @@
                     "occupation": "Cloud Engineer",
                     "national_identity_number": "98376728472",
                     "bank_verification_number": "22347235093",
-                    "bank_name": "Monie Point",
-                    "account_name": "Christian Aluya",
-                    "account_number": "1234567890",
+                    "bank_name": "Opay",
+                    "account_name": "Christian Odezi Aluya",
+                    "account_number": "9041487757",
                     "residential_address": "23 Alfred Rewani Road, Ikoyi, Lagos",
                     "identity_document": "rentdirect/apps/api/seed_demo_data/landlord/christian/documents/id/nin.pdf"
                 }
@@ -61,9 +61,9 @@
                 "occupation": "Cloud Engineer",
                 "national_identity_number": "98376728472",
                 "bank_verification_number": "22347235093",
-                "bank_name": "Monie Point",
+                "bank_name": "Opay",
                 "account_name": "Christian Odezi Aluya",
-                "account_number": "8099446062",
+                "account_number": "9041487757",
                 "identity_document": "rentdirect/apps/api/seed_demo_data/landlord/christian/documents/id/nin.pdf"
             },
             "employment_information": {
@@ -81,9 +81,9 @@
                 "id_type": "National ID (NIN)",
                 "id_number": "98376728472",
                 "expiry_date": "",
-                "bank_name": "Monie Point",
+                "bank_name": "Opay",
                 "account_name": "Christian Odezi Aluya",
-                "account_number": "8099446062"
+                "account_number": "9041487757"
             },
             "residential_information": {
                 "country": "Nigeria",
@@ -135,24 +135,12 @@
                         "Certificat of Occupancy (Cof)",
                         "Deed of Assignment",
                         "Governor's Consent"
-                    ]
-                },
-                "cover_image": "rentdirect/apps/api/seed_demo_data/landlord/christian/listings/01/cover_image.jpg",
-                "additional_images": [
-                    "rentdirect/apps/api/seed_demo_data/landlord/christian/listings/01/*.{jpeg,jpg,png,webp}"
-                ],
-                "features": {
-                    "utilities_included": true,
-                    "pet_friendly": true,
-                    "furnished": true,
-                    "feature_property_checkbox": true,
-                    "amenities": [
-                        "swimming pool",
-                        "gym",
-                        "parking"
-                    ]
+                    ],
+                    "property_document": "rentdirect/apps/api/seed_demo_data/landlord/christian/listings/01/docs/*.*"
                 },
                 "rental_preferences": {
+                    "maximum_occupancy": "5",
+                    "minimum_lease_duration": "12",
                     "pets_allowed": true,
                     "commercial_activities_allowed": false,
                     "student_tenants_allowed": false,
@@ -160,8 +148,25 @@
                     "smoking_allowed": false,
                     "short_let_allowed": false,
                     "corp_members_allowed": true,
-                    "maximum_occupancy": "5",
-                    "minimum_lease_duration": "12"
+                    "features": {
+                        "utilities_included": true,
+                        "furnished": true,
+                        "pet_friendly": true,
+                        "amenities": [
+                            "swimming pool",
+                            "gym",
+                            "parking"
+                        ]
+                    }
+                },
+                "feature_property": {
+                    "feature_property_checkbox": true
+                },
+                "images": {
+                    "cover_image": "rentdirect/apps/api/seed_demo_data/landlord/christian/listings/01/cover_image.jpg",
+                    "additional_images": [
+                        "rentdirect/apps/api/seed_demo_data/landlord/christian/listings/01/*.{jpeg,jpg,png,webp}"
+                    ]
                 }
             }
         }

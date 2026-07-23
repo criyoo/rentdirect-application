@@ -120,7 +120,6 @@ const corporateOwnershipDocumentOptions = [
 ] as const
 
 const rentalPreferenceOptions = [
-    { field: 'pet_friendly', label: 'Pets Allowed?' },
     { field: 'smoking_allowed', label: 'Smoking Allowed?' },
     { field: 'commercial_activities_allowed', label: 'Commercial Activities Allowed?' },
     { field: 'short_let_allowed', label: 'Short-let Allowed?' },
@@ -850,6 +849,11 @@ export default function ListingFormPage() {
                                 <label className="flex items-center space-x-2">
                                     <input {...register('utilities_included')} type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
                                     <span className="text-sm text-gray-700">Utilities Included</span>
+                                </label>
+
+                                <label className="flex items-center space-x-2">
+                                    <input {...register('pet_friendly')} type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                                    <span className="text-sm text-gray-700">Pet Friendly?</span>
                                 </label>
 
                                 <label className="flex items-center space-x-2">
