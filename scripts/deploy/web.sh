@@ -35,8 +35,7 @@ if [ "${INVALIDATE_ONLY}" = "1" ]; then
   exit 0
 fi
 
-ACCOUNT_ID="$(aws_with_auth sts get-caller-identity --query 'Account' --output text)"
-BUCKET_NAME="${BUCKET_NAME:-${PROJECT_NAME}-${ENVIRONMENT}-web-${ACCOUNT_ID}}"
+BUCKET_NAME="${BUCKET_NAME:-frontend-${NAME_PREFIX}}"
 
 aws_with_auth s3api head-bucket --region "${AWS_REGION}" --bucket "${BUCKET_NAME}" >/dev/null 2>&1 \
   || fail "Web bucket not found: ${BUCKET_NAME}"
