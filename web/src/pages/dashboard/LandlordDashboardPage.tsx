@@ -113,10 +113,12 @@ export default function LandlordDashboardPage() {
     const outstandingBalance = activeBookings.reduce((sum, booking) => sum + getBookingFinancials(booking).remainingAmount, 0)
     const isBronzeLandlord = user?.role === 'landlord' && subscriptionPaymentResponse !== undefined && hasBronzeAccess(subscriptionPaymentResponse)
     const landlordFirstName = user?.name?.trim().split(/\s+/)[0] || 'Landlord'
+    const landlordProfileId = userId || user?.id
+    const landlordProfilePath = landlordProfileId ? `/landlords/${landlordProfileId}` : '#'
     const dashboardActions = [
         { to: '/landlord/enquiries', label: 'Enquiries', Icon: HiChat, colorClass: 'text-green-600' },
         { to: '/landlord/verification', label: 'Verification', Icon: HiShieldCheck, colorClass: 'text-purple-600' },
-        { to: user ? `/profile/${user.id}` : '#', label: 'Profile', Icon: HiUser, colorClass: 'text-orange-600' },
+        { to: landlordProfilePath, label: 'Profile', Icon: HiUser, colorClass: 'text-orange-600' },
         { to: '/billing', label: 'Billing', Icon: HiCash, colorClass: 'text-emerald-600' },
         { to: '/complaint', label: 'Complaint', Icon: HiExclamationCircle, colorClass: 'text-red-700' },
         { to: '/support', label: 'Support', Icon: HiSupport, colorClass: 'text-blue-700' },
