@@ -15,7 +15,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from core.management.commands.seed_demo_data import Command as SeedDemoDataCommand
-from core.models import AppUser, Booking, CommunityChatMessage, Document, Feedback, FeaturedPayment, Listing, Message, Payment, PaymentSettlement, Review, SubscriptionPayment, SubscriptionPaymentMethod, SupportChatMessage, TenantProfile, VerificationRequest
+from core.models import AppUser, Booking, CommunityChatMessage, Document, Feedback, FeaturedPayment, Listing, ListingImage, Message, Payment, PaymentSettlement, Review, SubscriptionPayment, SubscriptionPaymentMethod, SupportChatMessage, TenantProfile, VerificationRequest
 from core.pricing import calculate_booking_total, calculate_deposit_amount
 from core.security import hash_otp
 from core.serializers import UserSerializer
@@ -2795,6 +2795,27 @@ class SeedDemoTests(TestCase):
         response = self.client.get("/api/v1/featured/listings")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()), 1)
+
+    @override_settings(SEED_DEMO_ACCOUNTS=True)
+    def test_seed_demo_restores_listing_images_when_storage_files_already_exist(self):
+        with tempfile.TemporaryDirectory() as temp_media_root:
+            with override_settings(MEDIA_ROOT=temp_media_root):
+                call_command("seed_demo_data")
+
+                listing = Listing.objects.get(landlord__email="criyo.career+chris@gmail.com", seed_key="01")
+                original_image_names = list(listing.images.values_list("file", flat=True))
+                ListingImage.objects.filter(listing=listing).delete()
+                for image_name in original_image_names:
+                    self.assertTrue((Path(temp_media_root) / image_name).exists())
+
+                call_command("seed_demo_data")
+
+                listing.refresh_from_db()
+                image_names = list(listing.images.values_list("file", flat=True))
+
+        self.assertGreater(len(image_names), 0)
+        self.assertTrue(any(name.endswith("_cover_image.jpg") for name in image_names))
+        self.assertTrue(listing.cover_image_url)
 
     @override_settings(SEED_DEMO_ACCOUNTS=True)
     def test_seed_demo_updates_existing_seeded_listing_instead_of_creating_duplicate(self):

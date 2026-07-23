@@ -952,15 +952,13 @@ class Command(BaseCommand):
             cover_path = self.resolve_path(listing_data.get("cover_image"))
             desired_image_names = set()
             if cover_path and cover_path.exists():
-                self.ensure_listing_image(listing, cover_path, is_cover=True, sort_order=0)
-                desired_image_names.add(self.build_seed_image_name(listing, cover_path))
+                desired_image_names.add(self.ensure_listing_image(listing, cover_path, is_cover=True, sort_order=0))
 
             image_patterns = listing_data.get("additional_images") or []
             for index, image_path in enumerate(self.expand_patterns(image_patterns), start=1):
                 if cover_path and cover_path.exists() and image_path.resolve() == cover_path.resolve():
                     continue
-                self.ensure_listing_image(listing, image_path, is_cover=False, sort_order=index)
-                desired_image_names.add(self.build_seed_image_name(listing, image_path))
+                desired_image_names.add(self.ensure_listing_image(listing, image_path, is_cover=False, sort_order=index))
 
             self.remove_stale_listing_images(listing, desired_image_names)
 
@@ -1054,7 +1052,7 @@ class Command(BaseCommand):
     def build_seed_image_name(self, listing: Listing, source_path: Path) -> str:
         return f"{listing.id}_{source_path.name}"
 
-    def ensure_listing_image(self, listing: Listing, path: Path, *, is_cover: bool, sort_order: int) -> None:
+    def ensure_listing_image(self, listing: Listing, path: Path, *, is_cover: bool, sort_order: int) -> str:
         target_name = self.build_seed_image_name(listing, path)
         existing = {Path(image.file.name).name: image for image in listing.images.all() if image.file}
         match = existing.get(target_name)
@@ -1072,7 +1070,7 @@ class Command(BaseCommand):
                 match.save(update_fields=["file", "is_cover", "sort_order"])
             else:
                 match.save(update_fields=["file"])
-            return
+            return Path(match.file.name).name
 
         image = ListingImage(
             listing=listing,
@@ -1081,6 +1079,7 @@ class Command(BaseCommand):
         )
         self.replace_model_file(image, "file", path, target_name=target_name)
         image.save()
+        return Path(image.file.name).name
 
     def remove_stale_listing_images(self, listing: Listing, desired_image_names: set[str]) -> None:
         for image in listing.images.all():
@@ -1187,8 +1186,15 @@ class Command(BaseCommand):
 
     def replace_model_file(self, instance, field_name: str, source_path: Path, *, target_name: str | None = None) -> None:
         field = getattr(instance, field_name)
+        existing_name = field.name if field and field.name else ""
+
         if field and field.name:
             field.delete(save=False)
+
+        if target_name:
+            storage_name = instance._meta.get_field(field_name).generate_filename(instance, target_name)
+            if storage_name != existing_name:
+                field.storage.delete(storage_name)
 
         with source_path.open("rb") as fh:
             field.save(target_name or source_path.name, File(fh), save=False)
