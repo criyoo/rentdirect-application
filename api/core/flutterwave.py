@@ -6,7 +6,8 @@ import hmac
 import json
 import logging
 import time
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
+from functools import lru_cache
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
@@ -75,6 +76,7 @@ def build_checkout_payload(
     customer_name: str | None = None,
     customer_phone: str | None = None,
     webhook_url: str | None = None,
+    subaccounts: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     public_key = resolve_checkout_public_key()
     if not public_key:
@@ -104,6 +106,8 @@ def build_checkout_payload(
     }
     if webhook_url:
         flutterwave_payload["webhook_url"] = webhook_url
+    if subaccounts:
+        flutterwave_payload["subaccounts"] = subaccounts
 
     return {
         "checkout_mode": "inline",
@@ -473,6 +477,7 @@ def create_charge(
     redirect_url: str = "",
     recurring: bool = False,
     metadata: dict[str, Any] | None = None,
+    subaccounts: list[dict[str, Any]] | None = None,
     idempotency_key: str | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
@@ -487,6 +492,8 @@ def create_charge(
         payload["redirect_url"] = redirect_url
     if recurring:
         payload["recurring"] = True
+    if subaccounts:
+        payload["subaccounts"] = subaccounts
 
     return _request_json_v4(
         method="POST",
@@ -494,6 +501,144 @@ def create_charge(
         payload=payload,
         idempotency_key=idempotency_key or reference,
     )
+
+
+def extract_subaccount_id(payload: dict[str, Any] | None) -> str:
+    data = extract_provider_data(payload)
+    for container in (data, payload or {}):
+        for key in ("subaccount_id", "subAccountId", "account_id"):
+            value = str(container.get(key) or "").strip()
+            if value:
+                return value
+        value = str(container.get("id") or "").strip()
+        if value.startswith("RS_"):
+            return value
+    return ""
+
+
+def create_collection_subaccount(
+    *,
+    bank_code: str,
+    account_number: str,
+    business_name: str,
+    business_email: str = "",
+    business_mobile: str = "",
+    country: str = "NG",
+    split_type: str = "flat",
+    split_value: str | Decimal = "0",
+) -> dict[str, Any]:
+    try:
+        normalized_split_value = Decimal(str(split_value or "0"))
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise FlutterwaveError("Flutterwave subaccount split value is invalid.") from exc
+
+    payload: dict[str, Any] = {
+        "account_bank": str(bank_code or "").strip(),
+        "account_number": str(account_number or "").strip(),
+        "business_name": str(business_name or "").strip(),
+        "business_mobile": format_customer_phone_number(business_mobile or "") or str(business_mobile or "").strip(),
+        "country": str(country or "NG").strip() or "NG",
+        "split_type": str(split_type or "flat").strip() or "flat",
+        "split_value": float(normalized_split_value),
+    }
+    missing_fields = [key for key in ("account_bank", "account_number", "business_name", "business_mobile") if not payload[key]]
+    if missing_fields:
+        raise FlutterwaveError(f"Flutterwave subaccount requires: {', '.join(missing_fields)}.")
+    if business_email:
+        payload["business_email"] = str(business_email).strip()
+    response = _request_json_v3(method="POST", path="/subaccounts", payload=payload)
+    if str(response.get("status") or "").lower() not in {"success", "successful"}:
+        raise FlutterwaveError(
+            _extract_gateway_error_message(
+                json.dumps(response),
+                "Flutterwave subaccount request failed.",
+            )
+        )
+    return response
+
+
+def list_collection_subaccounts(*, account_number: str = "") -> list[dict[str, Any]]:
+    query = urlencode({"account_number": account_number}) if account_number else ""
+    payload = _request_json_v3(method="GET", path=f"/subaccounts?{query}" if query else "/subaccounts")
+    if str(payload.get("status") or "").lower() not in {"success", "successful"}:
+        raise FlutterwaveError(
+            _extract_gateway_error_message(
+                json.dumps(payload),
+                "Flutterwave subaccount lookup failed.",
+            )
+        )
+    data = payload.get("data") if isinstance(payload, dict) else []
+    if isinstance(data, dict):
+        nested_data = data.get("data")
+        if isinstance(nested_data, list):
+            return [item for item in nested_data if isinstance(item, dict)]
+        return [data]
+    if isinstance(data, list):
+        return [item for item in data if isinstance(item, dict)]
+    return []
+
+
+def find_collection_subaccount(*, bank_code: str, account_number: str) -> dict[str, Any] | None:
+    normalized_account_number = str(account_number or "").strip()
+    normalized_bank_code = str(bank_code or "").strip()
+    if not normalized_account_number:
+        return None
+    for subaccount in list_collection_subaccounts(account_number=normalized_account_number):
+        subaccount_account_number = str(subaccount.get("account_number") or "").strip()
+        subaccount_bank_code = str(
+            subaccount.get("account_bank")
+            or subaccount.get("bank_code")
+            or subaccount.get("bank")
+            or ""
+        ).strip()
+        if subaccount_account_number != normalized_account_number:
+            continue
+        if normalized_bank_code and subaccount_bank_code and subaccount_bank_code != normalized_bank_code:
+            continue
+        if extract_subaccount_id({"data": subaccount}):
+            return subaccount
+    return None
+
+
+@lru_cache(maxsize=32)
+def get_or_create_collection_subaccount_id(
+    *,
+    bank_code: str,
+    account_number: str,
+    business_name: str,
+    business_email: str = "",
+    business_mobile: str = "",
+    country: str = "NG",
+    split_type: str = "flat",
+    split_value: str = "0",
+) -> str:
+    try:
+        response = create_collection_subaccount(
+            bank_code=bank_code,
+            account_number=account_number,
+            business_name=business_name,
+            business_email=business_email,
+            business_mobile=business_mobile,
+            country=country,
+            split_type=split_type,
+            split_value=split_value,
+        )
+    except FlutterwaveError as exc:
+        if "already exists" not in str(exc).lower():
+            raise
+        existing_subaccount = find_collection_subaccount(
+            bank_code=bank_code,
+            account_number=account_number,
+        )
+        subaccount_id = extract_subaccount_id({"data": existing_subaccount})
+        if subaccount_id:
+            return subaccount_id
+        raise
+
+    subaccount_id = extract_subaccount_id(response)
+    if not subaccount_id:
+        raise FlutterwaveError("Flutterwave did not return a subscription subaccount id.")
+    return subaccount_id
 
 
 def find_customer_by_email(email: str) -> dict[str, Any] | None:

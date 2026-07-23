@@ -255,13 +255,20 @@ SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
 X_FRAME_OPTIONS = "DENY"
 
 COOKIE_DOMAIN = os.environ.get("COOKIE_DOMAIN", "")
-API_PUBLIC_URL = os.environ.get("API_PUBLIC_URL", "https://api.rentdirect.homes").rstrip("/")
+API_PUBLIC_URL = os.environ.get(
+    "API_PUBLIC_URL", 
+    "https://api.rentdirect.homes"
+    if ENVIRONMENT in {"prod", "production"}
+    else "https://api.development.rentdirect.homes"
+    if ENVIRONMENT in {"dev", "development"}
+    else "http://localhost:8600",
+).rstrip("/")
 WEB_PUBLIC_URL = os.environ.get(
     "WEB_PUBLIC_URL",
     "https://rentdirect.homes"
     if ENVIRONMENT in {"prod", "production"}
     else "https://development.rentdirect.homes"
-    if ENVIRONMENT in {"dev", "development", "staging"}
+    if ENVIRONMENT in {"dev", "development"}
     else "http://localhost:3600",
 ).rstrip("/")
 ACCESS_COOKIE_NAME = "access_token"
@@ -316,7 +323,7 @@ RENTDIRECT_OPERATING_ACCOUNT_NUMBER = os.environ.get(
 RENTDIRECT_OPERATING_ACCOUNT_NAME = os.environ.get("RENTDIRECT_OPERATING_ACCOUNT_NAME", "RentDirect Operations").strip()
 TENANT_CAUTION_HOLDING_BANK_NAME = os.environ.get(
     "TENANT_CAUTION_HOLDING_BANK_NAME",
-    "Monie Point" if USE_TEST_PAYOUT_ACCOUNT_DEFAULTS else "",
+    "MoniePoint" if USE_TEST_PAYOUT_ACCOUNT_DEFAULTS else "",
 ).strip()
 TENANT_CAUTION_HOLDING_BANK_CODE = os.environ.get("TENANT_CAUTION_HOLDING_BANK_CODE", "").strip()
 TENANT_CAUTION_HOLDING_ACCOUNT_NUMBER = os.environ.get(
@@ -324,6 +331,19 @@ TENANT_CAUTION_HOLDING_ACCOUNT_NUMBER = os.environ.get(
     "5900387715" if USE_TEST_PAYOUT_ACCOUNT_DEFAULTS else "",
 ).strip()
 TENANT_CAUTION_HOLDING_ACCOUNT_NAME = os.environ.get("TENANT_CAUTION_HOLDING_ACCOUNT_NAME", "RentDirect Tenant Caution Holding").strip()
+
+RENTDIRECT_SUBSCRIPTION_BANK_NAME = os.environ.get("RENTDIRECT_SUBSCRIPTION_BANK_NAME", "FCMB").strip()
+RENTDIRECT_SUBSCRIPTION_BANK_CODE = os.environ.get("RENTDIRECT_SUBSCRIPTION_BANK_CODE", "").strip()
+RENTDIRECT_SUBSCRIPTION_ACCOUNT_NUMBER = os.environ.get("RENTDIRECT_SUBSCRIPTION_ACCOUNT_NUMBER", "2870390028").strip()
+RENTDIRECT_SUBSCRIPTION_ACCOUNT_NAME = os.environ.get("RENTDIRECT_SUBSCRIPTION_ACCOUNT_NAME", "Aluya Christian Odezi").strip()
+RENTDIRECT_SUBSCRIPTION_SUBACCOUNT_ID = os.environ.get("RENTDIRECT_SUBSCRIPTION_SUBACCOUNT_ID", "").strip()
+RENTDIRECT_SUBSCRIPTION_BUSINESS_EMAIL = os.environ.get("RENTDIRECT_SUBSCRIPTION_BUSINESS_EMAIL", DEFAULT_FROM_EMAIL).strip()
+RENTDIRECT_SUBSCRIPTION_BUSINESS_MOBILE = os.environ.get("RENTDIRECT_SUBSCRIPTION_BUSINESS_MOBILE", "08099446062").strip()
+RENTDIRECT_SUBSCRIPTION_SUBACCOUNT_COUNTRY = os.environ.get("RENTDIRECT_SUBSCRIPTION_SUBACCOUNT_COUNTRY", "NG").strip()
+RENTDIRECT_SUBSCRIPTION_SUBACCOUNT_SPLIT_TYPE = os.environ.get("RENTDIRECT_SUBSCRIPTION_SUBACCOUNT_SPLIT_TYPE", "flat").strip()
+RENTDIRECT_SUBSCRIPTION_SUBACCOUNT_SPLIT_VALUE = os.environ.get("RENTDIRECT_SUBSCRIPTION_SUBACCOUNT_SPLIT_VALUE", "0").strip()
+RENTDIRECT_SUBSCRIPTION_TRANSACTION_CHARGE_TYPE = os.environ.get("RENTDIRECT_SUBSCRIPTION_TRANSACTION_CHARGE_TYPE", "flat").strip()
+RENTDIRECT_SUBSCRIPTION_TRANSACTION_CHARGE = os.environ.get("RENTDIRECT_SUBSCRIPTION_TRANSACTION_CHARGE", "0").strip()
 
 DIKRIPT_API_BASE_URL = os.environ.get("DIKRIPT_API_BASE_URL", "https://api.dikript.com").strip()
 DIKRIPT_NIN_API_URL = os.environ.get("DIKRIPT_NIN_API_URL", "/dikript/verification/api/v1/getnin").strip()

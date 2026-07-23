@@ -1981,6 +1981,7 @@ class BookingPaymentTests(TestCase):
             payment_payload["payment"]["transaction_id"],
         )
         self.assertEqual(payment_payload["checkout"]["virtual_account"]["account_number"], "1234567890")
+        self.assertNotIn("subaccounts", payment_payload["checkout"]["flutterwave"])
         booking.refresh_from_db()
         self.assertEqual(str(booking.paid_amount), "0.00")
         self.assertEqual(booking.status, Booking.Status.PENDING)
@@ -3132,6 +3133,7 @@ class FeaturedPaymentTests(TestCase):
         self.assertEqual(payload["payment"]["provider"], "flutterwave")
         self.assertEqual(payload["checkout"]["checkout_mode"], "inline")
         self.assertEqual(payload["checkout"]["flutterwave"]["tx_ref"], payment.transaction_id)
+        self.assertNotIn("subaccounts", payload["checkout"]["flutterwave"])
 
         payment.refresh_from_db()
         self.assertEqual(payment.status, "pending")
@@ -3244,6 +3246,33 @@ class FeaturedPaymentTests(TestCase):
 
 
 class SubscriptionPaymentTests(TestCase):
+    @override_settings(
+        FLUTTERWAVE_CLIENT_ID="test-client-id",
+        FLUTTERWAVE_CLIENT_SECRET="test-client-secret",
+        FLUTTERWAVE_API_BASE_URL="https://developersandbox-api.flutterwave.com",
+        FLUTTERWAVE_ENCRYPTION_KEY="MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+        RENTDIRECT_SUBSCRIPTION_SUBACCOUNT_ID="",
+        RENTDIRECT_SUBSCRIPTION_BANK_NAME="",
+        RENTDIRECT_SUBSCRIPTION_BANK_CODE="",
+        RENTDIRECT_SUBSCRIPTION_ACCOUNT_NUMBER="",
+    )
+    def test_recurring_subscription_config_requires_direct_settlement_account(self):
+        tenant = AppUser.objects.create_user(
+            email="tenant-recurring-config@example.com",
+            password="password-123",
+            name="Recurring Config Tenant",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        client = APIClient()
+        client.force_authenticate(user=tenant)
+
+        response = client.get("/api/v1/subscriptions/recurring/config")
+
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertFalse(response.json()["enabled"])
+        self.assertFalse(response.json()["direct_settlement_configured"])
+
     def test_free_bronze_subscription_completes_immediately_for_14_days(self):
         landlord = AppUser.objects.create_user(
             email="landlord-free-subscription@example.com",
@@ -3326,6 +3355,11 @@ class SubscriptionPaymentTests(TestCase):
     @override_settings(
         FLUTTERWAVE_PUBLIC_KEY="test-public-key",
         FLUTTERWAVE_SECRET_KEY="test-secret-key",
+        RENTDIRECT_SUBSCRIPTION_SUBACCOUNT_ID="RS_SUBSCRIPTION_TEST",
+        RENTDIRECT_SUBSCRIPTION_BANK_NAME="FCMB",
+        RENTDIRECT_SUBSCRIPTION_BANK_CODE="214",
+        RENTDIRECT_SUBSCRIPTION_ACCOUNT_NUMBER="0000000000",
+        RENTDIRECT_SUBSCRIPTION_ACCOUNT_NAME="RentDirect Subscription",
         WEB_PUBLIC_URL="http://localhost:5173",
     )
     @patch("core.views.query_transaction")
@@ -3364,6 +3398,19 @@ class SubscriptionPaymentTests(TestCase):
         self.assertEqual(checkout_payload["payment"]["status"], "pending")
         self.assertEqual(checkout_payload["checkout"]["checkout_mode"], "inline")
         self.assertEqual(checkout_payload["checkout"]["flutterwave"]["tx_ref"], payment.transaction_id)
+        self.assertEqual(
+            checkout_payload["checkout"]["flutterwave"]["subaccounts"],
+            [
+                {
+                    "id": "RS_SUBSCRIPTION_TEST",
+                    "transaction_charge_type": "flat",
+                    "transaction_charge": 0,
+                }
+            ],
+        )
+        payment.refresh_from_db()
+        self.assertEqual(payment.provider_payload["subscription_destination"]["subaccount_id"], "RS_SUBSCRIPTION_TEST")
+        self.assertEqual(payment.provider_payload["subscription_destination"]["account_number"], "0000000000")
 
         query_transaction_mock.return_value = {
             "status": "success",
@@ -3397,10 +3444,66 @@ class SubscriptionPaymentTests(TestCase):
     @override_settings(
         FLUTTERWAVE_PUBLIC_KEY="test-public-key",
         FLUTTERWAVE_SECRET_KEY="test-secret-key",
+        RENTDIRECT_SUBSCRIPTION_SUBACCOUNT_ID="",
+        RENTDIRECT_SUBSCRIPTION_BANK_NAME="FCMB",
+        RENTDIRECT_SUBSCRIPTION_BANK_CODE="",
+        RENTDIRECT_SUBSCRIPTION_ACCOUNT_NUMBER="0000000000",
+        RENTDIRECT_SUBSCRIPTION_ACCOUNT_NAME="RentDirect Subscription",
+        RENTDIRECT_SUBSCRIPTION_BUSINESS_EMAIL="billing@rentdirect.homes",
+        RENTDIRECT_SUBSCRIPTION_BUSINESS_MOBILE="08000000000",
+        WEB_PUBLIC_URL="http://localhost:5173",
+    )
+    @patch("core.views.get_or_create_collection_subaccount_id", return_value="RS_CREATED_SUBSCRIPTION")
+    def test_subscription_checkout_creates_flutterwave_subaccount_from_configured_account(self, subaccount_mock):
+        tenant = AppUser.objects.create_user(
+            email="tenant-subscription-subaccount@example.com",
+            password="password-123",
+            name="Subscription Tenant",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        payment = SubscriptionPayment.objects.create(
+            user=tenant,
+            role=tenant.role,
+            plan_code=SubscriptionPayment.PlanCode.SILVER,
+            billing_cycle=SubscriptionPayment.BillingCycle.MONTHLY,
+            amount="200.00",
+            currency="NGN",
+            status=SubscriptionPayment.Status.PENDING,
+            provider="flutterwave",
+            transaction_id="SUBACCOUNTTEST001",
+            expires_at=timezone.now() + timedelta(days=30),
+        )
+
+        client = APIClient()
+        client.force_authenticate(user=tenant)
+        response = client.post(f"/api/v1/subscriptions/{payment.id}/flutterwave/checkout", {}, format="json")
+
+        self.assertEqual(response.status_code, 200, response.json())
+        subaccount_mock.assert_called_once_with(
+            bank_code="214",
+            account_number="0000000000",
+            business_name="RentDirect Subscription",
+            business_email="billing@rentdirect.homes",
+            business_mobile="08000000000",
+            country="NG",
+            split_type="flat",
+            split_value="0",
+        )
+        self.assertEqual(response.json()["checkout"]["flutterwave"]["subaccounts"][0]["id"], "RS_CREATED_SUBSCRIPTION")
+
+    @override_settings(
+        FLUTTERWAVE_PUBLIC_KEY="test-public-key",
+        FLUTTERWAVE_SECRET_KEY="test-secret-key",
         FLUTTERWAVE_CLIENT_ID="test-client-id",
         FLUTTERWAVE_CLIENT_SECRET="test-client-secret",
         FLUTTERWAVE_API_BASE_URL="https://developersandbox-api.flutterwave.com",
         FLUTTERWAVE_ENCRYPTION_KEY="MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+        RENTDIRECT_SUBSCRIPTION_SUBACCOUNT_ID="RS_SUBSCRIPTION_TEST",
+        RENTDIRECT_SUBSCRIPTION_BANK_NAME="FCMB",
+        RENTDIRECT_SUBSCRIPTION_BANK_CODE="214",
+        RENTDIRECT_SUBSCRIPTION_ACCOUNT_NUMBER="0000000000",
+        RENTDIRECT_SUBSCRIPTION_ACCOUNT_NAME="RentDirect Subscription",
         WEB_PUBLIC_URL="http://localhost:5173",
     )
     @patch("core.views.create_charge")
@@ -3489,6 +3592,17 @@ class SubscriptionPaymentTests(TestCase):
         self.assertEqual(payment.payment_method.provider_payment_method_id, "pmd_recurring_123")
         self.assertEqual(SubscriptionPaymentMethod.objects.filter(user=landlord).count(), 1)
         self.assertEqual(create_charge_mock.call_args.kwargs["recurring"], True)
+        self.assertEqual(
+            create_charge_mock.call_args.kwargs["subaccounts"],
+            [
+                {
+                    "id": "RS_SUBSCRIPTION_TEST",
+                    "transaction_charge_type": "flat",
+                    "transaction_charge": 0,
+                }
+            ],
+        )
+        self.assertEqual(payment.provider_payload["subscription_destination"]["subaccount_id"], "RS_SUBSCRIPTION_TEST")
 
     @override_settings(
         FLUTTERWAVE_PUBLIC_KEY="test-public-key",
@@ -3496,6 +3610,11 @@ class SubscriptionPaymentTests(TestCase):
         FLUTTERWAVE_CLIENT_ID="test-client-id",
         FLUTTERWAVE_CLIENT_SECRET="test-client-secret",
         FLUTTERWAVE_API_BASE_URL="https://developersandbox-api.flutterwave.com",
+        RENTDIRECT_SUBSCRIPTION_SUBACCOUNT_ID="RS_SUBSCRIPTION_TEST",
+        RENTDIRECT_SUBSCRIPTION_BANK_NAME="FCMB",
+        RENTDIRECT_SUBSCRIPTION_BANK_CODE="214",
+        RENTDIRECT_SUBSCRIPTION_ACCOUNT_NUMBER="0000000000",
+        RENTDIRECT_SUBSCRIPTION_ACCOUNT_NAME="RentDirect Subscription",
         WEB_PUBLIC_URL="http://localhost:5173",
     )
     @patch("core.views.create_charge")
@@ -3557,6 +3676,7 @@ class SubscriptionPaymentTests(TestCase):
         self.assertEqual(renewal.provider_charge_id, "chg_renewal_123")
         self.assertEqual(renewal.payment_method, payment_method)
         self.assertEqual(create_charge_mock.call_args.kwargs["payment_method_id"], "pmd_renewal_123")
+        self.assertEqual(create_charge_mock.call_args.kwargs["subaccounts"][0]["id"], "RS_SUBSCRIPTION_TEST")
 
 
 class DashboardTests(TestCase):

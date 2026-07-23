@@ -5,7 +5,7 @@ import re
 import uuid
 from calendar import monthrange
 from datetime import timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
 from django.contrib.auth.password_validation import validate_password
@@ -68,6 +68,7 @@ from .flutterwave import (
     extract_resource_id,
     extract_reference,
     extract_virtual_account_details,
+    get_or_create_collection_subaccount_id,
     map_redirect_status,
     normalize_decimal_amount,
     query_transaction,
@@ -867,7 +868,90 @@ def build_featured_checkout(payment: FeaturedPayment) -> dict:
     )
 
 
-def build_subscription_checkout(payment: SubscriptionPayment) -> dict:
+def json_decimal(value: Decimal) -> float | int:
+    return int(value) if value == value.to_integral_value() else float(value)
+
+
+def decimal_setting(name: str, default: str) -> Decimal:
+    try:
+        return Decimal(str(getattr(settings, name, default) or default))
+    except (InvalidOperation, TypeError, ValueError):
+        return Decimal(default)
+
+
+def resolve_subscription_payment_account() -> dict:
+    return resolve_account_payload(
+        bank_name=getattr(settings, "RENTDIRECT_SUBSCRIPTION_BANK_NAME", ""),
+        bank_code=getattr(settings, "RENTDIRECT_SUBSCRIPTION_BANK_CODE", ""),
+        account_number=getattr(settings, "RENTDIRECT_SUBSCRIPTION_ACCOUNT_NUMBER", ""),
+        account_name=getattr(settings, "RENTDIRECT_SUBSCRIPTION_ACCOUNT_NAME", ""),
+    )
+
+
+def subscription_direct_settlement_configured() -> bool:
+    if str(getattr(settings, "RENTDIRECT_SUBSCRIPTION_SUBACCOUNT_ID", "") or "").strip():
+        return True
+    account = resolve_subscription_payment_account()
+    return bool(
+        account["bank_name"]
+        and account["bank_code"]
+        and account["account_number"]
+        and str(getattr(settings, "RENTDIRECT_SUBSCRIPTION_BUSINESS_MOBILE", "") or "").strip()
+    )
+
+
+def build_subscription_subaccount_payload() -> tuple[list[dict], dict]:
+    account = resolve_subscription_payment_account()
+    configured_subaccount_id = str(getattr(settings, "RENTDIRECT_SUBSCRIPTION_SUBACCOUNT_ID", "") or "").strip()
+    if not configured_subaccount_id:
+        missing_fields = [
+            label
+            for label, value in {
+                "bank_name": account["bank_name"],
+                "bank_code": account["bank_code"],
+                "account_number": account["account_number"],
+                "business_mobile": getattr(settings, "RENTDIRECT_SUBSCRIPTION_BUSINESS_MOBILE", ""),
+            }.items()
+            if not str(value or "").strip()
+        ]
+        if missing_fields:
+            raise FlutterwaveError(
+                "RentDirect subscription payout account is not configured: "
+                + ", ".join(missing_fields)
+            )
+        configured_subaccount_id = get_or_create_collection_subaccount_id(
+            bank_code=account["bank_code"],
+            account_number=account["account_number"],
+            business_name=account["account_name"] or "RentDirect Subscription",
+            business_email=getattr(settings, "RENTDIRECT_SUBSCRIPTION_BUSINESS_EMAIL", ""),
+            business_mobile=getattr(settings, "RENTDIRECT_SUBSCRIPTION_BUSINESS_MOBILE", ""),
+            country=getattr(settings, "RENTDIRECT_SUBSCRIPTION_SUBACCOUNT_COUNTRY", "NG"),
+            split_type=getattr(settings, "RENTDIRECT_SUBSCRIPTION_SUBACCOUNT_SPLIT_TYPE", "flat"),
+            split_value=str(getattr(settings, "RENTDIRECT_SUBSCRIPTION_SUBACCOUNT_SPLIT_VALUE", "0") or "0"),
+        )
+
+    transaction_charge_type = str(
+        getattr(settings, "RENTDIRECT_SUBSCRIPTION_TRANSACTION_CHARGE_TYPE", "flat") or "flat"
+    ).strip() or "flat"
+    transaction_charge = decimal_setting("RENTDIRECT_SUBSCRIPTION_TRANSACTION_CHARGE", "0")
+    subaccount = {
+        "id": configured_subaccount_id,
+        "transaction_charge_type": transaction_charge_type,
+        "transaction_charge": json_decimal(transaction_charge),
+    }
+    destination = {
+        **account,
+        "subaccount_id": configured_subaccount_id,
+        "transaction_charge_type": transaction_charge_type,
+        "transaction_charge": str(transaction_charge),
+        "direct_settlement": True,
+    }
+    return [subaccount], destination
+
+
+def build_subscription_checkout(payment: SubscriptionPayment, *, subaccounts: list[dict] | None = None) -> dict:
+    if subaccounts is None:
+        subaccounts, _destination = build_subscription_subaccount_payload()
     return build_checkout_payload(
         reference=payment.transaction_id or build_subscription_payment_reference(),
         amount=payment.amount,
@@ -883,10 +967,13 @@ def build_subscription_checkout(payment: SubscriptionPayment) -> dict:
             "customer_type": payment.role,
             "plan_code": payment.plan_code,
             "billing_cycle": payment.billing_cycle,
+            "payment_purpose": "subscription",
+            "subscription_subaccount_id": subaccounts[0]["id"],
         },
         customer_name=payment.user.name,
         customer_phone=payment.user.mobile,
         webhook_url=build_flutterwave_webhook_url(),
+        subaccounts=subaccounts,
     )
 
 
@@ -898,6 +985,8 @@ def ensure_flutterwave_recurring_configured() -> None:
     ensure_flutterwave_recurring_charge_configured()
     if not flutterwave_encryption_key_is_configured():
         raise ValidationError("Flutterwave card encryption is not configured on the server.")
+    if not subscription_direct_settlement_configured():
+        raise ValidationError("RentDirect subscription payout account is not configured.")
 
 
 def ensure_flutterwave_recurring_charge_configured() -> None:
@@ -1002,6 +1091,7 @@ def charge_subscription_with_payment_method(payment: SubscriptionPayment, *, sou
         payment.save(update_fields=["transaction_id", "updated_at"])
 
     payment_method = payment.payment_method
+    subaccounts, destination = build_subscription_subaccount_payload()
     charge_payload = create_charge(
         reference=payment.transaction_id,
         amount=payment.amount,
@@ -1017,13 +1107,17 @@ def charge_subscription_with_payment_method(payment: SubscriptionPayment, *, sou
             "plan_code": payment.plan_code,
             "billing_cycle": payment.billing_cycle,
             "billing_reason": payment.billing_reason,
+            "payment_purpose": "subscription",
+            "subscription_subaccount_id": subaccounts[0]["id"],
         },
+        subaccounts=subaccounts,
         idempotency_key=f"{payment.transaction_id}-recurring-charge",
     )
     payment.provider_charge_id = extract_provider_transaction_id(charge_payload)
     payment.provider_payload = update_payment_provider_payload(
         payment.provider_payload,
         charge_payload,
+        subscription_destination=destination,
         recurring={"source": source, "charged_at": timezone.now().isoformat()},
     )
     payment.provider = "flutterwave"
@@ -1123,12 +1217,30 @@ def resolve_account_payload(*, bank_name: str, account_number: str, account_name
     if not bank_code:
         normalized_bank_name = bank_name.lower().replace(" ", "").replace("-", "")
         bank_code = {
+            "accessbank": "044",
+            "ecobank": "050",
+            "fidelitybank": "070",
+            "firstbank": "011",
+            "firstbankofnigeria": "011",
+            "firstcitymonumentbank": "214",
+            "firstcitymonumentbankplc": "214",
+            "fcmb": "214",
+            "gtbank": "058",
+            "guarantytrustbank": "058",
             "opay": "100004",
             "paycom": "100004",
             "palmpay": "100033",
             "moniepoint": "50515",
             "moniepointmfb": "50515",
             "moniepointmicrofinancebank": "50515",
+            "providus": "101",
+            "providusbank": "101",
+            "providusbankplc": "101",
+            "sterlingbank": "232",
+            "uba": "033",
+            "unitedbankforafrica": "033",
+            "wemabank": "035",
+            "zenithbank": "057",
         }.get(normalized_bank_name, "")
     return {
         "bank_name": bank_name,
@@ -2888,11 +3000,13 @@ class SubscriptionPaymentViewSet(viewsets.GenericViewSet, mixins.ListModelMixin)
     def recurring_config(self, request):
         ensure_supported_subscription_role(request.user)
         encryption_key = str(getattr(settings, "FLUTTERWAVE_ENCRYPTION_KEY", "") or "").strip()
-        enabled = should_use_v4() and flutterwave_encryption_key_is_configured()
+        direct_settlement_configured = subscription_direct_settlement_configured()
+        enabled = should_use_v4() and flutterwave_encryption_key_is_configured() and direct_settlement_configured
         return Response(
             {
                 "enabled": enabled,
                 "encryption_key": encryption_key if enabled else "",
+                "direct_settlement_configured": direct_settlement_configured,
             }
         )
 
@@ -3040,12 +3154,17 @@ class SubscriptionPaymentViewSet(viewsets.GenericViewSet, mixins.ListModelMixin)
         if not payment.transaction_id:
             payment.transaction_id = build_subscription_payment_reference()
 
-        checkout = build_subscription_checkout(payment)
+        try:
+            subaccounts, destination = build_subscription_subaccount_payload()
+            checkout = build_subscription_checkout(payment, subaccounts=subaccounts)
+        except FlutterwaveError as exc:
+            return Response({"detail": str(exc)}, status=502)
         payment.provider_payload = update_payment_provider_payload(
             payment.provider_payload,
             None,
             checkout=checkout,
             return_url=build_subscription_payment_return_url(payment),
+            subscription_destination=destination,
         )
         payment.provider = "flutterwave"
         payment.save(update_fields=["transaction_id", "provider_payload", "provider", "updated_at"])
