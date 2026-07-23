@@ -1,7 +1,7 @@
 name: Deploy Production
 
 on:
-  push:
+  pull_request:
     branches:
       - main
   workflow_dispatch:
@@ -46,6 +46,8 @@ jobs:
               - "web/public/**"
               - "packages/**"
               - "scripts/**"
+              - ".github/workflows/prod.yml"
+              - "Makefile"
               - "package.json"
               - "package-lock.json"
               - "turbo.json"
@@ -182,6 +184,8 @@ jobs:
               - "api/uploads/**"
               - "worker/**"
               - "scripts/**"
+              - ".github/workflows/prod.yml"
+              - "Makefile"
 
   check-api:
     needs: detect-api-changes
