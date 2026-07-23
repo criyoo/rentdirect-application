@@ -391,6 +391,37 @@ class Document(models.Model):
         indexes = [models.Index(fields=["owner", "-created_at"], name="core_doc_owner_created_idx")]
 
 
+def _truncate_model_text(value: str, max_length: int | None) -> str:
+    if not max_length or len(value) <= max_length:
+        return value
+    if max_length <= 3:
+        return value[:max_length]
+    return value[: max_length - 3].rstrip() + "..."
+
+
+def build_listing_property_document_title(
+    listing: Listing,
+    file_name: str,
+    document_types: list[str] | None = None,
+) -> str:
+    max_length = Document._meta.get_field("title").max_length
+    prefix = f"Listing Property Document: {listing.id}"
+    safe_file_name = str(file_name or "Property Document").strip() or "Property Document"
+    document_type_text = ", ".join(str(item).strip() for item in document_types or [] if str(item).strip())
+    full_title = " - ".join(part for part in (prefix, document_type_text, safe_file_name) if part)
+    if not max_length or len(full_title) <= max_length:
+        return full_title
+
+    compact_title = f"{prefix} - {safe_file_name}"
+    if len(compact_title) <= max_length:
+        return compact_title
+
+    remaining = max_length - len(prefix) - len(" - ")
+    if remaining > 0:
+        return f"{prefix} - {_truncate_model_text(safe_file_name, remaining)}"
+    return _truncate_model_text(compact_title, max_length)
+
+
 class VerificationRequest(models.Model):
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"

@@ -371,10 +371,15 @@ class ListingTests(TestCase):
             content_type="image/gif",
         )
         property_document = SimpleUploadedFile(
-            "deed.pdf",
+            "Office_Electric_Bill_EKEDC.pdf",
             b"property-document",
             content_type="application/pdf",
         )
+        property_ownership_documents = [
+            "Certificat of Occupancy (Cof)",
+            "Deed of Assignment",
+            "Governor's Consent",
+        ]
 
         response = client.post(
             "/api/v1/listings",
@@ -392,7 +397,7 @@ class ListingTests(TestCase):
                 "price_per_year": "2500000",
                 "amenities": ["gym", "parking"],
                 "ownership_types": ["Sole Owner"],
-                "property_ownership_documents": ["Deed of Assignment"],
+                "property_ownership_documents": property_ownership_documents,
                 "property_verification_method": "documents",
                 "property_documents": property_document,
                 "minimum_rental_duration": "6 months",
@@ -413,9 +418,12 @@ class ListingTests(TestCase):
         listing = Listing.objects.get(title="Ikoyi Apartment")
         self.assertEqual(listing.amenities, ["gym", "parking"])
         self.assertEqual(listing.ownership_types, ["Sole Owner"])
-        self.assertEqual(listing.property_ownership_documents, ["Deed of Assignment"])
+        self.assertEqual(listing.property_ownership_documents, property_ownership_documents)
         self.assertEqual(str(listing.deposit_amount), "500000.00")
         self.assertEqual(listing.property_documents.count(), 1)
+        document = listing.property_documents.get()
+        self.assertLessEqual(len(document.title), Document._meta.get_field("title").max_length)
+        self.assertIn("Office_Electric_Bill_EKEDC.pdf", document.title)
         self.assertEqual(
             listing.property_document_verification_status,
             VerificationRequest.VerificationProgressStatus.PENDING,
@@ -2784,6 +2792,10 @@ class SeedDemoTests(TestCase):
         self.assertTrue(christian_listing.property_document_submission["in_person_verification_requested"])
         self.assertEqual(christian_listing.property_document_submission["uploaded_document_count"], 3)
         self.assertEqual(christian_listing.property_documents.count(), 3)
+        title_max_length = Document._meta.get_field("title").max_length
+        self.assertTrue(
+            all(len(document.title) <= title_max_length for document in christian_listing.property_documents.all())
+        )
         self.assertEqual(christian_listing.property_document_verification_status, VerificationRequest.VerificationProgressStatus.VERIFIED)
         self.assertEqual(christian_listing.physical_property_status, VerificationRequest.VerificationProgressStatus.VERIFIED)
         self.assertEqual(str(christian_listing.deposit_amount), "80.00")
@@ -2801,6 +2813,25 @@ class SeedDemoTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()), 1)
         self.assertTrue(response.json()[0]["cover_image_url"])
+
+    @override_settings(SEED_DEMO_ACCOUNTS=True)
+    def test_seed_demo_removes_orphaned_listing_property_documents(self):
+        with tempfile.TemporaryDirectory() as temp_media_root:
+            with override_settings(MEDIA_ROOT=temp_media_root):
+                call_command("seed_demo_data")
+                listing = Listing.objects.get(landlord__email="criyo.career+chris@gmail.com", seed_key="01")
+                orphan = Document.objects.create(
+                    owner=listing.landlord,
+                    title=f"Listing Property Document: {listing.id} - stale failed upload",
+                    content_type="application/pdf",
+                )
+
+                call_command("seed_demo_data")
+
+                listing.refresh_from_db()
+
+        self.assertFalse(Document.objects.filter(id=orphan.id).exists())
+        self.assertEqual(listing.property_documents.count(), 3)
 
     @override_settings(SEED_DEMO_ACCOUNTS=True)
     def test_seed_demo_restores_listing_images_when_storage_files_already_exist(self):

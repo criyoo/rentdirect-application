@@ -11,7 +11,15 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 
-from core.models import AppUser, Document, Listing, ListingImage, TenantProfile, VerificationRequest
+from core.models import (
+    AppUser,
+    Document,
+    Listing,
+    ListingImage,
+    TenantProfile,
+    VerificationRequest,
+    build_listing_property_document_title,
+)
 from core.profile_validation import is_valid_mobile, is_valid_nin, normalize_residence, normalize_state_of_origin
 from core.tenant_verification import normalize_tenant_verification_date, normalize_tenant_verification_profile
 
@@ -1050,12 +1058,16 @@ class Command(BaseCommand):
         }
 
     def sync_listing_property_documents(self, user: AppUser, listing: Listing, property_verification: dict, verification_method: str) -> int:
+        title_prefix = f"Listing Property Document: {listing.id}"
         existing_documents = list(listing.property_documents.all())
         listing.property_documents.clear()
         for document in existing_documents:
-            if document.title.startswith(f"Listing Property Document: {listing.id}"):
+            if document.title.startswith(title_prefix):
                 document.file.delete(save=False)
                 document.delete()
+        for document in Document.objects.filter(owner=user, title__startswith=title_prefix):
+            document.file.delete(save=False)
+            document.delete()
 
         raw_paths = self.get_seed_path_values(
             property_verification,
@@ -1078,12 +1090,15 @@ class Command(BaseCommand):
                 property_paths.append(path)
 
         uploaded_documents = []
-        title_suffix = ", ".join(listing.property_ownership_documents or []) or "Property Document"
         for path in property_paths:
             content_type = mimetypes.guess_type(path.name)[0] or ""
             document = Document(
                 owner=user,
-                title=f"Listing Property Document: {listing.id} - {title_suffix} - {path.name}",
+                title=build_listing_property_document_title(
+                    listing,
+                    path.name,
+                    listing.property_ownership_documents,
+                ),
                 content_type=content_type,
             )
             self.replace_model_file(document, "file", path)

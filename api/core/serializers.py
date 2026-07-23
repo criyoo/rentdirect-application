@@ -16,6 +16,7 @@ from .profile_validation import (
 from .models import (
     AppUser,
     Booking,
+    build_listing_property_document_title,
     booking_progress_step_completed,
     booking_progress_step_selected_value,
     build_booking_progress_data,
@@ -469,11 +470,14 @@ class ListingSerializer(serializers.ModelSerializer):
         property_files = request.FILES.getlist("property_documents")
 
         for upload in property_files:
-            title_suffix = ", ".join(listing.property_ownership_documents or []) or "Property Document"
             uploaded_documents.append(
                 Document.objects.create(
                     owner=request.user,
-                    title=f"Listing Property Document: {listing.id} - {title_suffix} - {upload.name}",
+                    title=build_listing_property_document_title(
+                        listing,
+                        upload.name,
+                        listing.property_ownership_documents,
+                    ),
                     file=upload,
                     content_type=getattr(upload, "content_type", ""),
                 )
