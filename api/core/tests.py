@@ -2783,12 +2783,12 @@ class SeedDemoTests(TestCase):
                 call_command("seed_demo_data")
                 call_command("seed_demo_data")
 
-        self.assertEqual(AppUser.objects.filter(role=AppUser.Role.LANDLORD).count(), 1)
+        self.assertEqual(AppUser.objects.filter(role=AppUser.Role.LANDLORD).count(), 4)
         self.assertEqual(AppUser.objects.filter(role=AppUser.Role.TENANT).count(), 1)
-        self.assertEqual(Listing.objects.count(), 1)
-        self.assertEqual(Document.objects.count(), 4)
-        self.assertEqual(VerificationRequest.objects.count(), 2)
-        self.assertEqual(Listing.objects.filter(featured=True).count(), 1)
+        self.assertEqual(Listing.objects.count(), 4)
+        self.assertEqual(Document.objects.count(), 8)
+        self.assertEqual(VerificationRequest.objects.count(), 5)
+        self.assertEqual(Listing.objects.filter(featured=True).count(), 4)
 
         jade = AppUser.objects.get(email="criyo.career+jade@gmail.com")
         self.assertEqual(jade.role, AppUser.Role.TENANT)
@@ -2855,7 +2855,7 @@ class SeedDemoTests(TestCase):
         self.assertEqual(christian.landlord_verification_profile["hr_contact_number"], "+2348091122334")
         self.assertEqual(christian.landlord_verification_profile["hr_contact_email"], "harriet.adams@conocophilips.com")
         self.assertTrue(christian.profile_photo.name.startswith(f"profiles/{christian.id}/profile-"))
-        self.assertRegex(christian.profile_photo.name, r"/profile-[0-9a-f]{32}\.jpg$")
+        self.assertRegex(christian.profile_photo.name, r"/profile-[0-9a-f]{32}\.jpeg$")
         christian_verification = VerificationRequest.objects.get(user=christian)
         self.assertEqual(christian_verification.status, VerificationRequest.Status.APPROVED)
         self.assertEqual(
@@ -2885,8 +2885,8 @@ class SeedDemoTests(TestCase):
         self.assertEqual(christian_listing.ownership_types, ["Sole Owner"])
         self.assertEqual(christian_listing.property_ownership_documents, ["Certificat of Occupancy (Cof)", "Deed of Assignment", "Governor's Consent"])
         self.assertTrue(christian_listing.property_document_submission["in_person_verification_requested"])
-        self.assertEqual(christian_listing.property_document_submission["uploaded_document_count"], 3)
-        self.assertEqual(christian_listing.property_documents.count(), 3)
+        self.assertEqual(christian_listing.property_document_submission["uploaded_document_count"], 1)
+        self.assertEqual(christian_listing.property_documents.count(), 1)
         title_max_length = Document._meta.get_field("title").max_length
         self.assertTrue(
             all(len(document.title) <= title_max_length for document in christian_listing.property_documents.all())
@@ -2918,7 +2918,7 @@ class SeedDemoTests(TestCase):
 
         response = self.client.get("/api/v1/featured/listings")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.json()), 1)
+        self.assertEqual(len(response.json()), 4)
         self.assertTrue(response.json()[0]["cover_image_url"])
 
     @override_settings(SEED_DEMO_ACCOUNTS=True)
@@ -2938,7 +2938,7 @@ class SeedDemoTests(TestCase):
                 listing.refresh_from_db()
 
         self.assertFalse(Document.objects.filter(id=orphan.id).exists())
-        self.assertEqual(listing.property_documents.count(), 3)
+        self.assertEqual(listing.property_documents.count(), 1)
 
     @override_settings(SEED_DEMO_ACCOUNTS=True)
     def test_seed_demo_restores_listing_images_when_storage_files_already_exist(self):

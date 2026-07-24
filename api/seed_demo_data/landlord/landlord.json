@@ -555,17 +555,17 @@
             }
         },
         "profile": {
-            "photo": "rentdirect/apps/api/seed_demo_data/landlord/ayo/ayo.jpeg",
+            "photo": "rentdirect/apps/api/seed_demo_data/landlord/isaac/isaac.jpeg",
             "personal_information": {
-                "first_name": "Ayodele",
-                "middle_name": "Omoniyi",
-                "last_name": "Mojebi",
-                "date_of_birth": "1982-01-05",
+                "first_name": "Isaac",
+                "middle_name": "Olaoluwa",
+                "last_name": "Taiwo",
+                "date_of_birth": "1984-07-10",
                 "gender": "Male",
                 "preferred_contact_method": "whatsapp",
                 "phone_number": "+2349041487757",
                 "whatsapp_number": "+2349041487757",
-                "email": "criyo.career+ay@gmail.com",
+                "email": "criyo.career+isaac@gmail.com",
                 "nationality": "Nigeria",
                 "state_of_origin": "Lagos",
                 "lga_of_origin": "Eti-Osa",
