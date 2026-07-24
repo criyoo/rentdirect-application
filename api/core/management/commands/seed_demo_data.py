@@ -1,7 +1,7 @@
 import glob
 import json
 import mimetypes
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
@@ -17,11 +17,13 @@ from core.models import (
     Document,
     Listing,
     ListingImage,
+    SubscriptionPayment,
     TenantProfile,
     VerificationRequest,
     build_listing_property_document_title,
 )
 from core.profile_validation import is_valid_mobile, is_valid_nin, normalize_residence, normalize_state_of_origin
+from core.subscription_pricing import get_subscription_pricing
 from core.tenant_verification import normalize_tenant_verification_date, normalize_tenant_verification_profile
 
 
@@ -61,6 +63,7 @@ class Command(BaseCommand):
 
                 if role == AppUser.Role.LANDLORD:
                     self.seed_verification(user, data)
+                    self.seed_landlord_subscription(seed_key, user, data)
                     created_listings += self.seed_listings(user, data)
                 elif role == AppUser.Role.TENANT:
                     self.seed_tenant_verification(user, data)
@@ -469,6 +472,139 @@ class Command(BaseCommand):
             ]
         )
         request.documents.set(docs)
+
+    def seed_landlord_subscription(self, seed_key: str, user: AppUser, data: dict) -> None:
+        subscription_plan = data.get("subscription_plan")
+        if subscription_plan is None:
+            return
+        if not isinstance(subscription_plan, dict):
+            raise ValueError(f"Seed entry {seed_key} subscription_plan must be an object")
+
+        plan_code = self.normalize_seed_subscription_plan(
+            self.seed_text(subscription_plan.get("plan"), subscription_plan.get("plan_code"))
+        )
+        billing_cycle = self.normalize_seed_subscription_billing_cycle(
+            self.seed_text(
+                subscription_plan.get("billing_cycle"),
+                subscription_plan.get("billing_type"),
+                subscription_plan.get("billing"),
+            )
+        )
+        status = self.normalize_seed_subscription_status(
+            self.seed_text(subscription_plan.get("subscription_status"), subscription_plan.get("status"))
+        )
+
+        if status != SubscriptionPayment.Status.COMPLETED:
+            raise ValueError(f"Seed entry {seed_key} subscription_status must be active")
+
+        try:
+            amount_value = get_subscription_pricing()[AppUser.Role.LANDLORD][plan_code][billing_cycle]
+        except KeyError as exc:
+            raise ValueError(f"Seed entry {seed_key} has an unavailable landlord subscription plan") from exc
+
+        now = timezone.now()
+        transaction_id = f"SEED-SUB-{user.id.hex}"
+        payment, _ = SubscriptionPayment.objects.get_or_create(
+            transaction_id=transaction_id,
+            defaults={
+                "user": user,
+                "role": user.role,
+                "plan_code": plan_code,
+                "billing_cycle": billing_cycle,
+                "amount": Decimal(str(amount_value)),
+                "currency": "NGN",
+                "status": status,
+                "provider": "seed_demo",
+                "payment_date": now,
+                "expires_at": now + timedelta(days=self.seed_subscription_duration_days(billing_cycle)),
+            },
+        )
+
+        payment.user = user
+        payment.role = user.role
+        payment.plan_code = plan_code
+        payment.billing_cycle = billing_cycle
+        payment.amount = Decimal(str(amount_value))
+        payment.currency = "NGN"
+        payment.status = status
+        payment.provider = "seed_demo"
+        payment.cashier_url = ""
+        payment.payment_method = None
+        payment.provider_charge_id = transaction_id
+        payment.recurring_enabled = False
+        payment.billing_reason = "seed_demo"
+        payment.renewed_from = None
+        payment.provider_payload = {
+            "source": "seed_demo_data",
+            "seed_key": seed_key,
+            "dummy_payment": True,
+            "gateway_bypassed": True,
+        }
+        payment.webhook_data = None
+        payment.payment_date = now
+        payment.expires_at = now + timedelta(days=self.seed_subscription_duration_days(billing_cycle))
+        payment.save(
+            update_fields=[
+                "user",
+                "role",
+                "plan_code",
+                "billing_cycle",
+                "amount",
+                "currency",
+                "status",
+                "provider",
+                "cashier_url",
+                "payment_method",
+                "provider_charge_id",
+                "recurring_enabled",
+                "billing_reason",
+                "renewed_from",
+                "provider_payload",
+                "webhook_data",
+                "payment_date",
+                "expires_at",
+                "updated_at",
+            ]
+        )
+
+    def normalize_seed_subscription_plan(self, value: str) -> str:
+        plan_code = self.seed_text(value).lower().replace(" ", "_")
+        valid_plan_codes = {choice[0] for choice in SubscriptionPayment.PlanCode.choices}
+        if plan_code not in valid_plan_codes:
+            raise ValueError(f"Subscription plan must be one of: {', '.join(sorted(valid_plan_codes))}")
+        return plan_code
+
+    def normalize_seed_subscription_billing_cycle(self, value: str) -> str:
+        billing_cycle = self.seed_text(value).lower().replace(" ", "_")
+        aliases = {
+            "month": SubscriptionPayment.BillingCycle.MONTHLY,
+            "monthly": SubscriptionPayment.BillingCycle.MONTHLY,
+            "montly": SubscriptionPayment.BillingCycle.MONTHLY,
+            "year": SubscriptionPayment.BillingCycle.YEARLY,
+            "annual": SubscriptionPayment.BillingCycle.YEARLY,
+            "annually": SubscriptionPayment.BillingCycle.YEARLY,
+            "yearly": SubscriptionPayment.BillingCycle.YEARLY,
+        }
+        normalized_cycle = aliases.get(billing_cycle, billing_cycle)
+        valid_cycles = {choice[0] for choice in SubscriptionPayment.BillingCycle.choices}
+        if normalized_cycle not in valid_cycles:
+            raise ValueError(f"Subscription billing cycle must be one of: {', '.join(sorted(valid_cycles))}")
+        return normalized_cycle
+
+    def normalize_seed_subscription_status(self, value: str) -> str:
+        status = self.seed_text(value).lower().replace(" ", "_") or "active"
+        aliases = {
+            "active": SubscriptionPayment.Status.COMPLETED,
+            "completed": SubscriptionPayment.Status.COMPLETED,
+        }
+        normalized_status = aliases.get(status, status)
+        valid_statuses = {choice[0] for choice in SubscriptionPayment.Status.choices}
+        if normalized_status not in valid_statuses:
+            raise ValueError(f"Subscription status must be one of: active, {', '.join(sorted(valid_statuses))}")
+        return normalized_status
+
+    def seed_subscription_duration_days(self, billing_cycle: str) -> int:
+        return 30 if billing_cycle == SubscriptionPayment.BillingCycle.MONTHLY else 365
 
     def seed_tenant_verification(self, user: AppUser, data: dict) -> None:
         verification = data.get("verification") or {}

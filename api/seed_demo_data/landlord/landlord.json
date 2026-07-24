@@ -105,6 +105,11 @@
                 "address": "12 Admiralty Way, Lekki Phase 1, Lagos"
             }
         },
+        "subscription_plan": {
+            "billing_type": "montly",
+            "plan": "platinum",
+            "subscription_status": "active"
+        },
         "listings": {
             "01": {
                 "property_information": {
@@ -276,6 +281,11 @@
                 "relationship": "Sibling",
                 "address": "12 Admiralty Way, Lekki Phase 1, Lagos"
             }
+        },
+        "subscription_plan": {
+            "billing_type": "montly",
+            "plan": "platinum",
+            "subscription_status": "active"
         },
         "listings": {
             "01": {
@@ -449,6 +459,11 @@
                 "address": "12 Admiralty Way, Lekki Phase 1, Lagos"
             }
         },
+        "subscription_plan": {
+            "billing_type": "montly",
+            "plan": "platinum",
+            "subscription_status": "active"
+        },
         "listings": {
             "01": {
                 "property_information": {
@@ -620,6 +635,11 @@
                 "relationship": "Sibling",
                 "address": "12 Admiralty Way, Lekki Phase 1, Lagos"
             }
+        },
+        "subscription_plan": {
+            "billing_type": "montly",
+            "plan": "platinum",
+            "subscription_status": "active"
         },
         "listings": {
             "01": {

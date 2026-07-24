@@ -2789,6 +2789,22 @@ class SeedDemoTests(TestCase):
         self.assertEqual(Document.objects.count(), 8)
         self.assertEqual(VerificationRequest.objects.count(), 5)
         self.assertEqual(Listing.objects.filter(featured=True).count(), 4)
+        self.assertEqual(SubscriptionPayment.objects.count(), 4)
+        self.assertFalse(SubscriptionPayment.objects.filter(user__role=AppUser.Role.TENANT).exists())
+
+        for landlord in AppUser.objects.filter(role=AppUser.Role.LANDLORD):
+            subscription = SubscriptionPayment.objects.get(user=landlord)
+            self.assertEqual(subscription.plan_code, SubscriptionPayment.PlanCode.PLATINUM)
+            self.assertEqual(subscription.billing_cycle, SubscriptionPayment.BillingCycle.MONTHLY)
+            self.assertEqual(subscription.status, SubscriptionPayment.Status.COMPLETED)
+            self.assertEqual(subscription.provider, "seed_demo")
+            self.assertEqual(subscription.billing_reason, "seed_demo")
+            self.assertEqual(str(subscription.amount), "500.00")
+            self.assertEqual(subscription.provider_charge_id, subscription.transaction_id)
+            self.assertFalse(subscription.recurring_enabled)
+            self.assertTrue(subscription.provider_payload["dummy_payment"])
+            self.assertTrue(subscription.provider_payload["gateway_bypassed"])
+            self.assertGreater(subscription.expires_at, timezone.now())
 
         jade = AppUser.objects.get(email="criyo.career+jade@gmail.com")
         self.assertEqual(jade.role, AppUser.Role.TENANT)
@@ -3562,7 +3578,7 @@ class SubscriptionPaymentTests(TestCase):
     @patch("core.views.create_charge")
     @patch("core.views.create_card_payment_method")
     @patch("core.views.create_customer")
-    def test_landlord_can_start_recurring_subscription_with_tokenized_card(
+    def test_landlord_can_start_recurring_subscription_with_new_saved_card(
         self,
         create_customer_mock,
         create_card_payment_method_mock,
@@ -3644,7 +3660,8 @@ class SubscriptionPaymentTests(TestCase):
         self.assertEqual(payment.billing_reason, "recurring_initial")
         self.assertEqual(payment.payment_method.provider_payment_method_id, "pmd_recurring_123")
         self.assertEqual(SubscriptionPaymentMethod.objects.filter(user=landlord).count(), 1)
-        self.assertEqual(create_charge_mock.call_args.kwargs["recurring"], True)
+        self.assertEqual(create_charge_mock.call_args.kwargs["recurring"], False)
+        self.assertEqual(payment.provider_payload["recurring"]["gateway_recurring"], False)
         self.assertEqual(
             create_charge_mock.call_args.kwargs["subaccounts"],
             [
@@ -3729,6 +3746,7 @@ class SubscriptionPaymentTests(TestCase):
         self.assertEqual(renewal.provider_charge_id, "chg_renewal_123")
         self.assertEqual(renewal.payment_method, payment_method)
         self.assertEqual(create_charge_mock.call_args.kwargs["payment_method_id"], "pmd_renewal_123")
+        self.assertEqual(create_charge_mock.call_args.kwargs["recurring"], True)
         self.assertEqual(create_charge_mock.call_args.kwargs["subaccounts"][0]["id"], "RS_SUBSCRIPTION_TEST")
 
 

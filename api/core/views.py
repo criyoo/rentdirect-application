@@ -1084,7 +1084,7 @@ def resolve_subscription_payment_method(user: AppUser, validated_data: dict) -> 
     )
 
 
-def charge_subscription_with_payment_method(payment: SubscriptionPayment, *, source: str) -> SubscriptionPayment:
+def charge_subscription_with_payment_method(payment: SubscriptionPayment, *, source: str, use_recurring_flow: bool = True) -> SubscriptionPayment:
     if not payment.payment_method:
         raise ValidationError("A saved card is required for recurring subscription charges.")
     ensure_flutterwave_recurring_charge_configured()
@@ -1101,7 +1101,7 @@ def charge_subscription_with_payment_method(payment: SubscriptionPayment, *, sou
         customer_id=payment_method.provider_customer_id,
         payment_method_id=payment_method.provider_payment_method_id,
         redirect_url=build_subscription_payment_return_url(payment),
-        recurring=True,
+        recurring=use_recurring_flow,
         metadata={
             "subscription_payment_id": str(payment.id),
             "user_id": str(payment.user_id),
@@ -1120,7 +1120,11 @@ def charge_subscription_with_payment_method(payment: SubscriptionPayment, *, sou
         payment.provider_payload,
         charge_payload,
         subscription_destination=destination,
-        recurring={"source": source, "charged_at": timezone.now().isoformat()},
+        recurring={
+            "source": source,
+            "charged_at": timezone.now().isoformat(),
+            "gateway_recurring": use_recurring_flow,
+        },
     )
     payment.provider = "flutterwave"
     payment.save(update_fields=["provider_charge_id", "provider_payload", "provider", "updated_at"])
@@ -3112,7 +3116,11 @@ class SubscriptionPaymentViewSet(viewsets.GenericViewSet, mixins.ListModelMixin)
 
         if recurring_requested:
             try:
-                payment = charge_subscription_with_payment_method(payment, source="recurring_initial")
+                payment = charge_subscription_with_payment_method(
+                    payment,
+                    source="recurring_initial",
+                    use_recurring_flow=False,
+                )
             except (FlutterwaveError, ValidationError) as exc:
                 payment.status = SubscriptionPayment.Status.FAILED
                 payment.recurring_enabled = False
@@ -3464,9 +3472,9 @@ class MessageViewSet(viewsets.ModelViewSet):
             raise ValidationError({"receiver_id": "Receiver not found."})
         if self.request.user.role == AppUser.Role.TENANT and receiver.role == AppUser.Role.LANDLORD:
             if user_has_bronze_access(self.request.user):
-                raise PermissionDenied("Contacting landlords is not available on the Bronze free plan.")
+                raise PermissionDenied("Contacting landlords is not available on the Bronze plan (free tiral).")
             if user_has_bronze_access(receiver):
-                raise PermissionDenied("This landlord cannot receive tenant messages on the Bronze free plan.")
+                raise PermissionDenied("Landlord is unable to receive messages at this time until fully verified.")
         if self.request.user.role == AppUser.Role.LANDLORD and receiver.role == AppUser.Role.TENANT and user_has_bronze_access(self.request.user):
             raise PermissionDenied("Contacting tenants is not available on the Bronze free plan.")
         if contains_contact_info(serializer.validated_data.get("content", "")):

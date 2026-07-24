@@ -14,6 +14,8 @@ export type EncryptedFlutterwaveCard = {
 }
 
 const NONCE_CHARACTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+const MIN_CARD_NUMBER_DIGITS = 16
+const MAX_CARD_NUMBER_DIGITS = 18
 
 function generateNonce(length = 12) {
   const bytes = globalThis.crypto.getRandomValues(new Uint8Array(length))
@@ -64,7 +66,7 @@ export function normalizeCardDetails(card: CardDetails) {
 
 export function validateCardDetails(card: CardDetails) {
   const normalized = normalizeCardDetails(card)
-  if (normalized.cardNumber.length < 12 || normalized.cardNumber.length > 19) {
+  if (normalized.cardNumber.length < MIN_CARD_NUMBER_DIGITS || normalized.cardNumber.length > MAX_CARD_NUMBER_DIGITS) {
     return 'Enter a valid card number.'
   }
   const month = Number(normalized.expiryMonth)

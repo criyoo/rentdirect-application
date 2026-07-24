@@ -864,8 +864,9 @@ export default function BillingPage() {
                                         inputMode="numeric"
                                         autoComplete="cc-number"
                                         value={cardForm.cardNumber}
-                                        onChange={(event) => setCardForm((current) => ({ ...current, cardNumber: event.target.value.replace(/[^\d\s-]/g, '').slice(0, 23) }))}
+                                        onChange={(event) => setCardForm((current) => ({ ...current, cardNumber: event.target.value.replace(/\D/g, '').slice(0, 18) }))}
                                         placeholder="Card number"
+                                        maxLength={18}
                                         className="rounded-2xl border border-slate-300 px-4 py-3 text-sm text-slate-800 md:col-span-2"
                                     />
                                     <input
