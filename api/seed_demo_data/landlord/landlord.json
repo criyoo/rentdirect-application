@@ -39,7 +39,7 @@
             }
         },
         "profile": {
-            "photo": "rentdirect/apps/api/seed_demo_data/landlord/christian/christian.jpg",
+            "photo": "api/seed_demo_data/landlord/christian/christian.jpeg",
             "personal_information": {
                 "first_name": "Christian",
                 "middle_name": "Odezi",
@@ -136,7 +136,7 @@
                         "Deed of Assignment",
                         "Governor's Consent"
                     ],
-                    "property_document": "rentdirect/apps/api/seed_demo_data/landlord/christian/listings/01/docs/*.*"
+                    "property_document": "rentdirect/apps/api/seed_demo_data/landlord/christian/documents/property/house_deed.pdf"
                 },
                 "rental_preferences": {
                     "maximum_occupancy": "5",
@@ -165,7 +165,523 @@
                 "images": {
                     "cover_image": "rentdirect/apps/api/seed_demo_data/landlord/christian/listings/01/cover_image.jpg",
                     "additional_images": [
-                        "rentdirect/apps/api/seed_demo_data/landlord/christian/listings/01/*.{jpeg,jpg,png,webp}"
+                        "rentdirect/apps/api/seed_demo_data/landlord/christian/listings/01/*.*"
+                    ]
+                }
+            }
+        }
+    },
+    "francis": {
+        "registration_credentials": {
+            "full_name": "Francis Olufemi Ademuyi",
+            "email": "criyo.career+francis@gmail.com",
+            "password": "ifG0dbi4mi",
+            "landlord": true
+        },
+        "login_credentials": {
+            "email": "criyo.career+francis@gmail.com",
+            "password": "ifG0dbi4mi"
+        },
+        "verification": {
+            "landlord_identification": {
+                "type": "Individual Landlord",
+                "personal_information": {
+                    "first_name": "Francis",
+                    "middle_name": "Olufemi",
+                    "last_name": "Ademuyi",
+                    "date_of_birth": "1977-12-05",
+                    "country_of_birth": "Nigeria",
+                    "state_of_birth": "Lagos",
+                    "nationality": "Nigeria",
+                    "state_of_origin": "Ogun",
+                    "lga_of_origin": "Abeokuta",
+                    "gender": "Male",
+                    "contact_number": "09041487757",
+                    "email": "criyo.career+francis@gmail.com",
+                    "employment_status": "Employed",
+                    "occupation": "Banker",
+                    "national_identity_number": "98376720000",
+                    "bank_verification_number": "22347230000",
+                    "bank_name": "Opay",
+                    "account_name": "Christian Odezi Aluya",
+                    "account_number": "9041487757",
+                    "residential_address": "13 Adeola Odeku, Victoria Island, Lagos",
+                    "identity_document": "rentdirect/apps/api/seed_demo_data/landlord/francis/documents/id/nin.pdf"
+                }
+            }
+        },
+        "profile": {
+            "photo": "rentdirect/apps/api/seed_demo_data/landlord/francis/francis.jpeg",
+            "personal_information": {
+                "first_name": "Francis",
+                "middle_name": "Olufemi",
+                "last_name": "Ademuyi",
+                "date_of_birth": "1977-12-05",
+                "gender": "Male",
+                "preferred_contact_method": "whatsapp",
+                "phone_number": "+2349041487757",
+                "whatsapp_number": "+2349041487757",
+                "email": "criyo.career+francis@gmail.com",
+                "nationality": "Nigeria",
+                "state_of_origin": "Ogun",
+                "lga_of_origin": "Abeokuta",
+                "bio_about_me": "Private landlord focused on well-maintained apartments in Ikoyi and nearby Lagos business districts.",
+                "country_of_birth": "Nigeria",
+                "state_of_birth": "Lagos",
+                "contact_number": "09041487757",
+                "employment_status": "Employed",
+                "occupation": "Banker",
+                "national_identity_number": "98376720000",
+                "bank_verification_number": "22347230000",
+                "bank_name": "Opay",
+                "account_name": "Christian Odezi Aluya",
+                "account_number": "9041487757",
+                "identity_document": "rentdirect/apps/api/seed_demo_data/landlord/francis/documents/id/nin.pdf"
+            },
+            "employment_information": {
+                "employer_name": "Diamond Bank",
+                "job_title": "Banker",
+                "employment_type": "Full-time",
+                "years_employed": 5,
+                "work_email": "francis.ademuyi@diamondbank.com",
+                "work_address": "13 Adeola Odeku, Victoria Island, Lagos",
+                "hr_contact_name": "Harriet Adams",
+                "hr_contact_number": "+2348091122334",
+                "hr_email": "harriet.adams@diamondbank.com"
+            },
+            "identity_and_bank_verification": {
+                "id_type": "National ID (NIN)",
+                "id_number": "98376720000",
+                "expiry_date": "",
+                "bank_name": "Opay",
+                "account_name": "Christian Odezi Aluya",
+                "account_number": "9041487757"
+            },
+            "residential_information": {
+                "country": "Nigeria",
+                "state": "Lagos",
+                "city": "Ikoyi",
+                "address": "21 Glover Road, Ikoyi, Lagos",
+                "proof_of_address": [
+                    "Utility Bill",
+                    "Bank Statement"
+                ]
+            },
+            "emergency_contact": {
+                "first_name": "Grace",
+                "middle_name": "Efe",
+                "last_name": "Aluya",
+                "phone_number": "+2348091122334",
+                "email": "grace.aluya@example.com",
+                "relationship": "Sibling",
+                "address": "12 Admiralty Way, Lekki Phase 1, Lagos"
+            }
+        },
+        "listings": {
+            "01": {
+                "property_information": {
+                    "title": "Modern 4 bedroom Apartment",
+                    "property_type": "Apartment",
+                    "description": "A modern 3 bedroom apartment in the heart of ikoyi, lagos",
+                    "address": "23 Gerald Road",
+                    "city": "Ikoyi",
+                    "state": "Lagos",
+                    "postal_code": "100021",
+                    "bedroom": 3,
+                    "bathroom": 3,
+                    "toilets": 4,
+                    "square_feet": 3000,
+                    "available_from": "12/08/2026",
+                    "price_per_year": 300,
+                    "deposit_amount": 60
+                },
+                "property_ownership verification": {
+                    "verification_method": {
+                        "upload_documents": false,
+                        "in_person_verification": true
+                    },
+                    "ownership_types": [
+                        "Sole Owner"
+                    ],
+                    "ownership_documents": [
+                        "Certificat of Occupancy (Cof)",
+                        "Deed of Assignment",
+                        "Governor's Consent"
+                    ],
+                    "property_document": "rentdirect/apps/api/seed_demo_data/landlord/francis/documents/property/house_deed.pdf"
+                },
+                "rental_preferences": {
+                    "maximum_occupancy": "5",
+                    "minimum_lease_duration": "12",
+                    "pets_allowed": true,
+                    "commercial_activities_allowed": false,
+                    "student_tenants_allowed": false,
+                    "expatriates_allowed": true,
+                    "smoking_allowed": false,
+                    "short_let_allowed": false,
+                    "corp_members_allowed": true,
+                    "features": {
+                        "utilities_included": true,
+                        "furnished": true,
+                        "pet_friendly": true,
+                        "amenities": [
+                            "swimming pool",
+                            "gym",
+                            "parking"
+                        ]
+                    }
+                },
+                "feature_property": {
+                    "feature_property_checkbox": true
+                },
+                "images": {
+                    "cover_image": "rentdirect/apps/api/seed_demo_data/landlord/francis/listings/01/cover_image.jpg",
+                    "additional_images": [
+                        "rentdirect/apps/api/seed_demo_data/landlord/francis/listings/01/*.*"
+                    ]
+                }
+            }
+        }
+    },
+    "ayo": {
+        "registration_credentials": {
+            "full_name": "Ayodele Omoniyi Mojebi",
+            "email": "criyo.career+ayo@gmail.com",
+            "password": "ifG0dbi4mi",
+            "landlord": true
+        },
+        "login_credentials": {
+            "email": "criyo.career+ayo@gmail.com",
+            "password": "ifG0dbi4mi"
+        },
+        "verification": {
+            "landlord_identification": {
+                "type": "Individual Landlord",
+                "personal_information": {
+                    "first_name": "Ayodele",
+                    "middle_name": "Omoniyi",
+                    "last_name": "Mojebi",
+                    "date_of_birth": "1982-01-05",
+                    "country_of_birth": "Nigeria",
+                    "state_of_birth": "Lagos",
+                    "nationality": "Nigeria",
+                    "state_of_origin": "Ogun",
+                    "lga_of_origin": "Abeokuta",
+                    "gender": "Male",
+                    "contact_number": "09041487757",
+                    "email": "criyo.career+ay@gmail.com",
+                    "employment_status": "Employed",
+                    "occupation": "Banker",
+                    "national_identity_number": "98376720000",
+                    "bank_verification_number": "22347230000",
+                    "bank_name": "Opay",
+                    "account_name": "Christian Odezi Aluya",
+                    "account_number": "9041487757",
+                    "residential_address": "13 Adeola Odeku, Victoria Island, Lagos",
+                    "identity_document": "rentdirect/apps/api/seed_demo_data/landlord/ayo/documents/id/nin.pdf"
+                }
+            }
+        },
+        "profile": {
+            "photo": "rentdirect/apps/api/seed_demo_data/landlord/ayo/ayo.jpeg",
+            "personal_information": {
+                "first_name": "Ayodele",
+                "middle_name": "Omoniyi",
+                "last_name": "Mojebi",
+                "date_of_birth": "1982-01-05",
+                "gender": "Male",
+                "preferred_contact_method": "whatsapp",
+                "phone_number": "+2349041487757",
+                "whatsapp_number": "+2349041487757",
+                "email": "criyo.career+ay@gmail.com",
+                "nationality": "Nigeria",
+                "state_of_origin": "Ogun",
+                "lga_of_origin": "Abeokuta",
+                "bio_about_me": "Private landlord focused on well-maintained apartments in Ikoyi and nearby Lagos business districts.",
+                "country_of_birth": "Nigeria",
+                "state_of_birth": "Lagos",
+                "contact_number": "09041487757",
+                "employment_status": "Employed",
+                "occupation": "Banker",
+                "national_identity_number": "98376720000",
+                "bank_verification_number": "22347230000",
+                "bank_name": "Opay",
+                "account_name": "Christian Odezi Aluya",
+                "account_number": "9041487757",
+                "identity_document": "rentdirect/apps/api/seed_demo_data/landlord/ayo/documents/id/nin.pdf"
+            },
+            "employment_information": {
+                "employer_name": "British American Secondary School",
+                "job_title": "Teacher",
+                "employment_type": "Full-time",
+                "years_employed": 5,
+                "work_email": "ayo.mojebi@diamondbank.com",
+                "work_address": "13 Adeola Odeku, Victoria Island, Lagos",
+                "hr_contact_name": "Harriet Adams",
+                "hr_contact_number": "+2348091122334",
+                "hr_email": "harriet.adams@diamondbank.com"
+            },
+            "identity_and_bank_verification": {
+                "id_type": "National ID (NIN)",
+                "id_number": "98376720000",
+                "expiry_date": "",
+                "bank_name": "Opay",
+                "account_name": "Christian Odezi Aluya",
+                "account_number": "9041487757"
+            },
+            "residential_information": {
+                "country": "Nigeria",
+                "state": "Lagos",
+                "city": "Ikoyi",
+                "address": "30 Awolowo Road, Ikoyi, Lagos",
+                "proof_of_address": [
+                    "Utility Bill",
+                    "Bank Statement"
+                ]
+            },
+            "emergency_contact": {
+                "first_name": "Grace",
+                "middle_name": "Efe",
+                "last_name": "Aluya",
+                "phone_number": "+2348091122334",
+                "email": "grace.aluya@example.com",
+                "relationship": "Sibling",
+                "address": "12 Admiralty Way, Lekki Phase 1, Lagos"
+            }
+        },
+        "listings": {
+            "01": {
+                "property_information": {
+                    "title": "Modern 4 bedroom Apartment",
+                    "property_type": "Apartment",
+                    "description": "A modern 4 bedroom apartment in the heart of ikoyi, lagos",
+                    "address": "30 Awolowo Road",
+                    "city": "Ikoyi",
+                    "state": "Lagos",
+                    "postal_code": "100021",
+                    "bedroom": 4,
+                    "bathroom": 4,
+                    "toilets": 5,
+                    "square_feet": 4000,
+                    "available_from": "12/08/2026",
+                    "price_per_year": 400,
+                    "deposit_amount": 80
+                },
+                "property_ownership verification": {
+                    "verification_method": {
+                        "upload_documents": false,
+                        "in_person_verification": true
+                    },
+                    "ownership_types": [
+                        "Sole Owner"
+                    ],
+                    "ownership_documents": [
+                        "Certificat of Occupancy (Cof)",
+                        "Deed of Assignment",
+                        "Governor's Consent"
+                    ],
+                    "property_document": "rentdirect/apps/api/seed_demo_data/landlord/ayo/documents/property/house_deed.pdf"
+                },
+                "rental_preferences": {
+                    "maximum_occupancy": "5",
+                    "minimum_lease_duration": "12",
+                    "pets_allowed": true,
+                    "commercial_activities_allowed": false,
+                    "student_tenants_allowed": false,
+                    "expatriates_allowed": true,
+                    "smoking_allowed": false,
+                    "short_let_allowed": false,
+                    "corp_members_allowed": true,
+                    "features": {
+                        "utilities_included": true,
+                        "furnished": true,
+                        "pet_friendly": true,
+                        "amenities": [
+                            "swimming pool",
+                            "gym",
+                            "parking"
+                        ]
+                    }
+                },
+                "feature_property": {
+                    "feature_property_checkbox": true
+                },
+                "images": {
+                    "cover_image": "rentdirect/apps/api/seed_demo_data/landlord/ayo/listings/01/cover_image.jpg",
+                    "additional_images": [
+                        "rentdirect/apps/api/seed_demo_data/landlord/ayo/listings/01/*.*"
+                    ]
+                }
+            }
+        }
+    },
+    "isaac": {
+        "registration_credentials": {
+            "full_name": "Isaac Olaoluwa Taiwo",
+            "email": "criyo.career+isaac@gmail.com",
+            "password": "ifG0dbi4mi",
+            "landlord": true
+        },
+        "login_credentials": {
+            "email": "criyo.career+isaac@gmail.com",
+            "password": "ifG0dbi4mi"
+        },
+        "verification": {
+            "landlord_identification": {
+                "type": "Individual Landlord",
+                "personal_information": {
+                    "first_name": "Isaac",
+                    "middle_name": "Olaoluwa",
+                    "last_name": "Taiwo",
+                    "date_of_birth": "1984-07-10",
+                    "country_of_birth": "Nigeria",
+                    "state_of_birth": "Lagos",
+                    "nationality": "Nigeria",
+                    "state_of_origin": "Lagos",
+                    "lga_of_origin": "Eti-Osa",
+                    "gender": "Male",
+                    "contact_number": "09041487757",
+                    "email": "criyo.career+isaac@gmail.com",
+                    "employment_status": "Employed",
+                    "occupation": "Diagnostic Scientist",
+                    "national_identity_number": "98376720000",
+                    "bank_verification_number": "22347230000",
+                    "bank_name": "Opay",
+                    "account_name": "Christian Odezi Aluya",
+                    "account_number": "9041487757",
+                    "residential_address": "13 Adeola Odeku, Victoria Island, Lagos",
+                    "identity_document": "rentdirect/apps/api/seed_demo_data/landlord/isaac/documents/id/nin.pdf"
+                }
+            }
+        },
+        "profile": {
+            "photo": "rentdirect/apps/api/seed_demo_data/landlord/ayo/ayo.jpeg",
+            "personal_information": {
+                "first_name": "Ayodele",
+                "middle_name": "Omoniyi",
+                "last_name": "Mojebi",
+                "date_of_birth": "1982-01-05",
+                "gender": "Male",
+                "preferred_contact_method": "whatsapp",
+                "phone_number": "+2349041487757",
+                "whatsapp_number": "+2349041487757",
+                "email": "criyo.career+ay@gmail.com",
+                "nationality": "Nigeria",
+                "state_of_origin": "Lagos",
+                "lga_of_origin": "Eti-Osa",
+                "bio_about_me": "Private landlord focused on well-maintained apartments in Ikoyi and nearby Lagos business districts.",
+                "country_of_birth": "Nigeria",
+                "state_of_birth": "Lagos",
+                "contact_number": "09041487757",
+                "employment_status": "Employed",
+                "occupation": "Diagnostic Scientist",
+                "national_identity_number": "98376720000",
+                "bank_verification_number": "22347230000",
+                "bank_name": "Opay",
+                "account_name": "Christian Odezi Aluya",
+                "account_number": "9041487757",
+                "identity_document": "rentdirect/apps/api/seed_demo_data/landlord/isaac/documents/id/nin.pdf"
+            },
+            "employment_information": {
+                "employer_name": "Valley Streams Diagnostic Centre",
+                "job_title": "Diagnotic Specialist",
+                "employment_type": "Full-time",
+                "years_employed": 5,
+                "work_email": "isaac.taiwo@diagnostic.com",
+                "work_address": "14 Ademola Road, Sangotedo, Lagos",
+                "hr_contact_name": "Harriet Adams",
+                "hr_contact_number": "+2348091122334",
+                "hr_email": "harriet.adams@diagnostic.com"
+            },
+            "identity_and_bank_verification": {
+                "id_type": "National ID (NIN)",
+                "id_number": "98376720000",
+                "expiry_date": "",
+                "bank_name": "Opay",
+                "account_name": "Christian Odezi Aluya",
+                "account_number": "9041487757"
+            },
+            "residential_information": {
+                "country": "Nigeria",
+                "state": "Lagos",
+                "city": "Ikoyi",
+                "address": "30 Awolowo Road, Ikoyi, Lagos",
+                "proof_of_address": [
+                    "Utility Bill",
+                    "Bank Statement"
+                ]
+            },
+            "emergency_contact": {
+                "first_name": "Grace",
+                "middle_name": "Efe",
+                "last_name": "Aluya",
+                "phone_number": "+2348091122334",
+                "email": "grace.aluya@example.com",
+                "relationship": "Sibling",
+                "address": "12 Admiralty Way, Lekki Phase 1, Lagos"
+            }
+        },
+        "listings": {
+            "01": {
+                "property_information": {
+                    "title": "Modern 4 bedroom Apartment",
+                    "property_type": "Apartment",
+                    "description": "A modern 3 bedroom apartment in the heart of ikoyi, lagos",
+                    "address": "14 Thomson Avenue, Ikoyi, Lagos",
+                    "city": "Ikoyi",
+                    "state": "Lagos",
+                    "postal_code": "100021",
+                    "bedroom": 3,
+                    "bathroom": 3,
+                    "toilets": 4,
+                    "square_feet": 3000,
+                    "available_from": "12/08/2026",
+                    "price_per_year": 300,
+                    "deposit_amount": 60
+                },
+                "property_ownership verification": {
+                    "verification_method": {
+                        "upload_documents": false,
+                        "in_person_verification": true
+                    },
+                    "ownership_types": [
+                        "Sole Owner"
+                    ],
+                    "ownership_documents": [
+                        "Certificat of Occupancy (Cof)",
+                        "Deed of Assignment",
+                        "Governor's Consent"
+                    ],
+                    "property_document": "rentdirect/apps/api/seed_demo_data/landlord/isaac/documents/property/house_deed.pdf"
+                },
+                "rental_preferences": {
+                    "maximum_occupancy": "5",
+                    "minimum_lease_duration": "12",
+                    "pets_allowed": true,
+                    "commercial_activities_allowed": false,
+                    "student_tenants_allowed": false,
+                    "expatriates_allowed": true,
+                    "smoking_allowed": false,
+                    "short_let_allowed": false,
+                    "corp_members_allowed": true,
+                    "features": {
+                        "utilities_included": true,
+                        "furnished": true,
+                        "pet_friendly": true,
+                        "amenities": [
+                            "swimming pool",
+                            "gym",
+                            "parking"
+                        ]
+                    }
+                },
+                "feature_property": {
+                    "feature_property_checkbox": true
+                },
+                "images": {
+                    "cover_image": "rentdirect/apps/api/seed_demo_data/landlord/isaac/listings/01/cover_image.jpg",
+                    "additional_images": [
+                        "rentdirect/apps/api/seed_demo_data/landlord/isaac/listings/01/*.*"
                     ]
                 }
             }
