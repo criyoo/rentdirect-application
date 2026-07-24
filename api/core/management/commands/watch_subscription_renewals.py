@@ -1,8 +1,12 @@
 import time
+import logging
 
 from django.conf import settings
-from django.core.management import call_command
 from django.core.management.base import BaseCommand
+
+from core.payment_queue import enqueue_subscription_renewals
+
+logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
@@ -20,5 +24,8 @@ class Command(BaseCommand):
         interval = max(int(options["interval"]), 60)
         self.stdout.write(self.style.SUCCESS(f"Watching recurring subscription renewals every {interval} seconds."))
         while True:
-            call_command("process_subscription_renewals")
+            try:
+                enqueue_subscription_renewals(source="watch_subscription_renewals")
+            except Exception:
+                logger.exception("Subscription renewal queue iteration failed.")
             time.sleep(interval)

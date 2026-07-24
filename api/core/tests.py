@@ -13,9 +13,11 @@ from django.test import TestCase
 from django.test.utils import override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from core.management.commands.seed_demo_data import Command as SeedDemoDataCommand
 from core.models import AppUser, Booking, CommunityChatMessage, Document, Feedback, FeaturedPayment, Listing, ListingImage, Message, Payment, PaymentSettlement, Review, SubscriptionPayment, SubscriptionPaymentMethod, SupportChatMessage, TenantProfile, VerificationRequest
+from core.payment_queue import TASK_PROCESS_READY_PAYOUTS, enqueue_payment_task
 from core.pricing import calculate_booking_total, calculate_deposit_amount
 from core.security import hash_otp
 from core.serializers import UserSerializer
@@ -192,6 +194,36 @@ class AuthViewSetTests(TestCase):
         self.assertEqual(response.status_code, 200, response.json())
         verified_user = AppUser.objects.get(email=email)
         self.assertTrue(verified_user.email_verified)
+        self.assertIn(settings.ACCESS_COOKIE_NAME, response.cookies)
+        self.assertIn(settings.REFRESH_COOKIE_NAME, response.cookies)
+
+    def test_login_ignores_stale_access_cookie_for_deleted_user(self):
+        stale_user = AppUser.objects.create_user(
+            email="stale-cookie@example.com",
+            password="password-123",
+            name="Stale Cookie",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        stale_access_token = str(RefreshToken.for_user(stale_user).access_token)
+        stale_user.delete()
+        AppUser.objects.create_user(
+            email="active-login@example.com",
+            password="password-123",
+            name="Active Login",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        self.client.cookies[settings.ACCESS_COOKIE_NAME] = stale_access_token
+
+        response = self.client.post(
+            "/api/v1/auth/login",
+            {"email": "active-login@example.com", "password": "password-123"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertEqual(response.json()["email"], "active-login@example.com")
         self.assertIn(settings.ACCESS_COOKIE_NAME, response.cookies)
         self.assertIn(settings.REFRESH_COOKIE_NAME, response.cookies)
 
@@ -1814,6 +1846,40 @@ class VerificationRequestViewSetTests(TestCase):
         )
         user.refresh_from_db()
         self.assertTrue(user.is_verified)
+
+
+class PaymentQueueTests(TestCase):
+    @override_settings(PAYMENT_QUEUE_BACKEND="sync")
+    @patch("core.payment_queue.call_command")
+    def test_sync_queue_backend_runs_ready_payout_task_inline(self, call_command_mock):
+        result = enqueue_payment_task(TASK_PROCESS_READY_PAYOUTS, {"source": "test"})
+
+        self.assertEqual(result, {"status": "ok"})
+        call_command_mock.assert_called_once_with("process_ready_payouts")
+
+    @override_settings(
+        PAYMENT_QUEUE_BACKEND="rq",
+        ENFORCE_FLUTTERWAVE_WEBHOOK_SIGNATURE=False,
+        FLUTTERWAVE_WEBHOOK_SECRET_HASH="",
+    )
+    @patch("core.views.enqueue_flutterwave_webhook", return_value=None)
+    def test_flutterwave_webhook_returns_queued_for_async_queue_backend(self, enqueue_mock):
+        client = APIClient()
+        response = client.post(
+            "/api/v1/payments/webhook/flutterwave",
+            {
+                "event": "charge.completed",
+                "data": {
+                    "reference": "ASYNCQUEUEPAYMENT1",
+                    "status": "successful",
+                },
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertEqual(response.json(), {"status": "queued", "reference": "ASYNCQUEUEPAYMENT1"})
+        enqueue_mock.assert_called_once()
 
 
 class BookingPaymentTests(TestCase):

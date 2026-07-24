@@ -84,6 +84,7 @@ from .notifications import (
     send_rentdirect_internal_transfer_notification,
 )
 from .permissions import IsAdminRole, IsLandlordOrAdmin
+from .payment_queue import enqueue_booking_payout_check, enqueue_flutterwave_webhook
 from .pricing import calculate_deposit_amount, calculate_remaining_balance, resolve_booking_total
 from .security import OTP_MAX_ATTEMPTS, OTP_TTL_MINUTES, contains_contact_info, generate_otp, hash_otp, otp_matches
 from .tenant_verification import normalize_tenant_verification_profile
@@ -1620,6 +1621,13 @@ def trigger_booking_payouts_if_ready(booking: Booking) -> None:
     )
 
 
+def enqueue_booking_payout_check_safely(booking_id) -> None:
+    try:
+        enqueue_booking_payout_check(booking_id)
+    except Exception:
+        logger.exception("Failed to enqueue payout check for booking %s", booking_id)
+
+
 def update_booking_after_completed_payment(payment: Payment) -> Payment:
     with transaction.atomic():
         payment = (
@@ -1673,7 +1681,7 @@ def update_booking_after_completed_payment(payment: Payment) -> Payment:
         except Exception:
             logger.exception("Failed to send payment confirmation email for payment %s", payment.id)
 
-        trigger_payment_settlements(payment)
+        transaction.on_commit(lambda: enqueue_booking_payout_check_safely(payment.booking_id))
         return payment
 
 
@@ -1933,7 +1941,7 @@ def ensure_supported_subscription_role(user: AppUser) -> None:
 class AuthViewSet(viewsets.ViewSet):
     permission_classes = [AllowAny]
 
-    @action(detail=False, methods=["post"], url_path="register")
+    @action(detail=False, methods=["post"], url_path="register", authentication_classes=[])
     def register(self, request):
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -1964,7 +1972,7 @@ class AuthViewSet(viewsets.ViewSet):
             status=status.HTTP_201_CREATED,
         )
 
-    @action(detail=False, methods=["post"], url_path="register/verify")
+    @action(detail=False, methods=["post"], url_path="register/verify", authentication_classes=[])
     def verify_registration(self, request):
         serializer = VerifyRegistrationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -1993,7 +2001,7 @@ class AuthViewSet(viewsets.ViewSet):
         set_auth_cookies(response, user)
         return response
 
-    @action(detail=False, methods=["post"], url_path="login")
+    @action(detail=False, methods=["post"], url_path="login", authentication_classes=[])
     def login(self, request):
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -2002,13 +2010,13 @@ class AuthViewSet(viewsets.ViewSet):
         set_auth_cookies(response, user)
         return response
 
-    @action(detail=False, methods=["post"], url_path="logout", permission_classes=[IsAuthenticated])
+    @action(detail=False, methods=["post"], url_path="logout", permission_classes=[AllowAny], authentication_classes=[])
     def logout(self, request):
         response = Response({"message": "Logged out successfully"})
         clear_auth_cookies(response)
         return response
 
-    @action(detail=False, methods=["post"], url_path="refresh")
+    @action(detail=False, methods=["post"], url_path="refresh", authentication_classes=[])
     def refresh(self, request):
         raw = request.COOKIES.get(settings.REFRESH_COOKIE_NAME) or request.data.get("refresh_token")
         if not raw:
@@ -2749,10 +2757,96 @@ class BookingViewSet(viewsets.ModelViewSet):
                 .select_related("tenant", "listing", "listing__landlord")
                 .get(pk=booking.pk)
             )
-            trigger_booking_payouts_if_ready(booking)
+            enqueue_booking_payout_check_safely(booking.pk)
             booking = self.get_queryset().get(pk=booking.pk)
 
         return Response(self.get_serializer(booking).data)
+
+
+def process_flutterwave_webhook_event(body: dict) -> dict:
+    transfer_data = body.get("data") if isinstance(body, dict) else {}
+    if isinstance(transfer_data, dict):
+        transfer_reference = str(transfer_data.get("reference") or transfer_data.get("transfer_reference") or "").strip()
+        if transfer_reference:
+            settlement = PaymentSettlement.objects.select_related(
+                "payment",
+                "payment__booking",
+                "payment__booking__tenant",
+                "payment__booking__listing",
+                "payment__booking__listing__landlord",
+            ).filter(transfer_reference=transfer_reference).first()
+            if settlement:
+                sync_payment_settlement_transfer(settlement, body)
+                return {"response": {"status": "ok", "reference": transfer_reference}, "status_code": 200}
+
+    reference = extract_reference(body)
+    provider_transaction_id = extract_provider_transaction_id(body)
+    if not reference and not provider_transaction_id:
+        return {"response": {"status": "ok"}, "status_code": 200}
+
+    payment = Payment.objects.select_related("booking", "booking__listing", "booking__tenant").filter(transaction_id=reference).first()
+    featured = FeaturedPayment.objects.select_related("listing", "landlord").filter(transaction_id=reference).first()
+    subscription_filter = Q()
+    if reference:
+        subscription_filter |= Q(transaction_id=reference)
+    if provider_transaction_id:
+        subscription_filter |= Q(provider_charge_id=provider_transaction_id)
+    subscription = (
+        SubscriptionPayment.objects.select_related("user")
+        .filter(subscription_filter)
+        .first()
+        if subscription_filter
+        else None
+    )
+    settlement = PaymentSettlement.objects.select_related(
+        "payment",
+        "payment__booking",
+        "payment__booking__tenant",
+        "payment__booking__listing",
+        "payment__booking__listing__landlord",
+    ).filter(transfer_reference=reference).first()
+    if settlement and not payment and not featured and not subscription:
+        sync_payment_settlement_transfer(settlement, body)
+        return {"response": {"status": "ok", "reference": reference}, "status_code": 200}
+    if not payment and not featured and not subscription:
+        return {"response": {"status": "error", "message": "Payment not found"}, "status_code": 404}
+
+    try:
+        if payment:
+            sync_booking_payment(
+                payment,
+                transaction_id=provider_transaction_id or None,
+                payload=body,
+                source="webhook",
+            )
+        if featured:
+            sync_featured_payment(
+                featured,
+                transaction_id=provider_transaction_id or None,
+                payload=body,
+                source="webhook",
+            )
+        if subscription:
+            sync_subscription_payment(
+                subscription,
+                transaction_id=provider_transaction_id or None,
+                payload=body,
+                source="webhook",
+            )
+    except FlutterwaveError as exc:
+        return {"response": {"status": "error", "message": str(exc)}, "status_code": 502}
+
+    return {"response": {"status": "ok", "reference": reference}, "status_code": 200}
+
+
+def flutterwave_webhook_queue_reference(body: dict) -> str:
+    transfer_data = body.get("data") if isinstance(body, dict) else {}
+    if isinstance(transfer_data, dict):
+        for key in ("reference", "transfer_reference", "tx_ref", "txRef", "flw_ref", "flwRef", "id"):
+            value = str(transfer_data.get(key) or "").strip()
+            if value:
+                return value
+    return extract_reference(body) or extract_provider_transaction_id(body)
 
 
 @method_decorator(production_ratelimit(key="ip", rate="120/m", method="POST", block=True), name="flutterwave_webhook")
@@ -2922,72 +3016,19 @@ class PaymentViewSet(viewsets.ModelViewSet):
             return signature_error
 
         body = request.data
-        transfer_data = body.get("data") if isinstance(body, dict) else {}
-        if isinstance(transfer_data, dict):
-            transfer_reference = str(transfer_data.get("reference") or transfer_data.get("transfer_reference") or "").strip()
-            if transfer_reference:
-                settlement = PaymentSettlement.objects.select_related(
-                    "payment",
-                    "payment__booking",
-                    "payment__booking__tenant",
-                    "payment__booking__listing",
-                    "payment__booking__listing__landlord",
-                ).filter(transfer_reference=transfer_reference).first()
-                if settlement:
-                    sync_payment_settlement_transfer(settlement, body)
-                    return Response({"status": "ok", "reference": transfer_reference})
-
-        reference = extract_reference(body)
-        provider_transaction_id = extract_provider_transaction_id(body)
-        if not reference and not provider_transaction_id:
+        reference = flutterwave_webhook_queue_reference(body)
+        if not reference:
             return Response({"status": "ok"})
 
-        payment = Payment.objects.select_related("booking", "booking__listing", "booking__tenant").filter(transaction_id=reference).first()
-        featured = FeaturedPayment.objects.select_related("listing", "landlord").filter(transaction_id=reference).first()
-        subscription = (
-            SubscriptionPayment.objects.select_related("user")
-            .filter(Q(transaction_id=reference) | Q(provider_charge_id=provider_transaction_id))
-            .first()
-        )
-        settlement = PaymentSettlement.objects.select_related(
-            "payment",
-            "payment__booking",
-            "payment__booking__tenant",
-            "payment__booking__listing",
-            "payment__booking__listing__landlord",
-        ).filter(transfer_reference=reference).first()
-        if settlement and not payment and not featured and not subscription:
-            sync_payment_settlement_transfer(settlement, body)
-            return Response({"status": "ok", "reference": reference})
-        if not payment and not featured and not subscription:
-            return Response({"status": "error", "message": "Payment not found"}, status=404)
-
         try:
-            if payment:
-                sync_booking_payment(
-                    payment,
-                    transaction_id=provider_transaction_id or None,
-                    payload=body,
-                    source="webhook",
-                )
-            if featured:
-                sync_featured_payment(
-                    featured,
-                    transaction_id=provider_transaction_id or None,
-                    payload=body,
-                    source="webhook",
-                )
-            if subscription:
-                sync_subscription_payment(
-                    subscription,
-                    transaction_id=provider_transaction_id or None,
-                    payload=body,
-                    source="webhook",
-                )
-        except FlutterwaveError as exc:
-            return Response({"status": "error", "message": str(exc)}, status=502)
+            result = enqueue_flutterwave_webhook(body)
+        except Exception as exc:
+            logger.exception("Failed to enqueue Flutterwave webhook payment task.")
+            return Response({"status": "error", "message": str(exc)}, status=503)
+        if result is not None:
+            return Response(result["response"], status=result["status_code"])
 
-        return Response({"status": "ok", "reference": reference})
+        return Response({"status": "queued", "reference": reference})
 
 
 class SubscriptionPaymentViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
