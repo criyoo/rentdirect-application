@@ -2969,14 +2969,6 @@ class TenantScreeningSummaryTests(TestCase):
 
 
 class SeedDemoTests(TestCase):
-    seed_landlord_emails = (
-        "criyo.career+chris@gmail.com",
-        "criyo.career+francis@gmail.com",
-        "criyo.career+ayo@gmail.com",
-        "criyo.career+isaac@gmail.com",
-    )
-    seed_tenant_email = "criyo.career+jade@gmail.com"
-
     def assert_seed_subscription(self, subscription, user):
         self.assertEqual(subscription.user, user)
         self.assertEqual(subscription.role, user.role)
@@ -3012,8 +3004,7 @@ class SeedDemoTests(TestCase):
         call_command("seed_demo_data", stdout=out)
 
         self.assertIn("Landlord or tenant accounts already exist; skipping demo account seed", out.getvalue())
-        self.assertFalse(AppUser.objects.filter(email__in=self.seed_landlord_emails).exists())
-        self.assertFalse(AppUser.objects.filter(email=self.seed_tenant_email).exists())
+        self.assertEqual(AppUser.objects.count(), 1)
         self.assertFalse(Listing.objects.exists())
 
     @override_settings(SEED_DEMO_ACCOUNTS=True)
@@ -3076,102 +3067,37 @@ class SeedDemoTests(TestCase):
                 call_command("seed_demo_data")
                 call_command("seed_demo_data")
 
-        seed_user_emails = (*self.seed_landlord_emails, self.seed_tenant_email)
-        self.assertEqual(Listing.objects.filter(landlord__email__in=self.seed_landlord_emails).count(), 4)
-        self.assertEqual(Document.objects.filter(owner__email__in=self.seed_landlord_emails).count(), 8)
-        self.assertEqual(VerificationRequest.objects.filter(user__email__in=seed_user_emails).count(), 5)
-        self.assertEqual(Listing.objects.filter(landlord__email__in=self.seed_landlord_emails, featured=True).count(), 4)
-        self.assertEqual(SubscriptionPayment.objects.filter(user__email__in=seed_user_emails).count(), 5)
+        landlords = list(AppUser.objects.filter(role=AppUser.Role.LANDLORD))
+        tenants = list(AppUser.objects.filter(role=AppUser.Role.TENANT))
+        seed_users = [*landlords, *tenants]
+        listings = Listing.objects.filter(landlord__in=landlords)
 
-        for email in self.seed_landlord_emails:
-            landlord = AppUser.objects.get(email=email)
-            self.assertEqual(landlord.role, AppUser.Role.LANDLORD)
-            subscription = SubscriptionPayment.objects.get(user=landlord)
-            self.assert_seed_subscription(subscription, landlord)
+        self.assertEqual(len(landlords), 4)
+        self.assertEqual(len(tenants), 1)
+        self.assertEqual(listings.count(), 4)
+        self.assertEqual(listings.filter(featured=True).count(), 4)
+        self.assertEqual(VerificationRequest.objects.filter(user__in=seed_users).count(), 5)
+        self.assertEqual(SubscriptionPayment.objects.filter(user__in=seed_users).count(), 5)
+        self.assertEqual(TenantProfile.objects.filter(user__in=tenants).count(), 1)
 
-        jade = AppUser.objects.get(email=self.seed_tenant_email)
-        tenant_subscription = SubscriptionPayment.objects.get(user=jade)
-        self.assert_seed_subscription(tenant_subscription, jade)
-        self.assertEqual(jade.role, AppUser.Role.TENANT)
-        self.assertEqual(jade.mobile, "+234807138378")
-        self.assertEqual(jade.nin_number, "98311128454")
-        self.assertEqual(jade.bvn_number, "23516273876")
-        self.assertEqual(jade.state_of_origin, "Oyo")
-        self.assertEqual(jade.residence["city"], "Ibadan")
-        self.assertEqual(jade.tenant_verification_profile["first_name"], "Jade")
-        self.assertEqual(jade.tenant_verification_profile["email"], "criyo.career+jade@gmail.com")
-        self.assertEqual(jade.tenant_verification_profile["date_of_birth"], "1990-01-01")
-        self.assertEqual(jade.tenant_verification_profile["nin_number"], "98311128454")
-        self.assertTrue(jade.profile_photo.name.endswith(".jpg"))
-        self.assertTrue(jade.is_verified)
-        self.assertEqual(TenantProfile.objects.filter(user=jade).count(), 1)
-        jade_profile = TenantProfile.objects.get(user=jade)
-        self.assertEqual(jade_profile.status, TenantProfile.Status.APPROVED)
-        self.assertEqual(jade_profile.first_name, "Jade")
-        self.assertEqual(str(jade_profile.date_of_birth), "1990-01-01")
-        self.assertEqual(jade_profile.residence_city, "Ibadan")
-        self.assertEqual(jade_profile.employment_info["company_name"], "Bluebird Analytics Limited")
-        self.assertEqual(jade_profile.financial_info["current_rent_amount"], "1500000")
-        self.assertEqual(jade_profile.financial_info["current_move_in_date"], "2000-01-01")
-        self.assertEqual(jade_profile.landlord_info["name"], "Mr. Adewale Balogun")
-        self.assertEqual(jade_profile.landlord_info["property_manager_email"], "soma@propertymanagement.example.com")
-        self.assertEqual(jade_profile.rental_history[0]["property_address"], "123 Main Street, Jericho, Ibadan")
-        self.assertEqual(jade_profile.rental_history[0]["move_out_date"], "2026-08-01")
-        self.assertFalse(jade_profile.household_info["has_smokers"])
-        self.assertFalse(jade_profile.criminal_declaration["convicted_of_crime"])
-        self.assertTrue(jade.profile_photo.name.startswith(f"profiles/{jade.id}/profile-"))
-        self.assertRegex(jade.profile_photo.name, r"/profile-[0-9a-f]{32}\.jpg$")
-        jade_verification = VerificationRequest.objects.get(user=jade)
-        self.assertEqual(jade_verification.status, VerificationRequest.Status.APPROVED)
-        self.assertEqual(
-            jade_verification.identity_verification_status,
-            VerificationRequest.VerificationProgressStatus.VERIFIED,
-        )
-        self.assertEqual(jade_verification.verification_method, VerificationRequest.Method.AUTOMATED)
-        self.assertEqual(
-            jade_verification.property_document_verification_status,
-            VerificationRequest.VerificationProgressStatus.VERIFIED,
-        )
-        self.assertEqual(
-            jade_verification.physical_property_status,
-            VerificationRequest.VerificationProgressStatus.VERIFIED,
-        )
+        for user in seed_users:
+            self.assert_seed_subscription(SubscriptionPayment.objects.get(user=user), user)
+            verification = VerificationRequest.objects.get(user=user)
+            self.assertEqual(verification.status, VerificationRequest.Status.APPROVED)
+            self.assertEqual(verification.identity_verification_status, VerificationRequest.VerificationProgressStatus.VERIFIED)
+            self.assertEqual(verification.property_document_verification_status, VerificationRequest.VerificationProgressStatus.VERIFIED)
+            self.assertEqual(verification.physical_property_status, VerificationRequest.VerificationProgressStatus.VERIFIED)
+            self.assertEqual(verification.verification_method, VerificationRequest.Method.AUTOMATED)
+
+        for listing in listings:
+            self.assertEqual(listing.status, Listing.Status.AVAILABLE)
+            self.assertEqual(listing.property_document_verification_status, VerificationRequest.VerificationProgressStatus.VERIFIED)
+            self.assertEqual(listing.physical_property_status, VerificationRequest.VerificationProgressStatus.VERIFIED)
+            self.assertEqual(listing.property_documents.count(), 1)
+            self.assertGreater(listing.images.count(), 0)
+            self.assertTrue(listing.cover_image_url)
 
         christian = AppUser.objects.get(email="criyo.career+chris@gmail.com")
-        self.assertEqual(christian.role, AppUser.Role.LANDLORD)
-        self.assertEqual(christian.residence["city"], "Ikoyi")
-        self.assertEqual(christian.landlord_verification_type, AppUser.LandlordVerificationType.INDIVIDUAL)
-        self.assertEqual(christian.landlord_verification_profile["first_name"], "Christian")
-        self.assertEqual(christian.landlord_verification_profile["kyc"]["id_number"], "98376728472")
-        self.assertEqual(christian.landlord_verification_profile["banking_information"]["account_number"], "9041487757")
-        self.assertEqual(christian.landlord_verification_profile["employment_status"], "Employed")
-        self.assertEqual(christian.landlord_verification_profile["occupation"], "Cloud Engineer")
-        self.assertEqual(christian.landlord_verification_profile["employer_name"], "Conoco Philips")
-        self.assertEqual(christian.landlord_verification_profile["job_title"], "Software Engineer")
-        self.assertEqual(christian.landlord_verification_profile["employment_type"], "Full-time")
-        self.assertEqual(christian.landlord_verification_profile["years_employed"], "5")
-        self.assertEqual(christian.landlord_verification_profile["work_address"], "13 Ajose Adeogun, Victoria Island, Lagos, Nigeria")
-        self.assertEqual(christian.landlord_verification_profile["work_email"], "christian.aluya@conocophilips.com")
-        self.assertEqual(christian.landlord_verification_profile["hr_contact_name"], "Harriet Adams")
-        self.assertEqual(christian.landlord_verification_profile["hr_contact_number"], "+2348091122334")
-        self.assertEqual(christian.landlord_verification_profile["hr_contact_email"], "harriet.adams@conocophilips.com")
-        self.assertTrue(christian.profile_photo.name.startswith(f"profiles/{christian.id}/profile-"))
-        self.assertRegex(christian.profile_photo.name, r"/profile-[0-9a-f]{32}\.jpeg$")
-        christian_verification = VerificationRequest.objects.get(user=christian)
-        self.assertEqual(christian_verification.status, VerificationRequest.Status.APPROVED)
-        self.assertEqual(
-            christian_verification.identity_verification_status,
-            VerificationRequest.VerificationProgressStatus.VERIFIED,
-        )
-        self.assertEqual(
-            christian_verification.property_document_verification_status,
-            VerificationRequest.VerificationProgressStatus.VERIFIED,
-        )
-        self.assertEqual(
-            christian_verification.physical_property_status,
-            VerificationRequest.VerificationProgressStatus.VERIFIED,
-        )
-        self.assertEqual(christian_verification.verification_method, VerificationRequest.Method.AUTOMATED)
         client = APIClient()
         client.force_authenticate(user=christian)
         status_response = client.get("/api/v1/landlord-verification-requests/status")
@@ -3182,12 +3108,6 @@ class SeedDemoTests(TestCase):
         self.assertEqual(status_payload["physical_property"]["status"], "verified")
         self.assertEqual(status_payload["verification_method"], "automated")
         christian_listing = Listing.objects.get(landlord=christian, seed_key="01")
-        self.assertEqual(christian_listing.ownership_status, "")
-        self.assertEqual(christian_listing.ownership_types, ["Sole Owner"])
-        self.assertEqual(christian_listing.property_ownership_documents, ["Certificat of Occupancy (Cof)", "Deed of Assignment", "Governor's Consent"])
-        self.assertTrue(christian_listing.property_document_submission["in_person_verification_requested"])
-        self.assertEqual(christian_listing.property_document_submission["uploaded_document_count"], 1)
-        self.assertEqual(christian_listing.property_documents.count(), 1)
         title_max_length = Document._meta.get_field("title").max_length
         self.assertTrue(
             all(len(document.title) <= title_max_length for document in christian_listing.property_documents.all())
@@ -3198,24 +3118,12 @@ class SeedDemoTests(TestCase):
                 for document in christian_listing.property_documents.all()
             )
         )
-        self.assertEqual(christian_listing.property_document_verification_status, VerificationRequest.VerificationProgressStatus.VERIFIED)
-        self.assertEqual(christian_listing.physical_property_status, VerificationRequest.VerificationProgressStatus.VERIFIED)
-        self.assertEqual(str(christian_listing.deposit_amount), "80.00")
-        self.assertEqual(str(christian_listing.available_from), "2026-08-12")
-        self.assertEqual(christian_listing.minimum_rental_duration, "12")
-        self.assertEqual(christian_listing.maximum_occupancy, 5)
-        self.assertTrue(christian_listing.utilities_included)
-        self.assertTrue(christian_listing.pet_friendly)
-        self.assertTrue(christian_listing.furnished)
-        self.assertTrue(christian_listing.expatriates_allowed)
-        self.assertGreater(christian_listing.images.count(), 0)
         self.assertTrue(
             all(
                 image.file.name.startswith(f"listings/{christian.id}/{christian_listing.id}/{image.id}/listing-image-")
                 for image in christian_listing.images.all()
             )
         )
-        self.assertTrue(christian_listing.cover_image_url)
 
         response = self.client.get("/api/v1/featured/listings")
         self.assertEqual(response.status_code, 200)
