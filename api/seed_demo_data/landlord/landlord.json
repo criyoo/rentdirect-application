@@ -178,13 +178,13 @@
     },
     "francis": {
         "registration_credentials": {
-            "full_name": "Francis Olufemi Ademuyi",
-            "email": "criyo.career+francis@gmail.com",
+            "full_name": "francis Olufemi Ademuyi",
+            "email": "fran6hardey.autos@gmail.com",
             "password": "ifG0dbi4mi",
             "landlord": true
         },
         "login_credentials": {
-            "email": "criyo.career+francis@gmail.com",
+            "email": "fran6hardey.autos@gmail.com",
             "password": "ifG0dbi4mi"
         },
         "verification": {
@@ -202,7 +202,7 @@
                     "lga_of_origin": "Abeokuta",
                     "gender": "Male",
                     "contact_number": "09041487757",
-                    "email": "criyo.career+francis@gmail.com",
+                    "email": "fran6hardey.autos@gmail.com",
                     "employment_status": "Employed",
                     "occupation": "Banker",
                     "national_identity_number": "98376720000",
@@ -356,12 +356,12 @@
     "ayo": {
         "registration_credentials": {
             "full_name": "Ayodele Omoniyi Mojebi",
-            "email": "criyo.career+ayo@gmail.com",
-            "password": "ifG0dbi4mi",
+            "email": "ayomejabi@icloud.com",
+            "password": "ifG@dbi4Ayo",
             "landlord": true
         },
         "login_credentials": {
-            "email": "criyo.career+ayo@gmail.com",
+            "email": "ayomejabi@icloud.com",
             "password": "ifG0dbi4mi"
         },
         "verification": {
@@ -379,7 +379,7 @@
                     "lga_of_origin": "Abeokuta",
                     "gender": "Male",
                     "contact_number": "09041487757",
-                    "email": "criyo.career+ay@gmail.com",
+                    "email": "ayomejabi@icloud.com",
                     "employment_status": "Employed",
                     "occupation": "Banker",
                     "national_identity_number": "98376720000",
@@ -403,7 +403,7 @@
                 "preferred_contact_method": "whatsapp",
                 "phone_number": "+2349041487757",
                 "whatsapp_number": "+2349041487757",
-                "email": "criyo.career+ay@gmail.com",
+                "email": "ayomejabi@icloud.com",
                 "nationality": "Nigeria",
                 "state_of_origin": "Ogun",
                 "lga_of_origin": "Abeokuta",
@@ -533,12 +533,12 @@
     "isaac": {
         "registration_credentials": {
             "full_name": "Isaac Olaoluwa Taiwo",
-            "email": "criyo.career+isaac@gmail.com",
+            "email": "isaactaiwo.it@gmail.com",
             "password": "ifG0dbi4mi",
             "landlord": true
         },
         "login_credentials": {
-            "email": "criyo.career+isaac@gmail.com",
+            "email": "isaactaiwo.it@gmail.com",
             "password": "ifG0dbi4mi"
         },
         "verification": {
@@ -556,7 +556,7 @@
                     "lga_of_origin": "Eti-Osa",
                     "gender": "Male",
                     "contact_number": "09041487757",
-                    "email": "criyo.career+isaac@gmail.com",
+                    "email": "isaactaiwo.it@gmail.com",
                     "employment_status": "Employed",
                     "occupation": "Diagnostic Scientist",
                     "national_identity_number": "98376720000",
@@ -580,7 +580,7 @@
                 "preferred_contact_method": "whatsapp",
                 "phone_number": "+2349041487757",
                 "whatsapp_number": "+2349041487757",
-                "email": "criyo.career+isaac@gmail.com",
+                "email": "isaactaiwo.it@gmail.com",
                 "nationality": "Nigeria",
                 "state_of_origin": "Lagos",
                 "lga_of_origin": "Eti-Osa",
