@@ -3097,7 +3097,7 @@ class SeedDemoTests(TestCase):
             self.assertGreater(listing.images.count(), 0)
             self.assertTrue(listing.cover_image_url)
 
-        christian = AppUser.objects.get(email="criyo.career+chris@gmail.com")
+        christian = AppUser.objects.get(email="criyo.career@gmail.com")
         client = APIClient()
         client.force_authenticate(user=christian)
         status_response = client.get("/api/v1/landlord-verification-requests/status")
@@ -3135,7 +3135,7 @@ class SeedDemoTests(TestCase):
         with tempfile.TemporaryDirectory() as temp_media_root:
             with override_settings(MEDIA_ROOT=temp_media_root, STORAGES=TEST_FILE_STORAGES):
                 call_command("seed_demo_data")
-                listing = Listing.objects.get(landlord__email="criyo.career+chris@gmail.com", seed_key="01")
+                listing = Listing.objects.get(landlord__email="criyo.career@gmail.com", seed_key="01")
                 orphan = Document.objects.create(
                     owner=listing.landlord,
                     title=f"Listing Property Document: {listing.id} - stale failed upload",
@@ -3155,7 +3155,7 @@ class SeedDemoTests(TestCase):
             with override_settings(MEDIA_ROOT=temp_media_root, STORAGES=TEST_FILE_STORAGES):
                 call_command("seed_demo_data")
 
-                listing = Listing.objects.get(landlord__email="criyo.career+chris@gmail.com", seed_key="01")
+                listing = Listing.objects.get(landlord__email="criyo.career@gmail.com", seed_key="01")
                 original_image_names = list(listing.images.values_list("file", flat=True))
                 ListingImage.objects.filter(listing=listing).delete()
                 for image_name in original_image_names:
@@ -3176,7 +3176,7 @@ class SeedDemoTests(TestCase):
             with override_settings(MEDIA_ROOT=temp_media_root, STORAGES=TEST_FILE_STORAGES):
                 call_command("seed_demo_data")
 
-                listing = Listing.objects.get(landlord__email="criyo.career+chris@gmail.com", seed_key="01")
+                listing = Listing.objects.get(landlord__email="criyo.career@gmail.com", seed_key="01")
                 original_id = listing.id
                 listing.title = "Legacy Seeded Title"
                 listing.seed_key = ""
@@ -3185,7 +3185,7 @@ class SeedDemoTests(TestCase):
                 call_command("seed_demo_data", force=True)
 
         refreshed = Listing.objects.get(id=original_id)
-        self.assertEqual(Listing.objects.filter(landlord__email="criyo.career+chris@gmail.com").count(), 1)
+        self.assertEqual(Listing.objects.filter(landlord__email="criyo.career@gmail.com").count(), 1)
         self.assertEqual(refreshed.seed_key, "01")
         self.assertEqual(refreshed.title, "Modern 4 bedroom Apartment")
 
