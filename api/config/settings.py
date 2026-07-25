@@ -283,7 +283,7 @@ X_FRAME_OPTIONS = "DENY"
 
 COOKIE_DOMAIN = os.environ.get("COOKIE_DOMAIN", "")
 API_PUBLIC_URL = os.environ.get(
-    "API_PUBLIC_URL", 
+    "API_PUBLIC_URL",
     "https://api.rentdirect.homes"
     if ENVIRONMENT in {"prod", "production"}
     else "https://api.development.rentdirect.homes"
@@ -388,8 +388,11 @@ PREMBLY_NIN_API_URL = os.environ.get("PREMBLY_NIN_API_URL", "/verification/vnin"
 PREMBLY_BVN_API_URL = os.environ.get("PREMBLY_BVN_API_URL", "/verification/bvn").strip()
 PREMBLY_CAC_API_URL = os.environ.get("PREMBLY_CAC_API_URL", "/verification/cac").strip()
 PREMBLY_API_KEY = os.environ.get("PREMBLY_API_KEY", "").strip()
+PREMBLY_API_PUBLIC_KEY = os.environ.get("PREMBLY_API_PUBLIC_KEY", "").strip()
+PREMBLY_API_SECRET_KEY = os.environ.get("PREMBLY_API_SECRET_KEY", "").strip() or PREMBLY_API_KEY
 PREMBLY_TIMEOUT_SECONDS = env_int("PREMBLY_TIMEOUT_SECONDS", 10)
 PREMBLY_LOOKUP_CACHE_TIMEOUT_SECONDS = env_int("PREMBLY_LOOKUP_CACHE_TIMEOUT_SECONDS", 60 * 60 * 24)
+PREMBLY_WEBHOOK_TOKEN_CACHE_SECONDS = env_int("PREMBLY_WEBHOOK_TOKEN_CACHE_SECONDS", 60 * 60 * 24 * 7)
 PREMBLY_CAC_COMPANY_TYPE = os.environ.get("PREMBLY_CAC_COMPANY_TYPE", "RC").strip().upper()
 
 SEED_DEMO_ACCOUNTS = env_bool("SEED_DEMO_ACCOUNTS", ENVIRONMENT in {"dev", "development", "local"})

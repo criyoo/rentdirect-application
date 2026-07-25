@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 import hashlib
+import hmac
 import json
 import logging
 import re
@@ -24,8 +26,114 @@ class PremblyVerificationUnavailable(APIException):
     default_code = "prembly_verification_unavailable"
 
 
+class PremblyWebhookVerificationError(APIException):
+    status_code = 401
+    default_detail = "Invalid Prembly webhook signature."
+    default_code = "prembly_webhook_verification_failed"
+
+
 def _prembly_key() -> str:
-    return getattr(settings, "PREMBLY_API_KEY", "")
+    return str(
+        getattr(settings, "PREMBLY_API_SECRET_KEY", "")
+        or getattr(settings, "PREMBLY_API_KEY", "")
+        or ""
+    ).strip()
+
+
+def _prembly_public_key() -> str:
+    return str(getattr(settings, "PREMBLY_API_PUBLIC_KEY", "") or "").strip()
+
+
+def _payload_bytes(raw_body: bytes | str) -> bytes:
+    if isinstance(raw_body, bytes):
+        return raw_body
+    return str(raw_body or "").encode("utf-8")
+
+
+def _header_value(headers: Any, name: str) -> str:
+    if headers is None:
+        return ""
+
+    candidates = [
+        name,
+        name.lower(),
+        name.upper(),
+        name.title(),
+        f"HTTP_{name.upper().replace('-', '_')}",
+    ]
+    for candidate in candidates:
+        value = headers.get(candidate) if hasattr(headers, "get") else None
+        if value not in (None, ""):
+            return str(value).strip()
+
+    if not hasattr(headers, "items"):
+        return ""
+
+    target = name.lower()
+    for key, value in headers.items():
+        normalized_key = str(key)
+        if normalized_key.startswith("HTTP_"):
+            normalized_key = normalized_key[5:]
+        normalized_key = normalized_key.replace("_", "-").lower()
+        if normalized_key == target and value not in (None, ""):
+            return str(value).strip()
+    return ""
+
+
+def compute_prembly_webhook_signature(raw_body: bytes | str, *, public_key: str | None = None) -> str:
+    signing_key = str(public_key if public_key is not None else _prembly_public_key()).strip()
+    if not signing_key:
+        logger.warning("Prembly webhook public key is not configured.")
+        return ""
+    expected_signature = hmac.new(
+        signing_key.encode("utf-8"),
+        msg=_payload_bytes(raw_body),
+        digestmod=hashlib.sha256,
+    ).digest()
+    return base64.b64encode(expected_signature).decode("utf-8")
+
+
+def verify_prembly_webhook_signature(*, raw_body: bytes | str, signature: str, public_key: str | None = None) -> bool:
+    provided_signature = str(signature or "").strip()
+    if not provided_signature:
+        return False
+    if provided_signature.lower().startswith("sha256="):
+        provided_signature = provided_signature[7:].strip()
+    try:
+        provided_signature_bytes = provided_signature.encode("ascii")
+    except UnicodeEncodeError:
+        return False
+
+    expected_signature = compute_prembly_webhook_signature(raw_body, public_key=public_key)
+    return bool(expected_signature) and hmac.compare_digest(provided_signature_bytes, expected_signature.encode("ascii"))
+
+
+def mark_prembly_webhook_token_processed(token: str) -> bool:
+    token_value = str(token or "").strip()
+    if not token_value:
+        return False
+    token_hash = hashlib.sha256(token_value.encode("utf-8")).hexdigest()
+    cache_key = f"prembly_webhook_token:{token_hash}"
+    return cache.add(
+        cache_key,
+        True,
+        timeout=getattr(settings, "PREMBLY_WEBHOOK_TOKEN_CACHE_SECONDS", 60 * 60 * 24 * 7),
+    )
+
+
+def validate_prembly_webhook_request(*, headers: Any, raw_body: bytes | str, track_token: bool = True) -> dict[str, Any]:
+    signature = _header_value(headers, "x-prembly-signature")
+    token = _header_value(headers, "token")
+
+    if not signature or not token:
+        raise PremblyWebhookVerificationError(detail="Missing Prembly webhook security headers.")
+    if not verify_prembly_webhook_signature(raw_body=raw_body, signature=signature):
+        raise PremblyWebhookVerificationError()
+
+    return {
+        "token": token,
+        "already_processed": track_token and not mark_prembly_webhook_token_processed(token),
+    }
 
 
 def _decode_response(raw_response: bytes, *, allow_empty: bool = False) -> dict[str, Any]:

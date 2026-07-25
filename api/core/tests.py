@@ -1,3 +1,6 @@
+import base64
+import hashlib
+import hmac
 import json
 import re
 from io import StringIO
@@ -8,6 +11,7 @@ from unittest.mock import patch
 
 from django.conf import settings
 from django.core import mail
+from django.core.cache import cache
 from django.core.management import call_command
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
@@ -19,6 +23,11 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from core.management.commands.seed_demo_data import Command as SeedDemoDataCommand
 from core.models import AppUser, Booking, CommunityChatMessage, Document, Feedback, FeaturedPayment, Listing, ListingImage, Message, Payment, PaymentSettlement, Review, SubscriptionPayment, SubscriptionPaymentMethod, SupportChatMessage, TenantProfile, VerificationRequest
 from core.payment_queue import TASK_PROCESS_READY_PAYOUTS, enqueue_payment_task
+from core.prembly_verification import (
+    PremblyWebhookVerificationError,
+    validate_prembly_webhook_request,
+    verify_prembly_webhook_signature,
+)
 from core.pricing import calculate_booking_total, calculate_deposit_amount
 from core.security import hash_otp
 from core.serializers import UserSerializer
@@ -63,6 +72,60 @@ def create_active_subscription(user, plan_code=SubscriptionPayment.PlanCode.SILV
         payment_date=timezone.now(),
         expires_at=timezone.now() + timedelta(days=days),
     )
+
+
+class PremblyWebhookSecurityTests(TestCase):
+    def _signature(self, raw_body: bytes, public_key: str) -> str:
+        digest = hmac.new(public_key.encode("utf-8"), raw_body, hashlib.sha256).digest()
+        return base64.b64encode(digest).decode("utf-8")
+
+    @override_settings(PREMBLY_API_PUBLIC_KEY="test-prembly-public-key")
+    def test_prembly_webhook_signature_verifies_raw_body(self):
+        raw_body = b'{"status":"completed","data":{"session_id":"123"}}'
+        signature = self._signature(raw_body, settings.PREMBLY_API_PUBLIC_KEY)
+
+        self.assertTrue(verify_prembly_webhook_signature(raw_body=raw_body, signature=signature))
+        self.assertFalse(verify_prembly_webhook_signature(raw_body=raw_body + b" ", signature=signature))
+
+    @override_settings(PREMBLY_API_PUBLIC_KEY="")
+    def test_prembly_webhook_signature_rejects_missing_public_key(self):
+        raw_body = b'{"status":"completed"}'
+        signature = self._signature(raw_body, "test-prembly-public-key")
+
+        with self.assertLogs("core.prembly_verification", level="WARNING"):
+            self.assertFalse(verify_prembly_webhook_signature(raw_body=raw_body, signature=signature))
+
+    @override_settings(PREMBLY_API_PUBLIC_KEY="test-prembly-public-key", PREMBLY_WEBHOOK_TOKEN_CACHE_SECONDS=60)
+    def test_prembly_webhook_request_requires_signature_and_tracks_token(self):
+        raw_body = b'{"status":"completed","data":{"session_id":"123"}}'
+        token = "prembly-token-123"
+        cache.delete(f"prembly_webhook_token:{hashlib.sha256(token.encode('utf-8')).hexdigest()}")
+        headers = {
+            "x-prembly-signature": self._signature(raw_body, settings.PREMBLY_API_PUBLIC_KEY),
+            "token": token,
+        }
+
+        validation = validate_prembly_webhook_request(headers=headers, raw_body=raw_body)
+        duplicate_validation = validate_prembly_webhook_request(headers=headers, raw_body=raw_body)
+
+        self.assertEqual(validation["token"], token)
+        self.assertFalse(validation["already_processed"])
+        self.assertTrue(duplicate_validation["already_processed"])
+
+    @override_settings(PREMBLY_API_PUBLIC_KEY="test-prembly-public-key")
+    def test_prembly_webhook_request_rejects_missing_or_invalid_security_headers(self):
+        raw_body = b'{"status":"completed"}'
+
+        with self.assertRaises(PremblyWebhookVerificationError):
+            validate_prembly_webhook_request(headers={}, raw_body=raw_body)
+        with self.assertRaises(PremblyWebhookVerificationError):
+            validate_prembly_webhook_request(
+                headers={
+                    "x-prembly-signature": self._signature(raw_body, settings.PREMBLY_API_PUBLIC_KEY),
+                    "token": "token-1",
+                },
+                raw_body=b'{"status":"tampered"}',
+            )
 
 
 class HealthTests(TestCase):
