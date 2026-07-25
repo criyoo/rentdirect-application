@@ -1,5 +1,6 @@
 import json
 import re
+from io import StringIO
 from pathlib import Path
 from datetime import date, timedelta
 import tempfile
@@ -2905,12 +2906,52 @@ class TenantScreeningSummaryTests(TestCase):
 
 
 class SeedDemoTests(TestCase):
+    seed_landlord_emails = (
+        "criyo.career+chris@gmail.com",
+        "criyo.career+francis@gmail.com",
+        "criyo.career+ayo@gmail.com",
+        "criyo.career+isaac@gmail.com",
+    )
+    seed_tenant_email = "criyo.career+jade@gmail.com"
+
+    def assert_seed_subscription(self, subscription, user):
+        self.assertEqual(subscription.user, user)
+        self.assertEqual(subscription.role, user.role)
+        self.assertEqual(subscription.plan_code, SubscriptionPayment.PlanCode.PLATINUM)
+        self.assertEqual(subscription.billing_cycle, SubscriptionPayment.BillingCycle.MONTHLY)
+        self.assertEqual(subscription.status, SubscriptionPayment.Status.COMPLETED)
+        self.assertEqual(subscription.provider, "seed_demo")
+        self.assertEqual(subscription.billing_reason, "seed_demo")
+        self.assertEqual(str(subscription.amount), "500.00")
+        self.assertEqual(subscription.provider_charge_id, subscription.transaction_id)
+        self.assertFalse(subscription.recurring_enabled)
+        self.assertTrue(subscription.provider_payload["dummy_payment"])
+        self.assertTrue(subscription.provider_payload["gateway_bypassed"])
+        self.assertGreater(subscription.expires_at, timezone.now())
+
     @override_settings(SEED_DEMO_ACCOUNTS=True, ENVIRONMENT="production")
     def test_seed_demo_skips_production_environment(self):
         call_command("seed_demo_data")
 
         self.assertEqual(AppUser.objects.count(), 0)
         self.assertEqual(VerificationRequest.objects.count(), 0)
+
+    @override_settings(SEED_DEMO_ACCOUNTS=True)
+    def test_seed_demo_skips_when_landlord_or_tenant_accounts_exist(self):
+        AppUser.objects.create_user(
+            email="manual-landlord@example.com",
+            password="password-123",
+            name="Manual Landlord",
+            role=AppUser.Role.LANDLORD,
+        )
+        out = StringIO()
+
+        call_command("seed_demo_data", stdout=out)
+
+        self.assertIn("Landlord or tenant accounts already exist; skipping demo account seed", out.getvalue())
+        self.assertFalse(AppUser.objects.filter(email__in=self.seed_landlord_emails).exists())
+        self.assertFalse(AppUser.objects.filter(email=self.seed_tenant_email).exists())
+        self.assertFalse(Listing.objects.exists())
 
     @override_settings(SEED_DEMO_ACCOUNTS=True)
     def test_seed_demo_resolves_seed_assets_with_alternate_extensions(self):
@@ -2972,30 +3013,22 @@ class SeedDemoTests(TestCase):
                 call_command("seed_demo_data")
                 call_command("seed_demo_data")
 
-        self.assertEqual(AppUser.objects.filter(role=AppUser.Role.LANDLORD).count(), 4)
-        self.assertEqual(AppUser.objects.filter(role=AppUser.Role.TENANT).count(), 1)
-        self.assertEqual(Listing.objects.count(), 4)
-        self.assertEqual(Document.objects.count(), 8)
-        self.assertEqual(VerificationRequest.objects.count(), 5)
-        self.assertEqual(Listing.objects.filter(featured=True).count(), 4)
-        self.assertEqual(SubscriptionPayment.objects.count(), 4)
-        self.assertFalse(SubscriptionPayment.objects.filter(user__role=AppUser.Role.TENANT).exists())
+        seed_user_emails = (*self.seed_landlord_emails, self.seed_tenant_email)
+        self.assertEqual(Listing.objects.filter(landlord__email__in=self.seed_landlord_emails).count(), 4)
+        self.assertEqual(Document.objects.filter(owner__email__in=self.seed_landlord_emails).count(), 8)
+        self.assertEqual(VerificationRequest.objects.filter(user__email__in=seed_user_emails).count(), 5)
+        self.assertEqual(Listing.objects.filter(landlord__email__in=self.seed_landlord_emails, featured=True).count(), 4)
+        self.assertEqual(SubscriptionPayment.objects.filter(user__email__in=seed_user_emails).count(), 5)
 
-        for landlord in AppUser.objects.filter(role=AppUser.Role.LANDLORD):
+        for email in self.seed_landlord_emails:
+            landlord = AppUser.objects.get(email=email)
+            self.assertEqual(landlord.role, AppUser.Role.LANDLORD)
             subscription = SubscriptionPayment.objects.get(user=landlord)
-            self.assertEqual(subscription.plan_code, SubscriptionPayment.PlanCode.PLATINUM)
-            self.assertEqual(subscription.billing_cycle, SubscriptionPayment.BillingCycle.MONTHLY)
-            self.assertEqual(subscription.status, SubscriptionPayment.Status.COMPLETED)
-            self.assertEqual(subscription.provider, "seed_demo")
-            self.assertEqual(subscription.billing_reason, "seed_demo")
-            self.assertEqual(str(subscription.amount), "500.00")
-            self.assertEqual(subscription.provider_charge_id, subscription.transaction_id)
-            self.assertFalse(subscription.recurring_enabled)
-            self.assertTrue(subscription.provider_payload["dummy_payment"])
-            self.assertTrue(subscription.provider_payload["gateway_bypassed"])
-            self.assertGreater(subscription.expires_at, timezone.now())
+            self.assert_seed_subscription(subscription, landlord)
 
-        jade = AppUser.objects.get(email="criyo.career+jade@gmail.com")
+        jade = AppUser.objects.get(email=self.seed_tenant_email)
+        tenant_subscription = SubscriptionPayment.objects.get(user=jade)
+        self.assert_seed_subscription(tenant_subscription, jade)
         self.assertEqual(jade.role, AppUser.Role.TENANT)
         self.assertEqual(jade.mobile, "+234807138378")
         self.assertEqual(jade.nin_number, "98311128454")
@@ -3008,7 +3041,7 @@ class SeedDemoTests(TestCase):
         self.assertEqual(jade.tenant_verification_profile["nin_number"], "98311128454")
         self.assertTrue(jade.profile_photo.name.endswith(".jpg"))
         self.assertTrue(jade.is_verified)
-        self.assertEqual(TenantProfile.objects.count(), 1)
+        self.assertEqual(TenantProfile.objects.filter(user=jade).count(), 1)
         jade_profile = TenantProfile.objects.get(user=jade)
         self.assertEqual(jade_profile.status, TenantProfile.Status.APPROVED)
         self.assertEqual(jade_profile.first_name, "Jade")
@@ -3138,7 +3171,7 @@ class SeedDemoTests(TestCase):
                     content_type="application/pdf",
                 )
 
-                call_command("seed_demo_data")
+                call_command("seed_demo_data", force=True)
 
                 listing.refresh_from_db()
 
@@ -3157,7 +3190,7 @@ class SeedDemoTests(TestCase):
                 for image_name in original_image_names:
                     self.assertTrue((Path(temp_media_root) / image_name).exists())
 
-                call_command("seed_demo_data")
+                call_command("seed_demo_data", force=True)
 
                 listing.refresh_from_db()
                 image_names = list(listing.images.values_list("file", flat=True))
@@ -3178,7 +3211,7 @@ class SeedDemoTests(TestCase):
                 listing.seed_key = ""
                 listing.save(update_fields=["title", "seed_key", "updated_at"])
 
-                call_command("seed_demo_data")
+                call_command("seed_demo_data", force=True)
 
         refreshed = Listing.objects.get(id=original_id)
         self.assertEqual(Listing.objects.filter(landlord__email="criyo.career+chris@gmail.com").count(), 1)
@@ -3256,7 +3289,7 @@ class SeedDemoTests(TestCase):
                 original_id = listing.id
 
                 Path(landlord_seed_path).write_text(json.dumps(updated_landlords))
-                call_command("seed_demo_data")
+                call_command("seed_demo_data", force=True)
 
         listing = Listing.objects.get(id=original_id)
         self.assertEqual(Listing.objects.filter(landlord__email="seedfemi@example.com").count(), 1)
@@ -3339,7 +3372,7 @@ class SeedDemoTests(TestCase):
                 self.assertEqual(Listing.objects.filter(landlord__email="seedchristian@example.com").count(), 2)
 
                 Path(landlord_seed_path).write_text(json.dumps(updated_landlords))
-                call_command("seed_demo_data")
+                call_command("seed_demo_data", force=True)
 
         listings = Listing.objects.filter(landlord__email="seedchristian@example.com").order_by("seed_key")
         self.assertEqual(listings.count(), 1)

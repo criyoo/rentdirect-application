@@ -30,6 +30,13 @@ from core.tenant_verification import normalize_tenant_verification_date, normali
 class Command(BaseCommand):
     help = "Seed development landlords, tenants, listings, images, and verification records."
 
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--force",
+            action="store_true",
+            help="Run demo seeding even when landlord or tenant accounts already exist.",
+        )
+
     def handle(self, *args, **options):
         if settings.ENVIRONMENT in {"prod", "production"}:
             self.stdout.write("Production environment detected; skipping demo account seed")
@@ -37,6 +44,10 @@ class Command(BaseCommand):
 
         if not settings.SEED_DEMO_ACCOUNTS:
             self.stdout.write("SEED_DEMO_ACCOUNTS is false; skipping")
+            return
+
+        if not options.get("force") and self.landlord_or_tenant_accounts_exist():
+            self.stdout.write("Landlord or tenant accounts already exist; skipping demo account seed")
             return
 
         seed_specs = [
@@ -71,6 +82,9 @@ class Command(BaseCommand):
                     self.seed_tenant_subscription(seed_key, user, data)
 
         self.stdout.write(self.style.SUCCESS(f"Seed complete. Created {created_users} users and {created_listings} listings."))
+
+    def landlord_or_tenant_accounts_exist(self) -> bool:
+        return AppUser.objects.filter(role__in=[AppUser.Role.LANDLORD, AppUser.Role.TENANT]).exists()
 
     def seed_homepage_video(self) -> None:
         storage_name = str(getattr(settings, "HOMEPAGE_VIDEO_STORAGE_NAME", "") or "").strip()
