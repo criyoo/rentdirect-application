@@ -1381,6 +1381,59 @@ class VerificationRequestViewSetTests(TestCase):
             },
         }
 
+    def _prembly_nin_payload(self, nin="91231161558", phone="08099446062"):
+        return {
+            "status": True,
+            "response_code": "00",
+            "message": "National Identity Number (NIN) verification successful",
+            "data": {
+                "firstname": "CHRISTIAN",
+                "middlename": "ODEZI",
+                "surname": "ALUYA",
+                "birthdate": "06-02-1977",
+                "telephoneno": phone,
+                "nin": nin,
+            },
+            "verification_status": "verified",
+        }
+
+    def _prembly_bvn_payload(self, bvn="22347235093", phone="09080350066"):
+        return {
+            "status": True,
+            "response_code": "00",
+            "message": "Bank Verification Number (BVN) verification successful",
+            "data": {
+                "bvn": bvn,
+                "firstName": "christian",
+                "middleName": "odezi",
+                "lastName": "aluya",
+                "dateOfBirth": "06-Feb-1977",
+                "phoneNumber1": phone,
+                "gender": "Male",
+                "stateOfOrigin": "Delta State",
+                "lgaOfOrigin": "Isoko North",
+                "nationality": "Nigeria",
+            },
+            "verification_status": "verified",
+        }
+
+    def _prembly_cac_payload(self, rc_number="9629888"):
+        return {
+            "status": True,
+            "response_code": "00",
+            "message": "CAC Advanced Verification verification successful",
+            "data": {
+                "state": "LAGOS",
+                "address": "Adekunle Lawal",
+                "company_status": "ACTIVE",
+                "email_address": "info@summitrockholdings.com",
+                "rc_number": rc_number,
+                "date_of_registration": "2026-06-23T12:54:18.188+00:00",
+                "company_name": "SUMMITROCK LIMITED",
+            },
+            "verification_status": "verified",
+        }
+
     @patch("core.dikript.dikript_lookup")
     def test_tenant_profile_submission_verifies_nin_and_bvn(self, dikript_lookup_mock):
         dikript_lookup_mock.side_effect = [self._nin_payload(), self._bvn_payload()]
@@ -1424,6 +1477,43 @@ class VerificationRequestViewSetTests(TestCase):
         request = VerificationRequest.objects.get(user=user)
         self.assertEqual(request.identity_verification_status, VerificationRequest.VerificationProgressStatus.VERIFIED)
         self.assertEqual(request.verification_method, VerificationRequest.Method.AUTOMATED)
+
+    @override_settings(VERIFICATION_SERVICE="prembly")
+    @patch("core.prembly_verification.prembly_lookup")
+    def test_tenant_profile_submission_can_use_prembly_verification(self, prembly_lookup_mock):
+        prembly_lookup_mock.side_effect = [self._prembly_nin_payload(), self._prembly_bvn_payload()]
+        user = AppUser.objects.create_user(
+            email="tenant-prembly@example.com",
+            password="password-123",
+            name="Tenant Prembly",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+            mobile="09080350066",
+        )
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        response = client.post(
+            "/api/v1/users/me/tenant-profile",
+            {
+                "nin_number": "91231161558",
+                "bvn_number": "22347235093",
+                "first_name": "Christian",
+                "middle_name": "Odezi",
+                "last_name": "Aluya",
+                "date_of_birth": "1977-02-06",
+                "gender": "Male",
+                "nationality": "Nigerian",
+                "state_of_origin": "Delta",
+                "lga": "Isoko North",
+                "employment_status": "Employed",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.json())
+        self.assertEqual(prembly_lookup_mock.call_args_list[0].kwargs["body"], {"number_nin": "91231161558"})
+        self.assertEqual(prembly_lookup_mock.call_args_list[1].kwargs["body"], {"number": "22347235093"})
 
     @patch("core.dikript.dikript_lookup")
     def test_tenant_profile_submission_reuses_preverified_tenant_identity(self, dikript_lookup_mock):
@@ -1742,6 +1832,39 @@ class VerificationRequestViewSetTests(TestCase):
         self.assertEqual(response.status_code, 201, response.json())
         request = VerificationRequest.objects.get(user=user)
         self.assertEqual(request.identity_verification_status, VerificationRequest.VerificationProgressStatus.VERIFIED)
+
+    @override_settings(VERIFICATION_SERVICE="prembly")
+    @patch("core.prembly_verification.prembly_lookup")
+    def test_landlord_corporate_identification_can_use_prembly_cac(self, prembly_lookup_mock):
+        prembly_lookup_mock.return_value = self._prembly_cac_payload()
+        user = AppUser.objects.create_user(
+            email="corporate-prembly@example.com",
+            password="password-123",
+            name="Corporate Prembly",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+            landlord_verification_type=AppUser.LandlordVerificationType.CORPORATE,
+            landlord_verification_profile={
+                "company_name": "Summitrock Ltd",
+                "cac_registration_number": "RC9629888",
+                "cac_registration_date": "2026-06-23",
+                "state": "Lagos",
+                "address": "8 Adekunle Lawal, Ikoyi",
+                "email_address": "info@summitrockholdings.com",
+            },
+        )
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        response = client.post(
+            "/api/v1/landlord-verification-requests/submit",
+            {"document_ids": [], "request_type": "identification"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.json())
+        self.assertEqual(prembly_lookup_mock.call_args.kwargs["body"]["rc_number"], "9629888")
+        self.assertEqual(prembly_lookup_mock.call_args.kwargs["body"]["company_type"], "RC")
 
     def test_submit_reuses_existing_verification_request(self):
         user = AppUser.objects.create_user(

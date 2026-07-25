@@ -1,9 +1,7 @@
-import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api, resolveMediaUrl } from '@/lib/api'
 import { Link } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
-import { resolveMediaUrl } from '@/lib/api'
 
 interface Enquiry {
     id: number
@@ -20,39 +18,17 @@ interface Enquiry {
     has_viewing_arranged: boolean
 }
 
-interface Conversation {
-    counterpart_profile_photo_url?: string | null
-    listing_id: string | null
-}
-
 export default function EnquiriesPage() {
     const { user } = useAuth()
 
     const { data: enquiries, isLoading } = useQuery({
         queryKey: ['enquiries'],
         queryFn: async () => {
-            // This would be replaced with actual API endpoint
-            // For now, we'll simulate the data structure
-            const response = await api.get<Enquiry[]>('/enquiries')
+            const response = await api.get<Enquiry[]>('/messages/enquiries')
             return response.data
         },
         enabled: !!user
     })
-
-    const { data: conversations } = useQuery({
-        queryKey: ['messages', 'conversations'],
-        queryFn: async () => (await api.get<Conversation[]>('/messages/conversations')).data,
-        enabled: !!user,
-    })
-
-    const landlordPhotoByListingId = useMemo(
-        () => new Map(
-            (conversations || [])
-                .filter((conversation) => Boolean(conversation.listing_id))
-                .map((conversation) => [String(conversation.listing_id), conversation.counterpart_profile_photo_url || null]),
-        ),
-        [conversations],
-    )
 
     if (isLoading) {
         return (
@@ -103,7 +79,7 @@ export default function EnquiriesPage() {
                                             <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
                                                 <div className="flex items-center gap-2">
                                                     <img
-                                                        src={resolveMediaUrl(enquiry.landlord_profile_photo_url || landlordPhotoByListingId.get(String(enquiry.listing_id)))}
+                                                        src={resolveMediaUrl(enquiry.landlord_profile_photo_url)}
                                                         alt={enquiry.landlord_name}
                                                         className="h-8 w-8 rounded-full object-cover"
                                                         onError={(e) => {

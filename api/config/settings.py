@@ -372,6 +372,8 @@ RENTDIRECT_SUBSCRIPTION_SUBACCOUNT_SPLIT_VALUE = os.environ.get("RENTDIRECT_SUBS
 RENTDIRECT_SUBSCRIPTION_TRANSACTION_CHARGE_TYPE = os.environ.get("RENTDIRECT_SUBSCRIPTION_TRANSACTION_CHARGE_TYPE", "flat").strip()
 RENTDIRECT_SUBSCRIPTION_TRANSACTION_CHARGE = os.environ.get("RENTDIRECT_SUBSCRIPTION_TRANSACTION_CHARGE", "0").strip()
 
+VERIFICATION_SERVICE = os.environ.get("VERIFICATION_SERVICE", "dikript").strip().lower()
+
 DIKRIPT_API_BASE_URL = os.environ.get("DIKRIPT_API_BASE_URL", "https://api.dikript.com").strip()
 DIKRIPT_NIN_API_URL = os.environ.get("DIKRIPT_NIN_API_URL", "/dikript/verification/api/v1/getnin").strip()
 DIKRIPT_BVN_API_URL = os.environ.get("DIKRIPT_BVN_API_URL", "/dikript/verification/api/v1/getbvn").strip()
@@ -380,6 +382,15 @@ DIKRIPT_PUBLIC_KEY = os.environ.get("DIKRIPT_PUBLIC_KEY", "").strip()
 DIKRIPT_SECRET_KEY = os.environ.get("DIKRIPT_SECRET_KEY", "").strip()
 DIKRIPT_TIMEOUT_SECONDS = env_int("DIKRIPT_TIMEOUT_SECONDS", 10)
 DIKRIPT_LOOKUP_CACHE_TIMEOUT_SECONDS = env_int("DIKRIPT_LOOKUP_CACHE_TIMEOUT_SECONDS", 60 * 60 * 24)
+
+PREMBLY_API_BASE_URL = os.environ.get("PREMBLY_API_BASE_URL", "https://api.prembly.com").strip()
+PREMBLY_NIN_API_URL = os.environ.get("PREMBLY_NIN_API_URL", "/verification/vnin").strip()
+PREMBLY_BVN_API_URL = os.environ.get("PREMBLY_BVN_API_URL", "/verification/bvn").strip()
+PREMBLY_CAC_API_URL = os.environ.get("PREMBLY_CAC_API_URL", "/verification/cac").strip()
+PREMBLY_API_KEY = os.environ.get("PREMBLY_API_KEY", "").strip()
+PREMBLY_TIMEOUT_SECONDS = env_int("PREMBLY_TIMEOUT_SECONDS", 10)
+PREMBLY_LOOKUP_CACHE_TIMEOUT_SECONDS = env_int("PREMBLY_LOOKUP_CACHE_TIMEOUT_SECONDS", 60 * 60 * 24)
+PREMBLY_CAC_COMPANY_TYPE = os.environ.get("PREMBLY_CAC_COMPANY_TYPE", "RC").strip().upper()
 
 SEED_DEMO_ACCOUNTS = env_bool("SEED_DEMO_ACCOUNTS", ENVIRONMENT in {"dev", "development", "local"})
 SEED_LANDLORD_DATA_PATH = os.environ.get("SEED_LANDLORD_DATA_PATH", "seed_demo_data/landlord/landlord.json")

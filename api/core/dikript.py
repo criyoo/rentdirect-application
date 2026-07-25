@@ -195,53 +195,69 @@ def _raise_mismatches(mismatches: dict[str, str]) -> None:
         raise ValidationError(mismatches)
 
 
-def validate_nin_payload(input_data: dict[str, Any], data: dict[str, Any], *, defer_phone_mismatch: bool = False) -> bool:
+def _get_nin_middle_name(data: dict[str, Any]) -> str:
+    """Get the middle name from NIN data, checking middleName first, then otherName."""
+    middle_name = data.get("middleName")
+    other_name = data.get("otherName")
+    if _normalize_text(middle_name):
+        return middle_name
+    return other_name or ""
+
+
+def _validate_nin_fields(input_data: dict[str, Any], data: dict[str, Any]) -> dict[str, str]:
+    """Validate fields against NIN API response. Returns dict of mismatches.
+    NIN fields: firstName, surname, middleName/otherName, telephoneNo, birthDate.
+    No state_of_origin or lga check from NIN.
+    Gender and nationality are checked in BVN, not NIN."""
     mismatches: dict[str, str] = {}
-    phone_mismatch = False
-    checks = [
+
+    for input_key, api_key, message in [
         ("first_name", "firstName", "First name does not match the NIN record."),
         ("last_name", "surname", "Last name does not match the NIN record."),
-    ]
-    for input_key, api_key, message in checks:
+    ]:
         if not _required_text_match(input_data.get(input_key), data.get(api_key)):
             mismatches[input_key] = message
 
-    if not _optional_text_match(input_data.get("middle_name"), data.get("middleName")):
+    # Check middleName first, then fall back to otherName for NIN
+    nin_middle_name = _get_nin_middle_name(data)
+    if not _optional_text_match(input_data.get("middle_name"), nin_middle_name):
         mismatches["middle_name"] = "Middle name does not match the NIN record."
     if _parse_date(input_data.get("date_of_birth")) != _parse_date(data.get("birthDate")):
         mismatches["date_of_birth"] = "Date of birth does not match the NIN record."
-    if _normalize_gender(input_data.get("gender")) != _normalize_gender(data.get("gender")):
-        mismatches["gender"] = "Gender does not match the NIN record."
-    if not _normalize_phone(input_data.get("mobile")):
-        mismatches["mobile"] = "Contact number is required for NIN verification."
-    elif not _phone_matches(input_data.get("mobile"), data.get("telephoneNo")):
-        if defer_phone_mismatch:
-            phone_mismatch = True
-        else:
-            mismatches["mobile"] = "Mobile number does not match the NIN record."
-    if _normalize_region(data.get("selfOriginLga")) and _normalize_region(input_data.get("lga")) != _normalize_region(data.get("selfOriginLga")):
-        mismatches["lga"] = "LGA does not match the NIN record."
-    if _normalize_region(data.get("selfOriginState")) and _normalize_region(input_data.get("state_of_origin")) != _normalize_region(data.get("selfOriginState")):
-        mismatches["state_of_origin"] = "State of origin does not match the NIN record."
 
-    _raise_mismatches(mismatches)
-    return phone_mismatch
+    return mismatches
 
 
-def validate_bvn_payload(input_data: dict[str, Any], data: dict[str, Any], *, validate_phone: bool = False) -> None:
+def _validate_bvn_fields(
+    input_data: dict[str, Any],
+    data: dict[str, Any],
+    *,
+    skip_names: bool = False,
+    skip_dob: bool = False,
+    require_phone: bool = False,
+) -> dict[str, str]:
+    """Validate fields against BVN API response. Returns dict of mismatches.
+    BVN fields: firstName, middleName, lastName, dateOfBirth, gender, stateOfOrigin,
+    lgaOfOrigin, nationality, phoneNumber1.
+    If skip_names is True, first/last/middle name checks are skipped (already passed NIN).
+    If skip_dob is True, date_of_birth check is skipped (already passed NIN)."""
     mismatches: dict[str, str] = {}
-    checks = [
-        ("first_name", "firstName", "First name does not match the BVN record."),
-        ("last_name", "lastName", "Last name does not match the BVN record."),
-    ]
-    for input_key, api_key, message in checks:
-        if not _required_text_match(input_data.get(input_key), data.get(api_key)):
-            mismatches[input_key] = message
 
-    if not _optional_text_match(input_data.get("middle_name"), data.get("middleName")):
-        mismatches["middle_name"] = "Middle name does not match the BVN record."
-    if _parse_date(input_data.get("date_of_birth")) != _parse_date(data.get("dateOfBirth")):
-        mismatches["date_of_birth"] = "Date of birth does not match the BVN record."
+    if not skip_names:
+        for input_key, api_key, message in [
+            ("first_name", "firstName", "First name does not match the BVN record."),
+            ("last_name", "lastName", "Last name does not match the BVN record."),
+        ]:
+            if not _required_text_match(input_data.get(input_key), data.get(api_key)):
+                mismatches[input_key] = message
+
+        if not _optional_text_match(input_data.get("middle_name"), data.get("middleName")):
+            mismatches["middle_name"] = "Middle name does not match the BVN record."
+
+    if not skip_dob:
+        if _parse_date(input_data.get("date_of_birth")) != _parse_date(data.get("dateOfBirth")):
+            mismatches["date_of_birth"] = "Date of birth does not match the BVN record."
+
     if _normalize_gender(input_data.get("gender")) != _normalize_gender(data.get("gender")):
         mismatches["gender"] = "Gender does not match the BVN record."
     if _normalize_region(input_data.get("lga")) != _normalize_region(data.get("lgaOfOrigin")):
@@ -250,75 +266,187 @@ def validate_bvn_payload(input_data: dict[str, Any], data: dict[str, Any], *, va
         mismatches["nationality"] = "Nationality does not match the BVN record."
     if _normalize_region(input_data.get("state_of_origin")) != _normalize_region(data.get("stateOfOrigin")):
         mismatches["state_of_origin"] = "State of origin does not match the BVN record."
-    if validate_phone and not _phone_matches(input_data.get("mobile"), data.get("phoneNumber1")):
+    if require_phone and not _phone_matches(input_data.get("mobile"), data.get("phoneNumber1")):
         mismatches["mobile"] = "Mobile number does not match the BVN record."
 
-    _raise_mismatches(mismatches)
+    return mismatches
 
 
-def validate_cac_payload(input_data: dict[str, Any], data: dict[str, Any]) -> None:
+def validate_nin_payload(input_data: dict[str, Any], data: dict[str, Any], *, defer_phone_mismatch: bool = False) -> tuple[dict[str, str], bool]:
+    """Validate NIN payload. Returns (mismatches, phone_mismatch).
+    Only checks: first_name, last_name, middle_name, date_of_birth.
+    Phone is also checked - if it fails and defer_phone_mismatch is True, returns phone_mismatch=True instead."""
+    mismatches = _validate_nin_fields(input_data, data)
+    phone_mismatch = False
+
+    if not _normalize_phone(input_data.get("mobile")):
+        mismatches["mobile"] = "Contact number is required for NIN verification."
+    elif not _phone_matches(input_data.get("mobile"), data.get("telephoneNo")):
+        if defer_phone_mismatch:
+            phone_mismatch = True
+            mismatches["mobile"] = "Mobile number does not match the NIN record."
+        else:
+            mismatches["mobile"] = "Mobile number does not match the NIN record."
+
+    return mismatches, phone_mismatch
+
+
+def validate_bvn_payload(input_data: dict[str, Any], data: dict[str, Any], *, skip_names: bool = False, skip_dob: bool = False, require_phone: bool = False) -> dict[str, str]:
+    """Validate BVN payload. Returns mismatches dict."""
+    return _validate_bvn_fields(input_data, data, skip_names=skip_names, skip_dob=skip_dob, require_phone=require_phone)
+
+
+def _first_present(data: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        value = data.get(key)
+        if value not in (None, ""):
+            return value
+    return ""
+
+
+def validate_cac_payload(input_data: dict[str, Any], data: dict[str, Any]) -> dict[str, str]:
     mismatches: dict[str, str] = {}
-    if not _is_truthy(data.get("registrationApproved")):
-        mismatches["cac_registration_number"] = "CAC has not approved this registration record."
-    if not _company_names_match(input_data.get("company_name"), data.get("companyName")):
+
+    company_name = _first_present(data, "companyName", "company_name")
+    if not _company_names_match(input_data.get("company_name"), company_name):
         mismatches["company_name"] = "Company name does not match the CAC record."
-    if _normalize_digits(input_data.get("cac_registration_number")) != _normalize_digits(data.get("rcNumber")):
-        mismatches["cac_registration_number"] = "Registration number does not match the CAC record."
-    if _parse_date(input_data.get("cac_registration_date")) != _parse_date(data.get("registrationDate")):
-        mismatches["cac_registration_date"] = "Registration date does not match the CAC record."
 
-    _raise_mismatches(mismatches)
+    submitted_date = _first_present(input_data, "cac_registration_date", "date_of_registration", "registration_date")
+    registration_date = _first_present(data, "registrationDate", "date_of_registration")
+    if _parse_date(submitted_date) != _parse_date(registration_date):
+        mismatches["cac_registration_date"] = "CAC registration date does not match the CAC record."
 
+    registration_approved = data.get("registrationApproved")
+    if registration_approved is not None and not _is_truthy(registration_approved):
+        mismatches["cac_registration_number"] = "CAC registration has not been approved."
 
-def verify_nin(input_data: dict[str, Any], nin_number: str, *, defer_phone_mismatch: bool = False) -> dict[str, Any]:
-    payload = dikript_lookup(
-        verification_type="nin",
-        path=settings.DIKRIPT_NIN_API_URL,
-        lookup_value=_normalize_digits(nin_number),
-        query={"nin": _normalize_digits(nin_number)},
-    )
-    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
-    if not payload.get("status") or not data:
-        raise ValidationError({"nin_number": extract_dikript_message(payload) or "No NIN record was found for this number."})
-    returned_nin = _normalize_digits(data.get("nin") or data.get("vNin") or data.get("VNin") or data.get("NIN"))
-    if returned_nin and returned_nin != _normalize_digits(nin_number):
-        raise ValidationError({"nin_number": "NIN does not match the NIN record."})
-    phone_mismatch = validate_nin_payload(input_data, data, defer_phone_mismatch=defer_phone_mismatch)
-    if phone_mismatch:
-        raise DikriptPhoneMismatch(payload)
-    return payload
+    if mismatches:
+        raise ValidationError(mismatches)
+    return mismatches
 
 
-def verify_bvn(input_data: dict[str, Any], bvn_number: str, *, validate_phone: bool = False) -> dict[str, Any]:
-    payload = dikript_lookup(
-        verification_type="bvn",
-        path=settings.DIKRIPT_BVN_API_URL,
-        lookup_value=_normalize_digits(bvn_number),
-        query={"bvn": _normalize_digits(bvn_number)},
-    )
-    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
-    if not payload.get("status") or not data:
-        raise ValidationError({"bvn_number": extract_dikript_message(payload) or "No BVN record was found for this number."})
-    returned_bvn = _normalize_digits(data.get("bvn"))
-    if returned_bvn and returned_bvn != _normalize_digits(bvn_number):
-        raise ValidationError({"bvn_number": "BVN does not match the BVN record."})
-    validate_bvn_payload(input_data, data, validate_phone=validate_phone)
-    return payload
+def _merge_field_mismatches(
+    input_data: dict[str, Any],
+    nin_mismatches: dict[str, str],
+    bvn_mismatches: dict[str, str],
+    nin_data: dict[str, Any],
+    bvn_data: dict[str, Any],
+) -> dict[str, str]:
+    """Merge mismatches: a field only errors if it fails BOTH NIN and BVN.
+    For fields only in one provider (e.g., gender, state from BVN), if they fail BVN they error.
+    For phone, check NIN first, then BVN; error if both fail.
+    State of origin is only validated through BVN, never NIN."""
+    result: dict[str, str] = {}
+
+    # Fields present in NIN validation
+    nin_fields = {"first_name", "last_name", "middle_name", "date_of_birth"}
+
+    for field in nin_fields:
+        nin_failed = field in nin_mismatches
+        bvn_failed = field in bvn_mismatches
+        if nin_failed and bvn_failed:
+            result[field] = bvn_mismatches[field]
+        elif nin_failed:
+            # Only NIN failed, keep NIN error
+            result[field] = nin_mismatches[field]
+        elif bvn_failed:
+            # Only BVN failed (shouldn't happen for name/dob if NIN passed, but handle it)
+            result[field] = bvn_mismatches[field]
+
+    # Fields only in BVN validation (state_of_origin is BVN-only, never from NIN)
+    bvn_only_fields = {"gender", "state_of_origin", "lga", "nationality"}
+    for field in bvn_only_fields:
+        if field in bvn_mismatches:
+            result[field] = bvn_mismatches[field]
+
+    # Mobile: check NIN first, if mobile is in nin_mismatches, check BVN as fallback.
+    # Error only if both NIN and BVN have mobile in their mismatches.
+    mobile_in_nin = "mobile" in nin_mismatches
+    mobile_in_bvn = "mobile" in bvn_mismatches
+
+    if mobile_in_nin and not mobile_in_bvn:
+        # NIN phone failed but BVN phone matches - no error
+        pass
+    elif not mobile_in_nin:
+        # NIN phone passed - no error regardless of BVN
+        pass
+    elif mobile_in_nin and mobile_in_bvn:
+        # Both failed - error
+        result["mobile"] = "Mobile number does not match the NIN or BVN records."
+
+    return result
 
 
 def verify_nin_and_bvn(input_data: dict[str, Any], nin_number: str, bvn_number: str) -> tuple[dict[str, Any], dict[str, Any]]:
-    try:
-        nin_payload = verify_nin(input_data, nin_number, defer_phone_mismatch=True)
-        return nin_payload, verify_bvn(input_data, bvn_number)
-    except DikriptPhoneMismatch as exc:
-        try:
-            bvn_payload = verify_bvn(input_data, bvn_number, validate_phone=True)
-        except ValidationError as bvn_error:
-            detail = bvn_error.detail
-            if isinstance(detail, dict) and "mobile" in detail:
-                detail["mobile"] = "Mobile number does not match the NIN or BVN records."
-            raise ValidationError(detail) from bvn_error
-        return exc.payload, bvn_payload
+    """Verify user identity against both NIN and BVN.
+
+    Validation flow:
+    A. NIN Validation: Validate first_name, last_name, middle_name, date_of_birth, mobile
+       against NIN API response. State of origin is NOT validated against NIN.
+    B. If all NIN fields pass, skip corresponding fields in BVN validation
+       and only validate BVN-specific fields (gender, state_of_origin, lga, nationality).
+       Mobile is cross-checked: if NIN phone matches, skip BVN phone check.
+    C. If some NIN fields fail, check BVN for those fields too.
+    D. Error is only thrown if a field fails BOTH NIN and BVN validation.
+
+    Returns (nin_payload, bvn_payload) on success.
+    Raises ValidationError with field-level errors on mismatch.
+    """
+    # Look up NIN
+    nin_payload = dikript_lookup(
+        verification_type="nin",
+        path=settings.DIKRIPT_NIN_API_URL,
+        lookup_value=nin_number,
+        query={"nin": nin_number},
+    )
+    nin_data = nin_payload.get("data") if isinstance(nin_payload.get("data"), dict) else {}
+    if not nin_payload.get("status") or not nin_data:
+        message = extract_dikript_message(nin_payload) or "Invalid NIN. Please verify your NIN is correct."
+        raise ValidationError({"nin_number": message})
+
+    # Step A: Validate NIN fields (no state_of_origin or lga for NIN)
+    nin_mismatches, nin_phone_mismatch = validate_nin_payload(
+        input_data, nin_data, defer_phone_mismatch=True,
+    )
+    if "mobile" in nin_mismatches and not nin_phone_mismatch:
+        raise ValidationError({"mobile": nin_mismatches["mobile"]})
+
+    # Look up BVN
+    bvn_payload = dikript_lookup(
+        verification_type="bvn",
+        path=settings.DIKRIPT_BVN_API_URL,
+        lookup_value=bvn_number,
+        query={"bvn": bvn_number},
+    )
+    bvn_data = bvn_payload.get("data") if isinstance(bvn_payload.get("data"), dict) else {}
+    if not bvn_payload.get("status") or not bvn_data:
+        message = extract_dikript_message(bvn_payload) or "Invalid BVN. Please verify your BVN is correct."
+        raise ValidationError({"bvn_number": message})
+
+    # Step B & C: Validate BVN fields
+    # If all NIN fields (excluding mobile) passed, skip those in BVN
+    nin_fields = {"first_name", "last_name", "middle_name", "date_of_birth"}
+    nin_non_phone_errors = {k: v for k, v in nin_mismatches.items() if k != "mobile"}
+    skip_names = all(field not in nin_non_phone_errors for field in {"first_name", "last_name", "middle_name"})
+    skip_dob = "date_of_birth" not in nin_non_phone_errors
+
+    bvn_mismatches = validate_bvn_payload(
+        input_data, bvn_data,
+        skip_names=skip_names,
+        skip_dob=skip_dob,
+        require_phone=nin_phone_mismatch,
+    )
+
+    # Merge: a field errors only if it fails BOTH NIN and BVN
+    merged = _merge_field_mismatches(
+        input_data, nin_mismatches, bvn_mismatches,
+        nin_data, bvn_data,
+    )
+
+    if merged:
+        raise ValidationError(merged)
+
+    return nin_payload, bvn_payload
 
 
 def verify_cac(input_data: dict[str, Any], registration_number: str) -> dict[str, Any]:

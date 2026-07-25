@@ -362,7 +362,7 @@ export default function VerifyMePage() {
                             <InputRow label="Email" error={errors.email?.message}>
                                 <TextInput register={register} name="email" type="email" placeholder="Email address" error={errors.email?.message} />
                             </InputRow>
-                            <InputRow label="Mobile" error={errors.mobile?.message}>
+                            <InputRow label="Mobile (linked to NIN or BVN)" error={errors.mobile?.message}>
                                 <TextInput register={register} name="mobile" placeholder="Mobile number" error={errors.mobile?.message} />
                             </InputRow>
                             <InputRow label="Employment Status" error={errors.employment_status?.message}>

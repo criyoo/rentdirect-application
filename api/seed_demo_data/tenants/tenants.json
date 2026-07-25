@@ -1,122 +1,127 @@
 {
-    "jade": {
-        "registration_credentials": {
-            "full_name": "Jade Bola Smith",
-            "email": "criyo.career+jade@gmail.com",
-            "password": "ifG0dbi4mi",
-            "tenant": true
-        },
-        "login_credentials": {
-            "email": "criyo.career+jade@gmail.com",
-            "password": "ifG0dbi4mi"
-        },
-        "verification": {
-            "first_name": "Jade",
-            "middle_name": "Bola",
-            "last_name": "Smith",
-            "country_of_birth": "Nigeria",
-            "date_of_birth": "1990-01-01",
-            "gender": "Female",
-            "nationality": "Nigeria",
-            "state_of_origin": "Oyo",
-            "lga": "Ibadan Central",
-            "nin": "98311128454",
-            "bvn": "23516273876",
-            "email": "criyo.career+jade@gmail.com",
-            "mobile": "+234807138378",
-            "employment_status": "Employed"
-        },
-        "profile": {
-            "personal_information": {
-                "first_name": "Jade",
-                "middle_name": "Bola",
-                "last_name": "Smith",
-                "date_of_birth": "1990-01-01",
-                "gender": "Female",
-                "employment_status": "Employed",
-                "nationality": "Nigeria",
-                "state_of_origin": "Oyo",
-                "lga": "Ibadan Central"
-            },
-            "current_residence": {
-                "country": "Nigeria",
-                "state": "Oyo",
-                "city": "Ibadan",
-                "lga": "Ibadan Central",
-                "address": "123 Main Street, Jericho, Ibadan",
-                "length_of_stay": "7",
-                "housing_status": "Rented",
-                "annual_rent": "1500000",
-                "service_charge": "50000",
-                "move_in_date": "01/01/2000",
-                "expected_move_out_date": "01/08/2026",
-                "reason_for_leaving": "To be closer to my son's school"
-            },
-            "employment_info": {
-                "company_name": "Bluebird Analytics Limited",
-                "company_contact_number": "+2348091283344",
-                "industry": "Technology",
-                "employment_type": "Full-time",
-                "employment_start_date": "2018-03-12",
-                "position_job_title": "Senior Product Manager",
-                "company_website": "https://bluebirdanalytics.example",
-                "company_address": "22 Magazine Road, Jericho, Ibadan",
-                "hr_contact_name": "Amina Lawal",
-                "hr_email": "amina.lawal@bluebirdanalytics.example",
-                "hr_contact_phone": "+2348091182233",
-                "employment_letter": "",
-                "staff_id": "",
-                "payslip": ""
-            },
-            "guarantor_details": {
-                "full_name": "Mrs. Kemi Smith",
-                "relationship": "Friend",
-                "email": "kemi.smith@example.com",
-                "mobile_number": "+2348075551122",
-                "occupation": "School Proprietor",
-                "employer": "Bright Steps Academy",
-                "residential_address": "14 Akinyele Road, Bodija, Ibadan",
-                "government_id": "",
-                "passport_photo": "",
-                "utility_bill": ""
-            },
-            "current_landlord_information": {
-                "full_name": "Mr. Adewale Balogun",
-                "mobile": "+2348093332211",
-                "email": "adewale.balogun@example.com",
-                "address": "123 Main Street, Jericho, Ibadan",
-                "property_manager_name": "Sola Martins",
-                "property_manager_phone": "+2348093332212",
-                "property_manager_email": "soma@propertymanagement.example.com",
-                "property_manager_address": "21 Okunola Road, off Idimu Road, Egbeda"
-            },
-            "rental_history": {
-                "same_as_current_residence": true,
-                "properties": []
-            },
-            "household_information": {
-                "number_of_adults": "2",
-                "number_of_children": "1",
-                "has_pets": false,
-                "work_from_home": true,
-                "commercial_activities_at_home": false,
-                "any_smokers": false
-            },
-            "social_presence": {
-                "linkedin_profile": "https://linkedin.com/in/jadebola",
-                "facebook_profile": "https://facebook.com/jadebola",
-                "instagram_profile": "https://instagram.com/jadebola",
-                "x_twitter_profile": "https://x.com/jadebola",
-                "tiktok_profile": "",
-                "threads_profile": ""
-            },
-            "criminal_declaration": {
-                "convicted_of_crime": false,
-                "evicted_from_property": false,
-                "ongoing_tenancy_litigation": false,
-                "rent_arrears_history": false,
-                "legal_dispute_with_landlords": false
-            }
-        }
+  "jade": {
+    "registration_credentials": {
+      "full_name": "Jade Bola Smith",
+      "email": "criyo.career+jade@gmail.com",
+      "password": "ifG0dbi4mi",
+      "tenant": true
+    },
+    "login_credentials": {
+      "email": "criyo.career+jade@gmail.com",
+      "password": "ifG0dbi4mi"
+    },
+    "verification": {
+      "first_name": "Jade",
+      "middle_name": "Bola",
+      "last_name": "Smith",
+      "country_of_birth": "Nigeria",
+      "date_of_birth": "1990-01-01",
+      "gender": "Female",
+      "nationality": "Nigeria",
+      "state_of_origin": "Oyo",
+      "lga": "Ibadan Central",
+      "nin": "98311128454",
+      "bvn": "23516273876",
+      "email": "criyo.career+jade@gmail.com",
+      "mobile": "+234807138378",
+      "employment_status": "Employed"
+    },
+    "profile": {
+      "personal_information": {
+        "first_name": "Jade",
+        "middle_name": "Bola",
+        "last_name": "Smith",
+        "date_of_birth": "1990-01-01",
+        "gender": "Female",
+        "employment_status": "Employed",
+        "nationality": "Nigeria",
+        "state_of_origin": "Oyo",
+        "lga": "Ibadan Central"
+      },
+      "current_residence": {
+        "country": "Nigeria",
+        "state": "Oyo",
+        "city": "Ibadan",
+        "lga": "Ibadan Central",
+        "address": "123 Main Street, Jericho, Ibadan",
+        "length_of_stay": "7",
+        "housing_status": "Rented",
+        "annual_rent": "1500000",
+        "service_charge": "50000",
+        "move_in_date": "01/01/2000",
+        "expected_move_out_date": "01/08/2026",
+        "reason_for_leaving": "To be closer to my son's school"
+      },
+      "employment_info": {
+        "company_name": "Bluebird Analytics Limited",
+        "company_contact_number": "+2348091283344",
+        "industry": "Technology",
+        "employment_type": "Full-time",
+        "employment_start_date": "2018-03-12",
+        "position_job_title": "Senior Product Manager",
+        "company_website": "https://bluebirdanalytics.example",
+        "company_address": "22 Magazine Road, Jericho, Ibadan",
+        "hr_contact_name": "Amina Lawal",
+        "hr_email": "amina.lawal@bluebirdanalytics.example",
+        "hr_contact_phone": "+2348091182233",
+        "employment_letter": "",
+        "staff_id": "",
+        "payslip": ""
+      },
+      "guarantor_details": {
+        "full_name": "Mrs. Kemi Smith",
+        "relationship": "Friend",
+        "email": "kemi.smith@example.com",
+        "mobile_number": "+2348075551122",
+        "occupation": "School Proprietor",
+        "employer": "Bright Steps Academy",
+        "residential_address": "14 Akinyele Road, Bodija, Ibadan",
+        "government_id": "",
+        "passport_photo": "",
+        "utility_bill": ""
+      },
+      "current_landlord_information": {
+        "full_name": "Mr. Adewale Balogun",
+        "mobile": "+2348093332211",
+        "email": "adewale.balogun@example.com",
+        "address": "123 Main Street, Jericho, Ibadan",
+        "property_manager_name": "Sola Martins",
+        "property_manager_phone": "+2348093332212",
+        "property_manager_email": "soma@propertymanagement.example.com",
+        "property_manager_address": "21 Okunola Road, off Idimu Road, Egbeda"
+      },
+      "rental_history": {
+        "same_as_current_residence": true,
+        "properties": []
+      },
+      "household_information": {
+        "number_of_adults": "2",
+        "number_of_children": "1",
+        "has_pets": false,
+        "work_from_home": true,
+        "commercial_activities_at_home": false,
+        "any_smokers": false
+      },
+      "social_presence": {
+        "linkedin_profile": "https://linkedin.com/in/jadebola",
+        "facebook_profile": "https://facebook.com/jadebola",
+        "instagram_profile": "https://instagram.com/jadebola",
+        "x_twitter_profile": "https://x.com/jadebola",
+        "tiktok_profile": "",
+        "threads_profile": ""
+      },
+      "criminal_declaration": {
+        "convicted_of_crime": false,
+        "evicted_from_property": false,
+        "ongoing_tenancy_litigation": false,
+        "rent_arrears_history": false,
+        "legal_dispute_with_landlords": false
+      }
+    },
+    "subscription_plan": {
+      "billing_type": "montly",
+      "plan": "platinum",
+      "subscription_status": "active"
     }
+  }
 }

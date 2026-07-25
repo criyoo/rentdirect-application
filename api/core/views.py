@@ -77,7 +77,7 @@ from .flutterwave import (
     should_use_v4,
     verify_webhook_signature,
 )
-from .dikript import verify_cac, verify_nin_and_bvn
+from .verification_service import verify_cac, verify_nin_and_bvn
 from .notifications import (
     send_landlord_payout_notification,
     send_payment_confirmation_to_landlord,
@@ -3528,6 +3528,59 @@ class MessageViewSet(viewsets.ModelViewSet):
         return Response(self.get_serializer(qs, many=True).data)
 
     @action(detail=False, methods=["get"], url_path="conversations")
+    @action(detail=False, methods=["get"], url_path="enquiries")
+    def enquiries(self, request):
+        latest = {}
+        for msg in self.get_queryset():
+            counterpart = str(msg.receiver_id if msg.sender_id == request.user.id else msg.sender_id)
+            listing_key = str(msg.listing_id or "")
+            conversation_key = f"{counterpart}:{listing_key}"
+            if conversation_key not in latest:
+                latest[conversation_key] = msg
+
+        listing_ids = set()
+        counterpart_ids = set()
+        for msg in latest.values():
+            if msg.listing_id:
+                listing_ids.add(str(msg.listing_id))
+            counterpart_id = str(msg.receiver_id if msg.sender_id == request.user.id else msg.sender_id)
+            counterpart_ids.add(counterpart_id)
+
+        listings_map = {}
+        if listing_ids:
+            for listing in Listing.objects.filter(id__in=listing_ids).only("id", "title", "address", "city", "cover_image", "landlord_id"):
+                listings_map[str(listing.id)] = listing
+                counterpart_ids.add(str(listing.landlord_id))
+
+        users_map = {}
+        if counterpart_ids:
+            for u in User.objects.filter(id__in=counterpart_ids).only("id", "name", "profile_photo"):
+                users_map[str(u.id)] = u
+
+        results = []
+        for msg in latest.values():
+            counterpart_id = str(msg.receiver_id if msg.sender_id == request.user.id else msg.sender_id)
+            listing_id = str(msg.listing_id or "")
+            listing = listings_map.get(listing_id)
+            counterpart_user = users_map.get(counterpart_id)
+            results.append({
+                "id": msg.id,
+                "listing_id": listing_id,
+                "listing_title": listing.title if listing else "Unknown Property",
+                "listing_address": listing.address if listing else "",
+                "listing_city": listing.city if listing else "",
+                "listing_cover_image_url": listing.cover_image_url if listing and listing.cover_image else "",
+                "landlord_name": counterpart_user.name if counterpart_user else "Landlord",
+                "landlord_profile_photo_url": counterpart_user.profile_photo_url if counterpart_user else None,
+                "last_message": msg.content,
+                "last_message_time": msg.created_at,
+                "message_count": 1,
+                "has_viewing_arranged": False,
+            })
+
+        results.sort(key=lambda r: r["last_message_time"], reverse=True)
+        return Response(results)
+
     def conversations(self, request):
         latest = {}
         for msg in self.get_queryset():

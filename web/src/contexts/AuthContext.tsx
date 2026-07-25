@@ -75,20 +75,36 @@ function normalizeUser(payload: any, fallbackEmail?: string): User {
     }
 }
 
+function firstErrorMessage(value: any): string {
+    if (typeof value === 'string') {
+        return value
+    }
+
+    if (Array.isArray(value)) {
+        for (const item of value) {
+            const message = firstErrorMessage(item)
+            if (message) return message
+        }
+        return ''
+    }
+
+    if (value && typeof value === 'object') {
+        for (const key of ['detail', 'message', 'error', 'email', 'non_field_errors']) {
+            const message = firstErrorMessage(value[key])
+            if (message) return message
+        }
+
+        for (const item of Object.values(value)) {
+            const message = firstErrorMessage(item)
+            if (message) return message
+        }
+    }
+
+    return ''
+}
+
 function extractErrorMessage(err: any, fallbackMessage: string): string {
-    if (typeof err?.response?.data === 'string') {
-        return err.response.data
-    }
-
-    if (err?.response?.data?.detail) {
-        return err.response.data.detail
-    }
-
-    if (err?.response?.data?.message) {
-        return err.response.data.message
-    }
-
-    return err?.message || fallbackMessage
+    return firstErrorMessage(err?.response?.data) || err?.message || fallbackMessage
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {

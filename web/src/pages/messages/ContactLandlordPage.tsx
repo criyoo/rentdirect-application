@@ -224,10 +224,10 @@ export default function ContactLandlordPage() {
             </div>
 
             <div className="max-w-6xl mx-auto px-4 py-8">
-                <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 h-[700px]">
                     {/* Property Details Sidebar */}
-                    <div className="lg:col-span-1">
-                        <div className="bg-white rounded-2xl shadow-sm border p-5 sticky top-6">
+                    <div className="lg:col-span-1 h-full">
+                        <div className="bg-white rounded-2xl shadow-sm border p-5 h-full overflow-y-auto">
                             <h2 className="text-lg font-semibold text-gray-900 mb-4">{listing.property_type} Details</h2>
 
                             <div className="space-y-4">
@@ -284,8 +284,8 @@ export default function ContactLandlordPage() {
                     </div>
 
                     {/* Messages Area */}
-                    <div className="lg:col-span-3">
-                        <div className="bg-white rounded-2xl shadow-sm border h-[600px] flex flex-col">
+                    <div className="lg:col-span-3 h-full">
+                        <div className="bg-white rounded-2xl shadow-sm border h-full flex flex-col">
                             {/* Messages Header */}
                             <div className="p-6 border-b border-gray-200">
                                 <div className="flex items-center justify-between">
@@ -303,29 +303,29 @@ export default function ContactLandlordPage() {
                             </div>
 
                             {/* Viewing Availability Section */}
-                            <div className="p-6 border-b border-gray-200">
+                            <div className="p-6 text-center border-b border-gray-200">
                                 <div className="space-y-3">
                                     <label className="block text-sm font-medium text-gray-700">
-                                        When are you available for viewings? <span className="text-gray-500">(max 100 characters)</span>
+                                        When are you available for viewings? <span className="text-gray-500">(max 50 characters)</span>
                                     </label>
                                     <textarea
                                         value={viewingAvailability}
-                                        onChange={(e) => setViewingAvailability(e.target.value.slice(0, 100))}
+                                        onChange={(e) => setViewingAvailability(e.target.value.slice(0, 50))}
                                         placeholder="e.g., Weekdays after 5pm, weekends anytime..."
-                                        className="w-full max-w-xl px-4 py-3 border border-gray-300 rounded-xl resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        className="w-full max-w-xl px-4 py-2 border border-gray-300 rounded-xl resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                         rows={1}
                                         maxLength={100}
                                         disabled={sendMessage.isPending}
                                     />
-                                    <div className="flex justify-between text-xs text-gray-500">
+                                    <div className="flex justify-center text-xs text-gray-500">
                                         <span>This will be included in your message to the landlord</span>
-                                        <span>{viewingAvailability.length}/100</span>
+                                        <span>{viewingAvailability.length}/50</span>
                                     </div>
                                 </div>
                             </div>
 
                             {/* Messages List */}
-                            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                            <div className="flex-1 overflow-y-auto p-4 space-y-4 flex flex-col justify-end">
                                 {messagesLoading ? (
                                     <div className="flex items-center justify-center h-full">
                                         <div className="animate-pulse text-gray-500">Loading messages...</div>
@@ -374,20 +374,20 @@ export default function ContactLandlordPage() {
                                         </div>
                                     ))
                                 ) : (
-                                    <div className="text-center py-12">
-                                        <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <div className="text-center py-20">
+                                        <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-1">
                                             <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                                             </svg>
                                         </div>
-                                        <h3 className="text-lg font-medium text-gray-900 mb-2">Start a conversation</h3>
-                                        <p className="text-gray-600">Send your first message to the landlord about this property.</p>
+                                        <h3 className="text-lg font-medium text-gray-600 mb-2">Start a conversation</h3>
+                                        <p className="text-gray-500">Send your first message to the landlord.</p>
                                     </div>
                                 )}
                             </div>
 
                             {/* Message Input */}
-                            <div className="p-6 border-t border-gray-200">
+                            <div className="p-5 border-t border-gray-200">
                                 <div className="flex space-x-4">
                                     <div className="flex-1">
                                         <textarea
@@ -395,7 +395,7 @@ export default function ContactLandlordPage() {
                                             onChange={(e) => setMessage(e.target.value)}
                                             onKeyPress={handleKeyPress}
                                             placeholder="Type your message here..."
-                                            className="w-full px-4 py-3 border border-gray-300 rounded-2xl resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            className="w-full px-4 py-4 border border-gray-300 rounded-2xl resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                             rows={3}
                                             disabled={sendMessage.isPending}
                                         />
@@ -403,7 +403,7 @@ export default function ContactLandlordPage() {
                                     <button
                                         onClick={handleSendMessage}
                                             disabled={sendMessage.isPending || !message.trim()}
-                                        className="px-6 py-3 bg-blue-600 text-white rounded-2xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
+                                        className="px-6 py-4 bg-blue-600 text-white rounded-2xl hover:bg-blue-700 disabled:opacity-90 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
                                     >
                                         {sendMessage.isPending ? (
                                             <>
@@ -420,7 +420,7 @@ export default function ContactLandlordPage() {
                                         )}
                                     </button>
                                 </div>
-                                <div className="flex items-center justify-between mt-3 text-sm text-gray-900">
+                                <div className="font-semibold flex items-center justify-between mt-0.5 text-sm text-gray-900">
                                     <span>Press Enter to send, Shift + Enter for new line</span>
                                     <span>{message.length}/1000</span>
                                 </div>

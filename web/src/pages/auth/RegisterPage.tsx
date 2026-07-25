@@ -3,6 +3,22 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import { HiEye, HiEyeOff, HiMail, HiLockClosed, HiUser, HiHome, HiUserGroup } from 'react-icons/hi'
 
+function getRegistrationErrorMessage(err: any): string
+{
+    const message = String(err?.message || 'Registration failed').trim()
+    const normalizedMessage = message.toLowerCase()
+
+    if (
+        normalizedMessage.includes('email already registered') ||
+        (normalizedMessage.includes('email') && normalizedMessage.includes('already'))
+    )
+    {
+        return 'Email already registered, try sign in'
+    }
+
+    return message || 'Registration failed'
+}
+
 export default function RegisterPage()
 {
     const [formData, setFormData] = useState({
@@ -34,7 +50,7 @@ export default function RegisterPage()
             setIsOtpStep(true)
         } catch (err: any)
         {
-            setError(err.message || 'Registration failed')
+            setError(getRegistrationErrorMessage(err))
         } finally
         {
             setIsSubmitting(false)
