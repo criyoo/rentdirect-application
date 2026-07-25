@@ -2,12 +2,12 @@
     "christian": {
         "registration_credentials": {
             "full_name": "Christian Odezi Aluya",
-            "email": "criyo.career+chris@gmail.com",
+            "email": "criyo.career@gmail.com",
             "password": "ifG0dbi4mi",
             "landlord": true
         },
         "login_credentials": {
-            "email": "criyo.career+chris@gmail.com",
+            "email": "criyo.career@gmail.com",
             "password": "ifG0dbi4mi"
         },
         "verification": {
@@ -25,7 +25,7 @@
                     "lga_of_origin": "Isoko North",
                     "gender": "Male",
                     "contact_number": "09041487757",
-                    "email": "criyo.career+chris@gmail.com",
+                    "email": "criyo.career@gmail.com",
                     "employment_status": "Employed",
                     "occupation": "Cloud Engineer",
                     "national_identity_number": "98376728472",
@@ -49,7 +49,7 @@
                 "preferred_contact_method": "whatsapp",
                 "phone_number": "+2349041487757",
                 "whatsapp_number": "+2349041487757",
-                "email": "criyo.career+chris@gmail.com",
+                "email": "criyo.career@gmail.com",
                 "nationality": "Nigeria",
                 "state_of_origin": "Delta",
                 "lga_of_origin": "Isoko North",
