@@ -50,6 +50,10 @@ from .tenant_scoring import build_tenant_screening_summary
 class UserSerializer(serializers.ModelSerializer):
     profile_photo_url = serializers.CharField(read_only=True)
     is_verified = serializers.BooleanField(read_only=True)
+    account_frozen = serializers.SerializerMethodField()
+
+    def get_account_frozen(self, obj):
+        return obj.is_account_frozen
 
     class Meta:
         model = AppUser
@@ -69,8 +73,23 @@ class UserSerializer(serializers.ModelSerializer):
             "landlord_verification_profile",
             "tenant_verification_profile",
             "is_verified",
+            "account_frozen",
+            "account_frozen_at",
+            "account_frozen_until",
+            "account_freeze_fee_percentage",
         ]
-        read_only_fields = ["id", "role", "email_verified", "profile_photo_url", "tenant_verification_profile", "is_verified"]
+        read_only_fields = [
+            "id",
+            "role",
+            "email_verified",
+            "profile_photo_url",
+            "tenant_verification_profile",
+            "is_verified",
+            "account_frozen",
+            "account_frozen_at",
+            "account_frozen_until",
+            "account_freeze_fee_percentage",
+        ]
 
     def validate_email(self, value):
         return value.strip().lower()

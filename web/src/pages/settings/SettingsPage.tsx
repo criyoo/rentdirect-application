@@ -6,7 +6,7 @@ import { useAppPopup } from '@/contexts/AppPopupContext'
 import { useAuth } from '@/hooks/useAuth'
 import DashboardBackButton from '@/components/DashboardBackButton'
 import { api } from '@/lib/api'
-import { stateOfOriginOptions, validateMobile, validateNin, validateResidence } from '@/lib/profile'
+import { validateMobile, validateResidence } from '@/lib/profile'
 import { User, UserResidence } from '@/types'
 
 type VerificationProgress = {
@@ -27,6 +27,12 @@ type EmergencyContactForm = {
     address: string
 }
 
+type BankDetailsForm = {
+    bank_name: string
+    account_name: string
+    account_number: string
+}
+
 const emptyEmergencyContactForm: EmergencyContactForm = {
     first_name: '',
     middle_name: '',
@@ -35,6 +41,12 @@ const emptyEmergencyContactForm: EmergencyContactForm = {
     email: '',
     relationship: '',
     address: '',
+}
+
+const emptyBankDetailsForm: BankDetailsForm = {
+    bank_name: '',
+    account_name: '',
+    account_number: '',
 }
 
 type SettingsOtpPurpose = 'profile' | 'password'
@@ -82,6 +94,19 @@ function normalizeEmergencyContact(profile?: Record<string, any> | null): Emerge
     }
 }
 
+function normalizeBankDetails(profile?: Record<string, any> | null, verificationType?: string): BankDetailsForm {
+    const normalizedProfile = asRecord(profile)
+    const nestedBankDetails = verificationType === 'corporate'
+        ? asRecord(normalizedProfile.corporate_banking_information)
+        : asRecord(normalizedProfile.banking_information)
+
+    return {
+        bank_name: String(normalizedProfile.bank_name || nestedBankDetails.bank_name || ''),
+        account_name: String(normalizedProfile.account_name || nestedBankDetails.account_name || ''),
+        account_number: String(normalizedProfile.account_number || nestedBankDetails.account_number || ''),
+    }
+}
+
 function buildEmergencyContactPayload(contact: EmergencyContactForm) {
     return {
         first_name: contact.first_name.trim(),
@@ -91,6 +116,14 @@ function buildEmergencyContactPayload(contact: EmergencyContactForm) {
         email: contact.email.trim(),
         relationship: contact.relationship.trim(),
         address: contact.address.trim(),
+    }
+}
+
+function buildBankDetailsPayload(bankDetails: BankDetailsForm) {
+    return {
+        bank_name: bankDetails.bank_name.trim(),
+        account_name: bankDetails.account_name.trim(),
+        account_number: bankDetails.account_number.trim(),
     }
 }
 
@@ -155,10 +188,12 @@ export default function SettingsPage() {
     const [name, setName] = useState('')
     const [email, setEmail] = useState('')
     const [mobile, setMobile] = useState('')
-    const [ninNumber, setNinNumber] = useState('')
     const [stateOfOrigin, setStateOfOrigin] = useState('')
+    const [dateOfBirth, setDateOfBirth] = useState('')
+    const [lgaOfOrigin, setLgaOfOrigin] = useState('')
     const [residence, setResidence] = useState<UserResidence>(normalizeResidence())
     const [emergencyContact, setEmergencyContact] = useState<EmergencyContactForm>(emptyEmergencyContactForm)
+    const [bankDetails, setBankDetails] = useState<BankDetailsForm>(emptyBankDetailsForm)
     const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
     const [newPassword, setNewPassword] = useState('')
@@ -170,7 +205,7 @@ export default function SettingsPage() {
     const [selectedFreezeDuration, setSelectedFreezeDuration] = useState<number | null>(null)
     const [accountFrozen, setAccountFrozen] = useState(false)
 
-    const isIndividualLandlord = me?.role === 'landlord' && me.landlord_verification_type === 'individual'
+    const isLandlord = me?.role === 'landlord'
 
     useEffect(() => {
         if (!me) return
@@ -178,37 +213,22 @@ export default function SettingsPage() {
         setName(me.name || '')
         setEmail(me.email || '')
         setMobile(me.mobile || '')
-        setNinNumber(me.nin_number || '')
         setStateOfOrigin(me.state_of_origin || '')
         setResidence(normalizeResidence(me.residence))
+        setDateOfBirth(String(me.landlord_verification_profile?.date_of_birth || ''))
+        setLgaOfOrigin(String(me.landlord_verification_profile?.lga_of_origin || me.landlord_verification_profile?.lga || ''))
         setEmergencyContact(
-            me.role === 'landlord' && me.landlord_verification_type === 'individual'
+            me.role === 'landlord'
                 ? normalizeEmergencyContact(me.landlord_verification_profile)
                 : emptyEmergencyContactForm,
         )
+        setBankDetails(
+            me.role === 'landlord'
+                ? normalizeBankDetails(me.landlord_verification_profile, me.landlord_verification_type)
+                : emptyBankDetailsForm,
+        )
+        setAccountFrozen(Boolean(me.account_frozen))
     }, [me])
-
-    useEffect(() => {
-        const freezeInfo = localStorage.getItem('account_freeze')
-        if (!freezeInfo) {
-            return
-        }
-
-        try {
-            const parsed = JSON.parse(freezeInfo)
-            const startDate = new Date(parsed.start_date)
-            const endDate = new Date(startDate)
-            endDate.setMonth(endDate.getMonth() + parsed.duration_months)
-
-            if (new Date() < endDate) {
-                setAccountFrozen(true)
-            } else {
-                localStorage.removeItem('account_freeze')
-            }
-        } catch {
-            localStorage.removeItem('account_freeze')
-        }
-    }, [])
 
     const validateProfile = (): boolean => {
         const nextErrors: Record<string, string> = {}
@@ -216,15 +236,12 @@ export default function SettingsPage() {
         const mobileError = validateMobile(mobile)
         if (mobileError) nextErrors.mobile = mobileError
 
-        const ninError = validateNin(ninNumber)
-        if (ninError) nextErrors.nin_number = ninError
-
-        if (isIndividualLandlord) {
+        if (isLandlord) {
             const emergencyPhoneError = validateMobile(emergencyContact.phone_number)
             if (emergencyPhoneError) nextErrors.emergency_phone_number = emergencyPhoneError
         }
 
-        Object.assign(nextErrors, validateResidence(stateOfOrigin, residence))
+        Object.assign(nextErrors, validateResidence('', residence))
 
         setFieldErrors(nextErrors)
         return Object.keys(nextErrors).length === 0
@@ -232,11 +249,8 @@ export default function SettingsPage() {
 
     const buildProfilePayload = (): Record<string, any> => {
         const payload: Record<string, any> = {
-            name: name.trim(),
             email: email.trim(),
             mobile: mobile.trim(),
-            nin_number: ninNumber.trim(),
-            state_of_origin: stateOfOrigin,
             residence: {
                 state: residence.state?.trim() || '',
                 city: residence.city?.trim() || '',
@@ -246,12 +260,27 @@ export default function SettingsPage() {
             },
         }
 
-        if (isIndividualLandlord) {
+        if (isLandlord) {
             const currentProfile = asRecord(me?.landlord_verification_profile)
+            const nextBankDetails = buildBankDetailsPayload(bankDetails)
+            const bankInformationKey = me?.landlord_verification_type === 'corporate'
+                ? 'corporate_banking_information'
+                : 'banking_information'
             payload.landlord_verification_profile = {
                 ...currentProfile,
                 email: email.trim(),
                 contact_number: mobile.trim(),
+                company_email: me?.landlord_verification_type === 'corporate' ? email.trim() : currentProfile.company_email,
+                company_phone_number: me?.landlord_verification_type === 'corporate' ? mobile.trim() : currentProfile.company_phone_number,
+                residential_address: residence.address?.trim() || currentProfile.residential_address || '',
+                business_address: me?.landlord_verification_type === 'corporate'
+                    ? residence.address?.trim() || currentProfile.business_address || ''
+                    : currentProfile.business_address,
+                ...nextBankDetails,
+                [bankInformationKey]: {
+                    ...asRecord(currentProfile[bankInformationKey]),
+                    ...nextBankDetails,
+                },
                 emergency_contact: {
                     ...asRecord(currentProfile.emergency_contact),
                     ...buildEmergencyContactPayload(emergencyContact),
@@ -338,16 +367,12 @@ export default function SettingsPage() {
     const freezeAccount = useMutation({
         mutationFn: async (duration: number) => {
             const response = await api.post('/users/me/freeze', { duration_months: duration })
-            localStorage.setItem('account_freeze', JSON.stringify({
-                duration_months: duration,
-                start_date: new Date().toISOString(),
-                monthly_fee_percentage: 10,
-                frozen_until: response.data.frozen_until,
-            }))
             return response.data
         },
-        onSuccess: () => {
-            alert('Account frozen successfully! You will be charged 10% of the subscription fee monthly.')
+        onSuccess: (nextUser) => {
+            qc.setQueryData(['users', 'me'], nextUser)
+            localStorage.setItem('user', JSON.stringify(nextUser))
+            alert('Account frozen successfully. You will be charged 20% of the monthly subscription fee after your current plan expires if the account is still frozen.')
             setAccountFrozen(true)
             setSelectedFreezeDuration(null)
             setShowDeleteModal(false)
@@ -357,12 +382,24 @@ export default function SettingsPage() {
         },
     })
 
+    const unfreezeAccount = useMutation({
+        mutationFn: async () => (await api.delete<User>('/users/me/freeze')).data,
+        onSuccess: (nextUser) => {
+            qc.setQueryData(['users', 'me'], nextUser)
+            localStorage.setItem('user', JSON.stringify(nextUser))
+            setAccountFrozen(false)
+            alert('Account unfrozen successfully.')
+        },
+        onError: (error) => {
+            alert('Failed to unfreeze account: ' + extractErrorMessage(error, 'Unfreeze failed'))
+        },
+    })
+
     const deleteAccount = useMutation({
         mutationFn: async () => {
             await api.delete('/users/me')
         },
         onSuccess: async () => {
-            localStorage.removeItem('account_freeze')
             setShowDeleteModal(false)
             await logout()
         },
@@ -467,8 +504,8 @@ export default function SettingsPage() {
                 </div>
             </div>
 
-            <div className="grid gap-6 xl:grid-cols-[1.4fr_1fr]">
-                <section className="card p-6">
+            <div className="grid items-stretch gap-6 xl:grid-cols-[1.4fr_1fr]">
+                <section className="card flex h-full flex-col p-6">
                     <div className="mb-6">
                         <h2 className="text-2xl font-bold text-gray-900">Profile details</h2>
                         <p className="mt-2 text-sm text-gray-600">Keep your landlord or tenant account information current.</p>
@@ -477,24 +514,22 @@ export default function SettingsPage() {
                     <div className="grid gap-5 md:grid-cols-2">
                         <div>
                             <label className="form-label">Full name</label>
-                            <input className="form-input" value={name} onChange={e => setName(e.target.value)} placeholder="Enter your full name" />
+                            <input className="form-input bg-gray-100 text-gray-500" value={name} disabled />
                         </div>
                         <div>
-                            <label className="form-label">NIN number</label>
-                            <input className="form-input" value={ninNumber} onChange={e => setNinNumber(e.target.value)} placeholder="Optional 11-digit NIN" />
-                            {fieldErrors.nin_number && <p className="form-error">{fieldErrors.nin_number}</p>}
+                            <label className="form-label">Date of birth</label>
+                            <input className="form-input bg-gray-100 text-gray-500" value={dateOfBirth} disabled />
                         </div>
                     </div>
 
                     <div className="mt-6 grid gap-5 md:grid-cols-2">
                         <div>
                             <label className="form-label">State of origin</label>
-                            <select className="form-input" value={stateOfOrigin} onChange={e => setStateOfOrigin(e.target.value)}>
-                                <option value="">Select state of origin</option>
-                                {stateOfOriginOptions.map(option => (
-                                    <option key={option} value={option}>{option}</option>
-                                ))}
-                            </select>
+                            <input className="form-input bg-gray-100 text-gray-500" value={stateOfOrigin} disabled />
+                        </div>
+                        <div>
+                            <label className="form-label">LGA</label>
+                            <input className="form-input bg-gray-100 text-gray-500" value={lgaOfOrigin} disabled />
                         </div>
                     </div>
 
@@ -517,7 +552,46 @@ export default function SettingsPage() {
                         </div>
                     </div>
 
-                    {isIndividualLandlord && (
+                    {isLandlord && (
+                        <div className="mt-6 rounded-xl border border-gray-200 p-5">
+                            <div className="mb-4">
+                                <h3 className="text-lg font-semibold text-gray-900">Bank details</h3>
+                                <p className="mt-1 text-sm text-gray-600">Update the payout bank details for your landlord account.</p>
+                            </div>
+
+                            <div className="grid gap-5 md:grid-cols-3">
+                                <div>
+                                    <label className="form-label">Bank name</label>
+                                    <input
+                                        className="form-input"
+                                        value={bankDetails.bank_name}
+                                        onChange={e => setBankDetails(current => ({ ...current, bank_name: e.target.value }))}
+                                        placeholder="Enter bank name"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="form-label">Account name</label>
+                                    <input
+                                        className="form-input"
+                                        value={bankDetails.account_name}
+                                        onChange={e => setBankDetails(current => ({ ...current, account_name: e.target.value }))}
+                                        placeholder="Enter account name"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="form-label">Account number</label>
+                                    <input
+                                        className="form-input"
+                                        value={bankDetails.account_number}
+                                        onChange={e => setBankDetails(current => ({ ...current, account_number: e.target.value }))}
+                                        placeholder="Enter account number"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {isLandlord && (
                         <div className="mt-6 rounded-xl border border-gray-200 p-5">
                             <div className="mb-4">
                                 <h3 className="text-lg font-semibold text-gray-900">Change Emergency contact details</h3>
@@ -589,36 +663,11 @@ export default function SettingsPage() {
                             <div className="mt-5">
                                 <label className="form-label">Address</label>
                                 <textarea
-                                    className="form-input min-h-28"
+                                    className="form-input min-h-14"
                                     value={emergencyContact.address}
                                     onChange={e => setEmergencyContact(current => ({ ...current, address: e.target.value }))}
                                     placeholder="Emergency contact address"
                                 />
-                            </div>
-                        </div>
-                    )}
-
-                    {stateOfOrigin === 'Others' && (
-                        <div className="mt-6 grid gap-5 md:grid-cols-2">
-                            <div>
-                                <label className="form-label">Country of origin</label>
-                                <input
-                                    className="form-input"
-                                    value={residence.origin_country || ''}
-                                    onChange={e => setResidence(current => ({ ...current, origin_country: e.target.value }))}
-                                    placeholder="Enter country of origin"
-                                />
-                                {fieldErrors.origin_country && <p className="form-error">{fieldErrors.origin_country}</p>}
-                            </div>
-                            <div>
-                                <label className="form-label">City of origin</label>
-                                <input
-                                    className="form-input"
-                                    value={residence.origin_city || ''}
-                                    onChange={e => setResidence(current => ({ ...current, origin_city: e.target.value }))}
-                                    placeholder="Enter city of origin"
-                                />
-                                {fieldErrors.origin_city && <p className="form-error">{fieldErrors.origin_city}</p>}
                             </div>
                         </div>
                     )}
@@ -653,7 +702,7 @@ export default function SettingsPage() {
                         <div className="mt-5">
                             <label className="form-label">Street address</label>
                             <textarea
-                                className="form-input min-h-28"
+                                className="form-input min-h-14"
                                 value={residence.address || ''}
                                 onChange={e => setResidence(current => ({ ...current, address: e.target.value }))}
                                 placeholder="Enter your full address"
@@ -662,7 +711,7 @@ export default function SettingsPage() {
                         </div>
                     </div>
 
-                    <div className="mt-6 flex justify-end">
+                    <div className="mt-auto flex justify-end pt-6">
                         <button
                             className="btn btn-primary px-6 py-3"
                             onClick={beginProfileVerification}
@@ -673,7 +722,7 @@ export default function SettingsPage() {
                     </div>
                 </section>
 
-                <div className="space-y-6">
+                <div className="flex h-full flex-col gap-6">
                     <section className="card p-6">
                         <div className="mb-6">
                             <h2 className="text-2xl font-bold text-gray-900">Password</h2>
@@ -732,46 +781,70 @@ export default function SettingsPage() {
                                 </span>
                             </div>
                             {me.role === 'landlord' && (
-                                <div className="flex items-center justify-between rounded-lg bg-gray-50 px-4 py-3">
-                                    <span>Physical House Verification</span>
-                                    <span className={`font-semibold ${getVerificationStatusClassName(verificationStatus?.physical_property?.status)}`}>
-                                        {getVerificationStatusLabel(verificationStatus?.physical_property?.status)}
-                                    </span>
-                                </div>
+                                <>
+                                    <div className="flex items-center justify-between rounded-lg bg-gray-50 px-4 py-3">
+                                        <span>Physical House Verification</span>
+                                        <span className={`font-semibold ${getVerificationStatusClassName(verificationStatus?.physical_property?.status)}`}>
+                                            {getVerificationStatusLabel(verificationStatus?.physical_property?.status)}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center justify-between rounded-lg bg-gray-50 px-4 py-3">
+                                        <span>Account Status</span>
+                                        <span className={`font-semibold ${accountFrozen ? 'text-blue-600' : 'text-gray-500'}`}>
+                                            {accountFrozen ? 'Frozen' : 'Active'}
+                                        </span>
+                                    </div>
+                                </>
                             )}
                         </div>
                     </section>
+
+                    {me.role === 'landlord' && (
+                        <section className="card p-6">
+                            <div className="mb-4">
+                                <h2 className="text-2xl font-bold text-gray-900">Freeze Account</h2>
+                                <p className="mt-2 text-sm text-gray-600">
+                                    Frozen landlord accounts cannot list properties. After the current plan expires, the frozen account fee is 20% of the monthly subscription fee.
+                                </p>
+                            </div>
+
+                            {accountFrozen ? (
+                                <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                                    <h3 className="text-sm font-medium text-blue-800">Account Frozen</h3>
+                                    <p className="mt-1 text-sm text-blue-700">
+                                        Your account is frozen and property listing is disabled.
+                                    </p>
+                                    <button
+                                        onClick={async () => {
+                                            if (await confirm('Are you sure you want to unfreeze your account? You will be charged the full subscription fee.')) {
+                                                unfreezeAccount.mutate()
+                                            }
+                                        }}
+                                        disabled={unfreezeAccount.isPending}
+                                        className="btn btn-outline mt-4 w-full py-3 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                        {unfreezeAccount.isPending ? 'Unfreezing...' : 'Unfreeze Account'}
+                                    </button>
+                                </div>
+                            ) : (
+                                <button
+                                    className="btn btn-outline w-full py-3"
+                                    onClick={() => setShowDeleteModal(true)}
+                                    disabled={freezeAccount.isPending}
+                                >
+                                    Freeze Account
+                                </button>
+                            )}
+                        </section>
+                    )}
 
                     <section className="card p-6">
                         <div className="mb-4">
                             <h2 className="text-2xl font-bold text-gray-900">Delete Account</h2>
                             <p className="mt-2 text-sm text-gray-600">
-                                Remove this account permanently, or freeze it temporarily instead.
+                                Remove this account permanently.
                             </p>
                         </div>
-
-                        {accountFrozen && (
-                            <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
-                                <div className="flex items-center justify-between gap-3">
-                                    <div>
-                                        <h3 className="text-sm font-medium text-blue-800">Account Frozen</h3>
-                                        <p className="mt-1 text-sm text-blue-700">Your account is currently frozen. You&apos;re paying 10% of the subscription fee monthly.</p>
-                                    </div>
-                                    <button
-                                        onClick={async () => {
-                                            if (await confirm('Are you sure you want to unfreeze your account? You will be charged the full subscription fee.')) {
-                                                localStorage.removeItem('account_freeze')
-                                                setAccountFrozen(false)
-                                                alert('Account unfrozen successfully!')
-                                            }
-                                        }}
-                                        className="rounded-md bg-blue-100 px-3 py-2 text-xs font-medium text-blue-700 transition-colors hover:bg-blue-200"
-                                    >
-                                        Unfreeze
-                                    </button>
-                                </div>
-                            </div>
-                        )}
 
                         <button
                             className="btn btn-danger w-full py-3"
@@ -874,7 +947,7 @@ export default function SettingsPage() {
                                         />
                                         <div className="ml-3">
                                             <span className="text-sm font-medium text-gray-900">{duration} months</span>
-                                            <p className="text-xs text-gray-500">Pay 10% of subscription fee monthly</p>
+                                            <p className="text-xs text-gray-500">Pay 20% of the monthly subscription fee after the current plan expires</p>
                                         </div>
                                     </label>
                                 ))}

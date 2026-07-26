@@ -125,12 +125,8 @@ FAILED_PAYMENT_STATUSES = {"failed", "cancelled"}
 SETTINGS_OTP_PURPOSE_PROFILE = "profile"
 SETTINGS_OTP_PURPOSE_PASSWORD = "password"
 SETTINGS_PROFILE_MUTABLE_FIELDS = {
-    "name",
     "email",
     "mobile",
-    "nin_number",
-    "bvn_number",
-    "state_of_origin",
     "residence",
     "landlord_verification_profile",
 }
@@ -1033,6 +1029,26 @@ def subscription_duration_days(billing_cycle: str) -> int:
     return 30 if billing_cycle == SubscriptionPayment.BillingCycle.MONTHLY else 365
 
 
+def user_account_freeze_active(user: AppUser, *, now=None) -> bool:
+    now = now or timezone.now()
+    return bool(
+        getattr(user, "account_frozen", False)
+        and (not user.account_frozen_until or user.account_frozen_until > now)
+    )
+
+
+def subscription_renewal_amount_for(payment: SubscriptionPayment, *, now=None) -> Decimal:
+    if not user_account_freeze_active(payment.user, now=now):
+        return payment.amount
+
+    monthly_amount = get_subscription_pricing().get(payment.role, {}).get(payment.plan_code, {}).get(
+        SubscriptionPayment.BillingCycle.MONTHLY,
+        payment.amount,
+    )
+    percentage = Decimal(str(payment.user.account_freeze_fee_percentage or 20))
+    return (Decimal(str(monthly_amount)) * percentage / Decimal("100")).quantize(Decimal("0.01"))
+
+
 def ensure_flutterwave_recurring_configured() -> None:
     ensure_flutterwave_recurring_charge_configured()
     if not flutterwave_encryption_key_is_configured():
@@ -1201,20 +1217,23 @@ def process_due_subscription_renewals(*, now=None) -> dict[str, int]:
     failed = 0
     for payment in due_payments:
         checked += 1
+        account_frozen = user_account_freeze_active(payment.user, now=now)
+        renewal_billing_cycle = SubscriptionPayment.BillingCycle.MONTHLY if account_frozen else payment.billing_cycle
+        renewal_amount = subscription_renewal_amount_for(payment, now=now)
         renewal = SubscriptionPayment.objects.create(
             user=payment.user,
             role=payment.role,
             plan_code=payment.plan_code,
-            billing_cycle=payment.billing_cycle,
-            amount=payment.amount,
+            billing_cycle=renewal_billing_cycle,
+            amount=renewal_amount,
             currency=payment.currency,
             provider="flutterwave",
             status=SubscriptionPayment.Status.PENDING,
             transaction_id=build_subscription_payment_reference(),
-            expires_at=payment.expires_at + timedelta(days=subscription_duration_days(payment.billing_cycle)),
+            expires_at=payment.expires_at + timedelta(days=subscription_duration_days(renewal_billing_cycle)),
             payment_method=payment.payment_method,
             recurring_enabled=True,
-            billing_reason="recurring_renewal",
+            billing_reason="account_freeze_renewal" if account_frozen else "recurring_renewal",
             renewed_from=payment,
         )
         try:
@@ -2211,6 +2230,39 @@ class UserViewSet(viewsets.GenericViewSet):
         )
         return Response({"ok": True, "message": "Password updated successfully."})
 
+    @action(detail=False, methods=["post", "delete"], url_path="me/freeze")
+    def freeze_account(self, request):
+        if request.user.role != AppUser.Role.LANDLORD:
+            raise PermissionDenied("Only landlord accounts can be frozen.")
+
+        if request.method == "DELETE":
+            request.user.account_frozen = False
+            request.user.account_frozen_until = None
+            request.user.save(update_fields=["account_frozen", "account_frozen_until", "updated_at"])
+            return Response(self.get_serializer(request.user).data)
+
+        try:
+            duration_months = int(request.data.get("duration_months") or 3)
+        except (TypeError, ValueError) as exc:
+            raise ValidationError({"duration_months": "Choose a valid freeze duration."}) from exc
+        if duration_months not in {3, 6, 12}:
+            raise ValidationError({"duration_months": "Choose a freeze duration of 3, 6, or 12 months."})
+
+        request.user.account_frozen = True
+        request.user.account_frozen_at = timezone.now()
+        request.user.account_frozen_until = timezone.now() + timedelta(days=30 * duration_months)
+        request.user.account_freeze_fee_percentage = Decimal("20")
+        request.user.save(
+            update_fields=[
+                "account_frozen",
+                "account_frozen_at",
+                "account_frozen_until",
+                "account_freeze_fee_percentage",
+                "updated_at",
+            ]
+        )
+        return Response(self.get_serializer(request.user).data)
+
     @action(detail=False, methods=["post", "delete"], url_path="me/favourites/(?P<listing_id>[^/.]+)")
     def manage_favourite(self, request, listing_id=None):
         listing = get_object_or_404(Listing, id=listing_id)
@@ -2411,6 +2463,8 @@ class ListingViewSet(viewsets.ModelViewSet):
         return qs.order_by("-featured", "-created_at")
 
     def perform_create(self, serializer):
+        if self.request.user.role == AppUser.Role.LANDLORD and user_account_freeze_active(self.request.user):
+            raise PermissionDenied("Frozen landlord accounts cannot list properties.")
         if self.request.user.role == "landlord" and not self.request.user.is_verified:
             raise PermissionDenied("Your account identity must be verified before listing properties.")
         if self.request.user.role == AppUser.Role.LANDLORD and user_has_bronze_access(self.request.user):

@@ -6,6 +6,7 @@ import re
 from io import StringIO
 from pathlib import Path
 from datetime import date, timedelta
+from decimal import Decimal
 import tempfile
 from unittest.mock import patch
 
@@ -1045,8 +1046,34 @@ class UserViewSetTests(TestCase):
         self.assertEqual(response.status_code, 200, response.json())
         user.refresh_from_db()
         self.assertEqual(user.email, "updated-settings-user@example.com")
-        self.assertEqual(user.name, "Updated Settings User")
+        self.assertEqual(user.name, "Settings User")
         self.assertEqual(user.settings_otp_hash, "")
+
+    def test_landlord_can_freeze_and_unfreeze_account(self):
+        user = AppUser.objects.create_user(
+            email="freeze-landlord@example.com",
+            password="password-123",
+            name="Freeze Landlord",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+        )
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        response = client.post("/api/v1/users/me/freeze", {"duration_months": 3}, format="json")
+
+        self.assertEqual(response.status_code, 200, response.json())
+        user.refresh_from_db()
+        self.assertTrue(user.account_frozen)
+        self.assertEqual(user.account_freeze_fee_percentage, Decimal("20.00"))
+        self.assertTrue(user.account_frozen_until)
+
+        response = client.delete("/api/v1/users/me/freeze")
+
+        self.assertEqual(response.status_code, 200, response.json())
+        user.refresh_from_db()
+        self.assertFalse(user.account_frozen)
+        self.assertIsNone(user.account_frozen_until)
 
     def test_landlord_can_save_identity_verification_details(self):
         user = AppUser.objects.create_user(

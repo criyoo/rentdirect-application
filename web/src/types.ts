@@ -25,6 +25,10 @@ export type User = {
     landlord_verification_profile?: Record<string, any> | null
     tenant_verification_profile?: Record<string, any> | null
     is_verified?: boolean
+    account_frozen?: boolean
+    account_frozen_at?: string | null
+    account_frozen_until?: string | null
+    account_freeze_fee_percentage?: string | number
 }
 
 export type Review = {

@@ -82,6 +82,10 @@ class AppUser(AbstractBaseUser, PermissionsMixin):
     settings_otp_attempts = models.PositiveSmallIntegerField(default=0)
     settings_otp_purpose = models.CharField(max_length=40, blank=True, default="")
     settings_otp_target_email = models.EmailField(blank=True, default="")
+    account_frozen = models.BooleanField(default=False)
+    account_frozen_at = models.DateTimeField(null=True, blank=True)
+    account_frozen_until = models.DateTimeField(null=True, blank=True)
+    account_freeze_fee_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=20)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -111,6 +115,14 @@ class AppUser(AbstractBaseUser, PermissionsMixin):
             return True
 
         return self.verification_requests.filter(status=VerificationRequest.Status.APPROVED).exists()
+
+    @property
+    def is_account_frozen(self) -> bool:
+        if not self.account_frozen:
+            return False
+        if self.account_frozen_until and self.account_frozen_until <= timezone.now():
+            return False
+        return True
 
     class Meta:
         indexes = [

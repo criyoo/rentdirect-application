@@ -168,22 +168,22 @@ export default function Footer() {
 
                             <div className="sm:col-span-2 xl:col-span-3">
                                 <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-200">Support</p>
-                                <div className="mt-4 grid h-11 gap-4 md:grid-cols-3">
+                                <div className="mt-4 grid h-11 gap-3 md:grid-cols-3">
                                     <a
                                         href="mailto:info@rentdirect.homes"
-                                        className="flex items-start gap-3 rounded-lg border border-white/10 bg-white/5 p-4 text-sm text-slate-300 hover:border-blue-300/40 hover:bg-white/10"
+                                        className="rounded-lg border border-white/10 bg-white/5 p-4 text-sm text-slate-300 hover:border-blue-300/40 hover:bg-white/10"
                                     >
-                                        <span className="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-blue-500/15 text-blue-100">
+                                        <span className="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-blue-500/15 text-blue-100">
                                             <HiMail className="h-5 w-5" />
                                         </span>
                                         <span>
                                             <span className="block font-semibold text-white">Email support</span>
-                                            <span className="mt-1 block">info@rentdirect.homes</span>
+                                            <span className="mt-1 block">support@rentdirect.homes</span>
                                         </span>
                                     </a>
 
-                                    <div className="flex items-start gap-3 rounded-lg border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
-                                        <span className="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-blue-500/15 text-blue-100">
+                                    <div className="rounded-lg border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
+                                        <span className="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-blue-500/15 text-blue-100">
                                             <HiLocationMarker className="h-5 w-5" />
                                         </span>
                                         <span>
@@ -194,9 +194,9 @@ export default function Footer() {
 
                                     <Link
                                         to="/verify"
-                                        className="flex items-start gap-3 rounded-lg border border-white/10 bg-white/5 p-4 text-sm text-slate-300 hover:border-blue-300/40 hover:bg-white/10"
+                                        className="rounded-lg border border-white/10 bg-white/5 p-4 text-sm text-slate-300 hover:border-blue-300/40 hover:bg-white/10"
                                     >
-                                        <span className="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-blue-500/15 text-blue-100">
+                                        <span className="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-blue-500/15 text-blue-100">
                                             <HiSearch className="h-5 w-5" />
                                         </span>
                                         <span>
