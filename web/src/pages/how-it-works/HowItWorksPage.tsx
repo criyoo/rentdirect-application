@@ -1,6 +1,9 @@
 import { Fragment, ReactNode, useMemo } from 'react'
 import { Link } from 'react-router-dom'
+import { useAuth } from '@/hooks/useAuth'
 import howItWorksContent from './how-it-works.md?raw'
+import landlordContent from './landlords.md?raw'
+import tenantContent from './tenants.md?raw'
 
 type MarkdownBlock =
     | { type: 'h1' | 'h2' | 'h3' | 'h4'; text: string }
@@ -74,7 +77,13 @@ function parseMarkdown(markdown: string): MarkdownBlock[] {
 }
 
 export default function HowItWorksPage() {
-    const blocks = useMemo(() => parseMarkdown(howItWorksContent), [])
+    const { user } = useAuth()
+    const markdownContent = user?.role === 'landlord'
+        ? landlordContent
+        : user?.role === 'tenant'
+            ? tenantContent
+            : howItWorksContent
+    const blocks = useMemo(() => parseMarkdown(markdownContent), [markdownContent])
 
     return (
         <div className="min-h-screen bg-[linear-gradient(180deg,#f8fbff_0%,#eef5ff_45%,#ffffff_100%)]">

@@ -271,14 +271,21 @@ export default function ContactLandlordPage() {
                             <h2 className="text-lg font-semibold text-gray-900 mb-3">{listing.property_type} Details</h2>
 
                             <div className="space-y-3">
-                                <img
-                                    src={resolveMediaUrl(listing.cover_image_url)}
-                                    alt={listing.title}
-                                    className="w-full h-36 object-cover rounded-lg"
-                                    onError={(e) => {
-                                        e.currentTarget.src = '/placeholder.jpg'
-                                    }}
-                                />
+                                <button
+                                    type="button"
+                                    onClick={() => navigate(`/listings/${listing.id}`)}
+                                    className="group block w-full overflow-hidden rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                                    aria-label={`View details for ${listing.title}`}
+                                >
+                                    <img
+                                        src={resolveMediaUrl(listing.cover_image_url)}
+                                        alt={listing.title}
+                                        className="h-36 w-full object-cover transition-transform duration-200 group-hover:scale-105"
+                                        onError={(e) => {
+                                            e.currentTarget.src = '/placeholder.jpg'
+                                        }}
+                                    />
+                                </button>
 
                                 <div>
                                     <h3 className="font-bold text-gray-900 text-[20px]">{listing.title}</h3>

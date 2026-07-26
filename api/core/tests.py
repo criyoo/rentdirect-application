@@ -4429,6 +4429,20 @@ class MessageSubscriptionAccessTests(TestCase):
 
 
 class MessageEnquiryTests(TestCase):
+    def create_verified_tenant(self, email, name="Verified Tenant"):
+        tenant = AppUser.objects.create_user(
+            email=email,
+            password="password-123",
+            name=name,
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        VerificationRequest.objects.create(
+            user=tenant,
+            status=VerificationRequest.Status.APPROVED,
+        )
+        return tenant
+
     def test_landlord_enquiries_include_tenant_messages_for_listing_without_images(self):
         landlord = AppUser.objects.create_user(
             email="christian-enquiries@example.com",
@@ -4484,11 +4498,130 @@ class MessageEnquiryTests(TestCase):
         self.assertEqual(len(payload), 1)
         self.assertEqual(payload[0]["id"], str(latest_message.id))
         self.assertEqual(payload[0]["tenant_name"], "Jade")
+        self.assertEqual(payload[0]["landlord_id"], str(landlord.id))
         self.assertEqual(payload[0]["landlord_name"], "Christian")
         self.assertEqual(payload[0]["listing_id"], str(listing.id))
         self.assertEqual(payload[0]["listing_cover_image_url"], "")
         self.assertEqual(payload[0]["last_message"], "I am still unable to see enquiries")
         self.assertEqual(payload[0]["message_count"], 3)
+
+    def test_landlord_enquiries_include_messages_sent_through_contact_flow(self):
+        landlord = AppUser.objects.create_user(
+            email="contact-flow-landlord@example.com",
+            password="password-123",
+            name="Contact Flow Landlord",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+        )
+        tenant = self.create_verified_tenant("contact-flow-tenant@example.com", name="Contact Flow Tenant")
+        create_active_subscription(tenant, SubscriptionPayment.PlanCode.SILVER)
+        create_active_subscription(landlord, SubscriptionPayment.PlanCode.SILVER)
+        listing = Listing.objects.create(
+            landlord=landlord,
+            title="Contact Flow Listing",
+            description="Listing with a tenant enquiry",
+            address="3 Flow Street",
+            city="Lagos",
+            property_type="Apartment",
+            bedrooms=1,
+            bathrooms=1,
+            price_per_year=1000000,
+            status=Listing.Status.AVAILABLE,
+        )
+
+        client = APIClient()
+        client.force_authenticate(user=tenant)
+        create_response = client.post(
+            "/api/v1/messages",
+            {
+                "receiver_id": str(landlord.id),
+                "listing_id": str(listing.id),
+                "content": "Viewing Availability: Saturday afternoon\n\nI would like to arrange a viewing.",
+            },
+            format="json",
+        )
+        self.assertEqual(create_response.status_code, 201, create_response.json())
+
+        client.force_authenticate(user=landlord)
+        response = client.get("/api/v1/messages/enquiries")
+
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        self.assertEqual(len(payload), 1)
+        self.assertEqual(payload[0]["listing_id"], str(listing.id))
+        self.assertEqual(payload[0]["tenant_id"], str(tenant.id))
+        self.assertEqual(payload[0]["tenant_name"], "Contact Flow Tenant")
+        self.assertEqual(payload[0]["last_message"], "Viewing Availability: Saturday afternoon\n\nI would like to arrange a viewing.")
+        self.assertEqual(payload[0]["message_count"], 1)
+        self.assertTrue(payload[0]["has_viewing_requested"])
+        self.assertFalse(payload[0]["has_viewing_arranged"])
+
+        Booking.objects.create(
+            tenant=tenant,
+            listing=listing,
+            start_date=date(2026, 7, 1),
+            end_date=date(2027, 7, 1),
+            total_amount=calculate_booking_total(listing.price_per_year),
+            tenant_rental_progress={
+                "viewing_appointment_booked": timezone.now().isoformat(),
+            },
+        )
+
+        arranged_response = client.get("/api/v1/messages/enquiries")
+        self.assertEqual(arranged_response.status_code, 200, arranged_response.json())
+        self.assertTrue(arranged_response.json()[0]["has_viewing_arranged"])
+
+    def test_landlord_enquiries_include_messages_attached_to_landlord_listing(self):
+        landlord = AppUser.objects.create_user(
+            email="attached-listing-landlord@example.com",
+            password="password-123",
+            name="Attached Listing Landlord",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+        )
+        tenant = AppUser.objects.create_user(
+            email="attached-listing-tenant@example.com",
+            password="password-123",
+            name="Attached Listing Tenant",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        admin = AppUser.objects.create_user(
+            email="attached-listing-admin@example.com",
+            password="password-123",
+            name="Attached Listing Admin",
+            role=AppUser.Role.ADMIN,
+            email_verified=True,
+        )
+        listing = Listing.objects.create(
+            landlord=landlord,
+            title="Attached Listing",
+            description="Message is tied to the listing owner",
+            address="4 Attached Street",
+            city="Lagos",
+            property_type="Apartment",
+            bedrooms=1,
+            bathrooms=1,
+            price_per_year=1000000,
+            status=Listing.Status.AVAILABLE,
+        )
+        Message.objects.create(
+            sender=tenant,
+            receiver=admin,
+            listing=listing,
+            content="I sent this about the landlord listing.",
+        )
+
+        client = APIClient()
+        client.force_authenticate(user=landlord)
+        response = client.get("/api/v1/messages/enquiries")
+
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        self.assertEqual(len(payload), 1)
+        self.assertEqual(payload[0]["listing_id"], str(listing.id))
+        self.assertEqual(payload[0]["tenant_id"], str(tenant.id))
+        self.assertEqual(payload[0]["last_message"], "I sent this about the landlord listing.")
 
     def test_listing_thread_can_be_filtered_to_a_single_tenant_conversation(self):
         landlord = AppUser.objects.create_user(

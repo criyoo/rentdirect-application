@@ -56,7 +56,7 @@ export default function Navbar() {
                             About
                         </NavLink>
 
-                        {user?.id ? <NavLink
+                        {authenticatedUser?.id ? <NavLink
                             to="/how-it-works"
                             className="nav-link hover:text-blue-600 transition-colors duration-200"
                         >
@@ -145,13 +145,15 @@ export default function Navbar() {
                                 <span>About</span>
                             </NavLink>
 
-                            <NavLink
-                                to="/how-it-works"
-                                className="flex items-center space-x-2 px-4 py-2 text-gray-700 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors duration-200"
-                                onClick={() => setIsMobileMenuOpen(false)}
-                            >
-                                <span>How it works</span>
-                            </NavLink>
+                            {authenticatedUser?.id ? (
+                                <NavLink
+                                    to="/how-it-works"
+                                    className="flex items-center space-x-2 px-4 py-2 text-gray-700 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors duration-200"
+                                    onClick={() => setIsMobileMenuOpen(false)}
+                                >
+                                    <span>How it works</span>
+                                </NavLink>
+                            ) : null}
 
                             <NavLink
                                 to="/search"

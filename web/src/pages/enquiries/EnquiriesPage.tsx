@@ -4,28 +4,46 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 
 interface Enquiry {
-    id: number
-    listing_id: number
+    id: string
+    listing_id: string
     listing_title: string
     listing_address: string
     listing_city: string
     listing_cover_image_url: string
+    landlord_id: string
     landlord_name: string
     landlord_profile_photo_url?: string | null
     last_message: string
     last_message_time: string
     message_count: number
+    has_viewing_requested: boolean
     has_viewing_arranged: boolean
+}
+
+type PaginatedResponse<T> = {
+    results?: T[]
+}
+
+function normalizeResults<T>(payload: T[] | PaginatedResponse<T> | undefined): T[] {
+    if (!payload) {
+        return []
+    }
+
+    if (Array.isArray(payload)) {
+        return payload
+    }
+
+    return Array.isArray(payload.results) ? payload.results : []
 }
 
 export default function EnquiriesPage() {
     const { user } = useAuth()
 
-    const { data: enquiries, isLoading } = useQuery({
+    const { data: enquiries, isLoading, isError } = useQuery({
         queryKey: ['enquiries'],
         queryFn: async () => {
-            const response = await api.get<Enquiry[]>('/messages/enquiries')
-            return response.data
+            const response = await api.get<Enquiry[] | PaginatedResponse<Enquiry>>('/messages/enquiries')
+            return normalizeResults(response.data)
         },
         enabled: !!user
     })
@@ -39,13 +57,19 @@ export default function EnquiriesPage() {
     }
 
     return (
-        <div className="container-modern py-8">
+        <div className="container-modern py-8 h-[calc(100vh-200px)]">
             <div className="mb-6">
                 <h1 className="text-3xl font-bold text-gray-900">My Enquiries</h1>
                 <p className="text-gray-600 mt-2">Properties you've enquired about and conversations with landlords</p>
             </div>
 
-            {enquiries && enquiries.length > 0 ? (
+            {isError && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                    Unable to load enquiries right now. Please refresh the page.
+                </div>
+            )}
+
+            {!isError && enquiries && enquiries.length > 0 ? (
                 <div className="space-y-6">
                     {enquiries.map((enquiry) => (
                         <div
@@ -116,18 +140,25 @@ export default function EnquiriesPage() {
                                                     >
                                                         View Property
                                                     </Link>
+
+                                                    <Link
+                                                        to={`/landlords/${enquiry.landlord_id}?listingId=${enquiry.listing_id}`}
+                                                        className="inline-flex items-center px-4 py-2 border border-blue-200 text-blue-700 text-sm font-medium rounded-lg hover:bg-blue-50 transition-colors"
+                                                    >
+                                                        View Landlord Profile
+                                                    </Link>
                                                 </div>
 
                                                 <div className="text-right">
                                                     <p className="text-xs text-gray-500">
                                                         {new Date(enquiry.last_message_time).toLocaleDateString()}
                                                     </p>
-                                                    {enquiry.has_viewing_arranged && (
-                                                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 mt-1">
+                                                    {(enquiry.has_viewing_arranged || enquiry.has_viewing_requested) && (
+                                                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium mt-1 ${enquiry.has_viewing_arranged ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>
                                                             <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
                                                                 <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                                                             </svg>
-                                                            Viewing Arranged
+                                                            {enquiry.has_viewing_arranged ? 'Viewing arranged' : 'Viewing Requested'}
                                                         </span>
                                                     )}
                                                 </div>
@@ -139,7 +170,7 @@ export default function EnquiriesPage() {
                         </div>
                     ))}
                 </div>
-            ) : (
+            ) : !isError ? (
                 <div className="text-center py-12">
                     <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                         <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -155,7 +186,7 @@ export default function EnquiriesPage() {
                         Browse Properties
                     </Link>
                 </div>
-            )}
+            ) : null}
         </div>
     )
 }

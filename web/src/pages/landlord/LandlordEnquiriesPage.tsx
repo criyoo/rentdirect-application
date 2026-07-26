@@ -6,8 +6,8 @@ import { useAuth } from '@/hooks/useAuth'
 import { resolveMediaUrl } from '@/lib/api'
 
 interface LandlordEnquiry {
-    id: number
-    listing_id: number
+    id: string
+    listing_id: string
     listing_title: string
     listing_address: string
     listing_city: string
@@ -19,6 +19,7 @@ interface LandlordEnquiry {
     last_message: string
     last_message_time: string
     message_count: number
+    has_viewing_requested: boolean
     has_viewing_arranged: boolean
     has_rental_agreed: boolean
     viewing_date?: string
@@ -30,14 +31,30 @@ interface Conversation {
     listing_id: string | null
 }
 
+type PaginatedResponse<T> = {
+    results?: T[]
+}
+
+function normalizeResults<T>(payload: T[] | PaginatedResponse<T> | undefined): T[] {
+    if (!payload) {
+        return []
+    }
+
+    if (Array.isArray(payload)) {
+        return payload
+    }
+
+    return Array.isArray(payload.results) ? payload.results : []
+}
+
 export default function LandlordEnquiriesPage() {
     const { user } = useAuth()
 
     const { data: enquiries, isLoading, isError } = useQuery({
         queryKey: ['landlord', 'enquiries'],
         queryFn: async () => {
-            const response = await api.get<LandlordEnquiry[]>('/messages/enquiries')
-            return response.data
+            const response = await api.get<LandlordEnquiry[] | PaginatedResponse<LandlordEnquiry>>('/messages/enquiries')
+            return normalizeResults(response.data)
         },
         enabled: !!user,
         retry: false,
@@ -67,7 +84,7 @@ export default function LandlordEnquiriesPage() {
     }
 
     return (
-        <div className="container-modern py-8 mb-80">
+        <div className="container-modern py-8 h-[calc(100vh-200px)]">
             <div className="mb-6">
                 <h1 className="text-3xl font-bold text-gray-900">Property Enquiries</h1>
                 <p className="text-gray-600 mt-2">Tenant enquiries about your properties and viewing arrangements</p>
@@ -134,12 +151,12 @@ export default function LandlordEnquiriesPage() {
 
                                             {/* Status Badges */}
                                             <div className="flex items-center gap-2 mb-3">
-                                                {enquiry.has_viewing_arranged && (
-                                                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                                {(enquiry.has_viewing_arranged || enquiry.has_viewing_requested) && (
+                                                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${enquiry.has_viewing_arranged ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>
                                                         <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
                                                             <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
                                                         </svg>
-                                                        Viewing Arranged
+                                                        {enquiry.has_viewing_arranged ? 'Viewing arranged' : 'Viewing Requested'}
                                                         {enquiry.viewing_date && (
                                                             <span className="ml-1">({new Date(enquiry.viewing_date).toLocaleDateString()})</span>
                                                         )}

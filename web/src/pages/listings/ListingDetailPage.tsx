@@ -299,7 +299,7 @@ export default function ListingDetailPage() {
     const listingLocationSummary = listing
         ? isBronzeTenant
             ? listing.state || 'State not provided'
-            : `${listing.address}, ${listing.city}, ${listing.state || ''} ${listing.postal_code}`.trim()
+            : `${listing.city}, ${listing.state || ''} ${listing.postal_code}`.trim()
         : ''
     const locationQuery = listingLocationSummary
 
@@ -687,15 +687,15 @@ export default function ListingDetailPage() {
                                         </p>
                                     </div>
                                 </div>
-<Link to={landlordProfileHref} className="btn btn-outline">
-                                     View Landlord Profile
-                                 </Link>
-                                 <Link to={`/landlords/${listing.landlord_id}/properties`} className="btn btn-outline">
-                                     View All Landlord Properties
-                                 </Link>
-                             </div>
-                         </div>
-                     )}
+                                <Link to={landlordProfileHref} className="btn btn-outline">
+                                    View Landlord Profile
+                                </Link>
+                                <Link to={`/landlords/${listing.landlord_id}/properties`} className="btn btn-outline">
+                                    View All Landlord Properties
+                                </Link>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Description */}
                     <div className="mt-4 rounded-2xl bg-white p-6 shadow-lg border">

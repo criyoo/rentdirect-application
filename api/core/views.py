@@ -3609,11 +3609,42 @@ class MessageViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        filters = Q(sender=self.request.user) | Q(receiver=self.request.user)
+        if self.request.user.role == AppUser.Role.LANDLORD:
+            filters |= Q(listing__landlord=self.request.user)
+
         return (
-            Message.objects.filter(Q(sender=self.request.user) | Q(receiver=self.request.user))
+            Message.objects.filter(filters)
             .select_related("sender", "receiver", "listing", "listing__landlord")
             .prefetch_related("listing__images")
             .order_by("-created_at")
+        )
+
+    def _conversation_counterpart(self, msg):
+        if self.request.user.role == AppUser.Role.LANDLORD:
+            if msg.sender.role == AppUser.Role.TENANT:
+                return msg.sender
+            if msg.receiver.role == AppUser.Role.TENANT:
+                return msg.receiver
+
+        return msg.receiver if msg.sender_id == self.request.user.id else msg.sender
+
+    def _viewing_arranged_for(self, *, tenant_user, listing):
+        if not tenant_user or not listing:
+            return False
+
+        booking = (
+            Booking.objects
+            .filter(tenant=tenant_user, listing=listing)
+            .order_by("-created_at")
+            .first()
+        )
+        if not booking:
+            return False
+
+        return (
+            booking_progress_step_completed(booking.tenant_rental_progress, "viewing_appointment_booked")
+            or booking_progress_step_completed(booking.landlord_rental_progress, "viewing_appointment_booked")
         )
 
     def perform_create(self, serializer):
@@ -3645,18 +3676,28 @@ class MessageViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"], url_path="enquiries")
     def enquiries(self, request):
         latest = {}
-        message_counts = {}
+        conversation_meta = {}
         for msg in self.get_queryset():
-            counterpart = str(msg.receiver_id if msg.sender_id == request.user.id else msg.sender_id)
+            counterpart_user = self._conversation_counterpart(msg)
+            if request.user.role == AppUser.Role.LANDLORD and counterpart_user.role != AppUser.Role.TENANT:
+                continue
+            counterpart = str(counterpart_user.id)
             listing_key = str(msg.listing_id or "")
             conversation_key = f"{counterpart}:{listing_key}"
-            message_counts[conversation_key] = message_counts.get(conversation_key, 0) + 1
+            meta = conversation_meta.setdefault(
+                conversation_key,
+                {"message_count": 0, "has_viewing_requested": False},
+            )
+            meta["message_count"] += 1
+            if "viewing availability:" in msg.content.lower():
+                meta["has_viewing_requested"] = True
             if conversation_key not in latest:
                 latest[conversation_key] = msg
 
         results = []
         for msg in latest.values():
-            counterpart_id = str(msg.receiver_id if msg.sender_id == request.user.id else msg.sender_id)
+            conversation_counterpart = self._conversation_counterpart(msg)
+            counterpart_id = str(conversation_counterpart.id)
             listing_id = str(msg.listing_id or "")
             conversation_key = f"{counterpart_id}:{listing_id}"
             listing = msg.listing
@@ -3664,9 +3705,10 @@ class MessageViewSet(viewsets.ModelViewSet):
             landlord_user = listing.landlord if listing else (
                 request.user if request.user.role == AppUser.Role.LANDLORD else counterpart_user
             )
-            tenant_user = counterpart_user if counterpart_user.role == AppUser.Role.TENANT else (
+            tenant_user = conversation_counterpart if request.user.role == AppUser.Role.LANDLORD else (
                 request.user if request.user.role == AppUser.Role.TENANT else counterpart_user
             )
+            meta = conversation_meta.get(conversation_key, {})
             results.append({
                 "id": str(msg.id),
                 "listing_id": listing_id,
@@ -3674,6 +3716,7 @@ class MessageViewSet(viewsets.ModelViewSet):
                 "listing_address": listing.address if listing else "",
                 "listing_city": listing.city if listing else "",
                 "listing_cover_image_url": listing.cover_image_url if listing else "",
+                "landlord_id": str(landlord_user.id) if landlord_user else "",
                 "landlord_name": landlord_user.name if landlord_user else "Landlord",
                 "landlord_profile_photo_url": landlord_user.profile_photo_url if landlord_user else None,
                 "tenant_id": str(tenant_user.id) if tenant_user else "",
@@ -3682,8 +3725,9 @@ class MessageViewSet(viewsets.ModelViewSet):
                 "tenant_email": tenant_user.email if tenant_user else "",
                 "last_message": msg.content,
                 "last_message_time": msg.created_at,
-                "message_count": message_counts.get(conversation_key, 1),
-                "has_viewing_arranged": "viewing availability:" in msg.content.lower(),
+                "message_count": meta.get("message_count", 1),
+                "has_viewing_requested": meta.get("has_viewing_requested", False),
+                "has_viewing_arranged": self._viewing_arranged_for(tenant_user=tenant_user, listing=listing),
                 "has_rental_agreed": False,
             })
 
@@ -3694,20 +3738,21 @@ class MessageViewSet(viewsets.ModelViewSet):
     def conversations(self, request):
         latest = {}
         for msg in self.get_queryset():
-            counterpart = str(msg.receiver_id if msg.sender_id == request.user.id else msg.sender_id)
+            counterpart_user = self._conversation_counterpart(msg)
+            counterpart = str(counterpart_user.id)
             if counterpart not in latest:
                 latest[counterpart] = msg
         return Response([
             {
                 "counterpart_id": key,
-                "counterpart_name": counterpart.name,
-                "counterpart_role": counterpart.role,
-                "counterpart_profile_photo_url": counterpart.profile_photo_url,
+                "counterpart_name": counterpart_user.name,
+                "counterpart_role": counterpart_user.role,
+                "counterpart_profile_photo_url": counterpart_user.profile_photo_url,
                 "last_message": {"id": msg.id, "content": msg.content, "created_at": msg.created_at},
                 "listing_id": msg.listing_id,
             }
             for key, msg in latest.items()
-            for counterpart in [msg.receiver if msg.sender_id == request.user.id else msg.sender]
+            for counterpart_user in [self._conversation_counterpart(msg)]
         ])
 
 
