@@ -56,12 +56,12 @@ export default function Navbar() {
                             About
                         </NavLink>
 
-                        <NavLink
+                        {user?.id ? <NavLink
                             to="/how-it-works"
                             className="nav-link hover:text-blue-600 transition-colors duration-200"
                         >
                             How it works
-                        </NavLink>
+                        </NavLink> : null}
 
                         <NavLink
                             to="/search"

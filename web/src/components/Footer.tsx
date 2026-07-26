@@ -13,16 +13,9 @@ import {
 
 const browseLinks = [
     { label: 'Home', href: '/' },
-    { label: 'Search homes', href: '/search' },
-    { label: 'Verify me', href: '/verify' },
-    { label: 'Billing', href: '/billing' },
-]
-
-const landlordLinks = [
-    { label: 'List property', href: '/listings/new' },
-    { label: 'Landlord enquiries', href: '/landlord/enquiries' },
-    { label: 'Identity checks', href: '/landlord/verification' },
-    { label: 'Featured placements', href: '/dashboard/featured-properties' },
+    { label: 'About', href: '/about' },
+    { label: 'How it works', href: '/how-it-works' },
+    { label: 'Search', href: '/search' },
 ]
 
 const footerHighlights = [
@@ -32,13 +25,13 @@ const footerHighlights = [
         icon: HiBadgeCheck,
     },
     {
-        label: 'Direct conversations',
+        label: 'Direct comms',
         description: 'Move from search to enquiry without middlemen.',
         icon: HiUserGroup,
     },
     {
         label: 'Clear payments',
-        description: 'Track rent steps and billing in one workflow.',
+        description: 'Track rental steps and billing in one workflow.',
         icon: HiShieldCheck,
     },
 ]
@@ -57,13 +50,33 @@ export default function Footer() {
             { label: 'Dashboard', href: dashboardPath },
             { label: 'Profile', href: `/profile/${user.id}` },
             { label: 'Saved homes', href: '/favourites' },
+            { label: 'Feedback', href: '/feedback' },
+            { label: 'Complaint', href: '/complaint' },
+            { label: 'Issues', href: '/issues' },
             { label: 'Settings', href: '/dashboard/settings' },
         ]
         : [
             { label: 'Login', href: '/login' },
-            { label: 'Create account', href: '/register' },
+            { label: 'Register', href: '/register' },
             { label: 'Forgot password', href: '/forgot-password' },
-            { label: 'Saved homes', href: '/favourites' },
+            { label: 'Issues', href: '/issues' },
+            { label: 'Complaint', href: '/complaint' },
+            // { label: 'Saved homes', href: '/favourites' },
+        ]
+
+    const landlordLinks = user?.id
+        ? [
+            { label: 'Enquiries', href: '/enquiries' },
+            { label: 'Billings', href: '/billing' },
+            { label: 'Feedback', href: '/feedback' },
+            { label: 'Community Chat', href: '/community-chat' },
+            { label: 'Identity checks', href: '/landlord/verification' },
+            { label: 'Featured properties', href: '/dashboard/featured-properties' },
+        ] : [
+            { label: 'List property', href: '/listings/new' },
+            { label: 'Identity checks', href: '/landlord/verification' },
+            { label: 'Featured placements', href: '/dashboard/featured-properties' },
+            { label: 'Feedback', href: '/feedback' },
         ]
 
     return (
