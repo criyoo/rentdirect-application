@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { api } from '@/lib/api'
+import { api, resolveMediaUrl } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
 import { isNigeriaSelection, nigeriaStateLgaMap, nigerianStates, worldCountryOptions } from '@/lib/locations'
 import { User } from '@/types'
@@ -593,6 +593,8 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [submitError, setSubmitError] = useState('')
     const [fileMap, setFileMap] = useState<FileMap>({})
+    const [profilePhoto, setProfilePhoto] = useState<File | null>(null)
+    const [profilePhotoPreview, setProfilePhotoPreview] = useState('/placeholder.jpg')
 
     const { data: existingProfile } = useQuery({
         queryKey: ['users', 'me', 'tenant-profile'],
@@ -703,6 +705,17 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
         residenceState,
     ])
     const dashboardPath = user?.id ? `/dashboard/tenant/${user.id}` : '/search'
+
+    useEffect(() => {
+        if (!profilePhoto) {
+            setProfilePhotoPreview(resolveMediaUrl(me?.profile_photo_url))
+            return
+        }
+
+        const objectUrl = URL.createObjectURL(profilePhoto)
+        setProfilePhotoPreview(objectUrl)
+        return () => URL.revokeObjectURL(objectUrl)
+    }, [me?.profile_photo_url, profilePhoto])
 
     useEffect(() => {
         if (!existingProfile) {
@@ -833,6 +846,20 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
 
     const submitProfile = useMutation({
         mutationFn: async (data: FormValues) => {
+            if (!profilePhoto && !me?.profile_photo_url) {
+                throw new Error('Profile photo is required.')
+            }
+
+            if (profilePhoto) {
+                const formData = new FormData()
+                formData.append('file', profilePhoto)
+                const photoResponse = await api.post<User>('/users/me/photo', formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' },
+                })
+                qc.setQueryData(['users', 'me'], photoResponse.data)
+                localStorage.setItem('user', JSON.stringify(photoResponse.data))
+            }
+
             const allFiles = Object.values(fileMap).flat()
             const payload: Record<string, any> = {
                 ...data,
@@ -861,9 +888,11 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
         onSuccess: (profile) => {
             qc.setQueryData(['users', 'me', 'tenant-profile'], profile)
             qc.invalidateQueries({ queryKey: ['tenant-profile'] })
+            qc.invalidateQueries({ queryKey: ['users', 'me'] })
             qc.invalidateQueries({ queryKey: ['verification', 'status'] })
             alert('Tenant profile updated successfully.')
             setFileMap({})
+            setProfilePhoto(null)
             setSubmitError('')
             onSaved?.(profile)
         },
@@ -921,6 +950,31 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                 )}
 
                 <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="space-y-6">
+                    <SectionCard title="Profile Photo" step={1} activeStep={activeStep} setActiveStep={setActiveStep}>
+                        <div className="flex flex-col gap-5 md:flex-row md:items-center">
+                            <div className="h-28 w-28 overflow-hidden rounded-full border border-gray-200 bg-gray-50">
+                                <img
+                                    src={profilePhotoPreview}
+                                    alt="Tenant profile"
+                                    className="h-full w-full object-cover"
+                                />
+                            </div>
+                            <div className="flex-1">
+                                <label className="form-label">Upload profile photo</label>
+                                <input
+                                    type="file"
+                                    accept=".jpg,.jpeg,.png,.webp"
+                                    onChange={(event) => setProfilePhoto(event.target.files?.[0] || null)}
+                                    className="block w-full text-sm text-gray-500 file:mr-4 file:rounded-full file:border-0 file:bg-blue-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-blue-700 hover:file:bg-blue-100"
+                                />
+                                <p className="mt-2 text-sm text-gray-500">A clear tenant profile photo is required before saving your profile.</p>
+                                {!profilePhoto && !me?.profile_photo_url && (
+                                    <p className="mt-2 text-sm font-medium text-red-600">Profile photo is required.</p>
+                                )}
+                            </div>
+                        </div>
+                    </SectionCard>
+
                     <SectionCard title="Personal Information" step={1} activeStep={activeStep} setActiveStep={setActiveStep}>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <InputRow label="First Name" error={errors.first_name?.message}>

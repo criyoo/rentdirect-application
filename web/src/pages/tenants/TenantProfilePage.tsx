@@ -319,7 +319,7 @@ export default function TenantProfilePage() {
     })
     const shouldShowEditForm = isOwnTenantProfile && (
         requestedEditMode
-        || (!isLoading && !isError && tenantProfileNeedsDetails(data?.tenant_profile))
+        || (!isLoading && !isError && (!data?.profile_photo_url || tenantProfileNeedsDetails(data?.tenant_profile)))
     )
 
     if (shouldShowEditForm) {
