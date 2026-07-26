@@ -4401,6 +4401,163 @@ class MessageSubscriptionAccessTests(TestCase):
         self.assertFalse(Message.objects.filter(sender=landlord, receiver=tenant).exists())
 
 
+class MessageEnquiryTests(TestCase):
+    def test_landlord_enquiries_include_tenant_messages_for_listing_without_images(self):
+        landlord = AppUser.objects.create_user(
+            email="christian-enquiries@example.com",
+            password="password-123",
+            name="Christian",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+        )
+        tenant = AppUser.objects.create_user(
+            email="jade-enquiries@example.com",
+            password="password-123",
+            name="Jade",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        listing = Listing.objects.create(
+            landlord=landlord,
+            title="Christian Listing",
+            description="Listing without uploaded images",
+            address="1 Enquiry Street",
+            city="Lagos",
+            property_type="Apartment",
+            bedrooms=2,
+            bathrooms=2,
+            price_per_year=1500000,
+            status=Listing.Status.AVAILABLE,
+        )
+        Message.objects.create(
+            sender=tenant,
+            receiver=landlord,
+            listing=listing,
+            content="Viewing Availability: Tomorrow by 6 pm\n\nHi, can I view your house?",
+        )
+        Message.objects.create(
+            sender=tenant,
+            receiver=landlord,
+            listing=listing,
+            content="Let me know if you are available",
+        )
+        latest_message = Message.objects.create(
+            sender=tenant,
+            receiver=landlord,
+            listing=listing,
+            content="I am still unable to see enquiries",
+        )
+
+        client = APIClient()
+        client.force_authenticate(user=landlord)
+        response = client.get("/api/v1/messages/enquiries")
+
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        self.assertEqual(len(payload), 1)
+        self.assertEqual(payload[0]["id"], str(latest_message.id))
+        self.assertEqual(payload[0]["tenant_name"], "Jade")
+        self.assertEqual(payload[0]["landlord_name"], "Christian")
+        self.assertEqual(payload[0]["listing_id"], str(listing.id))
+        self.assertEqual(payload[0]["listing_cover_image_url"], "")
+        self.assertEqual(payload[0]["last_message"], "I am still unable to see enquiries")
+        self.assertEqual(payload[0]["message_count"], 3)
+
+    def test_listing_thread_can_be_filtered_to_a_single_tenant_conversation(self):
+        landlord = AppUser.objects.create_user(
+            email="thread-landlord@example.com",
+            password="password-123",
+            name="Thread Landlord",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+        )
+        tenant = AppUser.objects.create_user(
+            email="thread-tenant@example.com",
+            password="password-123",
+            name="Thread Tenant",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        other_tenant = AppUser.objects.create_user(
+            email="thread-other-tenant@example.com",
+            password="password-123",
+            name="Other Tenant",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        listing = Listing.objects.create(
+            landlord=landlord,
+            title="Shared Listing",
+            description="Multiple tenant conversations",
+            address="2 Thread Street",
+            city="Lagos",
+            property_type="Apartment",
+            bedrooms=2,
+            bathrooms=2,
+            price_per_year=1500000,
+            status=Listing.Status.AVAILABLE,
+        )
+        Message.objects.create(sender=tenant, receiver=landlord, listing=listing, content="Tenant enquiry")
+        reply = Message.objects.create(sender=landlord, receiver=tenant, listing=listing, content="Landlord reply")
+        Message.objects.create(sender=other_tenant, receiver=landlord, listing=listing, content="Other tenant enquiry")
+
+        client = APIClient()
+        client.force_authenticate(user=landlord)
+        response = client.get(f"/api/v1/messages/listing/{listing.id}?counterpart_id={tenant.id}")
+
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        self.assertEqual([item["content"] for item in payload], ["Tenant enquiry", "Landlord reply"])
+        self.assertEqual(payload[1]["id"], str(reply.id))
+
+
+class TenantPublicProfileTests(TestCase):
+    def test_public_tenant_profile_exposes_screening_summary_without_private_contacts(self):
+        tenant = AppUser.objects.create_user(
+            email="public-tenant@example.com",
+            password="password-123",
+            name="Jade Bola Smith",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        TenantProfile.objects.create(
+            user=tenant,
+            status=TenantProfile.Status.APPROVED,
+            first_name="Jade",
+            middle_name="Bola",
+            last_name="Smith",
+            date_of_birth=date(1993, 4, 12),
+            gender="Female",
+            nationality="Nigerian",
+            state_of_origin="Lagos",
+            lga="Ikeja",
+            employment_status="Employed",
+            residence_country="Nigeria",
+            residence_state="Lagos",
+            residence_city="Ikoyi",
+            residence_lga="Eti-Osa",
+            residence_address="Hidden from public profile",
+            length_of_stay="2 years",
+            housing_status="Renting",
+            household_info={"has_pets": False, "work_from_home": True},
+            criminal_declaration={"convicted_of_crime": False},
+        )
+
+        response = APIClient().get(f"/api/v1/users/tenants/{tenant.id}/public-profile")
+
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        self.assertEqual(payload["name"], "Jade Bola Smith")
+        self.assertTrue(payload["is_verified"])
+        self.assertNotIn("email", payload)
+        self.assertNotIn("mobile", payload)
+        self.assertEqual(payload["tenant_profile"]["first_name"], "Jade")
+        self.assertEqual(payload["tenant_profile"]["residence_city"], "Ikoyi")
+        self.assertNotIn("residence_address", payload["tenant_profile"])
+        self.assertNotIn("financial_info", payload["tenant_profile"])
+        self.assertNotIn("guarantor_details", payload["tenant_profile"])
+
+
 class CommunityChatMessageTests(TestCase):
     def activate_gold_subscription(self, user):
         return SubscriptionPayment.objects.create(

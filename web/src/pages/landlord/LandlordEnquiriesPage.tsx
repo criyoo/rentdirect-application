@@ -12,6 +12,7 @@ interface LandlordEnquiry {
     listing_address: string
     listing_city: string
     listing_cover_image_url: string
+    tenant_id: string
     tenant_name: string
     tenant_profile_photo_url?: string | null
     tenant_email: string
@@ -32,15 +33,14 @@ interface Conversation {
 export default function LandlordEnquiriesPage() {
     const { user } = useAuth()
 
-    const { data: enquiries, isLoading } = useQuery({
+    const { data: enquiries, isLoading, isError } = useQuery({
         queryKey: ['landlord', 'enquiries'],
         queryFn: async () => {
-            // This would be replaced with actual API endpoint
-            // For now, we'll simulate the data structure
-            const response = await api.get<LandlordEnquiry[]>('/landlord/enquiries')
+            const response = await api.get<LandlordEnquiry[]>('/messages/enquiries')
             return response.data
         },
-        enabled: !!user
+        enabled: !!user,
+        retry: false,
     })
 
     const { data: conversations } = useQuery({
@@ -60,20 +60,26 @@ export default function LandlordEnquiriesPage() {
 
     if (isLoading) {
         return (
-            <div className="container-page py-8">
+            <div className="container-modern py-8">
                 <div className="text-center">Loading enquiries...</div>
             </div>
         )
     }
 
     return (
-        <div className="container-page py-8">
+        <div className="container-modern py-8 mb-80">
             <div className="mb-6">
                 <h1 className="text-3xl font-bold text-gray-900">Property Enquiries</h1>
                 <p className="text-gray-600 mt-2">Tenant enquiries about your properties and viewing arrangements</p>
             </div>
 
-            {enquiries && enquiries.length > 0 ? (
+            {isError && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                    Unable to load enquiries right now. Please refresh the page.
+                </div>
+            )}
+
+            {!isError && enquiries && enquiries.length > 0 ? (
                 <div className="space-y-6">
                     {enquiries.map((enquiry) => (
                         <div
@@ -101,7 +107,7 @@ export default function LandlordEnquiriesPage() {
                                                 {enquiry.listing_title}
                                             </h3>
                                             <p className="text-sm text-gray-600 mb-2">
-                                                {enquiry.listing_address}, {enquiry.listing_city}
+                                                {enquiry.listing_city}
                                             </p>
 
                                             <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
@@ -155,13 +161,20 @@ export default function LandlordEnquiriesPage() {
                                             <div className="flex items-center justify-between">
                                                 <div className="flex items-center gap-3">
                                                     <Link
-                                                        to={`/landlord/chat/${enquiry.id}`}
+                                                        to={`/contact-landlord/${enquiry.listing_id}?tenantId=${encodeURIComponent(enquiry.tenant_id)}`}
                                                         className="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
                                                     >
                                                         <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                                                         </svg>
                                                         Continue Chat
+                                                    </Link>
+
+                                                    <Link
+                                                        to={`/tenants/${enquiry.tenant_id}`}
+                                                        className="inline-flex items-center px-4 py-2 border border-blue-200 text-blue-700 text-sm font-medium rounded-lg hover:bg-blue-50 transition-colors"
+                                                    >
+                                                        Tenant Profile
                                                     </Link>
 
                                                     <Link
@@ -185,7 +198,7 @@ export default function LandlordEnquiriesPage() {
                         </div>
                     ))}
                 </div>
-            ) : (
+            ) : !isError ? (
                 <div className="text-center py-12">
                     <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                         <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -201,7 +214,7 @@ export default function LandlordEnquiriesPage() {
                         List a Property
                     </Link>
                 </div>
-            )}
+            ) : null}
         </div>
     )
 }

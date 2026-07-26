@@ -1,4 +1,4 @@
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { Listing, User } from '@/types'
@@ -17,14 +17,23 @@ interface Message {
     created_at: string
 }
 
+type PublicTenantProfile = {
+    id: string
+    name: string
+    profile_photo_url?: string | null
+}
+
 export default function ContactLandlordPage() {
     const { id } = useParams()
+    const [searchParams] = useSearchParams()
     const { user } = useAuth()
     const navigate = useNavigate()
     const qc = useQueryClient()
     const [message, setMessage] = useState('')
     const [viewingAvailability, setViewingAvailability] = useState('')
     const [isTyping, setIsTyping] = useState(false)
+    const tenantId = searchParams.get('tenantId') || ''
+    const isLandlordChat = user?.role === 'landlord' && Boolean(tenantId)
 
     const { data: listing, isLoading: listingLoading } = useQuery({
         queryKey: ['listing', id],
@@ -33,9 +42,11 @@ export default function ContactLandlordPage() {
     })
 
     const { data: messages, isLoading: messagesLoading } = useQuery({
-        queryKey: ['messages', 'listing', id],
+        queryKey: ['messages', 'listing', id, tenantId],
         enabled: !!id && !!user,
-        queryFn: async () => (await api.get<Message[]>(`/messages/listing/${id}`)).data
+        queryFn: async () => (await api.get<Message[]>(`/messages/listing/${id}`, {
+            params: isLandlordChat ? { counterpart_id: tenantId } : undefined,
+        })).data
     })
 
     const { data: currentUser } = useQuery({
@@ -48,6 +59,11 @@ export default function ContactLandlordPage() {
         queryKey: ['users', listing?.landlord_id],
         enabled: !!listing?.landlord_id,
         queryFn: async () => (await api.get<User>(`/users/${listing!.landlord_id}`)).data,
+    })
+    const { data: tenantUser } = useQuery({
+        queryKey: ['tenant', 'public-profile', tenantId],
+        enabled: isLandlordChat,
+        queryFn: async () => (await api.get<PublicTenantProfile>(`/users/tenants/${tenantId}/public-profile`)).data,
     })
     const { data: subscriptionPaymentResponse } = useQuery({
         queryKey: ['subscription-payments', 'contact-landlord', user?.id],
@@ -83,11 +99,11 @@ export default function ContactLandlordPage() {
 
     const sendMessage = useMutation({
         mutationFn: async () => {
-            const fullMessage = viewingAvailability.trim()
+            const fullMessage = !isLandlordChat && viewingAvailability.trim()
                 ? `Viewing Availability: ${viewingAvailability}\n\n${message}`
                 : message
             await api.post('/messages', {
-                receiver_id: listing!.landlord_id,
+                receiver_id: isLandlordChat ? tenantId : listing!.landlord_id,
                 listing_id: listing!.id,
                 content: fullMessage
             })
@@ -95,7 +111,7 @@ export default function ContactLandlordPage() {
         onSuccess: () => {
             setMessage('')
             setViewingAvailability('')
-            qc.invalidateQueries({ queryKey: ['messages', 'listing', id] })
+            qc.invalidateQueries({ queryKey: ['messages', 'listing', id, tenantId] })
         },
         onError: (error) => {
             const detail = (error as any)?.response?.data?.detail
@@ -110,7 +126,8 @@ export default function ContactLandlordPage() {
             navigate('/billing')
             return
         }
-        const fullMessage = viewingAvailability.trim()
+        if (isLandlordChat && !tenantId) return
+        const fullMessage = !isLandlordChat && viewingAvailability.trim()
             ? `Viewing Availability: ${viewingAvailability}\n\n${message}`
             : message
         if (containsContactInfo(fullMessage)) {
@@ -199,6 +216,15 @@ export default function ContactLandlordPage() {
         )
     }
 
+    const landlordDisplayName = landlordUser?.name || listing.landlord_name || 'Landlord'
+    const landlordFirstName = landlordDisplayName.split(/\s+/)[0] || 'Landlord'
+    const landlordPhotoUrl = landlordUser?.profile_photo_url || listing.landlord_profile_photo_url
+    const counterpartName = isLandlordChat ? tenantUser?.name || 'Tenant' : landlordDisplayName
+    const counterpartPhotoUrl = isLandlordChat ? tenantUser?.profile_photo_url : landlordPhotoUrl
+    const counterpartFirstName = counterpartName.split(/\s+/)[0] || (isLandlordChat ? 'Tenant' : 'Landlord')
+    const sidebarName = isLandlordChat ? counterpartFirstName : landlordFirstName
+    const sidebarPhotoUrl = isLandlordChat ? counterpartPhotoUrl : landlordPhotoUrl
+
     return (
         <div className="min-h-screen bg-gray-50">
             {/* Header */}
@@ -215,8 +241,8 @@ export default function ContactLandlordPage() {
                                 </svg>
                             </button>
                             <div>
-                                <h1 className="text-2xl font-bold text-gray-900">Contact Landlord</h1>
-                                <p className="text-gray-600">Send a message about this property</p>
+                                <h1 className="text-2xl font-bold text-gray-900">{isLandlordChat ? `Chat with ${counterpartFirstName}` : 'Contact Landlord'}</h1>
+                                <p className="text-gray-600">{isLandlordChat ? 'Continue the tenant conversation about this property' : 'Send a message about this property'}</p>
                             </div>
                         </div>
                     </div>
@@ -228,13 +254,27 @@ export default function ContactLandlordPage() {
                     {/* Property Details Sidebar */}
                     <div className="lg:col-span-1 h-full">
                         <div className="bg-white rounded-2xl shadow-sm border p-5 h-full overflow-y-auto">
-                            <h2 className="text-lg font-semibold text-gray-900 mb-4">{listing.property_type} Details</h2>
+                            <div className="mb-4 flex flex-col items-center text-center">
+                                <img
+                                    src={resolveMediaUrl(sidebarPhotoUrl)}
+                                    alt={sidebarName}
+                                    className="h-16 w-16 rounded-full object-cover border border-gray-200"
+                                    onError={(event) => {
+                                        event.currentTarget.src = '/placeholder.jpg'
+                                    }}
+                                />
+                                <p className="mt-2 text-sm font-semibold text-gray-900">
+                                    {sidebarName}
+                                </p>
+                            </div>
 
-                            <div className="space-y-4">
+                            <h2 className="text-lg font-semibold text-gray-900 mb-3">{listing.property_type} Details</h2>
+
+                            <div className="space-y-3">
                                 <img
                                     src={resolveMediaUrl(listing.cover_image_url)}
                                     alt={listing.title}
-                                    className="w-full h-48 object-cover rounded-lg"
+                                    className="w-full h-36 object-cover rounded-lg"
                                     onError={(e) => {
                                         e.currentTarget.src = '/placeholder.jpg'
                                     }}
@@ -243,9 +283,10 @@ export default function ContactLandlordPage() {
                                 <div>
                                     <h3 className="font-bold text-gray-900 text-[20px]">{listing.title}</h3>
                                     <p className="text-gray-600 text-sm">
-                                        {isBronzeTenant ? listing.state || 'State not provided' : listing.address}
+                                        {isBronzeTenant ? listing.state || 'State not provided' : listing.city}, {listing.state}<br />
+                                        <p className="text-xs">Zip Code: {listing.postal_code}</p>
                                     </p>
-                                    {!isBronzeTenant && <p className="text-gray-600 text-sm">{listing.city}, {listing.postal_code}</p>}
+                                    {/* {!isBronzeTenant && <p className="text-gray-600 text-sm">{listing.city}, {listing.postal_code}</p>} */}
                                 </div>
 
                                 <div className="flex items-center justify-between py-2 border-t border-gray-100">
@@ -302,27 +343,28 @@ export default function ContactLandlordPage() {
                                 </div>
                             </div>
 
-                            {/* Viewing Availability Section */}
-                            <div className="p-6 text-center border-b border-gray-200">
-                                <div className="space-y-3">
-                                    <label className="block text-sm font-medium text-gray-700">
-                                        When are you available for viewings? <span className="text-gray-500">(max 50 characters)</span>
-                                    </label>
-                                    <textarea
-                                        value={viewingAvailability}
-                                        onChange={(e) => setViewingAvailability(e.target.value.slice(0, 50))}
-                                        placeholder="e.g., Weekdays after 5pm, weekends anytime..."
-                                        className="w-full max-w-xl px-4 py-2 border border-gray-300 rounded-xl resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                        rows={1}
-                                        maxLength={100}
-                                        disabled={sendMessage.isPending}
-                                    />
-                                    <div className="flex justify-center text-xs text-gray-500">
-                                        <span>This will be included in your message to the landlord</span>
-                                        <span>{viewingAvailability.length}/50</span>
+                            {!isLandlordChat && (
+                                <div className="p-6 text-center border-b border-gray-200">
+                                    <div className="space-y-3">
+                                        <label className="block text-sm font-medium text-gray-700">
+                                            When are you available for viewings? <span className="text-gray-500">(max 50 characters)</span>
+                                        </label>
+                                        <textarea
+                                            value={viewingAvailability}
+                                            onChange={(e) => setViewingAvailability(e.target.value.slice(0, 50))}
+                                            placeholder="e.g., Weekdays after 5pm, weekends anytime..."
+                                            className="w-full max-w-xl px-4 py-2 border border-gray-300 rounded-xl resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            rows={1}
+                                            maxLength={100}
+                                            disabled={sendMessage.isPending}
+                                        />
+                                        <div className="flex justify-center text-xs text-gray-500">
+                                            <span>This will be included in your message to the landlord</span>
+                                            <span>{viewingAvailability.length}/50</span>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
+                            )}
 
                             {/* Messages List */}
                             <div className="flex-1 overflow-y-auto p-4 space-y-4 flex flex-col justify-end">
@@ -338,8 +380,8 @@ export default function ContactLandlordPage() {
                                         >
                                             {msg.sender_id !== String(user?.id || '') && (
                                                 <img
-                                                    src={resolveMediaUrl(landlordUser?.profile_photo_url)}
-                                                    alt={landlordUser?.name || 'Landlord'}
+                                                    src={resolveMediaUrl(counterpartPhotoUrl)}
+                                                    alt={counterpartFirstName}
                                                     className="h-8 w-8 rounded-full object-cover"
                                                     onError={(event) => {
                                                         event.currentTarget.src = '/placeholder.jpg'
@@ -402,7 +444,7 @@ export default function ContactLandlordPage() {
                                     </div>
                                     <button
                                         onClick={handleSendMessage}
-                                            disabled={sendMessage.isPending || !message.trim()}
+                                        disabled={sendMessage.isPending || !message.trim()}
                                         className="px-6 py-4 bg-blue-600 text-white rounded-2xl hover:bg-blue-700 disabled:opacity-90 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
                                     >
                                         {sendMessage.isPending ? (

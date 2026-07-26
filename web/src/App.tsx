@@ -26,6 +26,7 @@ import LandlordVerificationPage from './pages/landlord/LandlordVerificationPage'
 import LandlordIdentityVerificationPage from './pages/landlord/LandlordIdentityVerificationPage'
 import PublicLandlordProfilePage from './pages/landlord/PublicLandlordProfilePage'
 import PublicLandlordPropertiesPage from './pages/landlord/PublicLandlordPropertiesPage'
+import PublicTenantProfilePage from './pages/tenants/PublicTenantProfilePage'
 import TenantProfilePage from './pages/tenants/TenantProfilePage'
 import BillingPage from './pages/billing/BillingPage'
 import SubscriptionPaymentPage from './pages/billing/SubscriptionPaymentPage'
@@ -93,6 +94,7 @@ function App()
                                     <TenantProfilePage />
                                 </ProtectedRoute>
                             } />
+                            <Route path="/tenants/:tenantId" element={<PublicTenantProfilePage />} />
                             <Route path="/billing" element={
                                 <ProtectedRoute requiredRoles={['tenant', 'landlord']}>
                                     <BillingPage />

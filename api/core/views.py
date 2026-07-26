@@ -699,6 +699,55 @@ def build_landlord_public_profile_payload(landlord: AppUser) -> dict:
     }
 
 
+def build_tenant_public_profile_payload(tenant: AppUser) -> dict:
+    profile = TenantProfile.objects.filter(user=tenant).first()
+    profile_payload = None
+    if profile:
+        profile_payload = {
+            "status": profile.status,
+            "first_name": profile.first_name,
+            "middle_name": profile.middle_name,
+            "last_name": profile.last_name,
+            "gender": profile.gender,
+            "nationality": profile.nationality,
+            "state_of_origin": profile.state_of_origin,
+            "lga": profile.lga,
+            "employment_status": profile.employment_status,
+            "residence_country": profile.residence_country,
+            "residence_state": profile.residence_state,
+            "residence_city": profile.residence_city,
+            "residence_lga": profile.residence_lga,
+            "length_of_stay": profile.length_of_stay,
+            "housing_status": profile.housing_status,
+            "household_info": profile.household_info,
+            "social_presence": profile.social_presence,
+            "criminal_declaration": profile.criminal_declaration,
+        }
+
+    enquiry_count = Message.objects.filter(sender=tenant, receiver__role=AppUser.Role.LANDLORD).count()
+    application_count = Booking.objects.filter(tenant=tenant).count()
+    completed_tenancies = Booking.objects.filter(tenant=tenant, status=Booking.Status.COMPLETED).count()
+    years_on_platform = round(max((timezone.now().date() - tenant.created_at.date()).days / 365.25, 0), 1)
+
+    return {
+        "id": str(tenant.id),
+        "name": tenant.name,
+        "role": tenant.role,
+        "profile_photo_url": tenant.profile_photo_url,
+        "state_of_origin": tenant.state_of_origin,
+        "residence": tenant.residence,
+        "is_verified": tenant.is_verified,
+        "email_verified": tenant.email_verified,
+        "tenant_profile": profile_payload,
+        "metrics": {
+            "enquiries_sent": enquiry_count,
+            "applications_submitted": application_count,
+            "completed_tenancies": completed_tenancies,
+            "years_on_platform": years_on_platform,
+        },
+    }
+
+
 def build_booking_checkout(payment: Payment) -> dict:
     booking = payment.booking
     return build_checkout_payload(
@@ -2313,6 +2362,14 @@ class UserViewSet(viewsets.GenericViewSet):
             }
         )
 
+    @action(detail=False, methods=["get"], url_path="tenants/(?P<tenant_id>[^/.]+)/public-profile", permission_classes=[AllowAny])
+    def tenant_public_profile(self, request, tenant_id=None):
+        tenant = get_object_or_404(
+            User.objects.filter(role=AppUser.Role.TENANT),
+            id=tenant_id,
+        )
+        return Response(build_tenant_public_profile_payload(tenant))
+
     @action(detail=False, methods=["get"], url_path="landlords/(?P<landlord_id>[^/.]+)/public-profile", permission_classes=[AllowAny])
     def landlord_public_profile(self, request, landlord_id=None):
         landlord = get_object_or_404(
@@ -3500,7 +3557,8 @@ class MessageViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return (
             Message.objects.filter(Q(sender=self.request.user) | Q(receiver=self.request.user))
-            .select_related("sender", "receiver")
+            .select_related("sender", "receiver", "listing", "listing__landlord")
+            .prefetch_related("listing__images")
             .order_by("-created_at")
         )
 
@@ -3525,62 +3583,60 @@ class MessageViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"], url_path="listing/(?P<listing_id>[^/.]+)")
     def listing_thread(self, request, listing_id=None):
         qs = self.get_queryset().filter(listing_id=listing_id).order_by("created_at")
+        counterpart_id = (request.query_params.get("counterpart_id") or "").strip()
+        if counterpart_id:
+            qs = qs.filter(Q(sender_id=counterpart_id) | Q(receiver_id=counterpart_id))
         return Response(self.get_serializer(qs, many=True).data)
 
-    @action(detail=False, methods=["get"], url_path="conversations")
     @action(detail=False, methods=["get"], url_path="enquiries")
     def enquiries(self, request):
         latest = {}
+        message_counts = {}
         for msg in self.get_queryset():
             counterpart = str(msg.receiver_id if msg.sender_id == request.user.id else msg.sender_id)
             listing_key = str(msg.listing_id or "")
             conversation_key = f"{counterpart}:{listing_key}"
+            message_counts[conversation_key] = message_counts.get(conversation_key, 0) + 1
             if conversation_key not in latest:
                 latest[conversation_key] = msg
-
-        listing_ids = set()
-        counterpart_ids = set()
-        for msg in latest.values():
-            if msg.listing_id:
-                listing_ids.add(str(msg.listing_id))
-            counterpart_id = str(msg.receiver_id if msg.sender_id == request.user.id else msg.sender_id)
-            counterpart_ids.add(counterpart_id)
-
-        listings_map = {}
-        if listing_ids:
-            for listing in Listing.objects.filter(id__in=listing_ids).only("id", "title", "address", "city", "cover_image", "landlord_id"):
-                listings_map[str(listing.id)] = listing
-                counterpart_ids.add(str(listing.landlord_id))
-
-        users_map = {}
-        if counterpart_ids:
-            for u in User.objects.filter(id__in=counterpart_ids).only("id", "name", "profile_photo"):
-                users_map[str(u.id)] = u
 
         results = []
         for msg in latest.values():
             counterpart_id = str(msg.receiver_id if msg.sender_id == request.user.id else msg.sender_id)
             listing_id = str(msg.listing_id or "")
-            listing = listings_map.get(listing_id)
-            counterpart_user = users_map.get(counterpart_id)
+            conversation_key = f"{counterpart_id}:{listing_id}"
+            listing = msg.listing
+            counterpart_user = msg.receiver if msg.sender_id == request.user.id else msg.sender
+            landlord_user = listing.landlord if listing else (
+                request.user if request.user.role == AppUser.Role.LANDLORD else counterpart_user
+            )
+            tenant_user = counterpart_user if counterpart_user.role == AppUser.Role.TENANT else (
+                request.user if request.user.role == AppUser.Role.TENANT else counterpart_user
+            )
             results.append({
-                "id": msg.id,
+                "id": str(msg.id),
                 "listing_id": listing_id,
                 "listing_title": listing.title if listing else "Unknown Property",
                 "listing_address": listing.address if listing else "",
                 "listing_city": listing.city if listing else "",
-                "listing_cover_image_url": listing.cover_image_url if listing and listing.cover_image else "",
-                "landlord_name": counterpart_user.name if counterpart_user else "Landlord",
-                "landlord_profile_photo_url": counterpart_user.profile_photo_url if counterpart_user else None,
+                "listing_cover_image_url": listing.cover_image_url if listing else "",
+                "landlord_name": landlord_user.name if landlord_user else "Landlord",
+                "landlord_profile_photo_url": landlord_user.profile_photo_url if landlord_user else None,
+                "tenant_id": str(tenant_user.id) if tenant_user else "",
+                "tenant_name": tenant_user.name if tenant_user else "Tenant",
+                "tenant_profile_photo_url": tenant_user.profile_photo_url if tenant_user else None,
+                "tenant_email": tenant_user.email if tenant_user else "",
                 "last_message": msg.content,
                 "last_message_time": msg.created_at,
-                "message_count": 1,
-                "has_viewing_arranged": False,
+                "message_count": message_counts.get(conversation_key, 1),
+                "has_viewing_arranged": "viewing availability:" in msg.content.lower(),
+                "has_rental_agreed": False,
             })
 
         results.sort(key=lambda r: r["last_message_time"], reverse=True)
         return Response(results)
 
+    @action(detail=False, methods=["get"], url_path="conversations")
     def conversations(self, request):
         latest = {}
         for msg in self.get_queryset():
