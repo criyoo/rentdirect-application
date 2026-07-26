@@ -23,7 +23,6 @@ import RentalProgressPage from './pages/rental/RentalProgressPage'
 import ContactLandlordPage from './pages/messages/ContactLandlordPage'
 import LandlordEnquiriesPage from './pages/landlord/LandlordEnquiriesPage'
 import LandlordVerificationPage from './pages/landlord/LandlordVerificationPage'
-import LandlordIdentityVerificationPage from './pages/landlord/LandlordIdentityVerificationPage'
 import PublicLandlordProfilePage from './pages/landlord/PublicLandlordProfilePage'
 import PublicLandlordPropertiesPage from './pages/landlord/PublicLandlordPropertiesPage'
 import PublicTenantProfilePage from './pages/tenants/PublicTenantProfilePage'
@@ -152,11 +151,6 @@ function App()
                             <Route path="/landlord/verification" element={
                                 <ProtectedRoute requiredRoles={['landlord']}>
                                     <LandlordVerificationPage />
-                                </ProtectedRoute>
-                            } />
-                            <Route path="/landlord/verification/identity" element={
-                                <ProtectedRoute requiredRoles={['landlord']}>
-                                    <LandlordIdentityVerificationPage />
                                 </ProtectedRoute>
                             } />
                             <Route path="/landlords/:landlordId/properties" element={<PublicLandlordPropertiesPage />} />
