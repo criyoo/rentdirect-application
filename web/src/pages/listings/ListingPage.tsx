@@ -42,6 +42,8 @@ export default function ListingPage() {
                             className="h-96 w-full rounded-2xl object-cover shadow-lg mb-4"
                             src={resolveMediaUrl(selectedImage || data.cover_image_url)}
                             alt={data.title}
+                            loading="eager"
+                            decoding="async"
                         />
 
                         {/* Thumbnails */}
@@ -52,6 +54,8 @@ export default function ListingPage() {
                                         key={idx}
                                         src={resolveMediaUrl(img)}
                                         alt={`Additional ${idx + 1}`}
+                                        loading="lazy"
+                                        decoding="async"
                                         className="h-20 w-20 object-cover rounded cursor-pointer border border-gray-300 hover:border-blue-500 transition-colors"
                                         onClick={() => setSelectedImage(img || null)}
                                     />

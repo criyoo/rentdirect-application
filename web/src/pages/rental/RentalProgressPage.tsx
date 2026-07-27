@@ -152,6 +152,8 @@ export default function RentalProgressPage() {
                                     <img
                                         src={resolveMediaUrl(booking.listing_cover_image_url)}
                                         alt={booking.listing_title || 'Rental property'}
+                                        loading="eager"
+                                        decoding="async"
                                         className="h-full w-full object-cover"
                                         onError={(event) => {
                                             event.currentTarget.src = '/placeholder.jpg'

@@ -336,6 +336,8 @@ export default function ListingDetailPage() {
                                 className="h-full w-full object-cover"
                                 src={resolveMediaUrl(allImages[currentImageIndex])}
                                 alt={`${listing.title} - Image ${currentImageIndex + 1}`}
+                                loading="eager"
+                                decoding="async"
                                 onError={(e) => {
                                     e.currentTarget.src = '/placeholder.jpg'
                                 }}
@@ -404,6 +406,8 @@ export default function ListingDetailPage() {
                                             <img
                                                 src={resolveMediaUrl(img)}
                                                 alt={`${listing.title} - thumbnail ${idx + 1}`}
+                                                loading="lazy"
+                                                decoding="async"
                                                 className="w-full h-full object-cover"
                                                 onError={(e) => {
                                                     e.currentTarget.src = '/placeholder.jpg'
@@ -625,6 +629,8 @@ export default function ListingDetailPage() {
                                     <img
                                         src={resolveMediaUrl(landlordProfile.profile_photo_url || listing.landlord_profile_photo_url)}
                                         alt={landlordProfile.display_name}
+                                        loading="lazy"
+                                        decoding="async"
                                         className="h-20 w-20 rounded-2xl object-cover ring-4 ring-slate-100"
                                     />
                                     <div>

@@ -46,6 +46,7 @@ from .pricing import calculate_booking_total, calculate_remaining_balance, resol
 from .subscription_access import user_has_bronze_access
 from .tenant_scoring import build_tenant_screening_summary
 from .location_services import decimal_from_float, resolve_city_state_coordinates
+from .image_optimization import optimize_listing_image
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -585,9 +586,9 @@ class ListingSerializer(serializers.ModelSerializer):
         listing = Listing.objects.create(landlord=request.user, **validated_data)
         cover = request.FILES.get("cover_image")
         if cover:
-            ListingImage.objects.create(listing=listing, file=cover, is_cover=True, sort_order=0)
+            ListingImage.objects.create(listing=listing, file=optimize_listing_image(cover), is_cover=True, sort_order=0)
         for index, image in enumerate(request.FILES.getlist("images")[:9], start=1):
-            ListingImage.objects.create(listing=listing, file=image, sort_order=index)
+            ListingImage.objects.create(listing=listing, file=optimize_listing_image(image), sort_order=index)
         self._apply_property_document_submission(listing, property_verification_method)
         return listing
 
@@ -612,7 +613,7 @@ class ListingSerializer(serializers.ModelSerializer):
             for index, image in enumerate(uploaded_images):
                 ListingImage.objects.create(
                     listing=instance,
-                    file=image,
+                    file=optimize_listing_image(image),
                     is_cover=index == 0,
                     sort_order=index,
                 )

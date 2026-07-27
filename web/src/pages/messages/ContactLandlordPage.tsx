@@ -258,6 +258,8 @@ export default function ContactLandlordPage() {
                                 <img
                                     src={resolveMediaUrl(sidebarPhotoUrl)}
                                     alt={sidebarName}
+                                    loading="eager"
+                                    decoding="async"
                                     className="h-16 w-16 rounded-full object-cover border border-gray-200"
                                     onError={(event) => {
                                         event.currentTarget.src = '/placeholder.jpg'
@@ -280,6 +282,8 @@ export default function ContactLandlordPage() {
                                     <img
                                         src={resolveMediaUrl(listing.cover_image_url)}
                                         alt={listing.title}
+                                        loading="lazy"
+                                        decoding="async"
                                         className="h-36 w-full object-cover transition-transform duration-200 group-hover:scale-105"
                                         onError={(e) => {
                                             e.currentTarget.src = '/placeholder.jpg'
@@ -389,6 +393,8 @@ export default function ContactLandlordPage() {
                                                 <img
                                                     src={resolveMediaUrl(counterpartPhotoUrl)}
                                                     alt={counterpartFirstName}
+                                                    loading="lazy"
+                                                    decoding="async"
                                                     className="h-8 w-8 rounded-full object-cover"
                                                     onError={(event) => {
                                                         event.currentTarget.src = '/placeholder.jpg'
@@ -414,6 +420,8 @@ export default function ContactLandlordPage() {
                                                 <img
                                                     src={resolveMediaUrl(currentUser?.profile_photo_url)}
                                                     alt={currentUser?.name || 'You'}
+                                                    loading="lazy"
+                                                    decoding="async"
                                                     className="h-8 w-8 rounded-full object-cover"
                                                     onError={(event) => {
                                                         event.currentTarget.src = '/placeholder.jpg'

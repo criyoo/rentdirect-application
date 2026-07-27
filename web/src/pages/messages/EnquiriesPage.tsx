@@ -32,6 +32,8 @@ export default function EnquiriesPage() {
                             <img
                                 src={resolveMediaUrl(c.counterpart_profile_photo_url)}
                                 alt={c.counterpart_name}
+                                loading="lazy"
+                                decoding="async"
                                 className="h-12 w-12 rounded-full object-cover flex-shrink-0"
                                 onError={(e) => {
                                     e.currentTarget.src = '/placeholder.jpg'
@@ -53,4 +55,3 @@ export default function EnquiriesPage() {
         </div>
     )
 }
-

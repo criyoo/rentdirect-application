@@ -210,6 +210,7 @@ AWS_S3_REGION_NAME = os.environ.get("AWS_S3_REGION_NAME", os.environ.get("AWS_RE
 AWS_S3_CUSTOM_DOMAIN = os.environ.get("AWS_S3_CUSTOM_DOMAIN", "").strip()
 AWS_S3_ENDPOINT_URL = os.environ.get("AWS_S3_ENDPOINT_URL", "").strip() or None
 AWS_S3_URL_PROTOCOL = url_protocol(os.environ.get("AWS_S3_URL_PROTOCOL"))
+AWS_S3_CACHE_CONTROL = os.environ.get("AWS_S3_CACHE_CONTROL", "public, max-age=31536000, immutable").strip()
 if AWS_STORAGE_BUCKET_NAME:
     s3_options = {
         "bucket_name": AWS_STORAGE_BUCKET_NAME,
@@ -221,6 +222,8 @@ if AWS_STORAGE_BUCKET_NAME:
         "querystring_auth": False,
         "url_protocol": AWS_S3_URL_PROTOCOL,
     }
+    if AWS_S3_CACHE_CONTROL:
+        s3_options["object_parameters"] = {"CacheControl": AWS_S3_CACHE_CONTROL}
     STORAGES["default"] = {
         "BACKEND": "storages.backends.s3.S3Storage",
         "OPTIONS": s3_options,

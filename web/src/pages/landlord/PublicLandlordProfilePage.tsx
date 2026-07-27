@@ -139,6 +139,8 @@ export default function PublicLandlordProfilePage() {
                         <img
                             src={resolveMediaUrl(profile.profile_photo_url)}
                             alt={profile.display_name}
+                            loading="eager"
+                            decoding="async"
                             className="h-28 w-28 rounded-3xl object-cover ring-4 ring-slate-100"
                         />
                         <div>

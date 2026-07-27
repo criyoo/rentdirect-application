@@ -98,6 +98,7 @@ from .location_services import (
     listing_neighbourhood,
     nearest_amenities_for_coordinates,
 )
+from .image_optimization import optimize_profile_image
 from .serializers import (
     BookingSerializer,
     CommunityChatMessageSerializer,
@@ -2160,7 +2161,7 @@ class UserViewSet(viewsets.GenericViewSet):
             raise ValidationError({"file": "Profile photo is required."})
         if upload.size > settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024:
             raise ValidationError({"file": "File is too large"})
-        request.user.profile_photo = upload
+        request.user.profile_photo = optimize_profile_image(upload)
         request.user.save(update_fields=["profile_photo", "updated_at"])
         return Response(self.get_serializer(request.user).data)
 

@@ -423,6 +423,8 @@ export default function TenantProfilePage() {
                         <img
                             src={displayPhoto}
                             alt={fullName || 'Tenant'}
+                            loading="eager"
+                            decoding="async"
                             className="aspect-square w-full rounded-lg object-cover"
                         />
                     </div>

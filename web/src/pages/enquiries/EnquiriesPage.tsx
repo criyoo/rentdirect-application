@@ -82,6 +82,8 @@ export default function EnquiriesPage() {
                                     <img
                                         src={resolveMediaUrl(enquiry.listing_cover_image_url)}
                                         alt={enquiry.listing_title}
+                                        loading="lazy"
+                                        decoding="async"
                                         className="w-24 h-24 object-cover rounded-lg"
                                         onError={(e) => {
                                             e.currentTarget.src = '/placeholder.jpg'
@@ -105,6 +107,8 @@ export default function EnquiriesPage() {
                                                     <img
                                                         src={resolveMediaUrl(enquiry.landlord_profile_photo_url)}
                                                         alt={enquiry.landlord_name}
+                                                        loading="lazy"
+                                                        decoding="async"
                                                         className="h-8 w-8 rounded-full object-cover"
                                                         onError={(e) => {
                                                             e.currentTarget.src = '/placeholder.jpg'

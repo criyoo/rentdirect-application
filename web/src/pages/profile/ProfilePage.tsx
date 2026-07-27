@@ -172,6 +172,8 @@ export default function ProfilePage() {
                         <img
                             src={resolveMediaUrl(me.profile_photo_url)}
                             alt={me.name || 'Landlord'}
+                            loading="eager"
+                            decoding="async"
                             className="h-28 w-28 rounded-2xl object-cover ring-4 ring-slate-100"
                         />
                         <div>

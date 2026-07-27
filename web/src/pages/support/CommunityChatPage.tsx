@@ -172,6 +172,8 @@ export default function CommunityChatPage() {
                                                     <img
                                                         src={resolveMediaUrl(message.sender_photo_url)}
                                                         alt={message.sender_name}
+                                                        loading="lazy"
+                                                        decoding="async"
                                                         className="h-9 w-9 rounded-full object-cover"
                                                         onError={handleAvatarError}
                                                     />
@@ -186,6 +188,8 @@ export default function CommunityChatPage() {
                                                     <img
                                                         src={resolveMediaUrl(message.sender_photo_url || user?.profile_photo_url)}
                                                         alt={message.sender_name}
+                                                        loading="lazy"
+                                                        decoding="async"
                                                         className="h-9 w-9 rounded-full object-cover"
                                                         onError={handleAvatarError}
                                                     />

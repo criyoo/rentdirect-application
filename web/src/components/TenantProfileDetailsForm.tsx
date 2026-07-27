@@ -962,6 +962,8 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                                 <img
                                     src={profilePhotoPreview}
                                     alt="Tenant profile"
+                                    loading="eager"
+                                    decoding="async"
                                     className="h-full w-full object-cover"
                                 />
                             </div>

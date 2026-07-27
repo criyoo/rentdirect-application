@@ -46,6 +46,8 @@ export default function FavouritesPage() {
                             <img
                                 src={resolveMediaUrl(f.cover_image_url)}
                                 alt={f.title}
+                                loading="lazy"
+                                decoding="async"
                                 className="h-60 w-full object-cover"
                                 onError={(e) => {
                                     e.currentTarget.src = '/placeholder.jpg'

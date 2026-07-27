@@ -52,6 +52,8 @@ export default function ChatThreadPage() {
                                 <img
                                     src={resolveMediaUrl(user?.profile_photo_url)}
                                     alt={user?.name || 'User'}
+                                    loading="lazy"
+                                    decoding="async"
                                     className="h-8 w-8 rounded-full object-cover"
                                     onError={(event) => {
                                         event.currentTarget.src = '/placeholder.jpg'
@@ -68,6 +70,8 @@ export default function ChatThreadPage() {
                                 <img
                                     src={resolveMediaUrl(currentUser?.profile_photo_url)}
                                     alt={currentUser?.name || 'You'}
+                                    loading="lazy"
+                                    decoding="async"
                                     className="h-8 w-8 rounded-full object-cover"
                                     onError={(event) => {
                                         event.currentTarget.src = '/placeholder.jpg'

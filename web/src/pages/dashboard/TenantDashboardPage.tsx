@@ -247,6 +247,8 @@ export default function TenantDashboardPage() {
                                                     <img
                                                         src={resolveMediaUrl(booking.listing_cover_image_url)}
                                                         alt={booking.listing_title || 'Rental property'}
+                                                        loading="lazy"
+                                                        decoding="async"
                                                         className="h-full w-full object-cover"
                                                         onError={(event) => {
                                                             event.currentTarget.src = '/placeholder.jpg'
@@ -358,6 +360,8 @@ export default function TenantDashboardPage() {
                                         <img
                                             src={resolveMediaUrl(property.cover_image_url)}
                                             alt={property.title}
+                                            loading="lazy"
+                                            decoding="async"
                                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                                             onError={(e) => {
                                                 e.currentTarget.src = '/placeholder.jpg'

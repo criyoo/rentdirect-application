@@ -109,6 +109,8 @@ export default function LandlordEnquiriesPage() {
                                     <img
                                         src={resolveMediaUrl(enquiry.listing_cover_image_url)}
                                         alt={enquiry.listing_title}
+                                        loading="lazy"
+                                        decoding="async"
                                         className="w-24 h-24 object-cover rounded-lg"
                                         onError={(e) => {
                                             e.currentTarget.src = '/placeholder.jpg'
@@ -132,6 +134,8 @@ export default function LandlordEnquiriesPage() {
                                                     <img
                                                         src={resolveMediaUrl(enquiry.tenant_profile_photo_url || tenantPhotoByListingId.get(String(enquiry.listing_id)))}
                                                         alt={enquiry.tenant_name}
+                                                        loading="lazy"
+                                                        decoding="async"
                                                         className="h-8 w-8 rounded-full object-cover"
                                                         onError={(e) => {
                                                             e.currentTarget.src = '/placeholder.jpg'
@@ -191,15 +195,15 @@ export default function LandlordEnquiriesPage() {
                                                         to={`/tenants/${enquiry.tenant_id}`}
                                                         className="inline-flex items-center px-4 py-2 border border-blue-200 text-blue-700 text-sm font-medium rounded-lg hover:bg-blue-50 transition-colors"
                                                     >
-                                                        Tenant Profile
+                                                        View Tenant Profile
                                                     </Link>
 
-                                                    <Link
+                                                    {/* <Link
                                                         to={`/listings/${enquiry.listing_id}`}
                                                         className="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
                                                     >
                                                         View Property
-                                                    </Link>
+                                                    </Link> */}
                                                 </div>
 
                                                 <div className="text-right">

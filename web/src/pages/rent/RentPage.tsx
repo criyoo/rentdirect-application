@@ -545,6 +545,8 @@ export default function RentPage() {
                                     <img
                                         src={resolveMediaUrl(listing.cover_image_url)}
                                         alt={listing.title}
+                                        loading="eager"
+                                        decoding="async"
                                         className="w-24 h-24 object-cover rounded-lg"
                                         onError={(e) => {
                                             e.currentTarget.src = '/placeholder.jpg'

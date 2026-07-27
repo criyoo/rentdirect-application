@@ -145,6 +145,8 @@ export default function PublicTenantProfilePage() {
                         <img
                             src={resolveMediaUrl(profile.profile_photo_url)}
                             alt={displayName || 'Tenant'}
+                            loading="eager"
+                            decoding="async"
                             className="h-28 w-28 rounded-full object-cover ring-4 ring-slate-100"
                             onError={(event) => {
                                 event.currentTarget.src = '/placeholder.jpg'

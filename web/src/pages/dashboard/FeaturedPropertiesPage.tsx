@@ -365,6 +365,8 @@ export default function FeaturedPropertiesPage()
                                         <img
                                             src={resolveMediaUrl(listing.cover_image_url)}
                                             alt={listing.title}
+                                            loading="lazy"
+                                            decoding="async"
                                             className="w-full h-32 object-cover rounded-lg mb-3"
                                         />
                                     )}
