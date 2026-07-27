@@ -91,6 +91,13 @@ from .tenant_verification import normalize_tenant_verification_profile
 from .throttling import production_ratelimit
 from .community_chat import COMMUNITY_CHAT_ROLES, user_has_active_community_chat_subscription
 from .subscription_access import user_has_bronze_access
+from .location_services import (
+    AMENITY_CATEGORIES,
+    attach_distance_to_listing,
+    coordinates_for_listing,
+    listing_neighbourhood,
+    nearest_amenities_for_coordinates,
+)
 from .serializers import (
     BookingSerializer,
     CommunityChatMessageSerializer,
@@ -122,6 +129,8 @@ User = get_user_model()
 FEATURED_PROPERTY_FEE = Decimal("5000.00")
 OPEN_PAYMENT_STATUSES = {"pending", "processing"}
 FAILED_PAYMENT_STATUSES = {"failed", "cancelled"}
+REFUND_REQUESTED_PAYMENT_STATUS = "refund_requested"
+PAYMENT_CANCELLATION_ADMIN_FEE_RATE = Decimal("0.01")
 SETTINGS_OTP_PURPOSE_PROFILE = "profile"
 SETTINGS_OTP_PURPOSE_PASSWORD = "password"
 SETTINGS_PROFILE_MUTABLE_FIELDS = {
@@ -622,7 +631,12 @@ def build_landlord_public_profile_payload(landlord: AppUser) -> dict:
         .order_by("-created_at")
     )
     bookings = Booking.objects.filter(listing__landlord=landlord)
-    reviews = Review.objects.filter(landlord=landlord).select_related("tenant", "listing").order_by("-created_at")
+    reviews = (
+        Review.objects
+        .filter(landlord=landlord, review_type=Review.ReviewType.LANDLORD)
+        .select_related("tenant", "listing")
+        .order_by("-created_at")
+    )
     review_stats = reviews.aggregate(average_rating=Avg("rating"))
     average_rating = float(review_stats["average_rating"] or 0)
     review_count = reviews.count()
@@ -699,11 +713,16 @@ def build_tenant_public_profile_payload(tenant: AppUser) -> dict:
     profile = TenantProfile.objects.filter(user=tenant).first()
     profile_payload = None
     if profile:
+        today = timezone.now().date()
+        tenant_age = today.year - profile.date_of_birth.year - (
+            (today.month, today.day) < (profile.date_of_birth.month, profile.date_of_birth.day)
+        )
         profile_payload = {
             "status": profile.status,
             "first_name": profile.first_name,
             "middle_name": profile.middle_name,
             "last_name": profile.last_name,
+            "age": tenant_age,
             "gender": profile.gender,
             "nationality": profile.nationality,
             "state_of_origin": profile.state_of_origin,
@@ -888,7 +907,13 @@ def ensure_booking_virtual_account(payment: Payment) -> dict:
 
 def prepare_booking_payment_checkout(payment: Payment) -> tuple[dict, str, list[str]]:
     if payment.payment_method == "bank":
-        return ensure_booking_virtual_account(payment), "dynamic_virtual_account", []
+        try:
+            return ensure_booking_virtual_account(payment), "dynamic_virtual_account", []
+        except FlutterwaveError as exc:
+            if "forbidden" not in str(exc).lower():
+                raise
+            cleared_fields = clear_payment_virtual_account_fields(payment)
+            return build_booking_checkout(payment), "inline_bank_checkout", cleared_fields
 
     cleared_fields = clear_payment_virtual_account_fields(payment)
     return build_booking_checkout(payment), "inline_checkout", cleared_fields
@@ -1477,6 +1502,20 @@ def booking_payout_release_conditions_met(booking: Booking) -> bool:
     )
 
 
+def booking_key_collection_confirmed_by_tenant(booking: Booking) -> bool:
+    tenant_progress = booking.tenant_rental_progress if isinstance(booking.tenant_rental_progress, dict) else {}
+    return booking_progress_step_completed(tenant_progress, "tenant_collected_house_key")
+
+
+def booking_key_collection_confirmed_by_landlord(booking: Booking) -> bool:
+    landlord_progress = booking.landlord_rental_progress if isinstance(booking.landlord_rental_progress, dict) else {}
+    return booking_progress_step_completed(landlord_progress, "tenant_collected_house_key")
+
+
+def booking_key_collection_confirmed_by_both_parties(booking: Booking) -> bool:
+    return booking_key_collection_confirmed_by_tenant(booking) and booking_key_collection_confirmed_by_landlord(booking)
+
+
 def booking_payout_balance_available(booking: Booking, now=None) -> bool:
     _completion_payment, paid_at = get_booking_full_payment_completion(booking)
     if not paid_at:
@@ -1775,6 +1814,8 @@ def complete_subscription_payment(payment: SubscriptionPayment, *, webhook_data=
 
 def sync_booking_payment(payment: Payment, *, transaction_id: str | None = None, provider_status: str | None = None, payload=None, source: str) -> Payment:
     redirect_state = map_redirect_status(provider_status)
+    if payment.status == REFUND_REQUESTED_PAYMENT_STATUS:
+        return payment
     if payment.status == "completed":
         return payment
     if payload is None and redirect_state in FAILED_PAYMENT_STATUSES and not transaction_id:
@@ -2451,7 +2492,7 @@ class ListingViewSet(viewsets.ModelViewSet):
         landlord_id = self.request.query_params.get("landlord_id")
         if landlord_id:
             qs = qs.filter(landlord_id=landlord_id)
-        elif self.action in {"list", "search", "cities", "featured_listings"}:
+        elif self.action in {"list", "search", "nearby", "cities", "featured_listings", "location_analytics"}:
             qs = qs.filter(status=Listing.Status.AVAILABLE)
             qs = exclude_deposit_secured_listings(qs)
         featured = self.request.query_params.get("featured")
@@ -2500,6 +2541,106 @@ class ListingViewSet(viewsets.ModelViewSet):
         cities = qs.values_list("city", flat=True).distinct().order_by("city")
         return Response(list(cities))
 
+    def _distance_query_params(self, request):
+        latitude = request.query_params.get("latitude") or request.query_params.get("lat")
+        longitude = (
+            request.query_params.get("longitude")
+            or request.query_params.get("lng")
+            or request.query_params.get("lon")
+        )
+        radius_km = request.query_params.get("radius_km") or request.query_params.get("radius")
+
+        if latitude is None and longitude is None and radius_km is None:
+            return None
+        if latitude is None or longitude is None or radius_km is None:
+            raise ValidationError({"location": "latitude, longitude, and radius_km are required for distance search."})
+
+        try:
+            latitude_value = float(latitude)
+            longitude_value = float(longitude)
+            radius_value = float(radius_km)
+        except (TypeError, ValueError):
+            raise ValidationError({"location": "latitude, longitude, and radius_km must be valid numbers."})
+
+        if not -90 <= latitude_value <= 90:
+            raise ValidationError({"latitude": "Latitude must be between -90 and 90."})
+        if not -180 <= longitude_value <= 180:
+            raise ValidationError({"longitude": "Longitude must be between -180 and 180."})
+        if radius_value <= 0 or radius_value > 200:
+            raise ValidationError({"radius_km": "Radius must be greater than 0 and no more than 200 km."})
+
+        return latitude_value, longitude_value, radius_value
+
+    def _filter_by_distance(self, qs, latitude: float, longitude: float, radius_km: float):
+        matches = []
+        for listing in qs:
+            distance_match = attach_distance_to_listing(listing, latitude, longitude)
+            if distance_match is None:
+                continue
+            listing, distance = distance_match
+            if distance <= radius_km:
+                matches.append(listing)
+
+        return sorted(
+            matches,
+            key=lambda listing: (
+                getattr(listing, "_distance_km", 0),
+                not bool(getattr(listing, "featured", False)),
+                -getattr(getattr(listing, "created_at", None), "timestamp", lambda: 0)(),
+            ),
+        )
+
+    def _location_group_payload(self, listings, group_by: str):
+        groups = {}
+        for listing in listings:
+            state = str(getattr(listing, "state", "") or "Not specified").strip() or "Not specified"
+            city = str(getattr(listing, "city", "") or "Not specified").strip() or "Not specified"
+            if group_by == "states":
+                key = (state,)
+                name = state
+                metadata = {}
+            elif group_by == "cities":
+                key = (state, city)
+                name = city
+                metadata = {"state": state}
+            else:
+                neighbourhood = listing_neighbourhood(listing)
+                key = (state, city, neighbourhood)
+                name = neighbourhood
+                metadata = {"state": state, "city": city}
+
+            price = Decimal(getattr(listing, "price_per_year", 0) or 0)
+            group = groups.setdefault(
+                key,
+                {
+                    "name": name,
+                    "listing_count": 0,
+                    "min_price_per_year": price,
+                    "max_price_per_year": price,
+                    "total_price_per_year": Decimal("0"),
+                    **metadata,
+                },
+            )
+            group["listing_count"] += 1
+            group["total_price_per_year"] += price
+            group["min_price_per_year"] = min(group["min_price_per_year"], price)
+            group["max_price_per_year"] = max(group["max_price_per_year"], price)
+
+        payload = []
+        for group in groups.values():
+            listing_count = group.pop("listing_count")
+            total_price = group.pop("total_price_per_year")
+            payload.append(
+                {
+                    **group,
+                    "listing_count": listing_count,
+                    "average_price_per_year": round(float(total_price / listing_count), 2) if listing_count else 0,
+                    "min_price_per_year": round(float(group["min_price_per_year"]), 2),
+                    "max_price_per_year": round(float(group["max_price_per_year"]), 2),
+                }
+            )
+        return sorted(payload, key=lambda item: (-item["listing_count"], item["name"]))[:20]
+
     @action(detail=False, methods=["get"], url_path="search", permission_classes=[AllowAny])
     def search(self, request):
         qs = self.get_queryset()
@@ -2538,13 +2679,81 @@ class ListingViewSet(viewsets.ModelViewSet):
             qs = qs.filter(toilets=toilets)
         if property_type:
             qs = qs.filter(property_type__iexact=property_type)
+        distance_params = self._distance_query_params(request)
+        if distance_params:
+            qs = self._filter_by_distance(qs, *distance_params)
         page = self.paginate_queryset(qs)
-        serializer = self.get_serializer(page or qs, many=True)
+        serializer = self.get_serializer(page if page is not None else qs, many=True)
         return self.get_paginated_response(serializer.data) if page is not None else Response(serializer.data)
 
     @action(detail=False, methods=["get"], url_path="nearby", permission_classes=[AllowAny])
     def nearby(self, request):
         return self.search(request)
+
+    @action(detail=False, methods=["get"], url_path="location-analytics", permission_classes=[AllowAny])
+    def location_analytics(self, request):
+        qs = self.get_queryset()
+        state = (request.query_params.get("state") or "").strip()
+        city = (request.query_params.get("city") or "").strip()
+        if state:
+            qs = qs.filter(
+                Q(state__icontains=state)
+                | Q(address__icontains=state)
+                | Q(landlord__residence__state__icontains=state)
+            )
+        if city:
+            qs = qs.filter(Q(city__icontains=city) | Q(address__icontains=city))
+
+        listings = list(qs)
+        return Response(
+            {
+                "total_listings": len(listings),
+                "states": self._location_group_payload(listings, "states"),
+                "cities": self._location_group_payload(listings, "cities"),
+                "neighbourhoods": self._location_group_payload(listings, "neighbourhoods"),
+            }
+        )
+
+    @action(detail=True, methods=["get"], url_path="nearest-amenities", permission_classes=[AllowAny])
+    def nearest_amenities(self, request, pk=None):
+        listing = self.get_object()
+        coordinates = coordinates_for_listing(listing)
+        categories_payload = {category: [] for category in AMENITY_CATEGORIES}
+        if coordinates is None:
+            return Response(
+                {
+                    "listing_id": str(listing.id),
+                    "location_available": False,
+                    "location_source": None,
+                    "radius_km": None,
+                    "amenities": categories_payload,
+                }
+            )
+
+        limit = request.query_params.get("limit", 3)
+        radius_km = request.query_params.get("radius_km", 25)
+        try:
+            limit_value = max(1, min(int(limit), 10))
+            radius_value = max(1.0, min(float(radius_km), 100.0))
+        except (TypeError, ValueError):
+            raise ValidationError({"amenities": "limit and radius_km must be valid numbers."})
+
+        return Response(
+            {
+                "listing_id": str(listing.id),
+                "location_available": True,
+                "location_source": coordinates.source,
+                "latitude": coordinates.latitude,
+                "longitude": coordinates.longitude,
+                "radius_km": radius_value,
+                "amenities": nearest_amenities_for_coordinates(
+                    coordinates.latitude,
+                    coordinates.longitude,
+                    limit_per_category=limit_value,
+                    max_distance_km=radius_value,
+                ),
+            }
+        )
 
 
 class DocumentViewSet(viewsets.ModelViewSet):
@@ -2845,6 +3054,27 @@ class BookingViewSet(viewsets.ModelViewSet):
             raise PermissionDenied("Renting property is not available on the Bronze free plan.")
         serializer.save()
 
+    def destroy(self, request, *args, **kwargs):
+        booking = self.get_object()
+        if request.user.role != AppUser.Role.TENANT:
+            raise PermissionDenied("Only tenants can delete cancelled rental payment history.")
+
+        payment_statuses = set(booking.payments.values_list("status", flat=True))
+        has_completed_payment = bool(payment_statuses & {"completed", REFUND_REQUESTED_PAYMENT_STATUS})
+        has_open_payment = bool(payment_statuses & OPEN_PAYMENT_STATUSES)
+        has_cancelled_payment = bool(payment_statuses & FAILED_PAYMENT_STATUSES)
+        paid_amount = normalize_decimal_amount(booking.paid_amount)
+        can_delete_history = (
+            paid_amount == Decimal("0.00")
+            and not has_completed_payment
+            and not has_open_payment
+            and (booking.status == Booking.Status.CANCELLED or has_cancelled_payment)
+        )
+        if not can_delete_history:
+            raise ValidationError("Only cancelled rental payment history with no pending or completed payments can be deleted.")
+
+        return super().destroy(request, *args, **kwargs)
+
     @action(detail=False, methods=["get"], url_path="listing/(?P<listing_id>[^/.]+)")
     def listing(self, request, listing_id=None):
         booking = self.get_queryset().filter(listing_id=listing_id).first()
@@ -3086,19 +3316,67 @@ class PaymentViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="cancel")
     def cancel(self, request, pk=None):
         payment = self.get_object()
+        if payment.status == REFUND_REQUESTED_PAYMENT_STATUS:
+            raise ValidationError("Refund has already been requested for this payment.")
+
+        if payment.status == "completed":
+            booking = payment.booking
+            if booking_key_collection_confirmed_by_both_parties(booking):
+                raise ValidationError(
+                    "Sorry transaction cannot be cancelled. Landlord will need to approve refund. "
+                    "Status shows Tenant and Landlord have confirmed collection of keys to the property."
+                )
+
+            admin_fee = normalize_decimal_amount(payment.amount * PAYMENT_CANCELLATION_ADMIN_FEE_RATE)
+            refund_amount = normalize_decimal_amount(payment.amount - admin_fee)
+            with transaction.atomic():
+                booking = Booking.objects.select_for_update().get(pk=payment.booking_id)
+                payment = Payment.objects.select_for_update().get(pk=payment.pk)
+                if payment.status != "completed":
+                    raise ValidationError("Payment can no longer be cancelled.")
+                if booking_key_collection_confirmed_by_both_parties(booking):
+                    raise ValidationError(
+                        "Sorry transaction cannot be cancelled. Landlord will need to approve refund. "
+                        "Status shows Tenant and Landlord have confirmed collection of keys to the property."
+                    )
+                payment.status = REFUND_REQUESTED_PAYMENT_STATUS
+                payment.provider_payload = update_payment_provider_payload(
+                    payment.provider_payload,
+                    None,
+                    cancellation={
+                        "cancelled_at": timezone.now().isoformat(),
+                        "reason": "refund_requested_by_tenant",
+                        "refund_status": "requested",
+                        "refund_eta": "3 to 5 working days",
+                        "admin_fee_rate": str(PAYMENT_CANCELLATION_ADMIN_FEE_RATE),
+                        "admin_fee_amount": str(admin_fee),
+                        "refund_amount": str(refund_amount),
+                    },
+                )
+                payment.save(update_fields=["status", "provider_payload", "updated_at"])
+
+                booking.paid_amount = max(normalize_decimal_amount(booking.paid_amount) - normalize_decimal_amount(payment.amount), Decimal("0.00"))
+                booking.status = Booking.Status.CANCELLED
+                booking.save(update_fields=["paid_amount", "status", "updated_at"])
+            return Response(self.get_serializer(payment).data)
+
         if payment.status not in OPEN_PAYMENT_STATUSES:
             raise ValidationError("Payment is no longer pending.")
 
-        payment.status = "cancelled"
-        payment.provider_payload = update_payment_provider_payload(
-            payment.provider_payload,
-            None,
-            cancellation={
-                "cancelled_at": timezone.now().isoformat(),
-                "reason": "cancelled_by_user",
-            },
-        )
-        payment.save(update_fields=["status", "provider_payload", "updated_at"])
+        with transaction.atomic():
+            payment = Payment.objects.select_for_update().get(pk=payment.pk)
+            if payment.status not in OPEN_PAYMENT_STATUSES:
+                raise ValidationError("Payment can no longer be cancelled.")
+            payment.status = "cancelled"
+            payment.provider_payload = update_payment_provider_payload(
+                payment.provider_payload,
+                None,
+                cancellation={
+                    "cancelled_at": timezone.now().isoformat(),
+                    "reason": "cancelled_by_user",
+                },
+            )
+            payment.save(update_fields=["status", "provider_payload", "updated_at"])
         return Response(self.get_serializer(payment).data)
 
     @action(detail=False, methods=["get"], url_path="flutterwave/verify")
@@ -3548,12 +3826,15 @@ class ReviewViewSet(viewsets.ModelViewSet):
         queryset = Review.objects.select_related("listing", "tenant", "landlord").order_by("-updated_at", "-created_at")
         listing_id = (self.request.query_params.get("listing_id") or "").strip()
         landlord_id = (self.request.query_params.get("landlord_id") or "").strip()
+        review_type = (self.request.query_params.get("review_type") or "").strip()
         mine = (self.request.query_params.get("mine") or "").strip().lower() == "true"
 
         if listing_id:
             queryset = queryset.filter(listing_id=listing_id)
         if landlord_id:
             queryset = queryset.filter(landlord_id=landlord_id)
+        if review_type:
+            queryset = queryset.filter(review_type=review_type)
         if mine:
             if not getattr(self.request.user, "is_authenticated", False):
                 return queryset.none()
@@ -3568,8 +3849,10 @@ class ReviewViewSet(viewsets.ModelViewSet):
             raise PermissionDenied("Reviews are not available on the Bronze free plan.")
 
         listing = get_object_or_404(Listing, id=self.request.data.get("listing_id"))
-        if Review.objects.filter(listing=listing, tenant=self.request.user).exists():
-            raise ValidationError({"detail": "You already reviewed this property. Edit the existing review instead."})
+        review_type = serializer.validated_data.get("review_type") or Review.ReviewType.PROPERTY
+        if Review.objects.filter(listing=listing, tenant=self.request.user, review_type=review_type).exists():
+            target = "landlord" if review_type == Review.ReviewType.LANDLORD else "property"
+            raise ValidationError({"detail": f"You already reviewed this {target}. Edit the existing review instead."})
         serializer.save(tenant=self.request.user, landlord=listing.landlord, listing=listing)
 
     def perform_update(self, serializer):

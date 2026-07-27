@@ -1,12 +1,10 @@
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import { LandlordPublicProfile, Listing, Review } from '@/types'
+import { LandlordPublicProfile, Listing, NearestAmenitiesResponse, Review } from '@/types'
 import { useEffect, useState, useRef } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import { resolveMediaUrl } from '@/lib/api'
-import { MapContainer, TileLayer, Marker } from 'react-leaflet'
-import '@/lib/leaflet'
 import { formatCurrencyWithSymbol } from '@/utils/currency'
 import ReviewModal from '@/components/ReviewModal'
 import { hasBronzeAccess, SubscriptionPaymentRecord } from '@/lib/subscriptions'
@@ -53,6 +51,14 @@ function renderStars(rating: number) {
     return '★'.repeat(rating) + '☆'.repeat(Math.max(5 - rating, 0))
 }
 
+const amenityCategoryLabels: Record<string, string> = {
+    schools: 'Schools',
+    hospitals: 'Hospitals',
+    transport_hubs: 'Transport',
+    supermarkets: 'Supermarkets',
+    other: 'Other',
+}
+
 export default function ListingDetailPage() {
     const { id } = useParams()
     const { user } = useAuth()
@@ -64,8 +70,6 @@ export default function ListingDetailPage() {
     const thumbnailContainerRef = useRef<HTMLDivElement>(null)
     const thumbnailButtonRefs = useRef<Array<HTMLButtonElement | null>>([])
     const [showMap, setShowMap] = useState(false)
-    const [mapCoords, setMapCoords] = useState<{ lat: number; lng: number } | null>(null)
-    const [isGeocoding, setIsGeocoding] = useState(false)
     const [isReviewOpen, setIsReviewOpen] = useState(false)
 
     const { data: listing, isLoading } = useQuery({
@@ -95,18 +99,19 @@ export default function ListingDetailPage() {
         queryFn: async () => (await api.get<LandlordPublicProfile>(`/users/landlords/${listing!.landlord_id}/public-profile`)).data,
     })
     const { data: propertyReviews = [] } = useQuery({
-        queryKey: ['reviews', 'listing', listing?.id],
+        queryKey: ['reviews', 'listing', listing?.id, 'property'],
         enabled: !!listing?.id,
         queryFn: async () => (await api.get<Review[]>('/reviews', {
-            params: { listing_id: listing!.id },
+            params: { listing_id: listing!.id, review_type: 'property' },
         })).data,
     })
     const { data: myReviews = [] } = useQuery({
-        queryKey: ['reviews', 'mine', 'listing-detail', listing?.id],
+        queryKey: ['reviews', 'mine', 'listing-detail', listing?.id, 'property'],
         enabled: user?.role === 'tenant' && !!listing?.id,
         queryFn: async () => (await api.get<Review[]>('/reviews', {
             params: {
                 listing_id: listing!.id,
+                review_type: 'property',
                 mine: true,
             },
         })).data,
@@ -128,6 +133,15 @@ export default function ListingDetailPage() {
     const existingReview = myReviews[0]
     const landlordProfileHref = listing ? `/landlords/${listing.landlord_id}?listingId=${listing.id}` : '#'
     const isBronzeTenant = user?.role === 'tenant' && subscriptionPaymentResponse !== undefined && hasBronzeAccess(subscriptionPaymentResponse)
+    const canLoadNearestAmenities = !!listing?.id && (user?.role !== 'tenant' || subscriptionPaymentResponse !== undefined) && !isBronzeTenant
+    const { data: nearestAmenities } = useQuery({
+        queryKey: ['listing', listing?.id, 'nearest-amenities'],
+        enabled: canLoadNearestAmenities,
+        queryFn: async () => (await api.get<NearestAmenitiesResponse>(`/listings/${listing!.id}/nearest-amenities`)).data,
+    })
+    const amenityGroups = nearestAmenities
+        ? Object.entries(nearestAmenities.amenities).filter(([, items]) => items.length > 0)
+        : []
 
     const toggleFavourite = useMutation({
         mutationFn: async () => {
@@ -181,6 +195,7 @@ export default function ListingDetailPage() {
 
             if (existingReview?.id) {
                 await api.patch(`/reviews/${existingReview.id}`, {
+                    review_type: 'property',
                     listing_id: listing.id,
                     rating,
                     comment,
@@ -189,6 +204,7 @@ export default function ListingDetailPage() {
             }
 
             await api.post('/reviews', {
+                review_type: 'property',
                 listing_id: listing.id,
                 rating,
                 comment,
@@ -216,23 +232,8 @@ export default function ListingDetailPage() {
 
     useEffect(() => {
         setCurrentImageIndex(0)
-        setIsGeocoding(false)
-
-        if (isBronzeTenant) {
-            setShowMap(false)
-            setMapCoords(null)
-            return
-        }
-
-        const lat = Number(listing?.latitude)
-        const lng = Number(listing?.longitude)
-        if (Number.isFinite(lat) && Number.isFinite(lng)) {
-            setMapCoords({ lat, lng })
-            return
-        }
-
-        setMapCoords(null)
-    }, [isBronzeTenant, listing?.id, listing?.latitude, listing?.longitude])
+        setShowMap(false)
+    }, [listing?.id])
 
     const nextImage = () => {
         setCurrentImageIndex((prev) => (prev + 1) % allImages.length)
@@ -301,59 +302,11 @@ export default function ListingDetailPage() {
             ? listing.state || 'State not provided'
             : `${listing.city}, ${listing.state || ''} ${listing.postal_code}`.trim()
         : ''
-    const locationQuery = listingLocationSummary
-
-    useEffect(() => {
-        if (!listing?.id) return
-        if (isBronzeTenant) return
-        if (!locationQuery) return
-        if (mapCoords || isGeocoding) return
-
-        const cacheKey = `listing_geocode_${listing.id}`
-        const cached = sessionStorage.getItem(cacheKey)
-        if (cached) {
-            try {
-                const parsed = JSON.parse(cached)
-                if (typeof parsed?.lat === 'number' && typeof parsed?.lng === 'number') {
-                    setMapCoords({ lat: parsed.lat, lng: parsed.lng })
-                    return
-                }
-            } catch {
-            }
-        }
-
-        const controller = new AbortController()
-        setIsGeocoding(true)
-        fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(locationQuery)}`, {
-            signal: controller.signal,
-            headers: {
-                Accept: 'application/json',
-            },
-        })
-            .then(async (res) => {
-                if (!res.ok) return []
-                return await res.json()
-            })
-            .then((results) => {
-                const first = Array.isArray(results) ? results[0] : null
-                const lat = first?.lat ? Number(first.lat) : NaN
-                const lng = first?.lon ? Number(first.lon) : NaN
-                if (!Number.isFinite(lat) || !Number.isFinite(lng)) return
-                const coords = { lat, lng }
-                setMapCoords(coords)
-                sessionStorage.setItem(cacheKey, JSON.stringify(coords))
-            })
-            .finally(() => {
-                setIsGeocoding(false)
-            })
-
-        return () => controller.abort()
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isBronzeTenant, listing?.id, locationQuery])
-
-    const googleEmbedSrc = mapCoords
-        ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${mapCoords.lat},${mapCoords.lng}`)}`
-        : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationQuery)}`
+    const mapLocationQuery = listing
+        ? [listing.city, listing.state, 'Nigeria'].filter(Boolean).join(', ')
+        : ''
+    const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapLocationQuery)}`
+    const googleMapEmbedSrc = `https://www.google.com/maps?q=${encodeURIComponent(mapLocationQuery)}&output=embed`
 
     if (isLoading) {
         return (
@@ -637,31 +590,26 @@ export default function ListingDetailPage() {
                                                 onClick={() => setShowMap(true)}
                                                 className="btn btn-outline p-1"
                                             >
-                                                {isGeocoding ? 'Preparing map…' : 'Show map'}
+                                                Show in map
                                             </button>
                                         ) : (
                                             <div className="h-72 rounded-lg overflow-hidden border border-gray-200">
-                                                <MapContainer
-                                                    center={mapCoords ? [mapCoords.lat, mapCoords.lng] : [6.5244, 3.3792]}
-                                                    zoom={mapCoords ? 18 : 12}
-                                                    scrollWheelZoom={false}
-                                                    style={{ height: '100%', width: '100%' }}
-                                                >
-                                                    <TileLayer
-                                                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                                                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                                                    />
-                                                    {mapCoords && <Marker position={[mapCoords.lat, mapCoords.lng]} />}
-                                                </MapContainer>
+                                                <iframe
+                                                    title={`${listing.title} map`}
+                                                    src={googleMapEmbedSrc}
+                                                    className="h-full w-full border-0"
+                                                    loading="lazy"
+                                                    referrerPolicy="no-referrer-when-downgrade"
+                                                />
                                             </div>
                                         )}
                                         <a
                                             className="inline-block mt-1 font-semibold text-[14px] text-blue-800 hover:text-blue-800"
-                                            href={googleEmbedSrc}
+                                            href={googleMapsUrl}
                                             target="_blank"
                                             rel="noreferrer"
                                         >
-                                            Open in Google Maps
+                                            Open in Google maps
                                         </a>
                                     </>
                                 )}
@@ -687,12 +635,14 @@ export default function ListingDetailPage() {
                                         </p>
                                     </div>
                                 </div>
-                                <Link to={landlordProfileHref} className="btn btn-outline">
-                                    View Landlord Profile
-                                </Link>
-                                <Link to={`/landlords/${listing.landlord_id}/properties`} className="btn btn-outline">
-                                    View All Landlord Properties
-                                </Link>
+                                <div className="flex gap-2">
+                                    <Link to={landlordProfileHref} className="btn btn-outline">
+                                        View Landlord Profile
+                                    </Link>
+                                    <Link to={`/landlords/${listing.landlord_id}/properties`} className="btn btn-outline">
+                                        View All Landlord Properties
+                                    </Link>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -716,10 +666,52 @@ export default function ListingDetailPage() {
                         )}
                     </div>
 
+                    {!isBronzeTenant && nearestAmenities ? (
+                        <div className="mt-4 rounded-2xl bg-white p-6 shadow-lg border">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                                <div>
+                                    <h3 className="text-xl font-semibold text-gray-900">Nearest Amenities</h3>
+                                    <p className="mt-1 text-sm text-gray-600">
+                                        Within {nearestAmenities.radius_km || 25} km of {[listing.city, listing.state].filter(Boolean).join(', ') || 'the property'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {amenityGroups.length > 0 ? (
+                                <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                                    {amenityGroups.map(([category, items]) => (
+                                        <div key={category} className="rounded-xl border border-slate-200 p-4">
+                                            <h4 className="text-sm font-semibold text-gray-900">
+                                                {amenityCategoryLabels[category] || category}
+                                            </h4>
+                                            <div className="mt-3 space-y-3">
+                                                {items.map((amenity) => (
+                                                    <div key={`${category}-${amenity.name}`} className="flex items-start justify-between gap-3">
+                                                        <div>
+                                                            <p className="text-sm font-medium text-gray-900">{amenity.name}</p>
+                                                            <p className="text-xs text-gray-500">{amenity.city}, {amenity.state}</p>
+                                                        </div>
+                                                        <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">
+                                                            {amenity.distance_km.toFixed(1)} km
+                                                        </span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="mt-5 rounded-xl border border-dashed border-slate-200 p-6 text-center text-slate-500">
+                                    No nearby amenities found within {nearestAmenities.radius_km || 25} km.
+                                </div>
+                            )}
+                        </div>
+                    ) : null}
+
                     <div className="mt-4 rounded-2xl bg-white p-6 shadow-lg border">
                         <div className="flex items-center justify-between gap-4">
                             <div>
-                                <h3 className="text-xl font-semibold text-gray-900">Tenant Reviews</h3>
+                                <h3 className="text-xl font-semibold text-gray-900">Property Reviews</h3>
                                 <p className="mt-2 text-sm text-gray-600">What tenants are saying about this property.</p>
                             </div>
                             <div className="rounded-full bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700">

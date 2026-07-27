@@ -46,7 +46,7 @@ export default function FavouritesPage() {
                             <img
                                 src={resolveMediaUrl(f.cover_image_url)}
                                 alt={f.title}
-                                className="h-40 w-full object-cover"
+                                className="h-60 w-full object-cover"
                                 onError={(e) => {
                                     e.currentTarget.src = '/placeholder.jpg'
                                 }}
@@ -55,6 +55,7 @@ export default function FavouritesPage() {
                                 <h2 className="text-lg font-semibold">{f.title}</h2>
                                 <p className="text-sm text-gray-500">{[f.city, f.state].filter(Boolean).join(', ') || 'State not provided'}</p>
                                 <p className="mt-2 font-medium text-brand">{formatCurrencyWithSymbol(f.price_per_year)}/year</p>
+                                <br />
                                 <div className="mt-auto flex gap-2">
                                     <Link
                                         to={`/listings/${f.id}`}

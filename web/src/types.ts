@@ -33,6 +33,7 @@ export type User = {
 
 export type Review = {
     id: string
+    review_type?: 'property' | 'landlord'
     listing_id: string
     listing_title?: string
     tenant_id: string
@@ -156,6 +157,8 @@ export interface Listing {
     postal_code: string
     latitude?: number
     longitude?: number
+    distance_km?: number | null
+    location_source?: string | null
     property_type: string
     bedrooms: number
     bathrooms: number
@@ -199,6 +202,7 @@ export interface Listing {
     image_urls?: string[]
     landlord_id: string
     landlord_name?: string
+    landlord_email?: string
     landlord_profile_photo_url?: string
     featured: boolean
     created_at: string
@@ -210,7 +214,7 @@ export interface Payment {
     booking_id: string
     amount: number
     payment_method: string
-    status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled'
+    status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'refund_requested'
     transaction_id?: string
     payment_date: string
     created_at: string
@@ -276,10 +280,15 @@ export interface Booking {
     total_amount: number
     paid_amount: number
     remaining_amount?: number
+    landlord_rental_amount?: number | null
     landlord_collected_amount?: number | null
     landlord_expecting_payment_amount?: number | null
+    landlord_balance_payment_amount?: number | null
     payments?: Payment[]
     rental_progress?: RentalProgress | null
+    tenant_key_collection_confirmed?: boolean
+    landlord_key_collection_confirmed?: boolean
+    keys_collected_confirmed?: boolean
     tenant_screening_summary?: TenantScreeningSummary | null
     created_at: string
     updated_at: string
@@ -289,6 +298,9 @@ export interface SearchFilters {
     query?: string
     city?: string
     state?: string
+    latitude?: number
+    longitude?: number
+    radius_km?: number
     min_price?: number
     max_price?: number
     bedrooms?: number
@@ -298,4 +310,41 @@ export interface SearchFilters {
     pet_friendly?: boolean
     furnished?: boolean
     utilities_included?: boolean
+}
+
+export interface LocationAnalyticsGroup {
+    name: string
+    state?: string
+    city?: string
+    listing_count: number
+    average_price_per_year: number
+    min_price_per_year: number
+    max_price_per_year: number
+}
+
+export interface LocationAnalyticsResponse {
+    total_listings: number
+    states: LocationAnalyticsGroup[]
+    cities: LocationAnalyticsGroup[]
+    neighbourhoods: LocationAnalyticsGroup[]
+}
+
+export interface NearestAmenity {
+    name: string
+    category: string
+    city: string
+    state: string
+    latitude: number
+    longitude: number
+    distance_km: number
+}
+
+export interface NearestAmenitiesResponse {
+    listing_id: string
+    location_available: boolean
+    location_source?: string | null
+    latitude?: number
+    longitude?: number
+    radius_km?: number | null
+    amenities: Record<string, NearestAmenity[]>
 }

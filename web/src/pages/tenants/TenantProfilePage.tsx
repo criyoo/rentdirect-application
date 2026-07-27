@@ -47,6 +47,30 @@ function formatValue(value: unknown): string {
     return String(value)
 }
 
+function calculateAge(dateOfBirth?: string): number | undefined {
+    if (!dateOfBirth) {
+        return undefined
+    }
+
+    const birthDate = new Date(dateOfBirth)
+    if (Number.isNaN(birthDate.getTime())) {
+        return undefined
+    }
+
+    const today = new Date()
+    let age = today.getFullYear() - birthDate.getFullYear()
+    const birthdayThisYearPassed = (
+        today.getMonth() > birthDate.getMonth()
+        || (today.getMonth() === birthDate.getMonth() && today.getDate() >= birthDate.getDate())
+    )
+
+    if (!birthdayThisYearPassed) {
+        age -= 1
+    }
+
+    return age >= 0 ? age : undefined
+}
+
 function isEmptyValue(value: unknown): boolean {
     return value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0)
 }
@@ -277,6 +301,7 @@ function tenantProfileNeedsDetails(profile?: TenantProfileSummary['tenant_profil
         financialInfo.current_move_in_date,
         financialInfo.expected_move_out_date,
         financialInfo.reason_for_wanting_to_leave,
+        householdInfo.marital_status,
         householdInfo.has_pets,
         householdInfo.work_from_home,
         householdInfo.commercial_activities_at_home,
@@ -431,7 +456,7 @@ export default function TenantProfilePage() {
                     <Section title="Personal Information" icon={<HiUser className="h-5 w-5" />}>
                         <DetailGrid
                             items={[
-                                { label: 'Date of Birth', value: profile.date_of_birth },
+                                { label: 'Age', value: calculateAge(profile.date_of_birth) },
                                 { label: 'Gender', value: profile.gender },
                                 { label: 'Nationality', value: profile.nationality },
                                 { label: 'State of Origin', value: profile.state_of_origin },

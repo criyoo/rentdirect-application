@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import {
     HiCash,
@@ -22,14 +22,18 @@ import {
 } from 'react-icons/hi'
 
 import { useAuth } from '@/hooks/useAuth'
+import { useAppPopup } from '@/contexts/AppPopupContext'
 import DashboardBackButton from '@/components/DashboardBackButton'
 import { api, resolveMediaUrl } from '@/lib/api'
-import { Booking, Listing } from '@/types'
+import { Booking, Listing, Payment } from '@/types'
 import { formatCurrencyWithSymbol } from '@/utils/currency'
 
 type PaginatedResponse<T> = {
     results?: T[]
 }
+
+const PENDING_PAYMENT_CANCEL_MESSAGE = 'Are you sure you want to cancel this payment?'
+const DELETE_CANCELLED_BOOKING_MESSAGE = 'Are you sure you want to delete this cancelled rental payment history?'
 
 function getBookingFinancials(booking: Booking) {
     const totalAmount = Number(booking.total_amount || 0)
@@ -53,8 +57,24 @@ function normalizeResults<T>(payload: T[] | PaginatedResponse<T> | undefined): T
     return Array.isArray(payload.results) ? payload.results : []
 }
 
+function canDeleteBookingFromHistory(booking: Booking) {
+    const paymentStatuses = (booking.payments || []).map((payment) => payment.status)
+    const hasCancelledPayment = paymentStatuses.some((status) => status === 'cancelled' || status === 'failed')
+    const hasOpenPayment = paymentStatuses.some((status) => status === 'pending' || status === 'processing')
+    const hasCompletedPayment = paymentStatuses.some((status) => status === 'completed' || status === 'refund_requested')
+
+    return (
+        Number(booking.paid_amount || 0) <= 0
+        && !hasOpenPayment
+        && !hasCompletedPayment
+        && (booking.status === 'cancelled' || hasCancelledPayment)
+    )
+}
+
 export default function TenantDashboardPage() {
     const { user } = useAuth()
+    const queryClient = useQueryClient()
+    const { confirm } = useAppPopup()
     const { data: featured } = useQuery({
         queryKey: ['listings', 'featured'],
         queryFn: async () => (await api.get<Listing[]>('/featured/listings')).data
@@ -85,6 +105,56 @@ export default function TenantDashboardPage() {
         { to: '/dashboard/settings', label: 'Settings', Icon: HiCog, colorClass: 'text-slate-600' },
     ]
 
+    const cancelPayment = useMutation({
+        mutationFn: async (paymentId: string) => (await api.post<Payment>(`/payments/${paymentId}/cancel`)).data,
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['bookings', 'tenant', user?.id] })
+            queryClient.invalidateQueries({ queryKey: ['bookings'] })
+            alert('Payment cancelled.')
+        },
+        onError: (error: any) => {
+            alert(error?.response?.data?.detail || error?.message || 'Unable to cancel payment.')
+        },
+    })
+
+    const deleteCancelledBooking = useMutation({
+        mutationFn: async (bookingId: string) => {
+            await api.delete(`/bookings/${bookingId}`)
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['bookings', 'tenant', user?.id] })
+            queryClient.invalidateQueries({ queryKey: ['bookings'] })
+            alert('Rental payment history deleted.')
+        },
+        onError: (error: any) => {
+            alert(error?.response?.data?.detail || error?.message || 'Unable to delete rental payment history.')
+        },
+    })
+
+    const handleCancelPayment = async (payment: Payment) => {
+        const shouldContinue = await confirm(PENDING_PAYMENT_CANCEL_MESSAGE, {
+            title: 'Cancel payment?',
+            variant: 'warning',
+            cancelLabel: 'Cancel',
+            confirmLabel: 'Continue',
+        })
+        if (shouldContinue) {
+            cancelPayment.mutate(payment.id)
+        }
+    }
+
+    const handleDeleteCancelledBooking = async (booking: Booking) => {
+        const shouldContinue = await confirm(DELETE_CANCELLED_BOOKING_MESSAGE, {
+            title: 'Delete history?',
+            variant: 'warning',
+            cancelLabel: 'Cancel',
+            confirmLabel: 'Delete',
+        })
+        if (shouldContinue) {
+            deleteCancelledBooking.mutate(booking.id)
+        }
+    }
+
     return (
         <div className="min-h-screen bg-gray-50">
             <div className="container-modern py-8">
@@ -102,13 +172,13 @@ export default function TenantDashboardPage() {
                             </p>
                         </div>
                         <div className="hidden items-center gap-3 md:flex">
-                            <Link to="/enquiries" className="btn btn-primary">
+                            {/* <Link to="/enquiries" className="btn btn-primary">
                                 <HiChat className="w-10 h-10 mr-1" />
                                 Enquiries
-                            </Link>
-                            {/* <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg">
-                                <HiHome className="w-8 h-8 text-white" />
-                            </div> */}
+                            </Link> */}
+                            <div className="w-24 h-20 bg-gradient-to-br from-blue-600 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg">
+                                <HiHome className="w-12 h-8 text-white" />
+                            </div>
                         </div>
                     </div>
 
@@ -150,7 +220,7 @@ export default function TenantDashboardPage() {
 
                 <div className="mb-12">
                     <div className="flex items-center justify-between mb-6">
-                        <h2 className="text-2xl font-bold text-gray-900">Rental Payments</h2>
+                        <h2 className="text-2xl font-bold text-gray-900">Rental Payments History</h2>
                         <Link to="/dashboard/settings" className="btn btn-outline">
                             Manage Settings
                         </Link>
@@ -161,27 +231,46 @@ export default function TenantDashboardPage() {
                             {bookings.map((booking) => {
                                 const { totalAmount, paidAmount, remainingAmount } = getBookingFinancials(booking)
                                 const isSettled = remainingAmount <= 0
+                                const pendingPayments = (booking.payments || []).filter((payment) => (
+                                    payment.status === 'pending' || payment.status === 'processing'
+                                ))
+                                const showDeleteButton = canDeleteBookingFromHistory(booking)
 
                                 return (
                                     <div key={booking.id} className="card p-6">
                                         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                                            <div>
-                                                <div className="flex items-center gap-3">
-                                                    <h3 className="text-lg font-semibold text-gray-900">
-                                                        {booking.listing_title || 'Rental application'}
-                                                    </h3>
-                                                    <span className={`badge ${isSettled ? 'badge-success' : 'badge-warning'}`}>
-                                                        {isSettled ? 'Paid' : booking.status}
-                                                    </span>
-                                                </div>
-                                                <p className="mt-2 text-sm text-gray-600">
-                                                    {[booking.listing_address, booking.listing_city].filter(Boolean).join(', ') || 'Property details available on listing page'}
-                                                </p>
-                                                {booking.rental_progress ? (
-                                                    <p className="mt-2 text-sm text-gray-500">
-                                                        Rental progress: {booking.rental_progress.progress_percent}% complete
+                                            <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                                                <Link
+                                                    to={`/listings/${booking.listing_id}`}
+                                                    className="block h-28 w-full shrink-0 overflow-hidden rounded-lg bg-gray-100 sm:w-36"
+                                                >
+                                                    <img
+                                                        src={resolveMediaUrl(booking.listing_cover_image_url)}
+                                                        alt={booking.listing_title || 'Rental property'}
+                                                        className="h-full w-full object-cover"
+                                                        onError={(event) => {
+                                                            event.currentTarget.src = '/placeholder.jpg'
+                                                        }}
+                                                    />
+                                                </Link>
+                                                <div>
+                                                    <div className="flex items-center gap-3">
+                                                        <h3 className="text-lg font-semibold text-gray-900">
+                                                            {booking.listing_title || 'Rental application'}
+                                                        </h3>
+                                                        <span className={`badge ${booking.status === 'cancelled' ? 'badge-warning' : 'badge-success'}`}>
+                                                            {booking.status}
+                                                        </span>
+                                                    </div>
+                                                    <p className="mt-2 text-sm text-gray-600">
+                                                        {[booking.listing_address, booking.listing_city].filter(Boolean).join(', ') || 'Property details available on listing page'}
                                                     </p>
-                                                ) : null}
+                                                    {booking.rental_progress ? (
+                                                        <p className="mt-2 text-sm text-gray-500">
+                                                            Rental progress: {booking.rental_progress.progress_percent}% complete
+                                                        </p>
+                                                    ) : null}
+                                                </div>
                                             </div>
 
                                             <div className="grid gap-3 sm:grid-cols-3 lg:min-w-[420px]">
@@ -211,8 +300,29 @@ export default function TenantDashboardPage() {
                                                 to={`/rent/${booking.listing_id}`}
                                                 className={`btn ${isSettled ? 'btn-secondary' : 'btn-primary'}`}
                                             >
-                                                {isSettled ? 'Open Receipt Details' : 'Pay Balance'}
+                                                {isSettled ? 'Open Rental Details' : 'Pay Balance'}
                                             </Link>
+                                            {showDeleteButton && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDeleteCancelledBooking(booking)}
+                                                    disabled={deleteCancelledBooking.isPending}
+                                                    className="btn btn-danger disabled:opacity-50"
+                                                >
+                                                    {deleteCancelledBooking.isPending ? 'Deleting...' : 'Delete'}
+                                                </button>
+                                            )}
+                                            {pendingPayments.map((payment) => (
+                                                <button
+                                                    key={payment.id}
+                                                    type="button"
+                                                    onClick={() => handleCancelPayment(payment)}
+                                                    disabled={cancelPayment.isPending}
+                                                    className="btn btn-danger disabled:opacity-50"
+                                                >
+                                                    {cancelPayment.isPending ? 'Cancelling...' : 'Cancel Payment'}
+                                                </button>
+                                            ))}
                                         </div>
                                     </div>
                                 )

@@ -22,6 +22,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from core.management.commands.seed_demo_data import Command as SeedDemoDataCommand
+from core.flutterwave import FlutterwaveError
 from core.models import AppUser, Booking, CommunityChatMessage, Document, Feedback, FeaturedPayment, Listing, ListingImage, Message, Payment, PaymentSettlement, Review, SubscriptionPayment, SubscriptionPaymentMethod, SupportChatMessage, TenantProfile, VerificationRequest
 from core.payment_queue import TASK_PROCESS_READY_PAYOUTS, enqueue_payment_task
 from core.prembly_verification import (
@@ -422,6 +423,156 @@ class ListingTests(TestCase):
         results = payload["results"] if isinstance(payload, dict) and "results" in payload else payload
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["title"], "Lagos Family House")
+
+    def test_public_listing_search_supports_distance_radius_with_stored_coordinates(self):
+        landlord = AppUser.objects.create_user(
+            email="landlord-distance@example.com",
+            password="password-123",
+            name="Distance Landlord",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+        )
+        nearby_listing = Listing.objects.create(
+            landlord=landlord,
+            title="Victoria Island Apartment",
+            description="Near the search point",
+            address="10 Ozumba Mbadiwe",
+            city="Victoria Island",
+            state="Lagos",
+            latitude=Decimal("6.428100"),
+            longitude=Decimal("3.421900"),
+            property_type="Apartment",
+            bedrooms=2,
+            bathrooms=2,
+            price_per_year=3000000,
+        )
+        Listing.objects.create(
+            landlord=landlord,
+            title="Abuja Apartment",
+            description="Outside the radius",
+            address="22 Aminu Kano Crescent",
+            city="Wuse",
+            state="FCT",
+            latitude=Decimal("9.076600"),
+            longitude=Decimal("7.463700"),
+            property_type="Apartment",
+            bedrooms=2,
+            bathrooms=2,
+            price_per_year=3500000,
+        )
+
+        response = self.client.get("/api/v1/listings/search?latitude=6.4281&longitude=3.4219&radius_km=5")
+
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        results = payload["results"] if isinstance(payload, dict) and "results" in payload else payload
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["id"], str(nearby_listing.id))
+        self.assertLessEqual(results[0]["distance_km"], 5)
+
+    def test_public_listing_search_supports_distance_radius_with_city_state_coordinates(self):
+        landlord = AppUser.objects.create_user(
+            email="landlord-city-distance@example.com",
+            password="password-123",
+            name="City Distance Landlord",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+        )
+        listing = Listing.objects.create(
+            landlord=landlord,
+            title="Ikoyi Apartment",
+            description="Uses city and state coordinates",
+            address="12 Gerrard Road",
+            city="Ikoyi",
+            state="Lagos",
+            property_type="Apartment",
+            bedrooms=2,
+            bathrooms=2,
+            price_per_year=3000000,
+        )
+
+        response = self.client.get("/api/v1/listings/search?latitude=6.4541&longitude=3.4351&radius_km=2")
+
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        results = payload["results"] if isinstance(payload, dict) and "results" in payload else payload
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["id"], str(listing.id))
+        self.assertEqual(results[0]["location_source"], "city_state")
+
+    def test_location_analytics_groups_available_listings(self):
+        landlord = AppUser.objects.create_user(
+            email="landlord-analytics@example.com",
+            password="password-123",
+            name="Analytics Landlord",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+        )
+        Listing.objects.create(
+            landlord=landlord,
+            title="Ikoyi Apartment",
+            description="Lagos listing",
+            address="12 Gerrard Road",
+            city="Ikoyi",
+            state="Lagos",
+            property_type="Apartment",
+            bedrooms=2,
+            bathrooms=2,
+            price_per_year=2000000,
+        )
+        Listing.objects.create(
+            landlord=landlord,
+            title="Wuse Apartment",
+            description="Abuja listing",
+            address="20 Aminu Kano Crescent",
+            city="Wuse",
+            state="FCT",
+            property_type="Apartment",
+            bedrooms=2,
+            bathrooms=2,
+            price_per_year=4000000,
+        )
+
+        response = self.client.get("/api/v1/listings/location-analytics")
+
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        self.assertEqual(payload["total_listings"], 2)
+        states = {item["name"]: item for item in payload["states"]}
+        cities = {item["name"]: item for item in payload["cities"]}
+        self.assertEqual(states["Lagos"]["listing_count"], 1)
+        self.assertEqual(cities["Ikoyi"]["average_price_per_year"], 2000000)
+
+    def test_listing_nearest_amenities_returns_points_of_interest_by_category(self):
+        landlord = AppUser.objects.create_user(
+            email="landlord-amenities@example.com",
+            password="password-123",
+            name="Amenities Landlord",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+        )
+        listing = Listing.objects.create(
+            landlord=landlord,
+            title="Lekki Apartment",
+            description="Near Lekki amenities",
+            address="1 Admiralty Way",
+            city="Lekki",
+            state="Lagos",
+            latitude=Decimal("6.469800"),
+            longitude=Decimal("3.585200"),
+            property_type="Apartment",
+            bedrooms=2,
+            bathrooms=2,
+            price_per_year=3500000,
+        )
+
+        response = self.client.get(f"/api/v1/listings/{listing.id}/nearest-amenities?radius_km=15&limit=2")
+
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        self.assertTrue(payload["location_available"])
+        self.assertGreaterEqual(len(payload["amenities"]["schools"]), 1)
+        self.assertGreaterEqual(len(payload["amenities"]["supermarkets"]), 1)
 
     def test_landlord_cannot_retrieve_another_landlords_listing_detail(self):
         owner = AppUser.objects.create_user(
@@ -2198,8 +2349,175 @@ class BookingPaymentTests(TestCase):
 
         self.assertEqual(response.status_code, 200, response.json())
         payment.refresh_from_db()
+        booking.refresh_from_db()
         self.assertEqual(payment.status, "cancelled")
         self.assertEqual(payment.provider_payload["cancellation"]["reason"], "cancelled_by_user")
+        self.assertEqual(booking.status, Booking.Status.PENDING)
+        self.assertEqual(booking.paid_amount, Decimal("0.00"))
+        booking_response = self.client.get(f"/api/v1/bookings/listing/{self.listing.id}")
+        self.assertEqual(booking_response.status_code, 200, booking_response.json())
+        self.assertEqual(booking_response.json()["remaining_amount"], 1440000.0)
+
+    def test_tenant_can_delete_cancelled_rental_payment_history(self):
+        booking = Booking.objects.create(
+            tenant=self.tenant,
+            listing=self.listing,
+            start_date=date(2026, 6, 19),
+            end_date=date(2027, 6, 19),
+            total_amount=calculate_booking_total(self.listing.price_per_year),
+        )
+        Payment.objects.create(
+            booking=booking,
+            amount=100000,
+            payment_method="bank",
+            status="cancelled",
+            transaction_id="BOOK_DELETE_CANCELLED_TEST",
+            currency="NGN",
+            provider="flutterwave",
+        )
+
+        response = self.client.delete(f"/api/v1/bookings/{booking.id}")
+
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(Booking.objects.filter(id=booking.id).exists())
+
+    def test_tenant_cannot_delete_booking_with_pending_or_completed_payment(self):
+        booking = Booking.objects.create(
+            tenant=self.tenant,
+            listing=self.listing,
+            start_date=date(2026, 6, 19),
+            end_date=date(2027, 6, 19),
+            total_amount=calculate_booking_total(self.listing.price_per_year),
+        )
+        Payment.objects.create(
+            booking=booking,
+            amount=100000,
+            payment_method="bank",
+            status="pending",
+            transaction_id="BOOK_DELETE_PENDING_TEST",
+            currency="NGN",
+            provider="flutterwave",
+        )
+
+        response = self.client.delete(f"/api/v1/bookings/{booking.id}")
+
+        self.assertEqual(response.status_code, 400, response.json())
+        self.assertTrue(Booking.objects.filter(id=booking.id).exists())
+
+    @override_settings(
+        FLUTTERWAVE_PUBLIC_KEY="test-public-key",
+        FLUTTERWAVE_SECRET_KEY="test-secret-key",
+        FLUTTERWAVE_CLIENT_ID="test-client-id",
+        FLUTTERWAVE_CLIENT_SECRET="test-client-secret",
+        FLUTTERWAVE_API_BASE_URL="https://f4bexperience.flutterwave.com",
+        WEB_PUBLIC_URL="http://localhost:5173",
+    )
+    @patch("core.views.create_dynamic_virtual_account")
+    @patch("core.views.create_customer")
+    def test_bank_transfer_checkout_falls_back_when_virtual_accounts_are_forbidden(
+        self,
+        create_customer_mock,
+        create_dynamic_virtual_account_mock,
+    ):
+        create_customer_mock.return_value = {"status": "success", "data": {"id": "cust_123"}}
+        create_dynamic_virtual_account_mock.side_effect = FlutterwaveError("Forbidden")
+        booking = Booking.objects.create(
+            tenant=self.tenant,
+            listing=self.listing,
+            start_date=date(2026, 6, 19),
+            end_date=date(2027, 6, 19),
+            total_amount=calculate_booking_total(self.listing.price_per_year),
+        )
+
+        response = self.client.post(
+            "/api/v1/payments",
+            {
+                "booking_id": str(booking.id),
+                "amount": str(calculate_deposit_amount(self.listing.price_per_year)),
+                "payment_method": "bank",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.json())
+        payload = response.json()
+        self.assertEqual(payload["payment"]["status"], "pending")
+        self.assertEqual(payload["checkout"]["checkout_mode"], "inline")
+        self.assertEqual(payload["checkout"]["flutterwave"]["payment_options"], "banktransfer,bank,ussd")
+        payment = Payment.objects.get(id=payload["payment"]["id"])
+        self.assertEqual(payment.provider_payload["checkout"]["checkout_mode"], "inline")
+        self.assertEqual(payment.provider_payload["collection_mode"], "inline_bank_checkout")
+        self.assertEqual(payment.virtual_account_number, "")
+
+    def test_tenant_can_request_refund_for_completed_payment_before_key_collection(self):
+        total_amount = calculate_booking_total(self.listing.price_per_year)
+        booking = Booking.objects.create(
+            tenant=self.tenant,
+            listing=self.listing,
+            start_date=date(2026, 6, 19),
+            end_date=date(2027, 6, 19),
+            status=Booking.Status.CONFIRMED,
+            total_amount=total_amount,
+            paid_amount=total_amount,
+        )
+        payment = Payment.objects.create(
+            booking=booking,
+            amount=total_amount,
+            payment_method="bank",
+            status="completed",
+            transaction_id="BOOK_REFUND_TEST",
+            currency="NGN",
+            provider="flutterwave",
+        )
+
+        response = self.client.post(f"/api/v1/payments/{payment.id}/cancel", {}, format="json")
+
+        self.assertEqual(response.status_code, 200, response.json())
+        payment.refresh_from_db()
+        booking.refresh_from_db()
+        self.assertEqual(payment.status, "refund_requested")
+        self.assertEqual(payment.provider_payload["cancellation"]["reason"], "refund_requested_by_tenant")
+        self.assertEqual(payment.provider_payload["cancellation"]["refund_eta"], "3 to 5 working days")
+        self.assertEqual(payment.provider_payload["cancellation"]["admin_fee_rate"], "0.01")
+        self.assertEqual(booking.status, Booking.Status.CANCELLED)
+        self.assertEqual(booking.paid_amount, Decimal("0.00"))
+
+    def test_tenant_cannot_cancel_completed_payment_after_both_parties_confirm_key_collection(self):
+        total_amount = calculate_booking_total(self.listing.price_per_year)
+        booking = Booking.objects.create(
+            tenant=self.tenant,
+            listing=self.listing,
+            start_date=date(2026, 6, 19),
+            end_date=date(2027, 6, 19),
+            status=Booking.Status.CONFIRMED,
+            total_amount=total_amount,
+            paid_amount=total_amount,
+            tenant_rental_progress={"tenant_collected_house_key": timezone.now().isoformat()},
+            landlord_rental_progress={"tenant_collected_house_key": timezone.now().isoformat()},
+        )
+        payment = Payment.objects.create(
+            booking=booking,
+            amount=total_amount,
+            payment_method="bank",
+            status="completed",
+            transaction_id="BOOK_KEY_COLLECTED_TEST",
+            currency="NGN",
+            provider="flutterwave",
+        )
+
+        response = self.client.post(f"/api/v1/payments/{payment.id}/cancel", {}, format="json")
+
+        self.assertEqual(response.status_code, 400, response.json())
+        self.assertIn("cannot be cancelled", str(response.json()))
+        payment.refresh_from_db()
+        booking.refresh_from_db()
+        self.assertEqual(payment.status, "completed")
+        self.assertEqual(booking.status, Booking.Status.CONFIRMED)
+        booking_response = self.client.get(f"/api/v1/bookings/listing/{self.listing.id}")
+        self.assertEqual(booking_response.status_code, 200, booking_response.json())
+        self.assertTrue(booking_response.json()["tenant_key_collection_confirmed"])
+        self.assertTrue(booking_response.json()["landlord_key_collection_confirmed"])
+        self.assertTrue(booking_response.json()["keys_collected_confirmed"])
 
     @override_settings(
         EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
@@ -2751,37 +3069,9 @@ class BookingRentalProgressTests(TestCase):
             {"viewing_appointment_booked", "house_viewed", "tenancy_agreement_signed", "deposit_payment_notification_received"},
         )
 
-    def test_listing_is_hidden_from_public_search_and_featured_after_both_deposit_steps(self):
+    def test_listing_is_hidden_from_public_search_and_featured_after_deposit_payment(self):
         self.listing.featured = True
         self.listing.save(update_fields=["featured", "updated_at"])
-
-        tenant_client = APIClient()
-        tenant_client.force_authenticate(user=self.tenant)
-        save_rental_progress_steps(
-            self,
-            tenant_client,
-            self.booking.id,
-            step_keys=[
-                "viewing_appointment_booked",
-                "house_viewed",
-                "tenancy_agreement_signed",
-                "tenant_paid_deposit",
-            ],
-        )
-
-        landlord_client = APIClient()
-        landlord_client.force_authenticate(user=self.landlord)
-        save_rental_progress_steps(
-            self,
-            landlord_client,
-            self.booking.id,
-            step_keys=[
-                "viewing_appointment_booked",
-                "house_viewed",
-                "tenancy_agreement_signed",
-                "deposit_payment_notification_received",
-            ],
-        )
 
         unpaid_search_response = self.client.get("/api/v1/listings/search?city=Abuja")
         self.assertEqual(unpaid_search_response.status_code, 200)
@@ -2794,7 +3084,7 @@ class BookingRentalProgressTests(TestCase):
         self.assertEqual(unpaid_featured_response.status_code, 200)
         self.assertEqual(len(unpaid_featured_response.json()), 1)
 
-        self.booking.paid_amount = 1
+        self.booking.paid_amount = calculate_deposit_amount(self.listing.price_per_year)
         self.booking.save(update_fields=["paid_amount", "updated_at"])
 
         search_response = self.client.get("/api/v1/listings/search?city=Abuja")
@@ -4073,7 +4363,7 @@ class DashboardTests(TestCase):
             currency="NGN",
             bank_name="Palm Pay",
             account_number="9041487757",
-            status=PaymentSettlement.Status.READY,
+            status=PaymentSettlement.Status.PAID,
         )
         PaymentSettlement.objects.create(
             payment=expected_payment,
@@ -4082,7 +4372,7 @@ class DashboardTests(TestCase):
             currency="NGN",
             bank_name="Palm Pay",
             account_number="9041487757",
-            status=PaymentSettlement.Status.PENDING,
+            status=PaymentSettlement.Status.READY,
         )
 
         client = APIClient()
@@ -4093,8 +4383,10 @@ class DashboardTests(TestCase):
         payload = response.json()
         results = payload["results"] if isinstance(payload, dict) and "results" in payload else payload
         booking_payload = next(item for item in results if item["id"] == str(booking.id))
+        self.assertEqual(booking_payload["landlord_rental_amount"], 1000000.0)
         self.assertEqual(booking_payload["landlord_collected_amount"], 250000.0)
-        self.assertEqual(booking_payload["landlord_expecting_payment_amount"], 250000.0)
+        self.assertEqual(booking_payload["landlord_expecting_payment_amount"], 350000.0)
+        self.assertEqual(booking_payload["landlord_balance_payment_amount"], 400000.0)
         self.assertEqual(booking_payload["remaining_amount"], 600000.0)
 
 
@@ -4203,10 +4495,31 @@ class ReviewTests(TestCase):
         review = Review.objects.get(pk=review_id)
         self.assertEqual(review.rating, 4)
         self.assertEqual(review.comment, "Quick maintenance response.")
+        self.assertEqual(review.review_type, Review.ReviewType.PROPERTY)
 
         public_response = self.client.get(f"/api/v1/reviews?landlord_id={landlord.id}")
         self.assertEqual(public_response.status_code, 200)
         self.assertEqual(len(public_response.json()), 1)
+
+        landlord_review_response = client.post(
+            "/api/v1/reviews",
+            {
+                "review_type": Review.ReviewType.LANDLORD,
+                "listing_id": str(listing.id),
+                "rating": 5,
+                "comment": "Great landlord.",
+            },
+            format="json",
+        )
+
+        self.assertEqual(landlord_review_response.status_code, 201, landlord_review_response.json())
+
+        property_reviews_response = self.client.get(f"/api/v1/reviews?listing_id={listing.id}&review_type={Review.ReviewType.PROPERTY}")
+        landlord_reviews_response = self.client.get(f"/api/v1/reviews?listing_id={listing.id}&review_type={Review.ReviewType.LANDLORD}")
+        self.assertEqual(len(property_reviews_response.json()), 1)
+        self.assertEqual(property_reviews_response.json()[0]["comment"], "Quick maintenance response.")
+        self.assertEqual(len(landlord_reviews_response.json()), 1)
+        self.assertEqual(landlord_reviews_response.json()[0]["comment"], "Great landlord.")
 
     def test_bronze_tenant_cannot_create_listing_review(self):
         landlord = AppUser.objects.create_user(
@@ -4712,6 +5025,8 @@ class TenantPublicProfileTests(TestCase):
         self.assertNotIn("email", payload)
         self.assertNotIn("mobile", payload)
         self.assertEqual(payload["tenant_profile"]["first_name"], "Jade")
+        self.assertIn("age", payload["tenant_profile"])
+        self.assertNotIn("date_of_birth", payload["tenant_profile"])
         self.assertEqual(payload["tenant_profile"]["residence_city"], "Ikoyi")
         self.assertNotIn("residence_address", payload["tenant_profile"])
         self.assertNotIn("financial_info", payload["tenant_profile"])
@@ -4956,8 +5271,17 @@ class LandlordPublicProfileTests(TestCase):
             listing=listing_one,
             landlord=landlord,
             tenant=tenant,
+            review_type=Review.ReviewType.LANDLORD,
             rating=5,
             comment="Excellent communication.",
+        )
+        Review.objects.create(
+            listing=listing_one,
+            landlord=landlord,
+            tenant=tenant,
+            review_type=Review.ReviewType.PROPERTY,
+            rating=2,
+            comment="Property needs work.",
         )
         inbound = Message.objects.create(
             sender=tenant,

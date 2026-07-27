@@ -134,6 +134,7 @@ const schema = z.object({
     rental_history_same_as_current_residence: z.boolean().optional(),
     rental_history: z.array(rentalHistoryItemSchema).optional(),
     household_info: z.object({
+        marital_status: z.string().min(1, 'Marital status is required'),
         number_of_adults: z.string().optional(),
         number_of_children: z.string().optional(),
         has_pets: requiredBooleanField,
@@ -205,6 +206,7 @@ const employmentOptions = ['Employed', 'Self Employed', 'Business Owner', 'Freel
 const genderOptions = ['Male', 'Female']
 const housingStatusOptions = ['Owned', 'Rented', 'Family Property', 'Employer Provided', 'Other']
 const employmentTypeOptions = ['Full-time', 'Part-time', 'Contract', 'Internship']
+const maritalStatusOptions = ['Married', 'Single', 'Divorced', 'Separated', 'Widow/Widower']
 
 type FileMap = Record<string, File[]>
 
@@ -430,6 +432,7 @@ const defaultFormValues: Partial<FormValues> = {
     rental_history_same_as_current_residence: false,
     rental_history: [{ property_address: '' }],
     household_info: {
+        marital_status: '',
         number_of_adults: '',
         number_of_children: '',
         has_pets: undefined as unknown as boolean,
@@ -736,7 +739,10 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
             landlord_info: existingProfile.landlord_info || {},
             rental_history_same_as_current_residence: false,
             rental_history: existingProfile.rental_history?.length ? existingProfile.rental_history : [{ property_address: '' }],
-            household_info: existingProfile.household_info || {},
+            household_info: {
+                ...defaultFormValues.household_info,
+                ...(existingProfile.household_info || {}),
+            },
             social_presence: existingProfile.social_presence || {},
             criminal_declaration: existingProfile.criminal_declaration || {},
         })
@@ -1461,6 +1467,9 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                     {/* 8. Household Information */}
                     <SectionCard title="Household Information" step={8} activeStep={activeStep} setActiveStep={setActiveStep}>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <InputRow label="Marital Status" error={errors.household_info?.marital_status?.message}>
+                                <SelectInput register={register} name="household_info.marital_status" options={maritalStatusOptions} placeholder="Select marital status" error={errors.household_info?.marital_status?.message} />
+                            </InputRow>
                             <InputRow label="Number of Adults">
                                 <TextInput register={register} name="household_info.number_of_adults" placeholder="e.g. 2" />
                             </InputRow>

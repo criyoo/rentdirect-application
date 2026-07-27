@@ -45,6 +45,7 @@ from .models import (
 from .pricing import calculate_booking_total, calculate_remaining_balance, resolve_booking_total
 from .subscription_access import user_has_bronze_access
 from .tenant_scoring import build_tenant_screening_summary
+from .location_services import decimal_from_float, resolve_city_state_coordinates
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -315,6 +316,7 @@ class ListingSerializer(serializers.ModelSerializer):
 
     landlord_id = serializers.UUIDField(source="landlord.id", read_only=True)
     landlord_name = serializers.CharField(source="landlord.name", read_only=True)
+    landlord_email = serializers.EmailField(source="landlord.email", read_only=True)
     landlord_profile_photo_url = serializers.CharField(source="landlord.profile_photo_url", read_only=True)
     cover_image_url = serializers.CharField(read_only=True)
     image_urls = serializers.ListField(child=serializers.CharField(), read_only=True)
@@ -323,6 +325,8 @@ class ListingSerializer(serializers.ModelSerializer):
     ownership_types = AmenitiesField(required=False)
     property_ownership_documents = AmenitiesField(required=False)
     property_documents = serializers.SerializerMethodField()
+    distance_km = serializers.SerializerMethodField()
+    location_source = serializers.SerializerMethodField()
     property_verification_method = serializers.ChoiceField(
         choices=[PROPERTY_VERIFICATION_METHOD_DOCUMENTS, PROPERTY_VERIFICATION_METHOD_IN_PERSON],
         write_only=True,
@@ -341,6 +345,8 @@ class ListingSerializer(serializers.ModelSerializer):
             "postal_code",
             "latitude",
             "longitude",
+            "distance_km",
+            "location_source",
             "property_type",
             "bedrooms",
             "bathrooms",
@@ -376,6 +382,7 @@ class ListingSerializer(serializers.ModelSerializer):
             "images",
             "landlord_id",
             "landlord_name",
+            "landlord_email",
             "landlord_profile_photo_url",
             "created_at",
             "updated_at",
@@ -388,6 +395,8 @@ class ListingSerializer(serializers.ModelSerializer):
             "property_document_submission",
             "property_document_verification_status",
             "physical_property_status",
+            "distance_km",
+            "location_source",
             "created_at",
             "updated_at",
         ]
@@ -408,6 +417,19 @@ class ListingSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"toilets": "Toilets must be positive"})
         if attrs.get("maximum_occupancy") is not None and attrs.get("maximum_occupancy", 1) <= 0:
             raise serializers.ValidationError({"maximum_occupancy": "Maximum occupancy must be positive"})
+
+        existing_latitude = getattr(self.instance, "latitude", None)
+        existing_longitude = getattr(self.instance, "longitude", None)
+        location_changed = "city" in attrs or "state" in attrs
+        if attrs.get("latitude") is None and attrs.get("longitude") is None and (
+            existing_latitude is None or existing_longitude is None or location_changed
+        ):
+            city = attrs.get("city") or getattr(self.instance, "city", "")
+            state = attrs.get("state") or getattr(self.instance, "state", "")
+            coordinates = resolve_city_state_coordinates(city, state)
+            if coordinates:
+                attrs["latitude"] = decimal_from_float(coordinates.latitude)
+                attrs["longitude"] = decimal_from_float(coordinates.longitude)
 
         price_for_deposit = price_per_year or getattr(self.instance, "price_per_year", None)
         if price_for_deposit is not None:
@@ -482,6 +504,13 @@ class ListingSerializer(serializers.ModelSerializer):
             }
             for document in obj.property_documents.all()
         ]
+
+    def get_distance_km(self, obj):
+        distance = getattr(obj, "_distance_km", None)
+        return distance if distance is not None else None
+
+    def get_location_source(self, obj):
+        return getattr(obj, "_location_source", None)
 
     def _apply_property_document_submission(self, listing, verification_method: str):
         request = self.context["request"]
@@ -667,11 +696,16 @@ class BookingSerializer(serializers.ModelSerializer):
     landlord_name = serializers.CharField(source="listing.landlord.name", read_only=True)
     total_amount = serializers.SerializerMethodField()
     remaining_amount = serializers.SerializerMethodField()
+    landlord_rental_amount = serializers.SerializerMethodField()
     landlord_collected_amount = serializers.SerializerMethodField()
     landlord_expecting_payment_amount = serializers.SerializerMethodField()
+    landlord_balance_payment_amount = serializers.SerializerMethodField()
     payments = serializers.SerializerMethodField()
     rental_progress = serializers.SerializerMethodField()
     tenant_screening_summary = serializers.SerializerMethodField()
+    tenant_key_collection_confirmed = serializers.SerializerMethodField()
+    landlord_key_collection_confirmed = serializers.SerializerMethodField()
+    keys_collected_confirmed = serializers.SerializerMethodField()
 
     class Meta:
         model = Booking
@@ -694,10 +728,15 @@ class BookingSerializer(serializers.ModelSerializer):
             "total_amount",
             "paid_amount",
             "remaining_amount",
+            "landlord_rental_amount",
             "landlord_collected_amount",
             "landlord_expecting_payment_amount",
+            "landlord_balance_payment_amount",
             "payments",
             "rental_progress",
+            "tenant_key_collection_confirmed",
+            "landlord_key_collection_confirmed",
+            "keys_collected_confirmed",
             "tenant_screening_summary",
             "created_at",
             "updated_at",
@@ -709,9 +748,14 @@ class BookingSerializer(serializers.ModelSerializer):
             "total_amount",
             "paid_amount",
             "remaining_amount",
+            "landlord_rental_amount",
             "landlord_collected_amount",
             "landlord_expecting_payment_amount",
+            "landlord_balance_payment_amount",
             "payments",
+            "tenant_key_collection_confirmed",
+            "landlord_key_collection_confirmed",
+            "keys_collected_confirmed",
             "created_at",
             "updated_at",
         ]
@@ -723,33 +767,32 @@ class BookingSerializer(serializers.ModelSerializer):
         return resolve_booking_total(obj.listing.price_per_year, obj.total_amount)
 
     def get_remaining_amount(self, obj):
+        if obj.status == Booking.Status.CANCELLED:
+            return Decimal("0.00")
         return calculate_remaining_balance(self.get_total_amount(obj), obj.paid_amount)
+
+    def get_landlord_rental_amount(self, obj):
+        if not self._request_user_can_view_landlord_financials(obj):
+            return None
+        return self._landlord_rent_amount(obj)
 
     def get_landlord_collected_amount(self, obj):
         if not self._request_user_can_view_landlord_financials(obj):
             return None
-        return self._sum_landlord_rent_settlements(
-            obj,
-            statuses={
-                PaymentSettlement.Status.RECIPIENT_CREATED,
-                PaymentSettlement.Status.READY,
-                PaymentSettlement.Status.PROCESSING,
-                PaymentSettlement.Status.PAID,
-            },
-        )
+        collected = self._sum_landlord_rent_settlements(obj, statuses={PaymentSettlement.Status.PAID})
+        return min(collected, self._landlord_rent_amount(obj))
 
     def get_landlord_expecting_payment_amount(self, obj):
         if not self._request_user_can_view_landlord_financials(obj):
             return None
-        return self._sum_landlord_rent_settlements(
-            obj,
-            exclude_statuses={
-                PaymentSettlement.Status.RECIPIENT_CREATED,
-                PaymentSettlement.Status.READY,
-                PaymentSettlement.Status.PROCESSING,
-                PaymentSettlement.Status.PAID,
-            },
-        )
+        paid_rent = self._tenant_paid_landlord_rent_amount(obj)
+        collected = self.get_landlord_collected_amount(obj) or Decimal("0.00")
+        return max(paid_rent - collected, Decimal("0.00"))
+
+    def get_landlord_balance_payment_amount(self, obj):
+        if not self._request_user_can_view_landlord_financials(obj):
+            return None
+        return max(self._landlord_rent_amount(obj) - self._tenant_paid_landlord_rent_amount(obj), Decimal("0.00"))
 
     def _request_user_can_view_landlord_financials(self, obj):
         request = self.context.get("request")
@@ -776,12 +819,30 @@ class BookingSerializer(serializers.ModelSerializer):
         total = settlements.aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
         return total
 
+    def _landlord_rent_amount(self, obj):
+        return Decimal(obj.listing.price_per_year or 0)
+
+    def _tenant_paid_landlord_rent_amount(self, obj):
+        paid_amount = Decimal(obj.paid_amount or 0)
+        return min(max(paid_amount, Decimal("0.00")), self._landlord_rent_amount(obj))
+
     def get_rental_progress(self, obj):
         request = self.context.get("request")
         role = getattr(getattr(request, "user", None), "role", "")
         if role not in {AppUser.Role.TENANT, AppUser.Role.LANDLORD}:
             return None
         return build_booking_progress_data(obj, role)
+
+    def get_tenant_key_collection_confirmed(self, obj):
+        progress = obj.tenant_rental_progress if isinstance(obj.tenant_rental_progress, dict) else {}
+        return booking_progress_step_completed(progress, "tenant_collected_house_key")
+
+    def get_landlord_key_collection_confirmed(self, obj):
+        progress = obj.landlord_rental_progress if isinstance(obj.landlord_rental_progress, dict) else {}
+        return booking_progress_step_completed(progress, "tenant_collected_house_key")
+
+    def get_keys_collected_confirmed(self, obj):
+        return self.get_tenant_key_collection_confirmed(obj) and self.get_landlord_key_collection_confirmed(obj)
 
     def get_tenant_screening_summary(self, obj):
         request = self.context.get("request")
@@ -1073,6 +1134,7 @@ class ReviewSerializer(serializers.ModelSerializer):
         model = Review
         fields = [
             "id",
+            "review_type",
             "listing_id",
             "listing_title",
             "tenant_id",
@@ -1096,6 +1158,9 @@ class ReviewSerializer(serializers.ModelSerializer):
         next_listing_id = attrs.get("listing_id")
         if instance is not None and next_listing_id and str(next_listing_id) != str(instance.listing_id):
             raise serializers.ValidationError({"listing_id": "Listing cannot be changed for an existing review."})
+        next_review_type = attrs.get("review_type")
+        if instance is not None and next_review_type and next_review_type != instance.review_type:
+            raise serializers.ValidationError({"review_type": "Review type cannot be changed for an existing review."})
         return attrs
 
 

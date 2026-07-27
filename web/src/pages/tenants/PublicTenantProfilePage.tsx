@@ -27,6 +27,7 @@ type PublicTenantProfile = {
         first_name?: string
         middle_name?: string
         last_name?: string
+        age?: number | null
         gender?: string
         nationality?: string
         state_of_origin?: string
@@ -182,6 +183,7 @@ export default function PublicTenantProfilePage() {
                     <Section title="Personal Summary" icon={<HiUser className="h-5 w-5" />}>
                         <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                             <DetailCard label="Gender" value={tenantProfile.gender} />
+                            <DetailCard label="Age" value={tenantProfile.age} />
                             <DetailCard label="Nationality" value={tenantProfile.nationality} />
                             <DetailCard label="State of Origin" value={tenantProfile.state_of_origin || profile.state_of_origin} />
                             <DetailCard label="LGA" value={tenantProfile.lga} />

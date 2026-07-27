@@ -17,6 +17,12 @@ export default function ListingCard({ listing, isFavourite = false }: ListingCar
     const queryClient = useQueryClient()
     const canManageFavourites = user?.role === 'tenant'
     const locationLabel = [listing.city, listing.state].filter(Boolean).join(', ') || listing.state || 'State not provided'
+    const distanceKm = typeof listing.distance_km === 'number'
+        ? listing.distance_km
+        : listing.distance_km == null
+            ? Number.NaN
+            : Number(listing.distance_km)
+    const hasDistance = Number.isFinite(distanceKm)
 
     const toggleFavourite = useMutation({
         mutationFn: async () => {
@@ -126,6 +132,11 @@ export default function ListingCard({ listing, isFavourite = false }: ListingCar
                             <HiLocationMarker className="w-4 h-4 mr-1 flex-shrink-0" />
                             <span className="truncate">{locationLabel}</span>
                         </div>
+                        {hasDistance ? (
+                            <div className="mt-1 text-sm font-medium text-blue-600">
+                                {distanceKm.toFixed(1)} km away
+                            </div>
+                        ) : null}
                     </div>
 
                     {/* Property Details */}

@@ -54,11 +54,12 @@ export default function PublicLandlordProfilePage() {
     const reviewableListings = (profile?.listings || []).map((listing) => ({ id: listing.id, title: listing.title }))
 
     const { data: myReviews = [] } = useQuery({
-        queryKey: ['reviews', 'mine', 'landlord-profile', selectedListingId],
+        queryKey: ['reviews', 'mine', 'landlord-profile', selectedListingId, 'landlord'],
         enabled: user?.role === 'tenant' && !!selectedListingId,
         queryFn: async () => (await api.get<Review[]>('/reviews', {
             params: {
                 listing_id: selectedListingId,
+                review_type: 'landlord',
                 mine: true,
             },
         })).data,
@@ -83,6 +84,7 @@ export default function PublicLandlordProfilePage() {
 
             if (existingReview?.id) {
                 await api.patch(`/reviews/${existingReview.id}`, {
+                    review_type: 'landlord',
                     listing_id: selectedListingId,
                     rating,
                     comment,
@@ -91,6 +93,7 @@ export default function PublicLandlordProfilePage() {
             }
 
             await api.post('/reviews', {
+                review_type: 'landlord',
                 listing_id: selectedListingId,
                 rating,
                 comment,
@@ -195,18 +198,18 @@ export default function PublicLandlordProfilePage() {
 
             <div className="mt-8 grid gap-6 lg:grid-cols-2">
                 <section className="card p-6">
-                    <h2 className="text-2xl font-bold text-blue-600">Reputation Metrics</h2>
+                    <h2 className="text-xl font-bold text-blue-600">Reputation Metrics</h2>
                     <div className="mt-5 grid gap-4 sm:grid-cols-2">
                         <div className="rounded-2xl bg-slate-50 p-4">
-                            <p className="text-sm text-slate-500">Number of Properties Listed</p>
+                            <p className="text-sm text-slate-500">Properties Listed</p>
                             <p className="mt-2 text-2xl font-bold text-slate-900">{profile.metrics.properties_listed}</p>
                         </div>
                         <div className="rounded-2xl bg-slate-50 p-4">
-                            <p className="text-sm text-slate-500">Number of Active Tenancies</p>
+                            <p className="text-sm text-slate-500">Active Tenancies</p>
                             <p className="mt-2 text-2xl font-bold text-slate-900">{profile.metrics.active_tenancies}</p>
                         </div>
                         <div className="rounded-2xl bg-slate-50 p-4">
-                            <p className="text-sm text-slate-500">Number of Completed Tenancies</p>
+                            <p className="text-sm text-slate-500">Completed Tenancies</p>
                             <p className="mt-2 text-2xl font-bold text-slate-900">{profile.metrics.completed_tenancies}</p>
                         </div>
                         <div className="rounded-2xl bg-slate-50 p-4">
@@ -237,7 +240,7 @@ export default function PublicLandlordProfilePage() {
                         </div>
                     </div>
 
-                    <h2 className="mt-8 text-2xl font-bold text-blue-600">Rental History Metrics</h2>
+                    <h2 className="mt-8 text-xl font-bold text-blue-600">Rental History Metrics</h2>
                     <div className="mt-5 grid gap-4 sm:grid-cols-2">
                         <div className="rounded-2xl bg-slate-50 p-4">
                             <p className="text-sm text-slate-500">Years on Platform</p>
@@ -254,7 +257,7 @@ export default function PublicLandlordProfilePage() {
             <section className="card mt-8 p-6">
                 <div className="flex items-center justify-between gap-4">
                     <div>
-                        <h2 className="text-2xl font-bold text-slate-900">Tenant Reviews</h2>
+                        <h2 className="text-2xl font-bold text-slate-900">Landlord Reviews</h2>
                         <p className="mt-2 text-sm text-slate-600">Feedback from tenants who interacted with this landlord through listed properties.</p>
                     </div>
                     {profile.metrics.reviews_count ? (
@@ -285,7 +288,7 @@ export default function PublicLandlordProfilePage() {
                     </div>
                 ) : (
                     <div className="mt-6 rounded-2xl border border-dashed border-slate-200 p-6 text-center text-slate-500">
-                        No tenant reviews yet.
+                        No landlord reviews yet.
                     </div>
                 )}
             </section>

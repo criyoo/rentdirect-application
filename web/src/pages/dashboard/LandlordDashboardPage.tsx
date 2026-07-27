@@ -61,15 +61,17 @@ function normalizeResults<T>(payload: T[] | PaginatedResponse<T> | undefined): T
 }
 
 function getBookingFinancials(booking: Booking) {
-    const totalAmount = Number(booking.total_amount || 0)
+    const rentalAmount = booking.landlord_rental_amount !== undefined && booking.landlord_rental_amount !== null
+        ? Number(booking.landlord_rental_amount)
+        : Number(booking.total_amount || 0)
     const paidAmount = Number(booking.paid_amount || 0)
     const collectedAmount = Number(booking.landlord_collected_amount || 0)
     const expectingAmount = Number(booking.landlord_expecting_payment_amount || 0)
-    const remainingAmount = booking.remaining_amount !== undefined
-        ? Number(booking.remaining_amount)
-        : Math.max(totalAmount - paidAmount, 0)
+    const remainingAmount = booking.landlord_balance_payment_amount !== undefined && booking.landlord_balance_payment_amount !== null
+        ? Number(booking.landlord_balance_payment_amount)
+        : Math.max(rentalAmount - Math.min(paidAmount, rentalAmount), 0)
 
-    return { totalAmount, paidAmount, collectedAmount, expectingAmount, remainingAmount }
+    return { rentalAmount, paidAmount, collectedAmount, expectingAmount, remainingAmount }
 }
 
 export default function LandlordDashboardPage() {
@@ -108,9 +110,10 @@ export default function LandlordDashboardPage() {
     const rentalStatusClass = "text-[16px] font-bold text-gray-600"
     const totalValue = listings.reduce((sum, listing) => sum + Number(listing.price_per_year || 0), 0)
     const activeBookings = bookings.filter(booking => !['cancelled', 'completed'].includes(booking.status))
-    const totalCollected = activeBookings.reduce((sum, booking) => sum + getBookingFinancials(booking).collectedAmount, 0)
-    const totalExpecting = activeBookings.reduce((sum, booking) => sum + getBookingFinancials(booking).expectingAmount, 0)
-    const outstandingBalance = activeBookings.reduce((sum, booking) => sum + getBookingFinancials(booking).remainingAmount, 0)
+    const financialBookings = bookings.filter(booking => booking.status !== 'cancelled')
+    const totalCollected = financialBookings.reduce((sum, booking) => sum + getBookingFinancials(booking).collectedAmount, 0)
+    const totalExpecting = financialBookings.reduce((sum, booking) => sum + getBookingFinancials(booking).expectingAmount, 0)
+    const outstandingBalance = financialBookings.reduce((sum, booking) => sum + getBookingFinancials(booking).remainingAmount, 0)
     const isBronzeLandlord = user?.role === 'landlord' && subscriptionPaymentResponse !== undefined && hasBronzeAccess(subscriptionPaymentResponse)
     const landlordFirstName = user?.name?.trim().split(/\s+/)[0] || 'Landlord'
     const landlordProfileId = userId || user?.id
@@ -226,7 +229,7 @@ export default function LandlordDashboardPage() {
                     {activeBookings.length > 0 ? (
                         <div className="grid gap-4">
                             {activeBookings.map((booking) => {
-                                const { totalAmount, collectedAmount, expectingAmount, remainingAmount } = getBookingFinancials(booking)
+                                const { rentalAmount, collectedAmount, expectingAmount, remainingAmount } = getBookingFinancials(booking)
 
                                 return (
                                     <div key={booking.id} className="card p-6">
@@ -258,7 +261,7 @@ export default function LandlordDashboardPage() {
                                             <div className="grid gap-3 sm:grid-cols-2 lg:min-w-[560px] xl:grid-cols-4">
                                                 <div className="rounded-xl bg-gray-50 px-4 py-3">
                                                     <p className="text-xs uppercase tracking-[0.2em] text-gray-500">Total</p>
-                                                    <p className="mt-2 text-base font-semibold text-gray-900">{formatCurrencyWithSymbol(totalAmount)}</p>
+                                                    <p className="mt-2 text-base font-semibold text-gray-900">{formatCurrencyWithSymbol(rentalAmount)}</p>
                                                 </div>
                                                 <div className="rounded-xl bg-green-50 px-4 py-3">
                                                     <p className="text-xs uppercase tracking-[0.2em] text-green-700">Collected</p>
@@ -269,7 +272,7 @@ export default function LandlordDashboardPage() {
                                                     <p className="mt-2 text-base font-semibold text-blue-700">{formatCurrencyWithSymbol(expectingAmount)}</p>
                                                 </div>
                                                 <div className="rounded-xl bg-red-50 px-4 py-3">
-                                                    <p className="text-xs uppercase tracking-[0.2em] text-red-700">Outstanding</p>
+                                                    <p className="text-xs uppercase tracking-[0.2em] text-red-700">Balance</p>
                                                     <p className="mt-2 text-base font-semibold text-red-700">{formatCurrencyWithSymbol(remainingAmount)}</p>
                                                 </div>
                                             </div>

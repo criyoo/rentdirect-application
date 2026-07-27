@@ -98,20 +98,20 @@ export default function ProfilePage() {
         )
     }
 
-    if (me.role !== 'landlord') {
-        return (
-            <div className="container-modern py-8">
-                <DashboardBackButton fallbackTo={dashboardPath} />
-                <div className="card mt-5 p-6">
-                    <h1 className="text-2xl font-bold text-gray-900">Tenant Profile</h1>
-                    <p className="mt-2 text-gray-600">Tenant profile details are managed from the tenant profile page.</p>
-                    <Link to={`/tenants/${me.id}/profile`} className="btn btn-primary mt-5">
-                        Open Tenant Profile
-                    </Link>
-                </div>
-            </div>
-        )
-    }
+    // if (me.role !== 'landlord') {
+    //     return (
+    //         <div className="container-modern py-8">
+    //             <DashboardBackButton fallbackTo={dashboardPath} />
+    //             <div className="card mt-5 p-6">
+    //                 <h1 className="text-2xl font-bold text-gray-900">Tenant Profile</h1>
+    //                 <p className="mt-2 text-gray-600">Tenant profile details are managed from the tenant profile page.</p>
+    //                 <Link to={`/tenants/${me.id}/profile`} className="btn btn-primary mt-5">
+    //                     Open Tenant Profile
+    //                 </Link>
+    //             </div>
+    //         </div>
+    //     )
+    // }
 
     const profile = asRecord(me.landlord_verification_profile)
     const verificationType = me.landlord_verification_type || ''

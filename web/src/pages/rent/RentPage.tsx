@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { useAuth } from '@/hooks/useAuth'
+import { useAppPopup } from '@/contexts/AppPopupContext'
 import { api, resolveMediaUrl } from '@/lib/api'
 import { HostedCheckoutPayload, launchHostedCheckout } from '@/lib/payments'
 import { hasBronzeAccess, SubscriptionPaymentRecord } from '@/lib/subscriptions'
@@ -17,10 +18,98 @@ type PaymentCheckoutResponse = {
 
 const CARD_PAYMENT_LIMIT_NGN = 7000000
 const CARD_PAYMENT_LIMIT_MESSAGE = 'Flutterwave card payments are limited to ₦7,000,000 per transaction. Please use Bank Transfer for this payment.'
+const PENDING_PAYMENT_CANCEL_MESSAGE = 'Are you sure you want to cancel this payment?'
+const COMPLETED_PAYMENT_CANCEL_MESSAGE = 'Are sure you want to cancel payment for this property? Refund will take 3 to 5 working days to the same account used in making payment and a 1% fee will be charged to cover admin fee and bank charges.'
+const KEY_COLLECTED_CANCEL_MESSAGE = 'Sorry transaction cannot be cancelled. Landlord will need to approve refund. Status shows Tenant and Landlord have confirmed collection of keys to the property.'
+
+function paymentStatusLabel(status: Payment['status']) {
+    if (status === 'refund_requested') return 'Refund Requested'
+    return status.charAt(0).toUpperCase() + status.slice(1)
+}
+
+function paymentStatusClass(status: Payment['status']) {
+    if (status === 'completed') return 'bg-green-100 text-green-800'
+    if (status === 'pending' || status === 'processing') return 'bg-yellow-100 text-yellow-800'
+    if (status === 'refund_requested') return 'bg-blue-100 text-blue-800'
+    return 'bg-red-100 text-red-800'
+}
+
+function receiptValue(value?: string | number | null) {
+    const normalized = String(value ?? '').normalize('NFKD').replace(/[^\x20-\x7E]/g, ' ').replace(/\s+/g, ' ').trim()
+    return normalized || 'N/A'
+}
+
+function escapePdfText(value: string) {
+    return String(value ?? '')
+        .normalize('NFKD')
+        .replace(/[^\x20-\x7E]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/\\/g, '\\\\')
+        .replace(/\(/g, '\\(')
+        .replace(/\)/g, '\\)')
+}
+
+function formatReceiptDate(date: Date) {
+    return new Intl.DateTimeFormat('en-GB', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+    }).format(date)
+}
+
+function formatReceiptTime(date: Date) {
+    return new Intl.DateTimeFormat('en-GB', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+    }).format(date)
+}
+
+function formatReceiptCurrency(amount: number | string) {
+    return new Intl.NumberFormat('en-NG', {
+        style: 'currency',
+        currency: 'NGN',
+        currencyDisplay: 'code',
+    }).format(Number(amount || 0)).replace(/\s+/g, ' ')
+}
+
+function buildReceiptPdf(lines: string[]) {
+    const stream = [
+        'BT',
+        '/F1 11 Tf',
+        '72 740 Td',
+        '15 TL',
+        ...lines.map((line) => `(${escapePdfText(line)}) Tj T*`),
+        'ET',
+    ].join('\n')
+    const objects = [
+        '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
+        '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
+        '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>\nendobj\n',
+        `4 0 obj\n<< /Length ${stream.length} >>\nstream\n${stream}\nendstream\nendobj\n`,
+        '5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n',
+    ]
+
+    let pdf = '%PDF-1.4\n'
+    const offsets: number[] = []
+    for (const object of objects) {
+        offsets.push(pdf.length)
+        pdf += object
+    }
+    const xrefOffset = pdf.length
+    pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`
+    pdf += offsets.map((offset) => `${String(offset).padStart(10, '0')} 00000 n \n`).join('')
+    pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`
+
+    return new Blob([pdf], { type: 'application/pdf' })
+}
 
 export default function RentPage() {
     const { id } = useParams()
     const { user } = useAuth()
+    const { confirm, alert: popupAlert } = useAppPopup()
     const navigate = useNavigate()
     const [searchParams, setSearchParams] = useSearchParams()
     const qc = useQueryClient()
@@ -29,6 +118,8 @@ export default function RentPage() {
     const [showPaymentForm, setShowPaymentForm] = useState(false)
     const [paymentAmount, setPaymentAmount] = useState(0)
     const [virtualAccountCheckout, setVirtualAccountCheckout] = useState<HostedCheckoutPayload>(null)
+    const [activeCheckoutPayment, setActiveCheckoutPayment] = useState<Payment | null>(null)
+    const [cancelledPaymentId, setCancelledPaymentId] = useState<string | null>(null)
     const [isOpeningCheckout, setIsOpeningCheckout] = useState(false)
     const checkoutReference = (searchParams.get('reference') || searchParams.get('tx_ref') || '').trim()
     const checkoutTransactionId = searchParams.get('transaction_id') || ''
@@ -61,8 +152,10 @@ export default function RentPage() {
     })
     const isBronzeTenant = user?.role === 'tenant' && subscriptionPaymentResponse !== undefined && hasBronzeAccess(subscriptionPaymentResponse)
 
-    const annualRent = Number(listing?.price_per_year || 0)
-    const paidAmount = Number(booking?.paid_amount || 0)
+    const isBookingCancelled = booking?.status === 'cancelled'
+    const showCancelledPaymentState = isBookingCancelled || Boolean(cancelledPaymentId)
+    const annualRent = showCancelledPaymentState ? 0 : Number(listing?.price_per_year || 0)
+    const paidAmount = showCancelledPaymentState ? 0 : Number(booking?.paid_amount || 0)
     const {
         annualRent: normalizedAnnualRent,
         depositAmount,
@@ -71,14 +164,28 @@ export default function RentPage() {
         totalAmount,
         remainingBalance,
     } = calculateRentBreakdown(annualRent, paidAmount)
-    const isFullyPaid = remainingBalance <= 0
+    const isFullyPaid = !showCancelledPaymentState && remainingBalance <= 0
     const canPayInitialDeposit = Boolean(booking && paidAmount <= 0 && depositAmount > 0 && depositAmount < remainingBalance)
+    const keysCollectedConfirmed = Boolean(booking?.keys_collected_confirmed)
+    const openRentalPayments = (booking?.payments || []).filter((payment) => (
+        payment.status === 'pending' || payment.status === 'processing'
+    ))
+    const activeOpenPayment = activeCheckoutPayment && ['pending', 'processing'].includes(activeCheckoutPayment.status)
+        ? activeCheckoutPayment
+        : null
+    const visibleOpenPayments = activeOpenPayment && !openRentalPayments.some((payment) => payment.id === activeOpenPayment.id)
+        ? [activeOpenPayment, ...openRentalPayments]
+        : openRentalPayments
 
     useEffect(() => {
         if (remainingBalance > 0) {
             setPaymentAmount(remainingBalance)
         }
     }, [remainingBalance])
+
+    useEffect(() => {
+        setCancelledPaymentId(null)
+    }, [id])
 
     useEffect(() => {
         if (!checkoutReference || !user) {
@@ -105,6 +212,7 @@ export default function RentPage() {
                 qc.invalidateQueries({ queryKey: ['booking', 'listing', id] })
                 qc.invalidateQueries({ queryKey: ['bookings'] })
                 if (verifiedPayment.status === 'completed') {
+                    qc.invalidateQueries({ queryKey: ['listings'] })
                     setShowPaymentForm(false)
                     alert('Payment confirmed successfully.')
                 } else if (verifiedPayment.status === 'failed' || verifiedPayment.status === 'cancelled') {
@@ -160,10 +268,11 @@ export default function RentPage() {
                 payment_method: selectedPaymentMethod
             })).data
         },
-        onSuccess: async ({ checkout }) => {
+        onSuccess: async ({ payment, checkout }) => {
             qc.invalidateQueries({ queryKey: ['booking', 'listing', id] })
             qc.invalidateQueries({ queryKey: ['bookings'] })
             setShowPaymentForm(false)
+            setActiveCheckoutPayment(payment)
             if (checkout?.checkout_mode === 'virtual_account') {
                 setVirtualAccountCheckout(checkout)
                 return
@@ -186,7 +295,8 @@ export default function RentPage() {
         mutationFn: async (paymentId: string) => {
             return (await api.post<PaymentCheckoutResponse>(`/payments/${paymentId}/flutterwave/checkout`)).data
         },
-        onSuccess: async ({ checkout }) => {
+        onSuccess: async ({ payment, checkout }) => {
+            setActiveCheckoutPayment(payment)
             if (checkout?.checkout_mode === 'virtual_account') {
                 setVirtualAccountCheckout(checkout)
                 return
@@ -205,43 +315,84 @@ export default function RentPage() {
         },
     })
 
+    const cancelPayment = useMutation({
+        mutationFn: async (paymentId: string) => (await api.post<Payment>(`/payments/${paymentId}/cancel`)).data,
+        onSuccess: async (payment) => {
+            if (payment.status === 'cancelled' || payment.status === 'refund_requested') {
+                setActiveCheckoutPayment(null)
+                setVirtualAccountCheckout(null)
+                setShowPaymentForm(false)
+                setPaymentAmount(0)
+                setCancelledPaymentId(payment.id)
+            } else if (activeCheckoutPayment?.id === payment.id) {
+                setActiveCheckoutPayment(null)
+                setVirtualAccountCheckout(null)
+            }
+            await Promise.all([
+                qc.invalidateQueries({ queryKey: ['booking', 'listing', id] }),
+                qc.invalidateQueries({ queryKey: ['bookings'] }),
+                qc.invalidateQueries({ queryKey: ['listings'] }),
+            ])
+            if (payment.status === 'refund_requested') {
+                await popupAlert('Refund request submitted. Refund will take 3 to 5 working days and a 1% fee will be charged.', {
+                    title: 'Refund Requested',
+                    variant: 'success',
+                })
+            } else {
+                await popupAlert('Payment cancelled.', {
+                    title: 'Payment Cancelled',
+                    variant: 'success',
+                })
+            }
+        },
+        onError: (error: any) => {
+            alert(error?.response?.data?.detail || error?.message || 'Unable to cancel payment.')
+        },
+    })
+
     const generateReceipt = (payment: Payment) => {
-        const receipt = `
-            DIRECTRENT - PAYMENT RECEIPT
-            =============================
+        const paymentDate = new Date(payment.payment_date)
+        const receiptDate = Number.isNaN(paymentDate.getTime()) ? new Date() : paymentDate
+        const propertyOwnershipType = listing?.ownership_types?.length
+            ? listing.ownership_types.join(', ')
+            : listing?.ownership_status
+        const receiptLines = [
+            'RENTDIRECT - PAYMENT RECEIPT',
+            '=============================',
+            '',
+            'TRANSACTION DETAILS:',
+            `Receipt No: ${receiptValue(payment.id)}`,
+            `Transaction ID: ${receiptValue(payment.transaction_id)}`,
+            `Date: ${formatReceiptDate(receiptDate)}`,
+            `Time: ${formatReceiptTime(receiptDate)}`,
+            '',
+            'PAYMENT DETAILS:',
+            `Amount Paid: ${formatReceiptCurrency(payment.amount)}`,
+            `Payment Method: ${receiptValue(payment.payment_method).toUpperCase()}`,
+            '',
+            'PROPERTY DETAILS:',
+            `Property: ${receiptValue(listing?.title)}`,
+            `Address: ${receiptValue(listing?.address)}`,
+            `City: ${receiptValue(listing?.city)}`,
+            '',
+            'TENANT DETAILS:',
+            `Name: ${receiptValue(user?.name)}`,
+            `Email: ${receiptValue(user?.email)}`,
+            '',
+            'LANDLORD DETAILS:',
+            `Name: ${receiptValue(listing?.landlord_name)}`,
+            `Email: ${receiptValue(listing?.landlord_email)}`,
+            `Property Ownership Type: ${receiptValue(propertyOwnershipType)}`,
+            '',
+            '=============================',
+            'Thank you for using RentDirect!',
+        ]
 
-            Receipt No: ${payment.id}
-            Date: ${new Date(payment.payment_date).toLocaleDateString()}
-            Time: ${new Date(payment.payment_date).toLocaleTimeString()}
-
-            PROPERTY DETAILS:
-            Property: ${listing?.title}
-            Address: ${listing?.address}
-            City: ${listing?.city}
-
-            PAYMENT DETAILS:
-            Amount Paid: ${formatCurrencyWithSymbol(payment.amount)}
-            Payment Method: ${payment.payment_method.toUpperCase()}
-            ${payment.bank_name ? `Bank: ${payment.bank_name}` : ''}
-            ${payment.card_last4 ? `Card: ****${payment.card_last4}` : ''}
-            Transaction ID: ${payment.transaction_id || 'N/A'}
-
-            TENANT DETAILS:
-            Name: ${user?.name}
-            Email: ${user?.email}
-
-            LANDLORD DETAILS:
-            Property Owner
-
-            =============================
-            Thank you for using RentDirect!
-        `
-
-        const blob = new Blob([receipt], { type: 'text/plain' })
+        const blob = buildReceiptPdf(receiptLines)
         const url = window.URL.createObjectURL(blob)
         const anchor = document.createElement('a')
         anchor.href = url
-        anchor.download = `receipt-${payment.id}-${new Date(payment.payment_date).toISOString().split('T')[0]}.txt`
+        anchor.download = `receipt-${payment.id}-${receiptDate.toISOString().split('T')[0]}.pdf`
         document.body.appendChild(anchor)
         anchor.click()
         document.body.removeChild(anchor)
@@ -280,6 +431,41 @@ export default function RentPage() {
         if (selectedPaymentMethod === 'card' && amount > CARD_PAYMENT_LIMIT_NGN) {
             alert(CARD_PAYMENT_LIMIT_MESSAGE)
             setSelectedPaymentMethod('bank')
+        }
+    }
+
+    const handleCancelPayment = async (payment: Payment) => {
+        if (payment.status === 'pending' || payment.status === 'processing') {
+            const shouldContinue = await confirm(PENDING_PAYMENT_CANCEL_MESSAGE, {
+                title: 'Cancel payment?',
+                variant: 'warning',
+                cancelLabel: 'Cancel',
+                confirmLabel: 'Continue',
+            })
+            if (shouldContinue) {
+                cancelPayment.mutate(payment.id)
+            }
+            return
+        }
+
+        if (payment.status === 'completed') {
+            if (keysCollectedConfirmed) {
+                await popupAlert(KEY_COLLECTED_CANCEL_MESSAGE, {
+                    title: 'Cancellation unavailable',
+                    variant: 'error',
+                })
+                return
+            }
+
+            const shouldContinue = await confirm(COMPLETED_PAYMENT_CANCEL_MESSAGE, {
+                title: 'Cancel property payment?',
+                variant: 'warning',
+                cancelLabel: 'Cancel',
+                confirmLabel: 'Continue',
+            })
+            if (shouldContinue) {
+                cancelPayment.mutate(payment.id)
+            }
         }
     }
 
@@ -351,10 +537,10 @@ export default function RentPage() {
                         <p className="text-gray-600 mt-2">Complete your rental application and payment</p>
                     </div>
 
-                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
-                        <div className="lg:col-span-3">
-                            <div className="bg-white rounded-2xl p-6 shadow-lg border mb-4">
-                                <h2 className="text-xl font-semibold mb-4">Property Details</h2>
+                    <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-5">
+                        <div className="space-y-4 lg:col-span-3">
+                            <div className="bg-white rounded-2xl p-6 shadow-lg border">
+                                <h2 className="text-xl font-semibold mb-3">Property Details</h2>
                                 <div className="flex items-start space-x-4">
                                     <img
                                         src={resolveMediaUrl(listing.cover_image_url)}
@@ -379,7 +565,7 @@ export default function RentPage() {
                                 </div>
                             </div>
 
-                            <div className="bg-white rounded-2xl gap-2 p-5 shadow-lg border mb-4">
+                            <div className="bg-white rounded-2xl gap-2 p-5 shadow-lg border">
                                 <h2 className="text-xl font-semibold mb-4">Rental Terms</h2>
                                 <div className="space-y-4">
                                     <div className="flex justify-between items-center py-2 border-b">
@@ -388,11 +574,11 @@ export default function RentPage() {
                                     </div>
                                     <div className="rounded-xl bg-blue-50 border border-blue-100 p-4">
                                         <div className="flex items-center justify-between">
-                                            <span className="font-medium text-blue-900">Deposit Amount</span>
+                                            <span className="font-medium text-blue-900">Rental Deposit (Optional)</span>
                                             <span className="font-semibold text-blue-900">{formatCurrencyWithSymbol(depositAmount)}</span>
                                         </div>
                                         <p className="mt-2 text-sm text-blue-800">
-                                            The 20% deposit is inclusive of the rental amount and will go towards your annual rent.
+                                            The 20% deposit amount is inclusive in the rental amount.<br />
                                             This enables the landlord to take the property of the market.
                                         </p>
                                     </div>
@@ -415,8 +601,44 @@ export default function RentPage() {
                                 </div>
                             </div>
 
-                            {showPaymentForm && booking && (
-                                <div className="bg-white rounded-2xl p-6 shadow-lg border">
+                            {visibleOpenPayments.length > 0 && !showCancelledPaymentState && (
+                                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-lg">
+                                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                                        <div>
+                                            <h2 className="text-lg font-semibold text-amber-900">Payment In Progress</h2>
+                                            <p className="mt-1 text-sm text-amber-800">
+                                                A payment process has started for this property.<br />
+                                                Continue or cancel it to start another payment.
+                                            </p>
+                                        </div>
+                                        <div className="flex flex-col gap-2 sm:flex-row">
+                                            {visibleOpenPayments.map((payment) => (
+                                                <div key={payment.id} className="flex gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => continuePendingPayment.mutate(payment.id)}
+                                                        disabled={continuePendingPayment.isPending || cancelPayment.isPending}
+                                                        className="rounded-lg bg-blue-600 px-2 py-3 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                                                    >
+                                                        Continue Payment
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleCancelPayment(payment)}
+                                                        disabled={cancelPayment.isPending}
+                                                        className="rounded-lg border border-red-200 bg-white px-2 py-3 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                                                    >
+                                                        {cancelPayment.isPending ? 'Cancelling...' : 'Cancel Payment'}
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {showPaymentForm && booking && !showCancelledPaymentState && (
+                                <div className="bg-white rounded-2xl p-6 shadow-lg border mb-6">
                                     <h2 className="text-xl font-semibold mb-4">Payment Method</h2>
                                     <div className="space-y-3">
                                         <label className="flex items-center space-x-3 cursor-pointer">
@@ -492,7 +714,7 @@ export default function RentPage() {
                                     {selectedPaymentMethod === 'card' && (
                                         <div className="mt-4 p-4 bg-gray-50 rounded-lg">
                                             <p className="text-sm text-gray-600">
-                                                Card payments are collected through Flutterwave checkout into RentDirect&apos;s Flutterwave collection balance.
+                                                You have chosen card payment, your card details will be required to complete payment.
                                             </p>
                                         </div>
                                     )}
@@ -500,7 +722,7 @@ export default function RentPage() {
                                     {selectedPaymentMethod === 'bank' && (
                                         <div className="mt-4 p-4 bg-gray-50 rounded-lg">
                                             <p className="text-sm text-gray-600">
-                                                A unique Flutterwave virtual account will be generated for this exact amount.
+                                                You have chosen bank transfer as your payment option, you will receive bank details to complete the payment.
                                             </p>
                                         </div>
                                     )}
@@ -556,14 +778,27 @@ export default function RentPage() {
                                             Transfer the exact amount to this account. Your booking updates automatically after Flutterwave confirms the payment.
                                         </p>
                                     </div>
-                                    <div className="mt-4 flex gap-3">
+                                    <div className="mt-4 flex flex-col gap-3 sm:flex-row">
                                         <button
                                             type="button"
-                                            onClick={() => setVirtualAccountCheckout(null)}
+                                            onClick={() => {
+                                                setVirtualAccountCheckout(null)
+                                                setActiveCheckoutPayment(null)
+                                            }}
                                             className="flex-1 rounded-lg border border-gray-300 px-4 py-2 hover:bg-gray-50"
                                         >
                                             Close
                                         </button>
+                                        {activeCheckoutPayment && ['pending', 'processing'].includes(activeCheckoutPayment.status) ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleCancelPayment(activeCheckoutPayment)}
+                                                disabled={cancelPayment.isPending}
+                                                className="flex-1 rounded-lg border border-red-200 px-4 py-2 text-red-700 hover:bg-red-50 disabled:opacity-50"
+                                            >
+                                                {cancelPayment.isPending ? 'Cancelling...' : 'Cancel Payment'}
+                                            </button>
+                                        ) : null}
                                         <button
                                             type="button"
                                             onClick={handleVirtualAccountPayment}
@@ -577,9 +812,9 @@ export default function RentPage() {
                             )}
                         </div>
 
-                        <div className="lg:col-span-2">
-                            <div className="bg-white rounded-2xl p-12 shadow-lg border top-6">
-                                <h2 className="text-xl font-semibold mb-4">Payment Summary</h2>
+                        <div className="lg:col-span-2 lg:self-stretch">
+                            <div className="h-full bg-white rounded-2xl p-12 shadow-lg border top-6 flex flex-col">
+                                <h2 className="text-xl font-semibold mb-2">Payment Summary</h2>
 
                                 <div className="space-y-3 mb-6">
                                     <div className="flex justify-between">
@@ -624,7 +859,7 @@ export default function RentPage() {
                                     )}
                                 </div>
 
-                                <div className="space-y-4">
+                                <div className="mt-auto space-y-4 mb-6">
                                     {!user ? (
                                         <button
                                             onClick={() => navigate('/login')}
@@ -654,6 +889,14 @@ export default function RentPage() {
                                                 {createBooking.isPending ? 'Processing...' : 'Confirm Rental Application'}
                                             </button>
                                         </>
+                                    ) : showCancelledPaymentState ? (
+                                        <div className="rounded-xl border border-red-100 bg-red-50 p-4 text-center">
+                                            <h3 className="text-lg font-semibold text-red-700">Payment Cancelled</h3>
+                                            <p className="mt-2 text-sm text-red-700">
+                                                Rental payment cancelled. <br />
+                                                Eligible refund (if any) will be processed.
+                                            </p>
+                                        </div>
                                     ) : isFullyPaid ? (
                                         <div className="text-center">
                                             <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -684,14 +927,14 @@ export default function RentPage() {
                         </div>
                     </div>
                     {booking && (
-                        <div className="mb-8 bg-white rounded-2xl p-6 shadow-lg border">
+                        <div className="mb-4 bg-white rounded-2xl p-6 shadow-lg border">
                             <div className="flex items-center justify-between">
                                 <div>
                                     <h2 className="text-xl font-semibold text-gray-900">Payment Status</h2>
                                     <p className="text-gray-600">Booking #{booking.id}</p>
                                 </div>
-                                <div className={`px-4 py-2 rounded-full text-sm font-medium ${isFullyPaid ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                                    {isFullyPaid ? 'Fully Paid' : 'Balance Outstanding'}
+                                <div className={`px-4 py-2 rounded-full text-sm font-medium ${showCancelledPaymentState ? 'bg-red-100 text-red-800' : isFullyPaid ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                                    {showCancelledPaymentState ? 'Cancelled' : isFullyPaid ? 'Fully Paid' : 'Balance Outstanding'}
                                 </div>
                             </div>
 
@@ -712,7 +955,7 @@ export default function RentPage() {
                                 </div>
                             </div>
 
-                            {!isFullyPaid && (
+                            {/* {!isFullyPaid && !showCancelledPaymentState && (
                                 <div className="mt-4 flex justify-center">
                                     <button
                                         onClick={() => setShowPaymentForm(true)}
@@ -721,11 +964,11 @@ export default function RentPage() {
                                         Pay Remaining Balance
                                     </button>
                                 </div>
-                            )}
+                            )} */}
                         </div>
                     )}
                     {booking && booking.payments && booking.payments.length > 0 && (
-                        <div className="mb-8 bg-white rounded-2xl p-6 shadow-lg border">
+                        <div className="mb-6 bg-white rounded-2xl p-6 shadow-lg border">
                             <h2 className="text-xl font-semibold text-gray-900 mb-4">Payment History</h2>
                             <div className="space-y-4">
                                 {booking.payments.map((payment) => (
@@ -749,30 +992,43 @@ export default function RentPage() {
                                             )}
                                         </div>
                                         <div className="flex items-center space-x-2">
-                                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${payment.status === 'completed'
-                                                ? 'bg-green-100 text-green-800'
-                                                : payment.status === 'pending' || payment.status === 'processing'
-                                                    ? 'bg-yellow-100 text-yellow-800'
-                                                    : 'bg-red-100 text-red-800'
-                                                }`}>
-                                                {payment.status}
+                                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${paymentStatusClass(payment.status)}`}>
+                                                {paymentStatusLabel(payment.status)}
                                             </span>
                                             {(payment.status === 'pending' || payment.status === 'processing') ? (
-                                                <button
-                                                    onClick={() => continuePendingPayment.mutate(payment.id)}
-                                                    disabled={continuePendingPayment.isPending}
-                                                    className="px-3 py-1 text-sm text-blue-600 hover:text-blue-800 disabled:opacity-50"
-                                                >
-                                                    View Account
-                                                </button>
-                                            ) : (
-                                                <button
-                                                    onClick={() => generateReceipt(payment)}
-                                                    className="px-3 py-1 text-sm text-blue-600 hover:text-blue-800"
-                                                >
-                                                    Download Receipt
-                                                </button>
-                                            )}
+                                                <>
+                                                    <button
+                                                        onClick={() => continuePendingPayment.mutate(payment.id)}
+                                                        disabled={continuePendingPayment.isPending || cancelPayment.isPending}
+                                                        className="px-3 py-1 text-sm text-blue-600 hover:text-blue-800 disabled:opacity-50"
+                                                    >
+                                                        Continue Payment
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleCancelPayment(payment)}
+                                                        disabled={cancelPayment.isPending}
+                                                        className="px-3 py-1 text-sm text-red-600 hover:text-red-800 disabled:opacity-50"
+                                                    >
+                                                        Cancel Payment
+                                                    </button>
+                                                </>
+                                            ) : payment.status === 'completed' ? (
+                                                <>
+                                                    <button
+                                                        onClick={() => generateReceipt(payment)}
+                                                        className="px-3 py-1 text-sm text-blue-600 hover:text-blue-800"
+                                                    >
+                                                        Download Receipt
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleCancelPayment(payment)}
+                                                        disabled={cancelPayment.isPending}
+                                                        className="px-3 py-1 text-sm text-red-600 hover:text-red-800 disabled:opacity-50"
+                                                    >
+                                                        Cancel Payment
+                                                    </button>
+                                                </>
+                                            ) : null}
                                         </div>
                                     </div>
                                 ))}

@@ -1,4 +1,5 @@
 import uuid
+from decimal import Decimal
 from pathlib import PurePath
 
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
@@ -265,10 +266,19 @@ def booking_progress_step_selected_value(progress, step_key: str) -> str | None:
 
 
 def deposit_secured_booking_queryset():
-    return Booking.objects.exclude(status=Booking.Status.CANCELLED).filter(
-        paid_amount__gt=0,
-        tenant_rental_progress__has_key=TENANT_DEPOSIT_PROGRESS_KEY,
-        landlord_rental_progress__has_key=LANDLORD_DEPOSIT_PROGRESS_KEY,
+    deposit_due = models.ExpressionWrapper(
+        models.F("listing__price_per_year")
+        * models.Value(
+            Decimal("0.20"),
+            output_field=models.DecimalField(max_digits=4, decimal_places=2),
+        ),
+        output_field=models.DecimalField(max_digits=12, decimal_places=2),
+    )
+    return (
+        Booking.objects
+        .exclude(status=Booking.Status.CANCELLED)
+        .annotate(deposit_due=deposit_due)
+        .filter(paid_amount__gte=models.F("deposit_due"))
     )
 
 
@@ -833,17 +843,22 @@ class SubscriptionPayment(models.Model):
 
 
 class Review(models.Model):
+    class ReviewType(models.TextChoices):
+        PROPERTY = "property", "Property"
+        LANDLORD = "landlord", "Landlord"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     listing = models.ForeignKey(Listing, on_delete=models.CASCADE, related_name="reviews")
     tenant = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name="reviews")
     landlord = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name="landlord_reviews")
+    review_type = models.CharField(max_length=20, choices=ReviewType.choices, default=ReviewType.PROPERTY)
     rating = models.PositiveSmallIntegerField()
     comment = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        constraints = [models.UniqueConstraint(fields=["listing", "tenant"], name="unique_listing_tenant_review")]
+        constraints = [models.UniqueConstraint(fields=["listing", "tenant", "review_type"], name="unique_listing_tenant_review_type")]
 
 
 class Feedback(models.Model):
