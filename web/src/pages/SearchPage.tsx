@@ -1,12 +1,11 @@
 import { useState, useEffect, useMemo } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import ListingCard from '@/components/ListingCard'
-import { Listing, LocationAnalyticsGroup, LocationAnalyticsResponse, SearchFilters } from '@/types'
+import { Listing, SearchFilters } from '@/types'
 import { api, getApiUrl } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
 import { nigeriaStateLgaMap, nigerianStates } from '@/lib/locations'
-import { formatCurrencyWithSymbol } from '@/utils/currency'
 
 const OTHER_CITY_OPTION = '__other__'
 const radiusOptions = [1, 5, 10, 25, 50, 100]
@@ -17,26 +16,46 @@ function numberParam(value: string | null) {
     return Number.isFinite(parsed) ? parsed : undefined
 }
 
-function AnalyticsColumn({ title, items }: { title: string; items: LocationAnalyticsGroup[] }) {
-    return (
-        <div className="rounded-lg border border-gray-200 p-4">
-            <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
-            <div className="mt-3 space-y-3">
-                {items.slice(0, 5).map((item) => (
-                    <div key={`${title}-${item.state || ''}-${item.city || ''}-${item.name}`} className="flex items-start justify-between gap-3">
-                        <div>
-                            <p className="text-sm font-medium text-gray-900">{item.name}</p>
-                            <p className="text-xs text-gray-500">{item.listing_count} listing{item.listing_count === 1 ? '' : 's'}</p>
-                        </div>
-                        <p className="text-right text-xs font-medium text-gray-700">
-                            {formatCurrencyWithSymbol(item.average_price_per_year)}
-                        </p>
-                    </div>
-                ))}
-                {!items.length ? <p className="text-sm text-gray-500">No data yet</p> : null}
-            </div>
-        </div>
-    )
+function hasCoordinateLocationSearch(searchFilters: SearchFilters) {
+    return searchFilters.latitude !== undefined
+        && searchFilters.longitude !== undefined
+        && searchFilters.radius_km !== undefined
+}
+
+function hasAreaLocationSearch(searchFilters: SearchFilters) {
+    return !hasCoordinateLocationSearch(searchFilters)
+        && searchFilters.radius_km !== undefined
+        && Boolean(searchFilters.city || searchFilters.state)
+}
+
+function hasLocationSearch(searchFilters: SearchFilters) {
+    return hasCoordinateLocationSearch(searchFilters) || hasAreaLocationSearch(searchFilters)
+}
+
+function filterSearchParams(searchFilters: SearchFilters) {
+    const params = new URLSearchParams()
+    const coordinateLocationSearch = hasCoordinateLocationSearch(searchFilters)
+    const locationSearch = hasLocationSearch(searchFilters)
+    if (searchFilters.query) params.set('q', searchFilters.query)
+    if (searchFilters.city) params.set('city', searchFilters.city)
+    if (searchFilters.state) params.set('state', searchFilters.state)
+    if (coordinateLocationSearch) {
+        params.set('latitude', searchFilters.latitude!.toString())
+        params.set('longitude', searchFilters.longitude!.toString())
+    }
+    if (locationSearch) {
+        params.set('radius_km', searchFilters.radius_km!.toString())
+    }
+    if (searchFilters.min_price !== undefined) params.set('min_price', searchFilters.min_price.toString())
+    if (searchFilters.max_price !== undefined) params.set('max_price', searchFilters.max_price.toString())
+    if (searchFilters.bedrooms !== undefined) params.set('bedrooms', searchFilters.bedrooms.toString())
+    if (searchFilters.bathrooms !== undefined) params.set('bathrooms', searchFilters.bathrooms.toString())
+    if (searchFilters.toilets !== undefined) params.set('toilets', searchFilters.toilets.toString())
+    if (searchFilters.property_type) params.set('property_type', searchFilters.property_type)
+    if (searchFilters.pet_friendly) params.set('pet_friendly', 'true')
+    if (searchFilters.furnished) params.set('furnished', 'true')
+    if (searchFilters.utilities_included) params.set('utilities_included', 'true')
+    return params
 }
 
 export default function SearchPage() {
@@ -74,17 +93,6 @@ export default function SearchPage() {
         enabled: user?.role === 'tenant'
     })
 
-    const { data: locationAnalytics } = useQuery({
-        queryKey: ['listings', 'location-analytics', filters.state, filters.city],
-        queryFn: async () => {
-            const params = new URLSearchParams()
-            if (filters.state) params.set('state', filters.state)
-            if (filters.city) params.set('city', filters.city)
-            const suffix = params.toString() ? `?${params.toString()}` : ''
-            return (await api.get<LocationAnalyticsResponse>(`/listings/location-analytics${suffix}`)).data
-        },
-    })
-
     const propertyTypes = ['flat', 'apartment', 'house', 'studio', 'penthouse', 'villa', 'townhouse']
     const bedroomOptions = [1, 2, 3, 4, 5, 6]
     const bathroomOptions = [1, 2, 3, 4, 5, 6]
@@ -93,6 +101,11 @@ export default function SearchPage() {
         () => (filters.state ? (nigeriaStateLgaMap[filters.state] || []) : []),
         [filters.state],
     )
+    const locationButtonActive = Boolean(locationStatus)
+        && !locationStatus.startsWith('Unable')
+        && !locationStatus.startsWith('Location is not')
+    const analyticsSearch = filterSearchParams(filters).toString()
+    const analyticsLink = analyticsSearch ? `/search/location-analytics?${analyticsSearch}` : '/search/location-analytics'
 
     const normalizeResults = (payload: Listing[] | { results?: Listing[] }) => {
         if (Array.isArray(payload)) {
@@ -102,28 +115,7 @@ export default function SearchPage() {
     }
 
     const syncSearchParams = (searchFilters: SearchFilters) => {
-        const params = new URLSearchParams()
-        const hasLocationSearch = searchFilters.latitude !== undefined
-            && searchFilters.longitude !== undefined
-            && searchFilters.radius_km !== undefined
-        if (searchFilters.query) params.set('q', searchFilters.query)
-        if (searchFilters.city) params.set('city', searchFilters.city)
-        if (searchFilters.state) params.set('state', searchFilters.state)
-        if (hasLocationSearch) {
-            params.set('latitude', searchFilters.latitude!.toString())
-            params.set('longitude', searchFilters.longitude!.toString())
-            params.set('radius_km', searchFilters.radius_km!.toString())
-        }
-        if (searchFilters.min_price !== undefined) params.set('min_price', searchFilters.min_price.toString())
-        if (searchFilters.max_price !== undefined) params.set('max_price', searchFilters.max_price.toString())
-        if (searchFilters.bedrooms !== undefined) params.set('bedrooms', searchFilters.bedrooms.toString())
-        if (searchFilters.bathrooms !== undefined) params.set('bathrooms', searchFilters.bathrooms.toString())
-        if (searchFilters.toilets !== undefined) params.set('toilets', searchFilters.toilets.toString())
-        if (searchFilters.property_type) params.set('property_type', searchFilters.property_type)
-        if (searchFilters.pet_friendly) params.set('pet_friendly', 'true')
-        if (searchFilters.furnished) params.set('furnished', 'true')
-        if (searchFilters.utilities_included) params.set('utilities_included', 'true')
-        setSearchParams(params, { replace: true })
+        setSearchParams(filterSearchParams(searchFilters), { replace: true })
     }
 
     useEffect(() => {
@@ -153,11 +145,11 @@ export default function SearchPage() {
         setLoading(true)
         try {
             // Check if any filters are applied
-            const hasLocationSearch = searchFilters.latitude !== undefined
-                && searchFilters.longitude !== undefined
-                && searchFilters.radius_km !== undefined
+            const coordinateLocationSearch = hasCoordinateLocationSearch(searchFilters)
+            const areaLocationSearch = hasAreaLocationSearch(searchFilters)
+            const locationSearch = coordinateLocationSearch || areaLocationSearch
             const hasFilters = Object.entries(searchFilters).some(([key, value]) =>
-                (!['latitude', 'longitude', 'radius_km'].includes(key) || hasLocationSearch)
+                (!['latitude', 'longitude', 'radius_km'].includes(key) || locationSearch)
                 && value !== ''
                 && value !== undefined
                 && value !== null
@@ -170,11 +162,15 @@ export default function SearchPage() {
                 const params = new URLSearchParams()
 
                 if (searchFilters.query) params.append('query', searchFilters.query)
-                if (searchFilters.city) params.append('city', searchFilters.city)
+                if (searchFilters.city && !locationSearch) params.append('city', searchFilters.city)
                 if (searchFilters.state) params.append('state', searchFilters.state)
-                if (hasLocationSearch) {
+                if (coordinateLocationSearch) {
                     params.append('latitude', searchFilters.latitude!.toString())
                     params.append('longitude', searchFilters.longitude!.toString())
+                    params.append('radius_km', searchFilters.radius_km!.toString())
+                } else if (areaLocationSearch) {
+                    if (searchFilters.city) params.append('origin_city', searchFilters.city)
+                    if (searchFilters.state) params.append('origin_state', searchFilters.state)
                     params.append('radius_km', searchFilters.radius_km!.toString())
                 }
                 if (searchFilters.min_price) params.append('min_price', searchFilters.min_price.toString())
@@ -225,37 +221,76 @@ export default function SearchPage() {
     const handleStateChange = (state: string) => {
         setSelectedCityOption('')
         setOtherCity('')
+        setLocationStatus('')
         setFilters((current) => ({
             ...current,
             state,
             city: '',
+            latitude: undefined,
+            longitude: undefined,
         }))
     }
 
     const handleCityOptionChange = (value: string) => {
         setSelectedCityOption(value)
+        setLocationStatus('')
 
         if (!value) {
             setOtherCity('')
-            handleFilterChange('city', '')
+            setFilters((current) => ({
+                ...current,
+                city: '',
+                latitude: undefined,
+                longitude: undefined,
+            }))
             return
         }
 
         if (value === OTHER_CITY_OPTION) {
-            handleFilterChange('city', otherCity)
+            setFilters((current) => ({
+                ...current,
+                city: otherCity,
+                latitude: undefined,
+                longitude: undefined,
+            }))
             return
         }
 
         setOtherCity('')
-        handleFilterChange('city', value)
+        setFilters((current) => ({
+            ...current,
+            city: value,
+            latitude: undefined,
+            longitude: undefined,
+        }))
     }
 
     const handleOtherCityChange = (value: string) => {
         setOtherCity(value)
-        handleFilterChange('city', value)
+        setLocationStatus('')
+        setFilters((current) => ({
+            ...current,
+            city: value,
+            latitude: undefined,
+            longitude: undefined,
+        }))
     }
 
     const handleUseCurrentLocation = () => {
+        if (filters.city || filters.state) {
+            const nextFilters = {
+                ...filters,
+                latitude: undefined,
+                longitude: undefined,
+                radius_km: filters.radius_km || 10,
+            }
+            const locationLabel = [nextFilters.city, nextFilters.state].filter(Boolean).join(', ')
+            setFilters(nextFilters)
+            setLocationStatus(`Within ${nextFilters.radius_km} km of ${locationLabel}.`)
+            searchListings(nextFilters)
+            return
+        }
+
         if (!('geolocation' in navigator)) {
             setLocationStatus('Location is not available in this browser.')
             return
@@ -338,7 +373,7 @@ export default function SearchPage() {
                 <h1 className="text-3xl font-bold text-gray-900 mb-8">Search Properties</h1>
 
                 {/* Search Form */}
-                <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-md p-6 mb-2">
+                <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-md p-6 mb-3">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                         {/* Search Query */}
                         <div>
@@ -523,12 +558,15 @@ export default function SearchPage() {
                             </select>
                         </div>
 
-                        <div className="flex flex-col justify-end gap-2">
+                        <div className="flex min-h-[76px] flex-col justify-start gap-2 lg:pt-6">
                             <div className="flex gap-2">
                                 <button
                                     type="button"
                                     onClick={handleUseCurrentLocation}
-                                    className="flex-1 px-3 py-2 text-sm font-medium text-blue-700 border border-blue-200 rounded-md hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className={`flex-1 px-3 py-2 text-sm font-medium border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${locationButtonActive
+                                        ? 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700'
+                                        : 'border-blue-200 text-blue-700 hover:bg-blue-50'
+                                        }`}
                                 >
                                     Use my location
                                 </button>
@@ -542,11 +580,13 @@ export default function SearchPage() {
                                     </button>
                                 ) : null}
                             </div>
-                            {locationStatus ? <p className="text-xs text-gray-600">{locationStatus}</p> : null}
+                            <p className={`min-h-4 text-xs ${locationStatus ? 'text-gray-600' : 'text-transparent'}`}>
+                                {locationStatus || 'Location status'}
+                            </p>
                         </div>
                     </div>
 
-                    <div className="flex justify-between items-center mt-6">
+                    <div className="flex justify-between items-center mt-8">
                         <button
                             type="button"
                             onClick={clearFilters}
@@ -563,34 +603,19 @@ export default function SearchPage() {
                     </div>
                 </form>
 
-                {locationAnalytics ? (
-                    <section className="bg-white rounded-lg shadow-md p-6 mb-8">
-                        <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-                            <div>
-                                <h2 className="text-xl font-semibold text-gray-900">Location Analytics</h2>
-                                <p className="text-sm text-gray-500">{locationAnalytics.total_listings} available listing{locationAnalytics.total_listings === 1 ? '' : 's'} analysed</p>
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                            <AnalyticsColumn title="States" items={locationAnalytics.states} />
-                            <AnalyticsColumn title="Cities" items={locationAnalytics.cities} />
-                            <AnalyticsColumn title="Neighbourhoods" items={locationAnalytics.neighbourhoods} />
-                        </div>
-                    </section>
-                ) : null}
-
                 {/* Results */}
-                <div className="mb-6">
+                <div className="mb-0">
                     <div className="flex justify-between items-center">
                         <h2 className="text-xl font-semibold text-gray-900">
                             {loading ? 'Searching...' : `${listings.length} Properties Found`}
                         </h2>
+                        <Link
+                            to={analyticsLink}
+                            className="text-xl font-semibold text-blue-700 hover:text-blue-800"
+                        >
+                            Location Analytics
+                        </Link>
                     </div>
-                    {/* Debug info */}
-                    {/*<div className="mt-2 text-sm text-gray-600">
-                        <p>Search filters: {JSON.stringify(filters)}</p>
-                        <p>Available cities: {availableCities.join(', ')}</p>
-                    </div>*/}
                 </div>
 
                 {/* Listings Grid */}

@@ -500,6 +500,78 @@ class ListingTests(TestCase):
         self.assertEqual(results[0]["id"], str(listing.id))
         self.assertEqual(results[0]["location_source"], "city_state")
 
+    def test_public_listing_search_supports_distance_radius_from_origin_city_state(self):
+        landlord = AppUser.objects.create_user(
+            email="landlord-origin-distance@example.com",
+            password="password-123",
+            name="Origin Distance Landlord",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+        )
+        ikoyi_listing = Listing.objects.create(
+            landlord=landlord,
+            title="Ikoyi Apartment",
+            description="Near Apapa by distance",
+            address="12 Gerrard Road",
+            city="Ikoyi",
+            state="Lagos",
+            property_type="Apartment",
+            bedrooms=2,
+            bathrooms=2,
+            price_per_year=3000000,
+        )
+        Listing.objects.create(
+            landlord=landlord,
+            title="Epe Apartment",
+            description="Outside the selected radius",
+            address="15 Marina Road",
+            city="Epe",
+            state="Lagos",
+            property_type="Apartment",
+            bedrooms=2,
+            bathrooms=2,
+            price_per_year=2500000,
+        )
+
+        response = self.client.get("/api/v1/listings/search?origin_city=Apapa&origin_state=Lagos&radius_km=25")
+
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        results = payload["results"] if isinstance(payload, dict) and "results" in payload else payload
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["id"], str(ikoyi_listing.id))
+        self.assertLessEqual(results[0]["distance_km"], 25)
+
+    def test_public_listing_search_uses_city_as_origin_when_radius_has_no_coordinates(self):
+        landlord = AppUser.objects.create_user(
+            email="landlord-filter-origin-distance@example.com",
+            password="password-123",
+            name="Filter Origin Distance Landlord",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+        )
+        ikoyi_listing = Listing.objects.create(
+            landlord=landlord,
+            title="Ikoyi Apartment",
+            description="Near Apapa by distance",
+            address="12 Gerrard Road",
+            city="Ikoyi",
+            state="Lagos",
+            property_type="Apartment",
+            bedrooms=2,
+            bathrooms=2,
+            price_per_year=3000000,
+        )
+
+        response = self.client.get("/api/v1/listings/search?city=Apapa&state=Lagos&radius_km=25")
+
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        results = payload["results"] if isinstance(payload, dict) and "results" in payload else payload
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["id"], str(ikoyi_listing.id))
+        self.assertLessEqual(results[0]["distance_km"], 25)
+
     def test_location_analytics_groups_available_listings(self):
         landlord = AppUser.objects.create_user(
             email="landlord-analytics@example.com",
@@ -540,8 +612,11 @@ class ListingTests(TestCase):
         self.assertEqual(payload["total_listings"], 2)
         states = {item["name"]: item for item in payload["states"]}
         cities = {item["name"]: item for item in payload["cities"]}
+        neighbourhoods = {item["name"]: item for item in payload["neighbourhoods"]}
         self.assertEqual(states["Lagos"]["listing_count"], 1)
         self.assertEqual(cities["Ikoyi"]["average_price_per_year"], 2000000)
+        self.assertEqual(neighbourhoods["Gerrard Road"]["listing_count"], 1)
+        self.assertEqual(neighbourhoods["Gerrard Road"]["average_price_per_year"], 2000000)
 
     def test_listing_nearest_amenities_returns_points_of_interest_by_category(self):
         landlord = AppUser.objects.create_user(

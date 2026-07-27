@@ -113,13 +113,30 @@ CITY_COORDINATES: dict[tuple[str, str], tuple[float, float]] = {
     ("birnin kebbi", "kebbi"): (12.4539, 4.1975),
     ("lokoja", "kogi"): (7.8023, 6.7333),
     ("ilorin", "kwara"): (8.4799, 4.5418),
+    ("agege", "lagos"): (6.6253, 3.3117),
+    ("ajeromi ifelodun", "lagos"): (6.4561, 3.3432),
     ("ajah", "lagos"): (6.4698, 3.5852),
+    ("alimosho", "lagos"): (6.5843, 3.2576),
+    ("amuwo odofin", "lagos"): (6.4470, 3.2708),
+    ("apapa", "lagos"): (6.4488, 3.3590),
     ("badagry", "lagos"): (6.4150, 2.8813),
     ("epe", "lagos"): (6.5841, 3.9834),
+    ("eti osa", "lagos"): (6.4360, 3.5080),
+    ("ibeju lekki", "lagos"): (6.4924, 3.7319),
+    ("ifako ijaye", "lagos"): (6.6636, 3.3189),
     ("ikeja", "lagos"): (6.6018, 3.3515),
+    ("ikorodu", "lagos"): (6.6194, 3.5105),
     ("ikoyi", "lagos"): (6.4541, 3.4351),
+    ("kosofe", "lagos"): (6.5818, 3.4140),
     ("lagos", "lagos"): (6.5244, 3.3792),
+    ("lagos island", "lagos"): (6.4549, 3.4246),
+    ("lagos mainland", "lagos"): (6.5053, 3.3830),
     ("lekki", "lagos"): (6.4698, 3.5852),
+    ("mushin", "lagos"): (6.5273, 3.3482),
+    ("ojo", "lagos"): (6.4625, 3.1668),
+    ("oshodi isolo", "lagos"): (6.5400, 3.3124),
+    ("shomolu", "lagos"): (6.5392, 3.3790),
+    ("somolu", "lagos"): (6.5392, 3.3790),
     ("surulere", "lagos"): (6.5013, 3.3580),
     ("victoria island", "lagos"): (6.4281, 3.4219),
     ("vi", "lagos"): (6.4281, 3.4219),
@@ -169,6 +186,10 @@ AMENITY_POINTS: tuple[dict[str, str | float], ...] = (
 
 
 AMENITY_CATEGORIES = ("schools", "hospitals", "transport_hubs", "supermarkets", "other")
+NEIGHBOURHOOD_KEYWORD_PATTERN = re.compile(
+    r"\b(?:street|st\.?|road|rd\.?|avenue|ave\.?|estate|lane|ln\.?|close|bus\s+stop)\b",
+    re.IGNORECASE,
+)
 
 
 def decimal_from_float(value: float) -> Decimal:
@@ -233,18 +254,51 @@ def attach_distance_to_listing(listing, latitude: float, longitude: float) -> tu
     return listing, distance_km
 
 
+def _clean_neighbourhood_candidate(value: str, *, stop_at_keyword: bool = False) -> str:
+    candidate = str(value or "").strip(" ,.-")
+    candidate = re.sub(
+        r"^(?:no\.?|number|house|plot)\s*#?\d+[a-z0-9/-]*\s+",
+        "",
+        candidate,
+        flags=re.IGNORECASE,
+    )
+    candidate = re.sub(
+        r"^(?:flat|apartment|apt|unit|suite|block)\s*[a-z0-9/-]+\s+",
+        "",
+        candidate,
+        flags=re.IGNORECASE,
+    )
+    candidate = re.sub(r"^#?\d+[a-z]?\s+", "", candidate, flags=re.IGNORECASE)
+    candidate = re.sub(r"^(?:near|opposite|beside|behind|after|before|around|at|off|by)\s+", "", candidate, flags=re.IGNORECASE)
+    candidate = re.sub(r"\s+", " ", candidate).strip(" ,.-")
+
+    if stop_at_keyword:
+        keyword_match = NEIGHBOURHOOD_KEYWORD_PATTERN.search(candidate)
+        if keyword_match:
+            candidate = candidate[: keyword_match.end()].strip(" ,.-")
+
+    return candidate
+
+
 def listing_neighbourhood(listing) -> str:
+    address = str(getattr(listing, "address", "") or "").strip()
+    if address:
+        address_parts = [
+            _clean_neighbourhood_candidate(part, stop_at_keyword=True)
+            for part in re.split(r"[,;\n|]+", address)
+        ]
+        for part in address_parts:
+            if part and NEIGHBOURHOOD_KEYWORD_PATTERN.search(part):
+                return part
+        for part in address_parts:
+            if part:
+                return part
+
     city = str(getattr(listing, "city", "") or "").strip()
     if city:
         return city
 
-    address = str(getattr(listing, "address", "") or "").strip()
-    if not address:
-        return "Not specified"
-
-    first_part = address.split(",")[0].strip()
-    first_part = re.sub(r"^\d+[a-z]?\s+", "", first_part, flags=re.IGNORECASE).strip()
-    return first_part or "Not specified"
+    return "Not specified"
 
 
 def nearest_amenities_for_coordinates(

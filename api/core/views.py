@@ -97,6 +97,7 @@ from .location_services import (
     coordinates_for_listing,
     listing_neighbourhood,
     nearest_amenities_for_coordinates,
+    resolve_city_state_coordinates,
 )
 from .image_optimization import optimize_profile_image
 from .serializers import (
@@ -2550,27 +2551,61 @@ class ListingViewSet(viewsets.ModelViewSet):
             or request.query_params.get("lon")
         )
         radius_km = request.query_params.get("radius_km") or request.query_params.get("radius")
+        origin_city = (
+            request.query_params.get("origin_city")
+            or request.query_params.get("location_city")
+            or request.query_params.get("from_city")
+        )
+        origin_state = (
+            request.query_params.get("origin_state")
+            or request.query_params.get("location_state")
+            or request.query_params.get("from_state")
+        )
 
-        if latitude is None and longitude is None and radius_km is None:
+        if latitude is None and longitude is None and radius_km is None and origin_city is None and origin_state is None:
             return None
-        if latitude is None or longitude is None or radius_km is None:
-            raise ValidationError({"location": "latitude, longitude, and radius_km are required for distance search."})
+        if radius_km is None:
+            raise ValidationError({"location": "radius_km is required for distance search."})
 
         try:
-            latitude_value = float(latitude)
-            longitude_value = float(longitude)
             radius_value = float(radius_km)
         except (TypeError, ValueError):
-            raise ValidationError({"location": "latitude, longitude, and radius_km must be valid numbers."})
-
-        if not -90 <= latitude_value <= 90:
-            raise ValidationError({"latitude": "Latitude must be between -90 and 90."})
-        if not -180 <= longitude_value <= 180:
-            raise ValidationError({"longitude": "Longitude must be between -180 and 180."})
+            raise ValidationError({"radius_km": "Radius must be a valid number."})
         if radius_value <= 0 or radius_value > 200:
             raise ValidationError({"radius_km": "Radius must be greater than 0 and no more than 200 km."})
 
-        return latitude_value, longitude_value, radius_value
+        if latitude is not None or longitude is not None:
+            if latitude is None or longitude is None:
+                raise ValidationError({"location": "Both latitude and longitude are required for distance search."})
+            try:
+                latitude_value = float(latitude)
+                longitude_value = float(longitude)
+            except (TypeError, ValueError):
+                raise ValidationError({"location": "latitude and longitude must be valid numbers."})
+
+            if not -90 <= latitude_value <= 90:
+                raise ValidationError({"latitude": "Latitude must be between -90 and 90."})
+            if not -180 <= longitude_value <= 180:
+                raise ValidationError({"longitude": "Longitude must be between -180 and 180."})
+
+            return latitude_value, longitude_value, radius_value, False
+
+        using_filter_location_as_origin = False
+        if origin_city is None and origin_state is None:
+            fallback_city = (request.query_params.get("city") or "").strip()
+            fallback_state = (request.query_params.get("state") or "").strip()
+            if fallback_city or fallback_state:
+                origin_city = fallback_city
+                origin_state = fallback_state
+                using_filter_location_as_origin = True
+
+        if origin_city or origin_state:
+            coordinates = resolve_city_state_coordinates(origin_city, origin_state)
+            if coordinates is None:
+                raise ValidationError({"location": "Could not resolve the selected city or state for distance search."})
+            return coordinates.latitude, coordinates.longitude, radius_value, using_filter_location_as_origin
+
+        raise ValidationError({"location": "latitude and longitude, or origin_city/origin_state, are required for distance search."})
 
     def _filter_by_distance(self, qs, latitude: float, longitude: float, radius_km: float):
         matches = []
@@ -2635,9 +2670,9 @@ class ListingViewSet(viewsets.ModelViewSet):
                 {
                     **group,
                     "listing_count": listing_count,
-                    "average_price_per_year": round(float(total_price / listing_count), 2) if listing_count else 0,
-                    "min_price_per_year": round(float(group["min_price_per_year"]), 2),
-                    "max_price_per_year": round(float(group["max_price_per_year"]), 2),
+                    "average_price_per_year": round(float(total_price / listing_count), 0) if listing_count else 0,
+                    "min_price_per_year": round(float(group["min_price_per_year"]), 0),
+                    "max_price_per_year": round(float(group["max_price_per_year"]), 0),
                 }
             )
         return sorted(payload, key=lambda item: (-item["listing_count"], item["name"]))[:20]
@@ -2654,13 +2689,17 @@ class ListingViewSet(viewsets.ModelViewSet):
         bathrooms = request.query_params.get("bathrooms")
         toilets = request.query_params.get("toilets")
         property_type = request.query_params.get("property_type")
+        distance_params = self._distance_query_params(request)
+        using_filter_location_as_origin = False
+        if distance_params:
+            latitude, longitude, radius_km, using_filter_location_as_origin = distance_params
         for key in ["pet_friendly", "furnished", "utilities_included"]:
             value = request.query_params.get(key)
             if value is not None:
                 qs = qs.filter(**{key: str(value).lower() == "true"})
         if query:
             qs = qs.filter(Q(title__icontains=query) | Q(description__icontains=query) | Q(address__icontains=query))
-        if city:
+        if city and not using_filter_location_as_origin:
             qs = qs.filter(Q(city__icontains=city) | Q(address__icontains=city))
         if state:
             qs = qs.filter(
@@ -2680,9 +2719,8 @@ class ListingViewSet(viewsets.ModelViewSet):
             qs = qs.filter(toilets=toilets)
         if property_type:
             qs = qs.filter(property_type__iexact=property_type)
-        distance_params = self._distance_query_params(request)
         if distance_params:
-            qs = self._filter_by_distance(qs, *distance_params)
+            qs = self._filter_by_distance(qs, latitude, longitude, radius_km)
         page = self.paginate_queryset(qs)
         serializer = self.get_serializer(page if page is not None else qs, many=True)
         return self.get_paginated_response(serializer.data) if page is not None else Response(serializer.data)

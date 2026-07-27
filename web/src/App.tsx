@@ -12,6 +12,7 @@ import ResetPasswordPage from './pages/auth/ResetPasswordPage'
 import LandlordDashboardPage from './pages/dashboard/LandlordDashboardPage'
 import TenantDashboardPage from './pages/dashboard/TenantDashboardPage'
 import SearchPage from './pages/SearchPage'
+import LocationAnalyticsPage from './pages/LocationAnalyticsPage'
 import ListingDetailPage from './pages/listings/ListingDetailPage'
 import EnquiriesPage from './pages/enquiries/EnquiriesPage'
 import ChatThreadPage from './pages/messages/ChatThreadPage'
@@ -69,6 +70,7 @@ function App()
                             <Route path="/dashboard/landlord/:userId" element={<LandlordDashboardPage />} />
                             <Route path="/dashboard/tenant/:userId" element={<TenantDashboardPage />} />
                             <Route path="/search" element={<SearchPage />} />
+                            <Route path="/search/location-analytics" element={<LocationAnalyticsPage />} />
                             <Route path="/listings/new" element={
                                 <ProtectedRoute requiredRoles={['landlord', 'admin']}>
                                     <ListingFormPage />

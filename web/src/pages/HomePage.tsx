@@ -27,6 +27,8 @@ export default function HomePage() {
     })
     const favouriteIds = new Set(favourites.map((listing) => listing.id))
 
+    const classNameUSP = "text-lg font-semibold text-gray-900 mb-3"
+
     useEffect(() => {
         if (!heroVideoRef.current) return
         heroVideoRef.current.playbackRate = 0.40
@@ -48,13 +50,13 @@ export default function HomePage() {
                         <div className="grid lg:grid-cols-2 gap-12 items-center">
                             {/* Hero Content */}
                             <div className="text-center lg:text-left">
-                                <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-6 leading-tight">
+                                <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-8 leading-tight">
                                     Find Your Perfect
                                     <span className="block bg-gradient-to-r from-yellow-400 to-orange-400 bg-clip-text text-transparent">
                                         Home Today
                                     </span>
                                 </h1>
-                                <h3 className="text-2xl text-blue-100 mb-4">Direct from Landlords</h3>
+                                <h3 className="text-2xl text-blue-100 mb-3">Direct from Landlords</h3>
                                 <p className="text-xl text-blue-100 mb-8 max-w-2xl">
                                     Discover thousands of verified properties from trusted landlords.
                                     Direct communication, transparent pricing, and seamless rental experience.
@@ -212,24 +214,24 @@ export default function HomePage() {
                         </p>
                     </div>
 
-                    <div className="grid-modern grid-cols-1 md:grid-cols-5 lg:grid-cols53">
-                        <div className="card p-8 text-center hover:shadow-6xl transition-all duration-200">
-                            <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center mx-auto mb-4">
-                                <HiShieldCheck className="w-6 h-6 text-blue-600" />
-                            </div>
-                            <h3 className="text-xl font-semibold text-gray-900 mb-3">Quality Experience</h3>
-                            <p className="text-gray-600">
-                                Avoid scams and deal with high quality & verified Landlords and Tenants
-                            </p>
-                        </div>
-
+                    <div className="grid-modern grid-cols-1 md:grid-cols-6 lg:grid-cols63 gap-3">
                         <div className="card p-8 text-center hover:shadow-6xl transition-all duration-600">
                             <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center mx-auto mb-4">
                                 <HiCurrencyDollar className="w-6 h-6 text-emerald-600" />
                             </div>
-                            <h3 className="text-xl font-semibold text-gray-900 mb-3">Cost Effecfive Rentals</h3>
-                            <p className="text-gray-600">
+                            <h3 className={classNameUSP}>Cost Effecfive</h3>
+                            <p className="text-blue-600">
                                 Save on unneccessary cost trying to secure or rent a property.
+                            </p>
+                        </div>
+
+                        <div className="card p-8 text-center hover:shadow-6xl transition-all duration-600">
+                            <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center mx-auto mb-4">
+                                <HiArrowRight className="w-6 h-6 text-purple-600" />
+                            </div>
+                            <h3 className={classNameUSP}>Direct Contact</h3>
+                            <p className="text-blue-600">
+                                Bypass the middle man and get direct access to landlords or Tenants
                             </p>
                         </div>
 
@@ -237,9 +239,9 @@ export default function HomePage() {
                             <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center mx-auto mb-4">
                                 <HiSearch className="w-6 h-6 text-indigo-600" />
                             </div>
-                            <h3 className="text-xl font-semibold text-gray-900 mb-3">Smart Search</h3>
-                            <p className="text-gray-600">
-                                Find your perfect home with our advanced search filters and matching algorithm.
+                            <h3 className={classNameUSP}>Efficient Tracking</h3>
+                            <p className="text-blue-600">
+                                Track every transaction including rentals progress and payments.
                             </p>
                         </div>
 
@@ -247,9 +249,9 @@ export default function HomePage() {
                             <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center mx-auto mb-4">
                                 <HiBadgeCheck className="w-6 h-6 text-green-600" />
                             </div>
-                            <h3 className="text-xl font-semibold text-gray-900 mb-3">Verified Properties</h3>
-                            <p className="text-gray-600">
-                                All properties are verified and listed by trusted landlords with complete transparency.
+                            <h3 className={classNameUSP}>Verified Properties</h3>
+                            <p className="text-blue-600">
+                                Verified properties listed by trusted landlords with complete transparency.
                             </p>
                         </div>
 
@@ -257,9 +259,19 @@ export default function HomePage() {
                             <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center mx-auto mb-4">
                                 <HiLocationMarker className="w-6 h-6 text-purple-600" />
                             </div>
-                            <h3 className="text-xl font-semibold text-gray-900 mb-3">Prime Locations</h3>
-                            <p className="text-gray-600">
+                            <h3 className={classNameUSP}>Prime Locations</h3>
+                            <p className="text-blue-600">
                                 Properties in the most desirable neighborhoods with easy access to amenities.
+                            </p>
+                        </div>
+
+                        <div className="card p-8 text-center hover:shadow-6xl transition-all duration-200">
+                            <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center mx-auto mb-4">
+                                <HiShieldCheck className="w-6 h-6 text-blue-600" />
+                            </div>
+                            <h3 className={classNameUSP}>Quality Experience</h3>
+                            <p className="text-blue-600">
+                                Avoid scams and deal with high quality & verified Landlords and Tenants
                             </p>
                         </div>
                     </div>
