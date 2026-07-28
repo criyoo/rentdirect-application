@@ -2,6 +2,8 @@ from django import forms
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.forms import UserChangeForm
+from django.db.models import OuterRef, Subquery
+from django.utils.html import format_html, format_html_join
 from django.utils import timezone
 
 from .models import AdminUser, AppUser, Booking, Document, Feedback, Favourite, FeaturedPayment, Landlord, LandlordProfile, Listing, ListingImage, Message, Payment, PaymentSettlement, Review, SubscriptionPayment, SubscriptionPaymentMethod, Tenant, TenantProfile, VerificationRequest
@@ -1112,10 +1114,101 @@ class PaymentAdmin(admin.ModelAdmin):
 
 @admin.register(PaymentSettlement)
 class PaymentSettlementAdmin(admin.ModelAdmin):
-    list_display = ("id", "payment", "purpose", "amount", "currency", "bank_name", "account_number", "status", "transfer_reference", "transferred_at")
-    list_filter = ("purpose", "status", "currency", "created_at", "transferred_at")
-    search_fields = ("payment__transaction_id", "transfer_recipient_id", "transfer_reference", "bank_name", "account_number", "account_name")
-    readonly_fields = ("provider_payload", "transfer_payload", "last_error", "created_at", "updated_at")
+    list_display = ("landlord_email", "payment", "tenant_email", "created_at")
+    list_display_links = ("payment",)
+    list_filter = ("created_at",)
+    search_fields = (
+        "payment__transaction_id",
+        "payment__booking__tenant__email",
+        "payment__booking__listing__landlord__email",
+    )
+    ordering = ("-created_at",)
+
+    def get_queryset(self, request):
+        representative_settlement = (
+            PaymentSettlement.objects.filter(payment_id=OuterRef("payment_id"))
+            .order_by("created_at", "purpose", "id")
+            .values("id")[:1]
+        )
+        return (
+            super()
+            .get_queryset(request)
+            .select_related("payment", "payment__booking", "payment__booking__tenant", "payment__booking__listing", "payment__booking__listing__landlord")
+            .filter(id=Subquery(representative_settlement))
+        )
+
+    def get_fields(self, request, obj=None):
+        if obj:
+            return ("landlord_email", "payment", "tenant_email", "created_at", "settlement_accounts")
+        return super().get_fields(request, obj)
+
+    def get_readonly_fields(self, request, obj=None):
+        if obj:
+            return ("landlord_email", "payment", "tenant_email", "created_at", "settlement_accounts")
+        return ("provider_payload", "transfer_payload", "last_error", "created_at", "updated_at")
+
+    @admin.display(ordering="payment__booking__listing__landlord__email", description="Landlord")
+    def landlord_email(self, obj):
+        return obj.payment.booking.listing.landlord.email
+
+    @admin.display(ordering="payment__booking__tenant__email", description="Tenant")
+    def tenant_email(self, obj):
+        return obj.payment.booking.tenant.email
+
+    @admin.display(description="Payment Settlement Accounts")
+    def settlement_accounts(self, obj):
+        settlements = obj.payment.settlements.order_by("purpose", "created_at")
+        return format_html(
+            '<table style="width: 100%; border-collapse: collapse;">'
+            "<thead>"
+            "<tr>"
+            '<th style="text-align: left; padding: 6px; border-bottom: 1px solid #ddd;">ID</th>'
+            '<th style="text-align: left; padding: 6px; border-bottom: 1px solid #ddd;">Purpose</th>'
+            '<th style="text-align: left; padding: 6px; border-bottom: 1px solid #ddd;">Amount</th>'
+            '<th style="text-align: left; padding: 6px; border-bottom: 1px solid #ddd;">Currency</th>'
+            '<th style="text-align: left; padding: 6px; border-bottom: 1px solid #ddd;">Bank Name</th>'
+            '<th style="text-align: left; padding: 6px; border-bottom: 1px solid #ddd;">Account Number</th>'
+            '<th style="text-align: left; padding: 6px; border-bottom: 1px solid #ddd;">Status</th>'
+            '<th style="text-align: left; padding: 6px; border-bottom: 1px solid #ddd;">Transfer Reference</th>'
+            '<th style="text-align: left; padding: 6px; border-bottom: 1px solid #ddd;">Transferred At</th>'
+            "</tr>"
+            "</thead>"
+            "<tbody>{}</tbody>"
+            "</table>",
+            format_html_join(
+                "",
+                "<tr>"
+                '<td style="padding: 6px; border-bottom: 1px solid #eee;">{}</td>'
+                '<td style="padding: 6px; border-bottom: 1px solid #eee;">{}</td>'
+                '<td style="padding: 6px; border-bottom: 1px solid #eee;">{}</td>'
+                '<td style="padding: 6px; border-bottom: 1px solid #eee;">{}</td>'
+                '<td style="padding: 6px; border-bottom: 1px solid #eee;">{}</td>'
+                '<td style="padding: 6px; border-bottom: 1px solid #eee;">{}</td>'
+                '<td style="padding: 6px; border-bottom: 1px solid #eee;">{}</td>'
+                '<td style="padding: 6px; border-bottom: 1px solid #eee;">{}</td>'
+                '<td style="padding: 6px; border-bottom: 1px solid #eee;">{}</td>'
+                "</tr>",
+                (
+                    (
+                        settlement.id,
+                        settlement.get_purpose_display(),
+                        settlement.amount,
+                        settlement.currency,
+                        settlement.bank_name,
+                        settlement.account_number,
+                        settlement.get_status_display(),
+                        settlement.transfer_reference or "-",
+                        self._format_datetime(settlement.transferred_at),
+                    )
+                    for settlement in settlements
+                ),
+            ),
+        )
+
+    def _format_datetime(self, value):
+        if value is None:
+            return "-"
+        return timezone.localtime(value).strftime("%Y-%m-%d %H:%M:%S")
 
 
 @admin.register(SubscriptionPayment)
