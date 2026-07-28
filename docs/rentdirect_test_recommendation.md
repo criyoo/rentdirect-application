@@ -40,7 +40,7 @@
 
    ```ini
    [pytest]
-   DJANGO_SETTINGS_MODULE = config.settings
+   DJANGO_SETTINGS_MODULE = config.settings.test
    python_files = test_*.py *_tests.py
    python_classes = Test*
    python_functions = test_*

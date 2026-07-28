@@ -1,0 +1,934 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R 5 0 R 7 0 R 9 0 R 11 0 R 13 0 R 15 0 R 17 0 R 19 0 R] /Count 9 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 21 0 R /F2 22 0 R /F3 23 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 5409 >>
+stream
+0.2 w
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 46.00 26.00 Td (Landlord User Acceptance Test) Tj ET
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 524.00 26.00 Td (Page 1) Tj ET
+0.05 0.25 0.58 rg
+BT /F2 18 Tf 46.00 736.00 Td (Landlord User Acceptance Test) Tj ET
+0.82 0.82 0.82 RG 46 712.00 m 566 712.00 l S
+0 0 0 rg
+BT /F2 9 Tf 46.00 700.00 Td (Product:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 178.00 700.00 Td (RentDirect rental marketplace) Tj ET
+0 0 0 rg
+BT /F2 9 Tf 46.00 686.00 Td (Application reviewed:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 178.00 686.00 Td (/Users/chris/Developer/Projects/serverbased/rentdirect/apps) Tj ET
+0 0 0 rg
+BT /F2 9 Tf 46.00 672.00 Td (Prepared date:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 178.00 672.00 Td (2026-07-28) Tj ET
+0 0 0 rg
+BT /F2 9 Tf 46.00 658.00 Td (Execution status values:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 178.00 658.00 Td (Not Run, Pass, Fail, Blocked, Retest Pass) Tj ET
+0 0 0 rg
+BT /F2 9 Tf 46.00 644.00 Td (Defect log:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 178.00 644.00 Td (Record failures in docs/uat_errors.pdf using the related UAT code) Tj ET
+0.82 0.82 0.82 RG 46 630.00 m 566 630.00 l S
+0.05 0.25 0.58 rg
+BT /F2 13 Tf 46.00 611.00 Td (Purpose) Tj ET
+0 0 0 rg
+BT /F1 9.5 Tf 46.00 593.00 Td (This document provides a business-readable User Acceptance Test script for the RentDirect landlord) Tj ET
+0 0 0 rg
+BT /F1 9.5 Tf 46.00 580.50 Td (journey. It verifies that real users can complete the workflow end to end, from registration and OTP) Tj ET
+0 0 0 rg
+BT /F1 9.5 Tf 46.00 568.00 Td (verification through subscription, verification, property discovery or listing, rental payment, progress) Tj ET
+0 0 0 rg
+BT /F1 9.5 Tf 46.00 555.50 Td (tracking, support, and account settings.) Tj ET
+0.05 0.25 0.58 rg
+BT /F2 13 Tf 46.00 533.00 Td (Scope) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 515.00 Td (- Landlord registration, OTP verification, login, dashboard access, and session handling.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 502.80 Td (- Landlord subscription selection, payment, cancellation, and billing history.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 490.60 Td (- Individual and corporate landlord verification, listing creation, property verification choice, featured) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 478.40 Td (property payment, listing management, enquiries, tenant profile review, payment tracking, rental progress,) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 466.20 Td (support, and settings OTP.) Tj ET
+0.05 0.25 0.58 rg
+BT /F2 13 Tf 46.00 444.00 Td (Assumptions And Entry Criteria) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 426.00 Td (- The test environment is available and points to the correct API and payment provider test configuration.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 413.80 Td (- Email delivery is working so OTP messages can be received by testers.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 401.60 Td (- At least one tenant and one landlord tester are available for cross-user chat, viewing, booking, and) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 389.40 Td (payment checks.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 377.20 Td (- Flutterwave or configured payment sandbox credentials are available for card and bank-transfer scenarios.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 365.00 Td (- Test identity numbers, bank details, listing images, and property documents are approved for test use) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 352.80 Td (only.) Tj ET
+0.05 0.25 0.58 rg
+BT /F2 13 Tf 46.00 330.60 Td (Execution Rules) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 312.60 Td (- Mark each UAT code as Not Run, Pass, Fail, Blocked, or Retest Pass.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 300.40 Td (- If any expected result is not met, mark the test as Fail and record the issue in uat_errors.pdf using the) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 288.20 Td (same UAT code.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 276.00 Td (- Attach screenshots, payment references, email OTP timestamps, and downloaded receipts as evidence where) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 263.80 Td (available.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 251.60 Td (- Critical and High defects in registration, verification, subscriptions, bookings, payments, and rental) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 239.40 Td (progress must be fixed and retested before sign-off.) Tj ET
+0.05 0.25 0.58 rg
+BT /F2 13 Tf 46.00 217.20 Td (Test Cases) Tj ET
+0 0 0 rg
+BT /F2 11 Tf 46.00 194.20 Td (LL-UAT-001 - Landlord registration page opens) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 179.20 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 167.70 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 153.20 Td (Objective: Confirm a new landlord can reach the registration journey and select landlord role.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 140.00 Td (Preconditions / test data: Tester is logged out and has a valid email inbox available for OTP.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 126.80 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 114.60 Td (1. Open /register.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 102.60 Td (2. Review the registration form.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 90.60 Td (3. Select Landlord in the I am a section.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 78.60 Td (Expected result: Landlord option is selected and account registration fields remain clear and usable.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 65.40 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 21 0 R /F2 22 0 R /F3 23 0 R >> >> /Contents 6 0 R >>
+endobj
+6 0 obj
+<< /Length 5287 >>
+stream
+0.2 w
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 46.00 26.00 Td (Landlord User Acceptance Test) Tj ET
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 524.00 26.00 Td (Page 2) Tj ET
+0.82 0.82 0.82 RG 46 746.00 m 566 746.00 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 729.00 Td (LL-UAT-002 - Create landlord account and request OTP) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 714.00 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 702.50 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 688.00 Td (Objective: Verify that landlord account creation sends an email verification code.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 674.80 Td (Preconditions / test data: Use a unique landlord email address.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 661.60 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 649.40 Td (1. Enter full name, email, and password.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 637.40 Td (2. Keep Landlord selected.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 625.40 Td (3. Click Create account.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 613.40 Td (4. Wait for the Verify your email screen.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 601.40 Td (Expected result: OTP verification screen appears and confirms the code was sent to the landlord email.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 588.20 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 574.70 m 566 574.70 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 557.70 Td (LL-UAT-003 - Verify landlord registration OTP) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 542.70 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 531.20 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 516.70 Td (Objective: Confirm OTP verification activates the landlord account.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 503.50 Td (Preconditions / test data: Landlord registration OTP has been received and has not expired.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 490.30 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 478.10 Td (1. Enter the six-character OTP.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 466.10 Td (2. Click Verify account.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 454.10 Td (3. Confirm user is signed in.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 442.10 Td (4. Open landlord dashboard.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 430.10 Td (Expected result: Landlord account is email verified and authenticated dashboard access is granted.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 416.90 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 403.40 m 566 403.40 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 386.40 Td (LL-UAT-004 - Landlord login and dashboard access) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 371.40 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 359.90 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 345.40 Td (Objective: Confirm verified landlord can sign in and reach business dashboard.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 332.20 Td (Preconditions / test data: Landlord account is verified.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 319.00 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 306.80 Td (1. Go to /login.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 294.80 Td (2. Enter landlord email and password.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 282.80 Td (3. Click Sign in.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 270.80 Td (4. Open landlord dashboard.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 258.80 Td (Expected result: Landlord dashboard loads with actions for Enquiries, Verification, Profile, Billing,) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 246.60 Td (Complaint, Support, Issues, Community Chat, Feedback, Settings, Featured, and Add Listing.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 233.40 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 219.90 m 566 219.90 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 202.90 Td (LL-UAT-005 - Choose landlord subscription plan) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 187.90 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 176.40 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 161.90 Td (Objective: Confirm landlord can activate free or paid subscription access.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 148.70 Td (Preconditions / test data: Landlord is logged in.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 135.50 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 123.30 Td (1. Open Billing.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 111.30 Td (2. Review landlord Bronze, Silver, Gold, and Platinum plans.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 99.30 Td (3. Select Bronze free plan or choose a paid monthly/yearly plan.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 87.30 Td (4. For paid plan, complete Flutterwave checkout or record pending result.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 75.30 Td (Expected result: Bronze activates immediately for 14 days. Paid plans create payment records and activate) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 63.10 Td (after successful payment verification.) Tj ET
+endstream
+endobj
+7 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 21 0 R /F2 22 0 R /F3 23 0 R >> >> /Contents 8 0 R >>
+endobj
+8 0 obj
+<< /Length 4787 >>
+stream
+0.2 w
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 46.00 26.00 Td (Landlord User Acceptance Test) Tj ET
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 524.00 26.00 Td (Page 3) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 746.00 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 732.50 m 566 732.50 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 715.50 Td (LL-UAT-006 - Cancel or retry pending landlord subscription payment) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 700.50 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 689.00 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 674.50 Td (Objective: Confirm landlord can resolve an interrupted subscription payment.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 661.30 Td (Preconditions / test data: Landlord has one pending paid subscription payment.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 648.10 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 635.90 Td (1. Open Billing.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 623.90 Td (2. Find the Pending payment section.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 611.90 Td (3. Click Continue Payment.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 599.90 Td (4. Test Cancel and retry.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 587.90 Td (5. Test Completely Cancel Payment.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 575.90 Td (Expected result: Pending subscription payment state updates correctly and prevents selecting another plan) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 563.70 Td (until resolved.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 550.50 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 537.00 m 566 537.00 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 520.00 Td (LL-UAT-007 - Landlord verification status page loads) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 505.00 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 493.50 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 479.00 Td (Objective: Confirm landlord can view identity, house document, and physical property verification statuses.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 465.80 Td (Preconditions / test data: Landlord is logged in.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 452.60 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 440.40 Td (1. Open Verification from dashboard.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 428.40 Td (2. Review Verification Status cards.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 416.40 Td (3. Confirm Identity Verification, House Document Verification, and Physical Property Verification statuses) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 404.40 Td (are visible.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 392.40 Td (Expected result: Each verification category shows Unverified, Pending, or Verified with submitted date when) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 380.20 Td (available.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 367.00 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 353.50 m 566 353.50 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 336.50 Td (LL-UAT-008 - Submit individual landlord identity verification) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 321.50 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 310.00 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 295.50 Td (Objective: Confirm an individual landlord can submit identity details and identification documents.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 282.30 Td (Preconditions / test data: Landlord has test biodata, 11-digit NIN, 11-digit BVN, bank details, address, and) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 270.10 Td (ID document file.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 256.90 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 244.70 Td (1. Select Individual Landlord.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 232.70 Td (2. Click Verify Identity.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 220.70 Td (3. Complete personal information, NIN/BVN, contact number, email, residence, and bank details.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 208.70 Td (4. Upload identification document.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 196.70 Td (5. Submit verification.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 184.70 Td (Expected result: Required field validation works. Valid submission saves profile data, uploads documents,) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 172.50 Td (and changes Identity Verification to Pending or Verified.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 159.30 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 145.80 m 566 145.80 l S
+endstream
+endobj
+9 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 21 0 R /F2 22 0 R /F3 23 0 R >> >> /Contents 10 0 R >>
+endobj
+10 0 obj
+<< /Length 4691 >>
+stream
+0.2 w
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 46.00 26.00 Td (Landlord User Acceptance Test) Tj ET
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 524.00 26.00 Td (Page 4) Tj ET
+0 0 0 rg
+BT /F2 11 Tf 46.00 741.00 Td (LL-UAT-009 - Submit corporate landlord identity verification) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 726.00 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 714.50 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 700.00 Td (Objective: Confirm a corporate landlord can submit company identity and banking information.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 686.80 Td (Preconditions / test data: Landlord account is not already locked to individual track; CAC, TIN, NIN, BVN,) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 674.60 Td (bank details, and ID document are available.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 661.40 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 649.20 Td (1. Select Corporate Landlord.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 637.20 Td (2. Click Verify Identity.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 625.20 Td (3. Complete company name, business state/city/address, company phone/email, contact person, position, CAC) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 613.20 Td (number/date, TIN, NIN, BVN, and bank details.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 601.20 Td (4. Upload identification document.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 589.20 Td (5. Submit verification.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 577.20 Td (Expected result: Corporate fields validate, document uploads, and verification request is submitted with) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 565.00 Td (corporate landlord type saved.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 551.80 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 538.30 m 566 538.30 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 521.30 Td (LL-UAT-010 - Reject incomplete landlord verification) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 506.30 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 494.80 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 480.30 Td (Objective: Confirm landlord verification cannot be submitted with missing or invalid fields.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 467.10 Td (Preconditions / test data: Landlord verification form is open.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 453.90 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 441.70 Td (1. Select a landlord type.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 429.70 Td (2. Leave required fields blank.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 417.70 Td (3. Enter invalid NIN or BVN length.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 405.70 Td (4. Submit without identification document.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 393.70 Td (5. Read field errors.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 381.70 Td (Expected result: Submission is blocked, invalid fields show clear messages, and no verification request is) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 369.50 Td (submitted until corrected.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 356.30 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 342.80 m 566 342.80 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 325.80 Td (LL-UAT-011 - Block listing creation before identity verification) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 310.80 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 299.30 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 284.80 Td (Objective: Confirm unverified landlords are guided to verification before listing.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 271.60 Td (Preconditions / test data: Landlord identity verification is Unverified or Pending.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 258.40 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 246.20 Td (1. Open /listings/new or click Add Listing.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 234.20 Td (2. Observe verification requirement message.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 222.20 Td (3. Click Go to Verification.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 210.20 Td (4. Return to dashboard.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 198.20 Td (Expected result: Listing creation is blocked until required identification verification is complete and) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 186.00 Td (buttons route to the correct pages.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 172.80 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 159.30 m 566 159.30 l S
+endstream
+endobj
+11 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 21 0 R /F2 22 0 R /F3 23 0 R >> >> /Contents 12 0 R >>
+endobj
+12 0 obj
+<< /Length 5082 >>
+stream
+0.2 w
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 46.00 26.00 Td (Landlord User Acceptance Test) Tj ET
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 524.00 26.00 Td (Page 5) Tj ET
+0 0 0 rg
+BT /F2 11 Tf 46.00 741.00 Td (LL-UAT-012 - Create property listing with document verification) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 726.00 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 714.50 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 700.00 Td (Objective: Confirm verified landlord can create a complete listing using uploaded property documents.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 686.80 Td (Preconditions / test data: Landlord identity is verified; cover image, additional images, and property) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 674.60 Td (document files are available.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 661.40 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 649.20 Td (1. Click Add Listing.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 637.20 Td (2. Complete title, type, description, address, city, state, postal code, bedrooms, bathrooms, toilets,) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 625.20 Td (available date, annual rent, occupancy, duration, rental preferences, amenities, and features.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 613.20 Td (3. Select Upload documents as verification method.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 601.20 Td (4. Select ownership type and ownership document type.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 589.20 Td (5. Upload property documents, cover image, and additional images.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 577.20 Td (6. Click Create Listing.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 565.20 Td (Expected result: Listing is created, deposit is auto-calculated as 20 percent of annual rent, and the new) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 553.00 Td (listing detail page opens.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 539.80 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 526.30 m 566 526.30 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 509.30 Td (LL-UAT-013 - Create property listing with in-person verification) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 494.30 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 482.80 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 468.30 Td (Objective: Confirm landlord can request physical verification instead of uploading property documents.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 455.10 Td (Preconditions / test data: Landlord identity is verified and listing test data/images are ready.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 441.90 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 429.70 Td (1. Open Add Listing.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 417.70 Td (2. Complete all property and rental preference fields.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 405.70 Td (3. Choose In-person verification.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 393.70 Td (4. Confirm property document upload is disabled or optional.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 381.70 Td (5. Upload required listing images.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 369.70 Td (6. Click Create Listing.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 357.70 Td (Expected result: Listing is created with in-person verification requested and no property document upload is) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 345.50 Td (required.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 332.30 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 318.80 m 566 318.80 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 301.80 Td (LL-UAT-014 - Reject incomplete listing form) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 286.80 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 275.30 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 260.80 Td (Objective: Confirm listing validation explains missing mandatory information.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 247.60 Td (Preconditions / test data: Landlord can access Add Listing.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 234.40 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 222.20 Td (1. Open Add Listing.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 210.20 Td (2. Submit without cover image.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 198.20 Td (3. Submit without additional images.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 186.20 Td (4. Submit without amenities.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 174.20 Td (5. Submit without ownership details or property documents when document verification is selected.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 162.20 Td (6. Review errors.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 150.20 Td (Expected result: The listing is not created and each missing mandatory requirement is clearly explained.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 137.00 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 123.50 m 566 123.50 l S
+endstream
+endobj
+13 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 21 0 R /F2 22 0 R /F3 23 0 R >> >> /Contents 14 0 R >>
+endobj
+14 0 obj
+<< /Length 4263 >>
+stream
+0.2 w
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 46.00 26.00 Td (Landlord User Acceptance Test) Tj ET
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 524.00 26.00 Td (Page 6) Tj ET
+0 0 0 rg
+BT /F2 11 Tf 46.00 741.00 Td (LL-UAT-015 - Request featured property placement) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 726.00 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 714.50 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 700.00 Td (Objective: Confirm landlord can request paid featured placement while creating a listing.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 686.80 Td (Preconditions / test data: Landlord is creating a new listing and payment provider test flow is available.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 673.60 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 661.40 Td (1. Complete a new listing.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 649.40 Td (2. Tick I want to feature this property.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 637.40 Td (3. Submit the listing.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 625.40 Td (4. Confirm redirect to featured payment page.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 613.40 Td (5. Complete or record payment provider result.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 601.40 Td (Expected result: Featured payment request is created for 30 days and the listing becomes featured after) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 589.20 Td (successful payment confirmation.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 576.00 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 562.50 m 566 562.50 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 545.50 Td (LL-UAT-016 - Edit property listing) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 530.50 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 519.00 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 504.50 Td (Objective: Confirm landlord can update an existing listing.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 491.30 Td (Preconditions / test data: Landlord has at least one listing.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 478.10 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 465.90 Td (1. Open landlord dashboard.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 453.90 Td (2. Click edit icon on a property.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 441.90 Td (3. Change title, description, price, amenities, or images.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 429.90 Td (4. Click Save Changes.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 417.90 Td (5. Open listing detail.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 405.90 Td (Expected result: Updated information is saved and displayed on listing detail and dashboard.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 392.70 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 379.20 m 566 379.20 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 362.20 Td (LL-UAT-017 - Delete property listing) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 347.20 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 335.70 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 321.20 Td (Objective: Confirm landlord can delete a listing after confirmation.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 308.00 Td (Preconditions / test data: Landlord has a test listing that can be removed.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 294.80 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 282.60 Td (1. Open landlord dashboard.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 270.60 Td (2. Click delete icon.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 258.60 Td (3. Cancel the confirmation and confirm listing remains.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 246.60 Td (4. Click delete again and confirm.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 234.60 Td (5. Refresh dashboard.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 222.60 Td (Expected result: Cancel keeps the listing. Confirm removes the listing from the dashboard and public search.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 209.40 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 195.90 m 566 195.90 l S
+endstream
+endobj
+15 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 21 0 R /F2 22 0 R /F3 23 0 R >> >> /Contents 16 0 R >>
+endobj
+16 0 obj
+<< /Length 5734 >>
+stream
+0.2 w
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 46.00 26.00 Td (Landlord User Acceptance Test) Tj ET
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 524.00 26.00 Td (Page 7) Tj ET
+0 0 0 rg
+BT /F2 11 Tf 46.00 741.00 Td (LL-UAT-018 - View landlord public profile and properties) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 726.00 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 714.50 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 700.00 Td (Objective: Confirm public landlord pages show profile, verification badges, metrics, listings, and reviews.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 686.80 Td (Preconditions / test data: Landlord has listings and profile data.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 673.60 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 661.40 Td (1. From dashboard, open Profile.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 649.40 Td (2. Open View All Landlord Properties from a listing.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 637.40 Td (3. Review verification badges, metrics, listing status, reviews, and profile photo.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 625.40 Td (Expected result: Public profile and property pages load without exposing private verification raw data.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 612.20 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 598.70 m 566 598.70 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 581.70 Td (LL-UAT-019 - Receive tenant enquiry and continue chat) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 566.70 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 555.20 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 540.70 Td (Objective: Confirm landlord can see tenant enquiries and respond.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 527.50 Td (Preconditions / test data: Tenant has sent a listing enquiry.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 514.30 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 502.10 Td (1. Open Landlord Enquiries.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 490.10 Td (2. Review property, tenant, message count, last message, and viewing badge.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 478.10 Td (3. Click Continue Chat.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 466.10 Td (4. Send a reply to the tenant.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 454.10 Td (Expected result: Chat history loads with tenant information, reply is sent, and conversation updates in) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 441.90 Td (enquiries.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 428.70 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 415.20 m 566 415.20 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 398.20 Td (LL-UAT-020 - View tenant profile and screening signal) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 383.20 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 371.70 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 357.20 Td (Objective: Confirm landlord can inspect permitted tenant profile details and screening category scores.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 344.00 Td (Preconditions / test data: Tenant has a profile and a booking/enquiry tied to landlord property.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 330.80 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 318.60 Td (1. Open Landlord Enquiries or dashboard booking.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 306.60 Td (2. Click View Tenant Profile.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 294.60 Td (3. Review tenant public profile details.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 282.60 Td (4. Return to dashboard and review tenant screening score/category display if available.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 270.60 Td (Expected result: Allowed tenant information is visible, raw sensitive verification data remains hidden, and) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 258.40 Td (screening scores are understandable.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 245.20 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 231.70 m 566 231.70 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 214.70 Td (LL-UAT-021 - Track tenant rental request and payment status) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 199.70 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 188.20 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 173.70 Td (Objective: Confirm landlord dashboard shows bookings, collected payments, expected payments, and balances.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 160.50 Td (Preconditions / test data: Tenant has created a booking and made at least one payment or pending payment.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 147.30 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 135.10 Td (1. Open landlord dashboard.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 123.10 Td (2. Review Total Properties, Rental Requests, Collected Payments, Expected Payment, and Balance Payment.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 111.10 Td (3. Open Tenant Payments section.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 99.10 Td (4. Review total, collected, expecting, balance, booking status, tenant details, and action buttons.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 87.10 Td (Expected result: Financial amounts match booking/payment state and update after tenant payment confirmation.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 73.90 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 60.40 m 566 60.40 l S
+endstream
+endobj
+17 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 21 0 R /F2 22 0 R /F3 23 0 R >> >> /Contents 18 0 R >>
+endobj
+18 0 obj
+<< /Length 5332 >>
+stream
+0.2 w
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 46.00 26.00 Td (Landlord User Acceptance Test) Tj ET
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 524.00 26.00 Td (Page 8) Tj ET
+0 0 0 rg
+BT /F2 11 Tf 46.00 741.00 Td (LL-UAT-022 - Track landlord rental progress) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 726.00 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 714.50 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 700.00 Td (Objective: Confirm landlord can record move-in workflow milestones in order.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 686.80 Td (Preconditions / test data: Booking exists for landlord property.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 673.60 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 661.40 Td (1. Open landlord dashboard.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 649.40 Td (2. Click Rental Progress for a booking.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 637.40 Td (3. Tick and save steps sequentially: Viewing appointment booked, House Viewed, Tenancy agreement signed,) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 625.40 Td (deposit notification received, full payment notification received, check-in inventory completed, tenant) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 613.40 Td (collected key, bank/email notification of total rent received.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 601.40 Td (4. Attempt to tick a locked future step.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 589.40 Td (Expected result: Progress percentage updates, saved steps lock with date/time, future steps remain locked) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 577.20 Td (until earlier steps are complete.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 564.00 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 550.50 m 566 550.50 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 533.50 Td (LL-UAT-023 - Landlord support, issue, complaint, community, and feedback) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 518.50 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 507.00 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 492.50 Td (Objective: Confirm landlord operational support channels work.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 479.30 Td (Preconditions / test data: Landlord is logged in; community chat requires eligible plan where applicable.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 466.10 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 453.90 Td (1. Open Support and submit a support item.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 441.90 Td (2. Open Support Chat and send a message.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 429.90 Td (3. Open Complaint and submit a complaint.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 417.90 Td (4. Open Issues and submit an issue.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 405.90 Td (5. Open Community Chat and confirm access control.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 393.90 Td (6. Open Feedback and submit feedback.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 381.90 Td (Expected result: Each channel confirms success or shows a clear subscription/access message without losing) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 369.70 Td (entered content.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 356.50 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 343.00 m 566 343.00 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 326.00 Td (LL-UAT-024 - Landlord settings OTP and logout) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 311.00 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 299.50 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 285.00 Td (Objective: Confirm sensitive landlord settings changes require OTP and logout clears the session.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 271.80 Td (Preconditions / test data: Landlord is logged in with access to email inbox.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 258.60 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 246.40 Td (1. Open Settings.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 234.40 Td (2. Request OTP for a sensitive change.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 222.40 Td (3. Enter invalid OTP and observe error.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 210.40 Td (4. Enter valid OTP and save.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 198.40 Td (5. Log out.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 186.40 Td (6. Try opening landlord dashboard again.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 174.40 Td (Expected result: Invalid OTP is rejected, valid OTP completes the change, logout clears session, and) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 162.20 Td (protected dashboard requires login.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 149.00 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 135.50 m 566 135.50 l S
+0.05 0.25 0.58 rg
+BT /F2 13 Tf 46.00 116.50 Td (UAT Sign-Off) Tj ET
+0 0 0 rg
+BT /F1 9.5 Tf 46.00 98.50 Td (The Landlord UAT cycle is accepted when all mandatory tests are Pass or have approved business sign-off,) Tj ET
+0 0 0 rg
+BT /F1 9.5 Tf 46.00 86.00 Td (no Critical or High defects remain open, and payment/verification defects have been retested) Tj ET
+0 0 0 rg
+BT /F1 9.5 Tf 46.00 73.50 Td (successfully.) Tj ET
+endstream
+endobj
+19 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 21 0 R /F2 22 0 R /F3 23 0 R >> >> /Contents 20 0 R >>
+endobj
+20 0 obj
+<< /Length 554 >>
+stream
+0.2 w
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 46.00 26.00 Td (Landlord User Acceptance Test) Tj ET
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 524.00 26.00 Td (Page 9) Tj ET
+0 0 0 rg
+BT /F3 9.5 Tf 46.00 746.00 Td (Business Owner: ____________________ Signature: ____________________ Date: ____________) Tj ET
+0 0 0 rg
+BT /F3 9.5 Tf 46.00 730.50 Td (QA Lead: ___________________________ Signature: ____________________ Date: ____________) Tj ET
+0 0 0 rg
+BT /F3 9.5 Tf 46.00 715.00 Td (Product Owner: _____________________ Signature: ____________________ Date: ____________) Tj ET
+endstream
+endobj
+21 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+22 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+23 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>
+endobj
+xref
+0 24
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000168 00000 n 
+0000000317 00000 n 
+0000005778 00000 n 
+0000005927 00000 n 
+0000011266 00000 n 
+0000011415 00000 n 
+0000016254 00000 n 
+0000016404 00000 n 
+0000021148 00000 n 
+0000021299 00000 n 
+0000026434 00000 n 
+0000026585 00000 n 
+0000030901 00000 n 
+0000031052 00000 n 
+0000036839 00000 n 
+0000036990 00000 n 
+0000042375 00000 n 
+0000042526 00000 n 
+0000043132 00000 n 
+0000043203 00000 n 
+0000043279 00000 n 
+trailer
+<< /Size 24 /Root 1 0 R >>
+startxref
+43348
+%%EOF

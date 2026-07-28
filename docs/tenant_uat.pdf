@@ -1,0 +1,936 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R 5 0 R 7 0 R 9 0 R 11 0 R 13 0 R 15 0 R 17 0 R 19 0 R] /Count 9 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 21 0 R /F2 22 0 R /F3 23 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 5387 >>
+stream
+0.2 w
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 46.00 26.00 Td (Tenant User Acceptance Test) Tj ET
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 524.00 26.00 Td (Page 1) Tj ET
+0.05 0.25 0.58 rg
+BT /F2 18 Tf 46.00 736.00 Td (Tenant User Acceptance Test) Tj ET
+0.82 0.82 0.82 RG 46 712.00 m 566 712.00 l S
+0 0 0 rg
+BT /F2 9 Tf 46.00 700.00 Td (Product:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 178.00 700.00 Td (RentDirect rental marketplace) Tj ET
+0 0 0 rg
+BT /F2 9 Tf 46.00 686.00 Td (Application reviewed:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 178.00 686.00 Td (/Users/chris/Developer/Projects/serverbased/rentdirect/apps) Tj ET
+0 0 0 rg
+BT /F2 9 Tf 46.00 672.00 Td (Prepared date:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 178.00 672.00 Td (2026-07-28) Tj ET
+0 0 0 rg
+BT /F2 9 Tf 46.00 658.00 Td (Execution status values:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 178.00 658.00 Td (Not Run, Pass, Fail, Blocked, Retest Pass) Tj ET
+0 0 0 rg
+BT /F2 9 Tf 46.00 644.00 Td (Defect log:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 178.00 644.00 Td (Record failures in docs/uat_errors.pdf using the related UAT code) Tj ET
+0.82 0.82 0.82 RG 46 630.00 m 566 630.00 l S
+0.05 0.25 0.58 rg
+BT /F2 13 Tf 46.00 611.00 Td (Purpose) Tj ET
+0 0 0 rg
+BT /F1 9.5 Tf 46.00 593.00 Td (This document provides a business-readable User Acceptance Test script for the RentDirect tenant journey.) Tj ET
+0 0 0 rg
+BT /F1 9.5 Tf 46.00 580.50 Td (It verifies that real users can complete the workflow end to end, from registration and OTP verification) Tj ET
+0 0 0 rg
+BT /F1 9.5 Tf 46.00 568.00 Td (through subscription, verification, property discovery or listing, rental payment, progress tracking,) Tj ET
+0 0 0 rg
+BT /F1 9.5 Tf 46.00 555.50 Td (support, and account settings.) Tj ET
+0.05 0.25 0.58 rg
+BT /F2 13 Tf 46.00 533.00 Td (Scope) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 515.00 Td (- Tenant registration, OTP verification, login, dashboard access, and session handling.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 502.80 Td (- Tenant subscription selection, payment, cancellation, and billing history.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 490.60 Td (- Tenant identity verification, tenant profile, property search, favourites, listing details, landlord) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 478.40 Td (profile, viewing request, chat, booking, rental payment, receipts, rental progress, reviews, support, and) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 466.20 Td (settings OTP.) Tj ET
+0.05 0.25 0.58 rg
+BT /F2 13 Tf 46.00 444.00 Td (Assumptions And Entry Criteria) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 426.00 Td (- The test environment is available and points to the correct API and payment provider test configuration.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 413.80 Td (- Email delivery is working so OTP messages can be received by testers.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 401.60 Td (- At least one tenant and one landlord tester are available for cross-user chat, viewing, booking, and) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 389.40 Td (payment checks.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 377.20 Td (- Flutterwave or configured payment sandbox credentials are available for card and bank-transfer scenarios.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 365.00 Td (- Test identity numbers, bank details, listing images, and property documents are approved for test use) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 352.80 Td (only.) Tj ET
+0.05 0.25 0.58 rg
+BT /F2 13 Tf 46.00 330.60 Td (Execution Rules) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 312.60 Td (- Mark each UAT code as Not Run, Pass, Fail, Blocked, or Retest Pass.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 300.40 Td (- If any expected result is not met, mark the test as Fail and record the issue in uat_errors.pdf using the) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 288.20 Td (same UAT code.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 276.00 Td (- Attach screenshots, payment references, email OTP timestamps, and downloaded receipts as evidence where) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 263.80 Td (available.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 251.60 Td (- Critical and High defects in registration, verification, subscriptions, bookings, payments, and rental) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 239.40 Td (progress must be fixed and retested before sign-off.) Tj ET
+0.05 0.25 0.58 rg
+BT /F2 13 Tf 46.00 217.20 Td (Test Cases) Tj ET
+0 0 0 rg
+BT /F2 11 Tf 46.00 194.20 Td (TNT-UAT-001 - Tenant registration page opens) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 179.20 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 167.70 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 153.20 Td (Objective: Confirm a new tenant can reach the registration journey and see the Tenant role option.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 140.00 Td (Preconditions / test data: Tester is logged out and has a valid email inbox available for OTP.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 126.80 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 114.60 Td (1. Open the RentDirect web application.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 102.60 Td (2. Select Create account or go to /register.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 90.60 Td (3. Confirm the form shows Full name, Email address, Password, and I am a Tenant or Landlord.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 78.60 Td (4. Select Tenant.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 66.60 Td (Expected result: The Tenant option is selected, the form remains usable, and no landlord-only fields are) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 21 0 R /F2 22 0 R /F3 23 0 R >> >> /Contents 6 0 R >>
+endobj
+6 0 obj
+<< /Length 4511 >>
+stream
+0.2 w
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 46.00 26.00 Td (Tenant User Acceptance Test) Tj ET
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 524.00 26.00 Td (Page 2) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 746.00 Td (shown.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 732.80 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 719.30 m 566 719.30 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 702.30 Td (TNT-UAT-002 - Create tenant account and request OTP) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 687.30 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 675.80 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 661.30 Td (Objective: Verify that tenant account creation sends an email verification code.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 648.10 Td (Preconditions / test data: Use a unique email address that is not already verified in RentDirect.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 634.90 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 622.70 Td (1. Enter full name, tenant email, and password.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 610.70 Td (2. Keep Tenant selected.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 598.70 Td (3. Click Create account.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 586.70 Td (4. Wait for the verification screen.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 574.70 Td (Expected result: The page changes to Verify your email, shows the target email, and states that a code was) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 562.50 Td (sent.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 549.30 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 535.80 m 566 535.80 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 518.80 Td (TNT-UAT-003 - Verify tenant registration OTP) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 503.80 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 492.30 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 477.80 Td (Objective: Confirm OTP verification activates the tenant account and signs the user in.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 464.60 Td (Preconditions / test data: Tenant registration OTP has been received and has not expired.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 451.40 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 439.20 Td (1. Enter the six-character OTP exactly as received.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 427.20 Td (2. Click Verify account.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 415.20 Td (3. Observe the next page after verification.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 403.20 Td (4. Confirm the user session is active.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 391.20 Td (Expected result: OTP is accepted, the account is email verified, and the tenant is redirected into the) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 379.00 Td (authenticated experience.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 365.80 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 352.30 m 566 352.30 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 335.30 Td (TNT-UAT-004 - Reject invalid or expired tenant OTP) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 320.30 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 308.80 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 294.30 Td (Objective: Confirm the system clearly handles wrong verification codes.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 281.10 Td (Preconditions / test data: A tenant registration OTP screen is open.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 267.90 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 255.70 Td (1. Enter an incorrect six-character OTP.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 243.70 Td (2. Click Verify account.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 231.70 Td (3. Read the error message.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 219.70 Td (4. Repeat until remaining-attempt messaging is visible if supported.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 207.70 Td (Expected result: The account is not verified, a clear error is displayed, and the tester can request or) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 195.50 Td (restart registration when needed.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 182.30 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 168.80 m 566 168.80 l S
+endstream
+endobj
+7 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 21 0 R /F2 22 0 R /F3 23 0 R >> >> /Contents 8 0 R >>
+endobj
+8 0 obj
+<< /Length 4507 >>
+stream
+0.2 w
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 46.00 26.00 Td (Tenant User Acceptance Test) Tj ET
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 524.00 26.00 Td (Page 3) Tj ET
+0 0 0 rg
+BT /F2 11 Tf 46.00 741.00 Td (TNT-UAT-005 - Tenant login and dashboard access) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 726.00 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 714.50 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 700.00 Td (Objective: Confirm a verified tenant can sign in and land on the tenant dashboard.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 686.80 Td (Preconditions / test data: Tenant account is verified.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 673.60 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 661.40 Td (1. Go to /login.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 649.40 Td (2. Enter tenant email and password.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 637.40 Td (3. Click Sign in.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 625.40 Td (4. Open the tenant dashboard from the post-login route if not redirected automatically.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 613.40 Td (Expected result: Tenant dashboard loads with actions for Search, Favourites, Enquiries, Verification,) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 601.20 Td (Profile, Billing, Support, Community Chat, Feedback, and Settings.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 588.00 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 574.50 m 566 574.50 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 557.50 Td (TNT-UAT-006 - Choose tenant subscription plan) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 542.50 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 531.00 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 516.50 Td (Objective: Confirm tenant can activate a plan and understand access limits.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 503.30 Td (Preconditions / test data: Tenant is logged in.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 490.10 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 477.90 Td (1. Open Billing from the dashboard.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 465.90 Td (2. Review Bronze, Silver, Gold, and Platinum tenant plans.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 453.90 Td (3. Select Bronze monthly for free access or choose a paid plan for full rental actions.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 441.90 Td (4. For a paid plan, continue to subscription payment and complete or record provider checkout result.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 429.90 Td (Expected result: Bronze activates immediately for 14 days. Paid plans create a pending payment, launch) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 417.70 Td (Flutterwave checkout, and become active after successful payment verification.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 404.50 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 391.00 m 566 391.00 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 374.00 Td (TNT-UAT-007 - Cancel or retry pending tenant subscription payment) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 359.00 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 347.50 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 333.00 Td (Objective: Confirm interrupted subscription payments can be managed without duplicate pending plans.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 319.80 Td (Preconditions / test data: Tenant has one pending paid subscription payment.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 306.60 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 294.40 Td (1. Open Billing.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 282.40 Td (2. Locate the Pending payment section.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 270.40 Td (3. Click Continue Payment and confirm checkout resumes.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 258.40 Td (4. Return and test Cancel and retry or Completely Cancel Payment.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 246.40 Td (Expected result: Only one pending subscription attempt is active; continuing, retrying, and cancellation) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 234.20 Td (show clear outcomes and update billing history.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 221.00 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 207.50 m 566 207.50 l S
+endstream
+endobj
+9 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 21 0 R /F2 22 0 R /F3 23 0 R >> >> /Contents 10 0 R >>
+endobj
+10 0 obj
+<< /Length 4690 >>
+stream
+0.2 w
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 46.00 26.00 Td (Tenant User Acceptance Test) Tj ET
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 524.00 26.00 Td (Page 4) Tj ET
+0 0 0 rg
+BT /F2 11 Tf 46.00 741.00 Td (TNT-UAT-008 - Complete tenant identity verification) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 726.00 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 714.50 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 700.00 Td (Objective: Confirm tenant can submit biodata, NIN, and BVN verification details.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 686.80 Td (Preconditions / test data: Tenant is logged in and has test biodata, 11-digit NIN, 11-digit BVN, and mobile) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 674.60 Td (number.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 661.40 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 649.20 Td (1. Open Verification from the dashboard or /verify.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 637.20 Td (2. Complete first name, last name, country/date of birth, gender, nationality, state, LGA, email, mobile,) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 625.20 Td (employment status, NIN, and BVN.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 613.20 Td (3. Click Submit Verification.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 601.20 Td (4. Confirm success dialog or status message.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 589.20 Td (Expected result: Required validation prevents incomplete data. Valid data is saved, verification succeeds or) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 577.00 Td (is submitted for review, and the tenant can proceed to profile/search actions.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 563.80 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 550.30 m 566 550.30 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 533.30 Td (TNT-UAT-009 - Reject invalid tenant verification data) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 518.30 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 506.80 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 492.30 Td (Objective: Confirm validation explains bad NIN, BVN, mobile, and missing fields.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 479.10 Td (Preconditions / test data: Tenant verification page is open.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 465.90 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 453.70 Td (1. Leave one required field blank.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 441.70 Td (2. Enter fewer than 11 digits in NIN or BVN.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 429.70 Td (3. Enter an invalid mobile number.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 417.70 Td (4. Click Submit Verification.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 405.70 Td (Expected result: The form stays on screen, each invalid field shows a readable message, and no verification) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 393.50 Td (request is submitted until data is corrected.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 380.30 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 366.80 m 566 366.80 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 349.80 Td (TNT-UAT-010 - Create or update tenant profile details) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 334.80 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 323.30 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 308.80 Td (Objective: Confirm tenant can complete the reusable rental profile after verification.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 295.60 Td (Preconditions / test data: Tenant is logged in; profile route is available from dashboard.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 282.40 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 270.20 Td (1. Open Profile.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 258.20 Td (2. Enter residence, employment, financial, guarantor, landlord, rental history, household, social presence,) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 246.20 Td (and declaration information where required.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 234.20 Td (3. Save changes.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 222.20 Td (4. Reopen the profile.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 210.20 Td (Expected result: Profile data persists, saved values are visible after reload, and missing required sections) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 198.00 Td (are clearly identified.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 184.80 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 171.30 m 566 171.30 l S
+endstream
+endobj
+11 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 21 0 R /F2 22 0 R /F3 23 0 R >> >> /Contents 12 0 R >>
+endobj
+12 0 obj
+<< /Length 4762 >>
+stream
+0.2 w
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 46.00 26.00 Td (Tenant User Acceptance Test) Tj ET
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 524.00 26.00 Td (Page 5) Tj ET
+0 0 0 rg
+BT /F2 11 Tf 46.00 741.00 Td (TNT-UAT-011 - Search and filter available properties) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 726.00 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 714.50 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 700.00 Td (Objective: Confirm tenant can browse listings using search, location, price, room, and feature filters.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 686.80 Td (Preconditions / test data: At least one active listing exists.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 673.60 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 661.40 Td (1. Open Search.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 649.40 Td (2. Search by keyword.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 637.40 Td (3. Filter by state, city, radius, price range, property type, bedrooms, bathrooms, toilets, furnished, pet) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 625.40 Td (friendly, and utilities included.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 613.40 Td (4. Click Apply/Search.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 601.40 Td (5. Open location analytics if required.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 589.40 Td (Expected result: Matching listings appear, URL filters update, empty results are understandable, and) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 577.20 Td (location permission failures show a readable message.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 564.00 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 550.50 m 566 550.50 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 533.50 Td (TNT-UAT-012 - Save and remove favourite property) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 518.50 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 507.00 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 492.50 Td (Objective: Confirm a tenant can manage favourite listings.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 479.30 Td (Preconditions / test data: Tenant is logged in and viewing a property detail page.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 466.10 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 453.90 Td (1. Open any listing.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 441.90 Td (2. Click Add to Favourites.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 429.90 Td (3. Open Favourites from dashboard.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 417.90 Td (4. Confirm the property appears.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 405.90 Td (5. Return to the listing and click Remove from Favourites.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 393.90 Td (Expected result: Favourite state updates immediately and remains correct after page refresh.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 380.70 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 367.20 m 566 367.20 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 350.20 Td (TNT-UAT-013 - View listing details and landlord profile) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 335.20 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 323.70 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 309.20 Td (Objective: Confirm tenant can inspect listing media, rental terms, location, reviews, and landlord profile.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 296.00 Td (Preconditions / test data: Listing exists with cover image, additional images, landlord profile, and) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 283.80 Td (pricing.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 270.60 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 258.40 Td (1. Open a listing from Search.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 246.40 Td (2. Cycle through main image and thumbnails.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 234.40 Td (3. Review rent, deposit, bedrooms, bathrooms, toilets, features, amenities, address or state, map, reviews,) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 222.40 Td (and landlord information.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 210.40 Td (4. Click View Landlord Profile and View All Landlord Properties.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 198.40 Td (Expected result: All visible property information is accurate; Bronze tenants see restricted location) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 186.20 Td (details while paid tenants see full location/map and available amenities.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 173.00 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 159.50 m 566 159.50 l S
+endstream
+endobj
+13 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 21 0 R /F2 22 0 R /F3 23 0 R >> >> /Contents 14 0 R >>
+endobj
+14 0 obj
+<< /Length 4359 >>
+stream
+0.2 w
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 46.00 26.00 Td (Tenant User Acceptance Test) Tj ET
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 524.00 26.00 Td (Page 6) Tj ET
+0 0 0 rg
+BT /F2 11 Tf 46.00 741.00 Td (TNT-UAT-014 - Arrange viewing by messaging landlord) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 726.00 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 714.50 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 700.00 Td (Objective: Confirm eligible tenant can request a viewing through the protected chat.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 686.80 Td (Preconditions / test data: Tenant is verified and on Silver, Gold, or Platinum plan.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 673.60 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 661.40 Td (1. Open a listing.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 649.40 Td (2. Click Arrange viewing.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 637.40 Td (3. Enter viewing availability.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 625.40 Td (4. Enter a message without phone numbers, email addresses, or social media handles.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 613.40 Td (5. Click Send.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 601.40 Td (Expected result: Message is sent, availability is included, conversation appears in My Enquiries, and) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 589.20 Td (contact information is blocked with a clear warning if entered.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 576.00 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 562.50 m 566 562.50 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 545.50 Td (TNT-UAT-015 - Continue tenant enquiry conversation) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 530.50 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 519.00 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 504.50 Td (Objective: Confirm tenant can return to and continue landlord conversations.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 491.30 Td (Preconditions / test data: At least one landlord enquiry conversation exists.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 478.10 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 465.90 Td (1. Open Enquiries from dashboard.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 453.90 Td (2. Review property, landlord, last message, message count, and viewing badge.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 441.90 Td (3. Click Continue Chat.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 429.90 Td (4. Send a follow-up message.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 417.90 Td (Expected result: Conversation history loads and the new message appears in the thread.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 404.70 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 391.20 m 566 391.20 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 374.20 Td (TNT-UAT-016 - Start rent application from listing) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 359.20 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 347.70 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 333.20 Td (Objective: Confirm tenant can create a booking for a selected property.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 320.00 Td (Preconditions / test data: Tenant is verified and has a paid plan; listing is available.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 306.80 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 294.60 Td (1. Open listing detail.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 282.60 Td (2. Click Rent Now.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 270.60 Td (3. Review property details and rental terms.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 258.60 Td (4. Accept or confirm any required terms.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 246.60 Td (5. Create rental application if prompted.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 234.60 Td (Expected result: A booking is created for the listing and the Rent This Property page shows payment options) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 222.40 Td (and calculated amounts.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 209.20 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 195.70 m 566 195.70 l S
+endstream
+endobj
+15 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 21 0 R /F2 22 0 R /F3 23 0 R >> >> /Contents 16 0 R >>
+endobj
+16 0 obj
+<< /Length 4700 >>
+stream
+0.2 w
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 46.00 26.00 Td (Tenant User Acceptance Test) Tj ET
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 524.00 26.00 Td (Page 7) Tj ET
+0 0 0 rg
+BT /F2 11 Tf 46.00 741.00 Td (TNT-UAT-017 - Pay 20 percent rental deposit) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 726.00 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 714.50 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 700.00 Td (Objective: Confirm tenant can reserve a property with the optional 20 percent deposit.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 686.80 Td (Preconditions / test data: Booking exists with no paid amount and deposit option is shown.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 673.60 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 661.40 Td (1. On Rent This Property, select Pay 20% Deposit.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 649.40 Td (2. Choose Bank Transfer or Card.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 637.40 Td (3. Click Pay.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 625.40 Td (4. For bank transfer, record virtual account details; for card, complete hosted checkout.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 613.40 Td (5. Return to RentDirect after provider confirmation.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 601.40 Td (Expected result: Payment is created, pending/processing state is visible until confirmed, and the booking) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 589.20 Td (paid amount updates after successful payment verification.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 576.00 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 562.50 m 566 562.50 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 545.50 Td (TNT-UAT-018 - Pay full rental balance) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 530.50 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 519.00 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 504.50 Td (Objective: Confirm tenant can complete the remaining rental payment.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 491.30 Td (Preconditions / test data: Booking exists with remaining balance.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 478.10 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 465.90 Td (1. Open the booking from Tenant Dashboard or /rent/{listingId}.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 453.90 Td (2. Select Pay Full Balance.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 441.90 Td (3. Choose allowed payment method.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 429.90 Td (4. Complete provider payment or bank transfer.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 417.90 Td (5. Refresh booking details.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 405.90 Td (Expected result: Remaining balance becomes zero after successful payment. Dashboard shows paid amount and no) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 393.70 Td (outstanding balance for the booking.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 380.50 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 367.00 m 566 367.00 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 350.00 Td (TNT-UAT-019 - Continue or cancel pending rental payment) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 335.00 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 323.50 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 309.00 Td (Objective: Confirm tenant can resolve an interrupted rental payment.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 295.80 Td (Preconditions / test data: A booking has a pending or processing payment.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 282.60 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 270.40 Td (1. Open Rent This Property for the listing.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 258.40 Td (2. Locate Payment In Progress.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 246.40 Td (3. Click Continue Payment and verify checkout resumes.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 234.40 Td (4. Cancel a pending payment and confirm warning dialog.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 222.40 Td (5. For completed payment cancellation, confirm refund messaging appears where allowed.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 210.40 Td (Expected result: Pending payments can be continued or cancelled, duplicate open payments are prevented, and) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 198.20 Td (completed payment cancellation follows the refund rules.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 185.00 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 171.50 m 566 171.50 l S
+endstream
+endobj
+17 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 21 0 R /F2 22 0 R /F3 23 0 R >> >> /Contents 18 0 R >>
+endobj
+18 0 obj
+<< /Length 4662 >>
+stream
+0.2 w
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 46.00 26.00 Td (Tenant User Acceptance Test) Tj ET
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 524.00 26.00 Td (Page 8) Tj ET
+0 0 0 rg
+BT /F2 11 Tf 46.00 741.00 Td (TNT-UAT-020 - Download rental payment receipt) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 726.00 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 714.50 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 700.00 Td (Objective: Confirm tenant can download receipt for completed payment.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 686.80 Td (Preconditions / test data: Booking contains at least one completed rental payment.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 673.60 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 661.40 Td (1. Open Rent This Property.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 649.40 Td (2. Locate completed payment history or receipt action.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 637.40 Td (3. Click Download receipt.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 625.40 Td (4. Open the downloaded PDF.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 613.40 Td (Expected result: Receipt PDF downloads and contains transaction, property, tenant, landlord, amount, method,) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 601.20 Td (and date details.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 588.00 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 574.50 m 566 574.50 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 557.50 Td (TNT-UAT-021 - Track tenant rental progress) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 542.50 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 531.00 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 516.50 Td (Objective: Confirm tenant can record move-in workflow milestones in order.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 503.30 Td (Preconditions / test data: Booking exists and tenant is logged in.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 490.10 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 477.90 Td (1. Open Tenant Dashboard.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 465.90 Td (2. Click Rental Progress for the booking.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 453.90 Td (3. Tick Viewing appointment booked and save.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 441.90 Td (4. Continue sequentially through House Viewed, Tenancy agreement signed, Tenant has paid Deposit, Tenant has) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 429.90 Td (paid rent in full, Check-in inventory completed, Tenant collected House Key, Can RentDirect transfer rent) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 417.90 Td (amount to Landlord, and final email received.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 405.90 Td (5. Try selecting a later locked step before previous steps are complete.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 393.90 Td (Expected result: Progress percentage updates after save, completed steps lock with date/time, later steps) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 381.70 Td (remain locked until prerequisites are complete, and the transfer step requires Yes or No.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 368.50 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 355.00 m 566 355.00 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 338.00 Td (TNT-UAT-022 - Review property after rental interaction) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 323.00 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 311.50 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 297.00 Td (Objective: Confirm eligible tenant can submit or edit a property review.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 283.80 Td (Preconditions / test data: Tenant is on Gold or Platinum or otherwise has review access.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 270.60 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 258.40 Td (1. Open a listing.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 246.40 Td (2. Click Review Property.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 234.40 Td (3. Select rating and enter comment.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 222.40 Td (4. Submit review.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 210.40 Td (5. Reopen listing and edit the review.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 198.40 Td (Expected result: Review is saved, visible in Property Reviews, and can be edited by the same tenant.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 185.20 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 171.70 m 566 171.70 l S
+endstream
+endobj
+19 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 21 0 R /F2 22 0 R /F3 23 0 R >> >> /Contents 20 0 R >>
+endobj
+20 0 obj
+<< /Length 3827 >>
+stream
+0.2 w
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 46.00 26.00 Td (Tenant User Acceptance Test) Tj ET
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 524.00 26.00 Td (Page 9) Tj ET
+0 0 0 rg
+BT /F2 11 Tf 46.00 741.00 Td (TNT-UAT-023 - Raise support, issue, complaint, and feedback) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 726.00 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 714.50 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 700.00 Td (Objective: Confirm tenant operational support channels work end to end.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 686.80 Td (Preconditions / test data: Tenant is logged in.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 673.60 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 661.40 Td (1. Open Support and submit a support item.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 649.40 Td (2. Open Support Chat and send a message.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 637.40 Td (3. Open Complaint and submit a complaint.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 625.40 Td (4. Open Issues and submit an issue.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 613.40 Td (5. Open Feedback and submit feedback.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 601.40 Td (Expected result: Each submission confirms success or appears in its relevant list/thread without losing user) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 589.20 Td (input.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 576.00 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 562.50 m 566 562.50 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 545.50 Td (TNT-UAT-024 - Tenant settings OTP and logout) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 530.50 Td (Status: [ ] Not Run [ ] Pass [ ] Fail [ ] Blocked [ ] Retest Pass Tester: ____________ Date:) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 519.00 Td (____________) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 504.50 Td (Objective: Confirm sensitive settings changes require OTP and the user can end the session.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 491.30 Td (Preconditions / test data: Tenant is logged in with access to the email inbox.) Tj ET
+0 0 0 rg
+BT /F2 9.2 Tf 46.00 478.10 Td (Steps:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 465.90 Td (1. Open Settings.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 453.90 Td (2. Request OTP for an email, password, or account setting change.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 441.90 Td (3. Enter invalid OTP and observe error.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 429.90 Td (4. Enter valid OTP and save the change.) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 58.00 417.90 Td (5. Log out and confirm protected pages require login.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 405.90 Td (Expected result: Invalid OTP is rejected, valid OTP completes the change, and logout clears access to) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 46.00 393.70 Td (protected tenant routes.) Tj ET
+0.32 0.32 0.32 rg
+BT /F3 8.5 Tf 46.00 380.50 Td (Actual result / evidence: ________________________________________________________________) Tj ET
+0.82 0.82 0.82 RG 46 367.00 m 566 367.00 l S
+0.05 0.25 0.58 rg
+BT /F2 13 Tf 46.00 348.00 Td (UAT Sign-Off) Tj ET
+0 0 0 rg
+BT /F1 9.5 Tf 46.00 330.00 Td (The Tenant UAT cycle is accepted when all mandatory tests are Pass or have approved business sign-off, no) Tj ET
+0 0 0 rg
+BT /F1 9.5 Tf 46.00 317.50 Td (Critical or High defects remain open, and payment/verification defects have been retested successfully.) Tj ET
+0 0 0 rg
+BT /F3 9.5 Tf 46.00 302.00 Td (Business Owner: ____________________ Signature: ____________________ Date: ____________) Tj ET
+0 0 0 rg
+BT /F3 9.5 Tf 46.00 286.50 Td (QA Lead: ___________________________ Signature: ____________________ Date: ____________) Tj ET
+0 0 0 rg
+BT /F3 9.5 Tf 46.00 271.00 Td (Product Owner: _____________________ Signature: ____________________ Date: ____________) Tj ET
+endstream
+endobj
+21 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+22 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+23 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>
+endobj
+xref
+0 24
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000168 00000 n 
+0000000317 00000 n 
+0000005756 00000 n 
+0000005905 00000 n 
+0000010468 00000 n 
+0000010617 00000 n 
+0000015176 00000 n 
+0000015326 00000 n 
+0000020069 00000 n 
+0000020220 00000 n 
+0000025035 00000 n 
+0000025186 00000 n 
+0000029598 00000 n 
+0000029749 00000 n 
+0000034502 00000 n 
+0000034653 00000 n 
+0000039368 00000 n 
+0000039519 00000 n 
+0000043399 00000 n 
+0000043470 00000 n 
+0000043546 00000 n 
+trailer
+<< /Size 24 /Root 1 0 R >>
+startxref
+43615
+%%EOF

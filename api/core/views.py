@@ -1522,7 +1522,9 @@ def booking_payout_balance_available(booking: Booking, now=None) -> bool:
     _completion_payment, paid_at = get_booking_full_payment_completion(booking)
     if not paid_at:
         return False
-    payout_balance_delay = timedelta(hours=max(int(getattr(settings, "FLUTTERWAVE_PAYOUT_BALANCE_DELAY_HOURS", 24)), 0))
+    payout_balance_delay = timedelta(
+        minutes=max(int(getattr(settings, "FLUTTERWAVE_PAYOUT_BALANCE_DELAY_MINUTES", 24 * 60)), 0)
+    )
     return (now or timezone.now()) >= paid_at + payout_balance_delay
 
 

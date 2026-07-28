@@ -164,7 +164,7 @@ flowchart TB
 Terraform sets `VALKEY_URL` in `infra/terraform/locals.tf`, but Django reads `REDIS_URL`:
 
 ```python
-# apps/api/config/settings.py
+# apps/api/config/settings/base.py
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache" if os.environ.get("REDIS_URL") else "django.core.cache.backends.locmem.LocMemCache",
@@ -468,7 +468,7 @@ These gaps affect all six dimensions:
 
 | Area | Path |
 |------|------|
-| Django settings | `apps/api/config/settings.py` |
+| Django settings | `apps/api/config/settings/` |
 | Auth | `apps/api/core/authentication.py` |
 | Health check | `apps/api/core/middleware.py` |
 | API views / webhooks | `apps/api/core/views.py` |

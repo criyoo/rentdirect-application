@@ -36,6 +36,7 @@ env:
   LINUX_PLATFORM: "arm64"
   PYTHON_VERSION: "3.12"
   NODE_VERSION: "20"
+  DJANGO_SETTINGS_MODULE: "config.settings.test"
   DJANGO_DEBUG: "1"
   DJANGO_ENV: "test"
   DJANGO_SECRET_KEY: "ci-secret-key"

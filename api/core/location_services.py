@@ -187,7 +187,7 @@ AMENITY_POINTS: tuple[dict[str, str | float], ...] = (
 
 AMENITY_CATEGORIES = ("schools", "hospitals", "transport_hubs", "supermarkets", "other")
 NEIGHBOURHOOD_KEYWORD_PATTERN = re.compile(
-    r"\b(?:street|st\.?|road|rd\.?|avenue|ave\.?|estate|lane|ln\.?|close|bus\s+stop)\b",
+    r"\b(?:street|st\.?|road|rd\.?|avenue|ave\.?|estate|lane|ln\.?|close|market|mkt\.?|bus\s+stop)\b",
     re.IGNORECASE,
 )
 

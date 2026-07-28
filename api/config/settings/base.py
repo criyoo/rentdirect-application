@@ -8,7 +8,7 @@ from urllib.parse import quote_plus
 import dj_database_url
 
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parents[2]
 
 
 def env_bool(name: str, default: bool = False) -> bool:
@@ -23,6 +23,14 @@ def env_int(name: str, default: int) -> int:
         return int(os.environ.get(name, default))
     except (TypeError, ValueError):
         return default
+
+
+def env_payout_delay_minutes(default_minutes: int) -> int:
+    if os.environ.get("FLUTTERWAVE_PAYOUT_BALANCE_DELAY_MINUTES", "").strip():
+        return env_int("FLUTTERWAVE_PAYOUT_BALANCE_DELAY_MINUTES", default_minutes)
+    if os.environ.get("FLUTTERWAVE_PAYOUT_BALANCE_DELAY_HOURS", "").strip():
+        return env_int("FLUTTERWAVE_PAYOUT_BALANCE_DELAY_HOURS", default_minutes // 60) * 60
+    return default_minutes
 
 
 def env_list(name: str, default: str = "") -> list[str]:
@@ -334,7 +342,7 @@ FLUTTERWAVE_TOKEN_URL = os.environ.get(
 ).strip()
 FLUTTERWAVE_WEBHOOK_URL = os.environ.get("FLUTTERWAVE_WEBHOOK_URL", "").strip()
 FLUTTERWAVE_VIRTUAL_ACCOUNT_EXPIRY_SECONDS = env_int("FLUTTERWAVE_VIRTUAL_ACCOUNT_EXPIRY_SECONDS", 24 * 60 * 60)
-FLUTTERWAVE_PAYOUT_BALANCE_DELAY_HOURS = env_int("FLUTTERWAVE_PAYOUT_BALANCE_DELAY_HOURS", 24)
+FLUTTERWAVE_PAYOUT_BALANCE_DELAY_MINUTES = env_payout_delay_minutes(24 * 60)
 
 USE_TEST_PAYOUT_ACCOUNT_DEFAULTS = ENVIRONMENT not in {"prod", "production"}
 

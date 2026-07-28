@@ -1,0 +1,772 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R 5 0 R 7 0 R 9 0 R 11 0 R 13 0 R 15 0 R 17 0 R 19 0 R] /Count 9 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 21 0 R /F2 22 0 R /F3 23 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 4064 >>
+stream
+0.2 w
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 46.00 26.00 Td (RentDirect UAT Error Log) Tj ET
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 524.00 26.00 Td (Page 1) Tj ET
+0.05 0.25 0.58 rg
+BT /F2 18 Tf 46.00 736.00 Td (RentDirect UAT Error / Failure Log) Tj ET
+0.82 0.82 0.82 RG 46 712.00 m 566 712.00 l S
+0 0 0 rg
+BT /F2 9 Tf 46.00 700.00 Td (Product:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 178.00 700.00 Td (RentDirect rental marketplace) Tj ET
+0 0 0 rg
+BT /F2 9 Tf 46.00 686.00 Td (Prepared date:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 178.00 686.00 Td (2026-07-28) Tj ET
+0 0 0 rg
+BT /F2 9 Tf 46.00 672.00 Td (Related UAT documents:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 178.00 672.00 Td (tenant_uat.pdf and landlord_uat.pdf) Tj ET
+0 0 0 rg
+BT /F2 9 Tf 46.00 658.00 Td (Purpose:) Tj ET
+0 0 0 rg
+BT /F1 9 Tf 178.00 658.00 Td (Single defect capture sheet for failed or blocked UAT steps) Tj ET
+0.82 0.82 0.82 RG 46 644.00 m 566 644.00 l S
+0.05 0.25 0.58 rg
+BT /F2 13 Tf 46.00 625.00 Td (How To Use This Log) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 607.00 Td (- Create one defect record for every failed or blocked UAT step.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 594.80 Td (- Use the exact UAT code from the tenant or landlord test document, for example TNT-UAT-017 or LL-UAT-012.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 582.60 Td (- Status values: Open, In Progress, Fixed, Ready for Retest, Retest Pass, Reopened, Deferred, Closed.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 570.40 Td (- Severity values: Critical, High, Medium, Low. Critical means the core journey cannot continue or) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 558.20 Td (money/identity data is at risk.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 546.00 Td (- Priority values: P1 immediate, P2 before sign-off, P3 next release, P4 backlog.) Tj ET
+0.05 0.25 0.58 rg
+BT /F2 13 Tf 46.00 523.80 Td (Severity Guide) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 505.80 Td (- Critical: registration, OTP, login, verification, booking, payment, payout, or data privacy failure) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 493.60 Td (blocks end-to-end acceptance.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 481.40 Td (- High: major journey works only with manual workaround, wrong payment amount/status, missing required) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 469.20 Td (validation, or incorrect access control.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 457.00 Td (- Medium: confusing copy, non-critical missing data, layout issue, or secondary workflow failure.) Tj ET
+0 0 0 rg
+BT /F1 9.2 Tf 54.00 444.80 Td (- Low: cosmetic issue or minor content problem that does not affect task completion.) Tj ET
+0.05 0.25 0.58 rg
+BT /F2 13 Tf 46.00 422.60 Td (Defect Capture Records) Tj ET
+0 0 0 rg
+BT /F2 11 Tf 46.00 399.60 Td (UAT-ERR-001) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 384.60 Td (Role: [ ] Tenant [ ] Landlord Related UAT Code: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 369.80 Td (Date Found: ____________ Tester: ____________________ Environment: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 355.00 Td (Step / Action Performed: ________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 340.20 Td (Expected Result: _______________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 325.40 Td (Actual Result: _________________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 310.60 Td (Severity: [ ] Critical [ ] High [ ] Medium [ ] Low Priority: [ ] P1 [ ] P2 [ ] P3 [ ] P4) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 295.80 Td (Evidence Link / Screenshot / Reference: ________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 281.00 Td (Owner: ____________________ Target Fix Date: ____________ Status: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 266.20 Td (Root Cause / Developer Note: ____________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 251.40 Td (Retest Result: [ ] Not Retested [ ] Pass [ ] Fail Retest Date: ____________ Tester: ____________) Tj ET
+0.82 0.82 0.82 RG 46 236.60 m 566 236.60 l S
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 21 0 R /F2 22 0 R /F3 23 0 R >> >> /Contents 6 0 R >>
+endobj
+6 0 obj
+<< /Length 4494 >>
+stream
+0.2 w
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 46.00 26.00 Td (RentDirect UAT Error Log) Tj ET
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 524.00 26.00 Td (Page 2) Tj ET
+0 0 0 rg
+BT /F2 11 Tf 46.00 741.00 Td (UAT-ERR-002) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 726.00 Td (Role: [ ] Tenant [ ] Landlord Related UAT Code: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 711.20 Td (Date Found: ____________ Tester: ____________________ Environment: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 696.40 Td (Step / Action Performed: ________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 681.60 Td (Expected Result: _______________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 666.80 Td (Actual Result: _________________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 652.00 Td (Severity: [ ] Critical [ ] High [ ] Medium [ ] Low Priority: [ ] P1 [ ] P2 [ ] P3 [ ] P4) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 637.20 Td (Evidence Link / Screenshot / Reference: ________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 622.40 Td (Owner: ____________________ Target Fix Date: ____________ Status: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 607.60 Td (Root Cause / Developer Note: ____________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 592.80 Td (Retest Result: [ ] Not Retested [ ] Pass [ ] Fail Retest Date: ____________ Tester: ____________) Tj ET
+0.82 0.82 0.82 RG 46 578.00 m 566 578.00 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 561.00 Td (UAT-ERR-003) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 546.00 Td (Role: [ ] Tenant [ ] Landlord Related UAT Code: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 531.20 Td (Date Found: ____________ Tester: ____________________ Environment: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 516.40 Td (Step / Action Performed: ________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 501.60 Td (Expected Result: _______________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 486.80 Td (Actual Result: _________________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 472.00 Td (Severity: [ ] Critical [ ] High [ ] Medium [ ] Low Priority: [ ] P1 [ ] P2 [ ] P3 [ ] P4) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 457.20 Td (Evidence Link / Screenshot / Reference: ________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 442.40 Td (Owner: ____________________ Target Fix Date: ____________ Status: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 427.60 Td (Root Cause / Developer Note: ____________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 412.80 Td (Retest Result: [ ] Not Retested [ ] Pass [ ] Fail Retest Date: ____________ Tester: ____________) Tj ET
+0.82 0.82 0.82 RG 46 398.00 m 566 398.00 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 381.00 Td (UAT-ERR-004) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 366.00 Td (Role: [ ] Tenant [ ] Landlord Related UAT Code: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 351.20 Td (Date Found: ____________ Tester: ____________________ Environment: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 336.40 Td (Step / Action Performed: ________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 321.60 Td (Expected Result: _______________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 306.80 Td (Actual Result: _________________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 292.00 Td (Severity: [ ] Critical [ ] High [ ] Medium [ ] Low Priority: [ ] P1 [ ] P2 [ ] P3 [ ] P4) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 277.20 Td (Evidence Link / Screenshot / Reference: ________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 262.40 Td (Owner: ____________________ Target Fix Date: ____________ Status: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 247.60 Td (Root Cause / Developer Note: ____________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 232.80 Td (Retest Result: [ ] Not Retested [ ] Pass [ ] Fail Retest Date: ____________ Tester: ____________) Tj ET
+0.82 0.82 0.82 RG 46 218.00 m 566 218.00 l S
+endstream
+endobj
+7 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 21 0 R /F2 22 0 R /F3 23 0 R >> >> /Contents 8 0 R >>
+endobj
+8 0 obj
+<< /Length 4494 >>
+stream
+0.2 w
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 46.00 26.00 Td (RentDirect UAT Error Log) Tj ET
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 524.00 26.00 Td (Page 3) Tj ET
+0 0 0 rg
+BT /F2 11 Tf 46.00 741.00 Td (UAT-ERR-005) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 726.00 Td (Role: [ ] Tenant [ ] Landlord Related UAT Code: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 711.20 Td (Date Found: ____________ Tester: ____________________ Environment: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 696.40 Td (Step / Action Performed: ________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 681.60 Td (Expected Result: _______________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 666.80 Td (Actual Result: _________________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 652.00 Td (Severity: [ ] Critical [ ] High [ ] Medium [ ] Low Priority: [ ] P1 [ ] P2 [ ] P3 [ ] P4) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 637.20 Td (Evidence Link / Screenshot / Reference: ________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 622.40 Td (Owner: ____________________ Target Fix Date: ____________ Status: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 607.60 Td (Root Cause / Developer Note: ____________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 592.80 Td (Retest Result: [ ] Not Retested [ ] Pass [ ] Fail Retest Date: ____________ Tester: ____________) Tj ET
+0.82 0.82 0.82 RG 46 578.00 m 566 578.00 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 561.00 Td (UAT-ERR-006) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 546.00 Td (Role: [ ] Tenant [ ] Landlord Related UAT Code: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 531.20 Td (Date Found: ____________ Tester: ____________________ Environment: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 516.40 Td (Step / Action Performed: ________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 501.60 Td (Expected Result: _______________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 486.80 Td (Actual Result: _________________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 472.00 Td (Severity: [ ] Critical [ ] High [ ] Medium [ ] Low Priority: [ ] P1 [ ] P2 [ ] P3 [ ] P4) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 457.20 Td (Evidence Link / Screenshot / Reference: ________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 442.40 Td (Owner: ____________________ Target Fix Date: ____________ Status: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 427.60 Td (Root Cause / Developer Note: ____________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 412.80 Td (Retest Result: [ ] Not Retested [ ] Pass [ ] Fail Retest Date: ____________ Tester: ____________) Tj ET
+0.82 0.82 0.82 RG 46 398.00 m 566 398.00 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 381.00 Td (UAT-ERR-007) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 366.00 Td (Role: [ ] Tenant [ ] Landlord Related UAT Code: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 351.20 Td (Date Found: ____________ Tester: ____________________ Environment: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 336.40 Td (Step / Action Performed: ________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 321.60 Td (Expected Result: _______________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 306.80 Td (Actual Result: _________________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 292.00 Td (Severity: [ ] Critical [ ] High [ ] Medium [ ] Low Priority: [ ] P1 [ ] P2 [ ] P3 [ ] P4) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 277.20 Td (Evidence Link / Screenshot / Reference: ________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 262.40 Td (Owner: ____________________ Target Fix Date: ____________ Status: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 247.60 Td (Root Cause / Developer Note: ____________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 232.80 Td (Retest Result: [ ] Not Retested [ ] Pass [ ] Fail Retest Date: ____________ Tester: ____________) Tj ET
+0.82 0.82 0.82 RG 46 218.00 m 566 218.00 l S
+endstream
+endobj
+9 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 21 0 R /F2 22 0 R /F3 23 0 R >> >> /Contents 10 0 R >>
+endobj
+10 0 obj
+<< /Length 4494 >>
+stream
+0.2 w
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 46.00 26.00 Td (RentDirect UAT Error Log) Tj ET
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 524.00 26.00 Td (Page 4) Tj ET
+0 0 0 rg
+BT /F2 11 Tf 46.00 741.00 Td (UAT-ERR-008) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 726.00 Td (Role: [ ] Tenant [ ] Landlord Related UAT Code: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 711.20 Td (Date Found: ____________ Tester: ____________________ Environment: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 696.40 Td (Step / Action Performed: ________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 681.60 Td (Expected Result: _______________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 666.80 Td (Actual Result: _________________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 652.00 Td (Severity: [ ] Critical [ ] High [ ] Medium [ ] Low Priority: [ ] P1 [ ] P2 [ ] P3 [ ] P4) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 637.20 Td (Evidence Link / Screenshot / Reference: ________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 622.40 Td (Owner: ____________________ Target Fix Date: ____________ Status: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 607.60 Td (Root Cause / Developer Note: ____________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 592.80 Td (Retest Result: [ ] Not Retested [ ] Pass [ ] Fail Retest Date: ____________ Tester: ____________) Tj ET
+0.82 0.82 0.82 RG 46 578.00 m 566 578.00 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 561.00 Td (UAT-ERR-009) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 546.00 Td (Role: [ ] Tenant [ ] Landlord Related UAT Code: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 531.20 Td (Date Found: ____________ Tester: ____________________ Environment: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 516.40 Td (Step / Action Performed: ________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 501.60 Td (Expected Result: _______________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 486.80 Td (Actual Result: _________________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 472.00 Td (Severity: [ ] Critical [ ] High [ ] Medium [ ] Low Priority: [ ] P1 [ ] P2 [ ] P3 [ ] P4) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 457.20 Td (Evidence Link / Screenshot / Reference: ________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 442.40 Td (Owner: ____________________ Target Fix Date: ____________ Status: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 427.60 Td (Root Cause / Developer Note: ____________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 412.80 Td (Retest Result: [ ] Not Retested [ ] Pass [ ] Fail Retest Date: ____________ Tester: ____________) Tj ET
+0.82 0.82 0.82 RG 46 398.00 m 566 398.00 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 381.00 Td (UAT-ERR-010) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 366.00 Td (Role: [ ] Tenant [ ] Landlord Related UAT Code: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 351.20 Td (Date Found: ____________ Tester: ____________________ Environment: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 336.40 Td (Step / Action Performed: ________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 321.60 Td (Expected Result: _______________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 306.80 Td (Actual Result: _________________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 292.00 Td (Severity: [ ] Critical [ ] High [ ] Medium [ ] Low Priority: [ ] P1 [ ] P2 [ ] P3 [ ] P4) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 277.20 Td (Evidence Link / Screenshot / Reference: ________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 262.40 Td (Owner: ____________________ Target Fix Date: ____________ Status: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 247.60 Td (Root Cause / Developer Note: ____________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 232.80 Td (Retest Result: [ ] Not Retested [ ] Pass [ ] Fail Retest Date: ____________ Tester: ____________) Tj ET
+0.82 0.82 0.82 RG 46 218.00 m 566 218.00 l S
+endstream
+endobj
+11 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 21 0 R /F2 22 0 R /F3 23 0 R >> >> /Contents 12 0 R >>
+endobj
+12 0 obj
+<< /Length 4494 >>
+stream
+0.2 w
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 46.00 26.00 Td (RentDirect UAT Error Log) Tj ET
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 524.00 26.00 Td (Page 5) Tj ET
+0 0 0 rg
+BT /F2 11 Tf 46.00 741.00 Td (UAT-ERR-011) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 726.00 Td (Role: [ ] Tenant [ ] Landlord Related UAT Code: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 711.20 Td (Date Found: ____________ Tester: ____________________ Environment: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 696.40 Td (Step / Action Performed: ________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 681.60 Td (Expected Result: _______________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 666.80 Td (Actual Result: _________________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 652.00 Td (Severity: [ ] Critical [ ] High [ ] Medium [ ] Low Priority: [ ] P1 [ ] P2 [ ] P3 [ ] P4) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 637.20 Td (Evidence Link / Screenshot / Reference: ________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 622.40 Td (Owner: ____________________ Target Fix Date: ____________ Status: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 607.60 Td (Root Cause / Developer Note: ____________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 592.80 Td (Retest Result: [ ] Not Retested [ ] Pass [ ] Fail Retest Date: ____________ Tester: ____________) Tj ET
+0.82 0.82 0.82 RG 46 578.00 m 566 578.00 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 561.00 Td (UAT-ERR-012) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 546.00 Td (Role: [ ] Tenant [ ] Landlord Related UAT Code: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 531.20 Td (Date Found: ____________ Tester: ____________________ Environment: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 516.40 Td (Step / Action Performed: ________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 501.60 Td (Expected Result: _______________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 486.80 Td (Actual Result: _________________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 472.00 Td (Severity: [ ] Critical [ ] High [ ] Medium [ ] Low Priority: [ ] P1 [ ] P2 [ ] P3 [ ] P4) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 457.20 Td (Evidence Link / Screenshot / Reference: ________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 442.40 Td (Owner: ____________________ Target Fix Date: ____________ Status: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 427.60 Td (Root Cause / Developer Note: ____________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 412.80 Td (Retest Result: [ ] Not Retested [ ] Pass [ ] Fail Retest Date: ____________ Tester: ____________) Tj ET
+0.82 0.82 0.82 RG 46 398.00 m 566 398.00 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 381.00 Td (UAT-ERR-013) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 366.00 Td (Role: [ ] Tenant [ ] Landlord Related UAT Code: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 351.20 Td (Date Found: ____________ Tester: ____________________ Environment: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 336.40 Td (Step / Action Performed: ________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 321.60 Td (Expected Result: _______________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 306.80 Td (Actual Result: _________________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 292.00 Td (Severity: [ ] Critical [ ] High [ ] Medium [ ] Low Priority: [ ] P1 [ ] P2 [ ] P3 [ ] P4) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 277.20 Td (Evidence Link / Screenshot / Reference: ________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 262.40 Td (Owner: ____________________ Target Fix Date: ____________ Status: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 247.60 Td (Root Cause / Developer Note: ____________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 232.80 Td (Retest Result: [ ] Not Retested [ ] Pass [ ] Fail Retest Date: ____________ Tester: ____________) Tj ET
+0.82 0.82 0.82 RG 46 218.00 m 566 218.00 l S
+endstream
+endobj
+13 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 21 0 R /F2 22 0 R /F3 23 0 R >> >> /Contents 14 0 R >>
+endobj
+14 0 obj
+<< /Length 4494 >>
+stream
+0.2 w
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 46.00 26.00 Td (RentDirect UAT Error Log) Tj ET
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 524.00 26.00 Td (Page 6) Tj ET
+0 0 0 rg
+BT /F2 11 Tf 46.00 741.00 Td (UAT-ERR-014) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 726.00 Td (Role: [ ] Tenant [ ] Landlord Related UAT Code: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 711.20 Td (Date Found: ____________ Tester: ____________________ Environment: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 696.40 Td (Step / Action Performed: ________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 681.60 Td (Expected Result: _______________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 666.80 Td (Actual Result: _________________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 652.00 Td (Severity: [ ] Critical [ ] High [ ] Medium [ ] Low Priority: [ ] P1 [ ] P2 [ ] P3 [ ] P4) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 637.20 Td (Evidence Link / Screenshot / Reference: ________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 622.40 Td (Owner: ____________________ Target Fix Date: ____________ Status: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 607.60 Td (Root Cause / Developer Note: ____________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 592.80 Td (Retest Result: [ ] Not Retested [ ] Pass [ ] Fail Retest Date: ____________ Tester: ____________) Tj ET
+0.82 0.82 0.82 RG 46 578.00 m 566 578.00 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 561.00 Td (UAT-ERR-015) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 546.00 Td (Role: [ ] Tenant [ ] Landlord Related UAT Code: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 531.20 Td (Date Found: ____________ Tester: ____________________ Environment: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 516.40 Td (Step / Action Performed: ________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 501.60 Td (Expected Result: _______________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 486.80 Td (Actual Result: _________________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 472.00 Td (Severity: [ ] Critical [ ] High [ ] Medium [ ] Low Priority: [ ] P1 [ ] P2 [ ] P3 [ ] P4) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 457.20 Td (Evidence Link / Screenshot / Reference: ________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 442.40 Td (Owner: ____________________ Target Fix Date: ____________ Status: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 427.60 Td (Root Cause / Developer Note: ____________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 412.80 Td (Retest Result: [ ] Not Retested [ ] Pass [ ] Fail Retest Date: ____________ Tester: ____________) Tj ET
+0.82 0.82 0.82 RG 46 398.00 m 566 398.00 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 381.00 Td (UAT-ERR-016) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 366.00 Td (Role: [ ] Tenant [ ] Landlord Related UAT Code: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 351.20 Td (Date Found: ____________ Tester: ____________________ Environment: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 336.40 Td (Step / Action Performed: ________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 321.60 Td (Expected Result: _______________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 306.80 Td (Actual Result: _________________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 292.00 Td (Severity: [ ] Critical [ ] High [ ] Medium [ ] Low Priority: [ ] P1 [ ] P2 [ ] P3 [ ] P4) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 277.20 Td (Evidence Link / Screenshot / Reference: ________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 262.40 Td (Owner: ____________________ Target Fix Date: ____________ Status: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 247.60 Td (Root Cause / Developer Note: ____________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 232.80 Td (Retest Result: [ ] Not Retested [ ] Pass [ ] Fail Retest Date: ____________ Tester: ____________) Tj ET
+0.82 0.82 0.82 RG 46 218.00 m 566 218.00 l S
+endstream
+endobj
+15 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 21 0 R /F2 22 0 R /F3 23 0 R >> >> /Contents 16 0 R >>
+endobj
+16 0 obj
+<< /Length 4494 >>
+stream
+0.2 w
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 46.00 26.00 Td (RentDirect UAT Error Log) Tj ET
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 524.00 26.00 Td (Page 7) Tj ET
+0 0 0 rg
+BT /F2 11 Tf 46.00 741.00 Td (UAT-ERR-017) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 726.00 Td (Role: [ ] Tenant [ ] Landlord Related UAT Code: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 711.20 Td (Date Found: ____________ Tester: ____________________ Environment: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 696.40 Td (Step / Action Performed: ________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 681.60 Td (Expected Result: _______________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 666.80 Td (Actual Result: _________________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 652.00 Td (Severity: [ ] Critical [ ] High [ ] Medium [ ] Low Priority: [ ] P1 [ ] P2 [ ] P3 [ ] P4) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 637.20 Td (Evidence Link / Screenshot / Reference: ________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 622.40 Td (Owner: ____________________ Target Fix Date: ____________ Status: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 607.60 Td (Root Cause / Developer Note: ____________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 592.80 Td (Retest Result: [ ] Not Retested [ ] Pass [ ] Fail Retest Date: ____________ Tester: ____________) Tj ET
+0.82 0.82 0.82 RG 46 578.00 m 566 578.00 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 561.00 Td (UAT-ERR-018) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 546.00 Td (Role: [ ] Tenant [ ] Landlord Related UAT Code: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 531.20 Td (Date Found: ____________ Tester: ____________________ Environment: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 516.40 Td (Step / Action Performed: ________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 501.60 Td (Expected Result: _______________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 486.80 Td (Actual Result: _________________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 472.00 Td (Severity: [ ] Critical [ ] High [ ] Medium [ ] Low Priority: [ ] P1 [ ] P2 [ ] P3 [ ] P4) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 457.20 Td (Evidence Link / Screenshot / Reference: ________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 442.40 Td (Owner: ____________________ Target Fix Date: ____________ Status: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 427.60 Td (Root Cause / Developer Note: ____________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 412.80 Td (Retest Result: [ ] Not Retested [ ] Pass [ ] Fail Retest Date: ____________ Tester: ____________) Tj ET
+0.82 0.82 0.82 RG 46 398.00 m 566 398.00 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 381.00 Td (UAT-ERR-019) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 366.00 Td (Role: [ ] Tenant [ ] Landlord Related UAT Code: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 351.20 Td (Date Found: ____________ Tester: ____________________ Environment: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 336.40 Td (Step / Action Performed: ________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 321.60 Td (Expected Result: _______________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 306.80 Td (Actual Result: _________________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 292.00 Td (Severity: [ ] Critical [ ] High [ ] Medium [ ] Low Priority: [ ] P1 [ ] P2 [ ] P3 [ ] P4) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 277.20 Td (Evidence Link / Screenshot / Reference: ________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 262.40 Td (Owner: ____________________ Target Fix Date: ____________ Status: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 247.60 Td (Root Cause / Developer Note: ____________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 232.80 Td (Retest Result: [ ] Not Retested [ ] Pass [ ] Fail Retest Date: ____________ Tester: ____________) Tj ET
+0.82 0.82 0.82 RG 46 218.00 m 566 218.00 l S
+endstream
+endobj
+17 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 21 0 R /F2 22 0 R /F3 23 0 R >> >> /Contents 18 0 R >>
+endobj
+18 0 obj
+<< /Length 4494 >>
+stream
+0.2 w
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 46.00 26.00 Td (RentDirect UAT Error Log) Tj ET
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 524.00 26.00 Td (Page 8) Tj ET
+0 0 0 rg
+BT /F2 11 Tf 46.00 741.00 Td (UAT-ERR-020) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 726.00 Td (Role: [ ] Tenant [ ] Landlord Related UAT Code: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 711.20 Td (Date Found: ____________ Tester: ____________________ Environment: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 696.40 Td (Step / Action Performed: ________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 681.60 Td (Expected Result: _______________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 666.80 Td (Actual Result: _________________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 652.00 Td (Severity: [ ] Critical [ ] High [ ] Medium [ ] Low Priority: [ ] P1 [ ] P2 [ ] P3 [ ] P4) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 637.20 Td (Evidence Link / Screenshot / Reference: ________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 622.40 Td (Owner: ____________________ Target Fix Date: ____________ Status: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 607.60 Td (Root Cause / Developer Note: ____________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 592.80 Td (Retest Result: [ ] Not Retested [ ] Pass [ ] Fail Retest Date: ____________ Tester: ____________) Tj ET
+0.82 0.82 0.82 RG 46 578.00 m 566 578.00 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 561.00 Td (UAT-ERR-021) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 546.00 Td (Role: [ ] Tenant [ ] Landlord Related UAT Code: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 531.20 Td (Date Found: ____________ Tester: ____________________ Environment: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 516.40 Td (Step / Action Performed: ________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 501.60 Td (Expected Result: _______________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 486.80 Td (Actual Result: _________________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 472.00 Td (Severity: [ ] Critical [ ] High [ ] Medium [ ] Low Priority: [ ] P1 [ ] P2 [ ] P3 [ ] P4) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 457.20 Td (Evidence Link / Screenshot / Reference: ________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 442.40 Td (Owner: ____________________ Target Fix Date: ____________ Status: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 427.60 Td (Root Cause / Developer Note: ____________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 412.80 Td (Retest Result: [ ] Not Retested [ ] Pass [ ] Fail Retest Date: ____________ Tester: ____________) Tj ET
+0.82 0.82 0.82 RG 46 398.00 m 566 398.00 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 381.00 Td (UAT-ERR-022) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 366.00 Td (Role: [ ] Tenant [ ] Landlord Related UAT Code: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 351.20 Td (Date Found: ____________ Tester: ____________________ Environment: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 336.40 Td (Step / Action Performed: ________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 321.60 Td (Expected Result: _______________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 306.80 Td (Actual Result: _________________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 292.00 Td (Severity: [ ] Critical [ ] High [ ] Medium [ ] Low Priority: [ ] P1 [ ] P2 [ ] P3 [ ] P4) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 277.20 Td (Evidence Link / Screenshot / Reference: ________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 262.40 Td (Owner: ____________________ Target Fix Date: ____________ Status: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 247.60 Td (Root Cause / Developer Note: ____________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 232.80 Td (Retest Result: [ ] Not Retested [ ] Pass [ ] Fail Retest Date: ____________ Tester: ____________) Tj ET
+0.82 0.82 0.82 RG 46 218.00 m 566 218.00 l S
+endstream
+endobj
+19 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 21 0 R /F2 22 0 R /F3 23 0 R >> >> /Contents 20 0 R >>
+endobj
+20 0 obj
+<< /Length 3368 >>
+stream
+0.2 w
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 46.00 26.00 Td (RentDirect UAT Error Log) Tj ET
+0.40 0.40 0.40 rg
+BT /F1 8 Tf 524.00 26.00 Td (Page 9) Tj ET
+0 0 0 rg
+BT /F2 11 Tf 46.00 741.00 Td (UAT-ERR-023) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 726.00 Td (Role: [ ] Tenant [ ] Landlord Related UAT Code: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 711.20 Td (Date Found: ____________ Tester: ____________________ Environment: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 696.40 Td (Step / Action Performed: ________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 681.60 Td (Expected Result: _______________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 666.80 Td (Actual Result: _________________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 652.00 Td (Severity: [ ] Critical [ ] High [ ] Medium [ ] Low Priority: [ ] P1 [ ] P2 [ ] P3 [ ] P4) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 637.20 Td (Evidence Link / Screenshot / Reference: ________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 622.40 Td (Owner: ____________________ Target Fix Date: ____________ Status: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 607.60 Td (Root Cause / Developer Note: ____________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 592.80 Td (Retest Result: [ ] Not Retested [ ] Pass [ ] Fail Retest Date: ____________ Tester: ____________) Tj ET
+0.82 0.82 0.82 RG 46 578.00 m 566 578.00 l S
+0 0 0 rg
+BT /F2 11 Tf 46.00 561.00 Td (UAT-ERR-024) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 546.00 Td (Role: [ ] Tenant [ ] Landlord Related UAT Code: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 531.20 Td (Date Found: ____________ Tester: ____________________ Environment: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 516.40 Td (Step / Action Performed: ________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 501.60 Td (Expected Result: _______________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 486.80 Td (Actual Result: _________________________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 472.00 Td (Severity: [ ] Critical [ ] High [ ] Medium [ ] Low Priority: [ ] P1 [ ] P2 [ ] P3 [ ] P4) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 457.20 Td (Evidence Link / Screenshot / Reference: ________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 442.40 Td (Owner: ____________________ Target Fix Date: ____________ Status: ____________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 427.60 Td (Root Cause / Developer Note: ____________________________________________________________) Tj ET
+0 0 0 rg
+BT /F3 8.8 Tf 46.00 412.80 Td (Retest Result: [ ] Not Retested [ ] Pass [ ] Fail Retest Date: ____________ Tester: ____________) Tj ET
+0.82 0.82 0.82 RG 46 398.00 m 566 398.00 l S
+0.05 0.25 0.58 rg
+BT /F2 13 Tf 46.00 379.00 Td (Defect Sign-Off) Tj ET
+0 0 0 rg
+BT /F3 9.5 Tf 46.00 361.00 Td (All Critical and High defects closed or formally deferred: [ ] Yes [ ] No) Tj ET
+0 0 0 rg
+BT /F3 9.5 Tf 46.00 345.50 Td (QA Lead: ____________________ Product Owner: ____________________ Date: ____________) Tj ET
+endstream
+endobj
+21 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+22 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+23 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>
+endobj
+xref
+0 24
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000168 00000 n 
+0000000317 00000 n 
+0000004433 00000 n 
+0000004582 00000 n 
+0000009128 00000 n 
+0000009277 00000 n 
+0000013823 00000 n 
+0000013973 00000 n 
+0000018520 00000 n 
+0000018671 00000 n 
+0000023218 00000 n 
+0000023369 00000 n 
+0000027916 00000 n 
+0000028067 00000 n 
+0000032614 00000 n 
+0000032765 00000 n 
+0000037312 00000 n 
+0000037463 00000 n 
+0000040884 00000 n 
+0000040955 00000 n 
+0000041031 00000 n 
+trailer
+<< /Size 24 /Root 1 0 R >>
+startxref
+41100
+%%EOF

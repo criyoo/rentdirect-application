@@ -7,7 +7,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
   PIP_NO_CACHE_DIR=1
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends libpq5 curl \
+  && apt-get install -y --no-install-recommends libpq5 curl postgresql-client vim nano wget \
   && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./
@@ -20,6 +20,7 @@ ENTRYPOINT ["/app/docker-entrypoint.sh"]
 EXPOSE 8000
 
 FROM base AS development
+ENV DJANGO_SETTINGS_MODULE=config.settings.development
 CMD ["uvicorn", "config.asgi:application", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
 
@@ -29,6 +30,7 @@ CMD ["uvicorn", "config.asgi:application", "--host", "0.0.0.0", "--port", "8000"
 
 
 FROM base AS production
+ENV DJANGO_SETTINGS_MODULE=config.settings.production
 RUN addgroup --system app && adduser --system --ingroup app app \
   && chown -R app:app /app
 USER app
