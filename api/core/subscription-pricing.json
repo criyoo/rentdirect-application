@@ -5,16 +5,16 @@
       "yearly": 0
     },
     "silver": {
-      "monthly": 300,
-      "yearly": 3000
+      "monthly": 1000,
+      "yearly": 10000
     },
     "gold": {
-      "monthly": 400,
-      "yearly": 4000
+      "monthly": 1200,
+      "yearly": 12000
     },
     "platinum": {
-      "monthly": 500,
-      "yearly": 5000
+      "monthly": 2000,
+      "yearly": 20000
     }
   },
   "landlord": {
@@ -23,16 +23,16 @@
       "yearly": 0
     },
     "silver": {
-      "monthly": 300,
-      "yearly": 3000
+      "monthly": 1000,
+      "yearly": 10000
     },
     "gold": {
-      "monthly": 400,
-      "yearly": 4000
+      "monthly": 1200,
+      "yearly": 12000
     },
     "platinum": {
-      "monthly": 500,
-      "yearly": 5000
+      "monthly": 2000,
+      "yearly": 20000
     }
   }
 }

@@ -125,8 +125,8 @@
                     "toilets": 5,
                     "square_feet": 4000,
                     "available_from": "12/08/2026",
-                    "price_per_year": 400,
-                    "deposit_amount": 80
+                    "price_per_year": 2000,
+                    "deposit_amount": 400
                 },
                 "property_ownership verification": {
                     "verification_method": {
@@ -302,8 +302,8 @@
                     "toilets": 4,
                     "square_feet": 3000,
                     "available_from": "12/08/2026",
-                    "price_per_year": 300,
-                    "deposit_amount": 60
+                    "price_per_year": 1500,
+                    "deposit_amount": 300
                 },
                 "property_ownership verification": {
                     "verification_method": {
@@ -355,7 +355,7 @@
     },
     "ayo": {
         "registration_credentials": {
-            "full_name": "Ayodele Omoniyi Mojebi",
+            "full_name": "Ayodele Omoniyi Mejabi",
             "email": "ayomejabi@icloud.com",
             "password": "ifG@dbi4Ayo",
             "landlord": true
@@ -479,8 +479,8 @@
                     "toilets": 5,
                     "square_feet": 4000,
                     "available_from": "12/08/2026",
-                    "price_per_year": 400,
-                    "deposit_amount": 80
+                    "price_per_year": 2000,
+                    "deposit_amount": 400
                 },
                 "property_ownership verification": {
                     "verification_method": {
@@ -656,8 +656,8 @@
                     "toilets": 4,
                     "square_feet": 3000,
                     "available_from": "12/08/2026",
-                    "price_per_year": 300,
-                    "deposit_amount": 60
+                    "price_per_year": 1500,
+                    "deposit_amount": 300
                 },
                 "property_ownership verification": {
                     "verification_method": {
