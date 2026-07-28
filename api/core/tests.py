@@ -21,6 +21,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from core import flutterwave
 from core.management.commands.seed_demo_data import Command as SeedDemoDataCommand
 from core.flutterwave import FlutterwaveError
 from core.models import AppUser, Booking, CommunityChatMessage, Document, Feedback, FeaturedPayment, Listing, ListingImage, Message, Payment, PaymentSettlement, Review, SubscriptionPayment, SubscriptionPaymentMethod, SupportChatMessage, TenantProfile, VerificationRequest
@@ -2320,6 +2321,69 @@ class PaymentQueueTests(TestCase):
         self.assertEqual(response.status_code, 200, response.json())
         self.assertEqual(response.json(), {"status": "queued", "reference": "ASYNCQUEUEPAYMENT1"})
         enqueue_mock.assert_called_once()
+
+
+class FlutterwaveTransferPayloadTests(TestCase):
+    @patch("core.flutterwave._request_json_v4")
+    def test_transfer_recipient_payload_uses_flutterwave_ngn_bank_type(self, request_mock):
+        request_mock.return_value = {"status": "success", "data": {"id": "recipient_123"}}
+
+        flutterwave.create_transfer_recipient(
+            full_name="RentDirect Operations",
+            phone_number="08099446062",
+            bank_name="PalmPay",
+            bank_code="100033",
+            account_number="9041487757",
+            account_name="RentDirect Operations",
+            idempotency_key="recipient-key-123",
+        )
+
+        payload = request_mock.call_args.kwargs["payload"]
+        self.assertEqual(payload["type"], "bank_ngn")
+        self.assertEqual(payload["bank"], {"account_number": "9041487757", "code": "100033"})
+        self.assertNotIn("bank_name", payload["bank"])
+        self.assertNotIn("name", payload)
+        self.assertNotIn("phone", payload)
+        self.assertNotIn("national_identification", payload)
+
+    @override_settings(
+        FLUTTERWAVE_CLIENT_ID="test-client-id",
+        FLUTTERWAVE_CLIENT_SECRET="test-client-secret",
+        FLUTTERWAVE_API_BASE_URL="https://developersandbox-api.flutterwave.com",
+    )
+    @patch("core.flutterwave._request_json_v3")
+    @patch("core.flutterwave._request_json_v4")
+    def test_bank_transfer_payload_uses_payment_instruction_with_recipient_id(self, request_v4_mock, request_v3_mock):
+        request_v4_mock.return_value = {"status": "success", "data": {"id": "transfer_123", "status": "NEW"}}
+
+        flutterwave.create_bank_transfer(
+            amount=Decimal("40.00"),
+            currency="NGN",
+            reference="TRANSFERREF123",
+            narration="RentDirect Tenant Caution Fee",
+            recipient_id="rcb_B9aAgsdzzl",
+            bank_name="PalmPay",
+            bank_code="100033",
+            account_number="9041487757",
+            account_name="RentDirect Tenant Caution Holding",
+            idempotency_key="TRANSFERREF123",
+        )
+
+        payload = request_v4_mock.call_args.kwargs["payload"]
+        self.assertEqual(payload["action"], "instant")
+        self.assertEqual(payload["reference"], "TRANSFERREF123")
+        self.assertEqual(
+            payload["payment_instruction"],
+            {
+                "source_currency": "NGN",
+                "destination_currency": "NGN",
+                "amount": {"value": 40.0, "applies_to": "destination_currency"},
+                "recipient_id": "rcb_B9aAgsdzzl",
+            },
+        )
+        self.assertNotIn("amount", payload)
+        self.assertNotIn("recipient_id", payload)
+        request_v3_mock.assert_not_called()
 
 
 class BookingPaymentTests(TestCase):

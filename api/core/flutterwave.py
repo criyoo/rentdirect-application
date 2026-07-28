@@ -711,35 +711,20 @@ def create_transfer_recipient(
     national_identification: dict[str, Any] | None = None,
     idempotency_key: str | None = None,
 ) -> dict[str, Any]:
-    name_parts = [part for part in str(full_name or account_name or "RentDirect Recipient").strip().split() if part]
-    first_name = name_parts[0] if name_parts else "RentDirect"
-    last_name = " ".join(name_parts[1:]) if len(name_parts) > 1 else "Recipient"
     bank_payload = {
         "account_number": account_number,
-        "account_name": account_name or full_name,
-        "bank_name": bank_name,
-        "country": "NG",
-        "currency": "NGN",
     }
     if bank_code:
         bank_payload["code"] = bank_code
-        bank_payload["bank_code"] = bank_code
 
     payload = {
-        "name": {
-            "first": first_name,
-            "last": last_name,
-        },
-        "phone": _split_phone_number(format_customer_phone_number(phone_number or "08000000000")),
-        "national_identification": national_identification or {"type": "bvn", "number": "00000000000"},
-        "address": address or {
-            "line1": "RentDirect",
-            "city": "Lagos",
-            "state": "Lagos",
-            "country": "NG",
-        },
+        "type": "bank_ngn",
         "bank": bank_payload,
     }
+    if national_identification:
+        payload["national_identification"] = national_identification
+    if address:
+        payload["address"] = address
     return _request_json_v4(
         method="POST",
         path="/transfers/recipients",
@@ -764,12 +749,18 @@ def create_bank_transfer(
     if recipient_id and should_use_v4():
         try:
             payload: dict[str, Any] = {
-                "amount": float(normalize_decimal_amount(amount)),
-                "currency": currency,
+                "action": "instant",
                 "reference": reference,
                 "narration": narration[:100],
-                "recipient_id": recipient_id,
-                "recipient": {"id": recipient_id},
+                "payment_instruction": {
+                    "source_currency": currency,
+                    "destination_currency": currency,
+                    "amount": {
+                        "value": float(normalize_decimal_amount(amount)),
+                        "applies_to": "destination_currency",
+                    },
+                    "recipient_id": recipient_id,
+                },
                 "meta": {
                     "account_name": account_name,
                     "account_number": account_number,
