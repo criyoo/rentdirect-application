@@ -76,6 +76,7 @@ from .flutterwave import (
     map_redirect_status,
     normalize_decimal_amount,
     query_transaction,
+    resolve_nigerian_payout_bank_code,
     should_use_v4,
     verify_webhook_signature,
 )
@@ -1317,35 +1318,7 @@ def update_payment_provider_payload(current_payload, incoming_payload: dict | No
 
 def resolve_account_payload(*, bank_name: str, account_number: str, account_name: str = "", bank_code: str = "") -> dict:
     bank_name = str(bank_name or "").strip()
-    bank_code = str(bank_code or "").strip()
-    if not bank_code:
-        normalized_bank_name = bank_name.lower().replace(" ", "").replace("-", "")
-        bank_code = {
-            "accessbank": "044",
-            "ecobank": "050",
-            "fidelitybank": "070",
-            "firstbank": "011",
-            "firstbankofnigeria": "011",
-            "firstcitymonumentbank": "214",
-            "firstcitymonumentbankplc": "214",
-            "fcmb": "214",
-            "gtbank": "058",
-            "guarantytrustbank": "058",
-            "opay": "100004",
-            "paycom": "100004",
-            "palmpay": "100033",
-            "moniepoint": "50515",
-            "moniepointmfb": "50515",
-            "moniepointmicrofinancebank": "50515",
-            "providus": "101",
-            "providusbank": "101",
-            "providusbankplc": "101",
-            "sterlingbank": "232",
-            "uba": "033",
-            "unitedbankforafrica": "033",
-            "wemabank": "035",
-            "zenithbank": "057",
-        }.get(normalized_bank_name, "")
+    bank_code = resolve_nigerian_payout_bank_code(bank_name, bank_code)
     return {
         "bank_name": bank_name,
         "bank_code": bank_code,
@@ -1626,6 +1599,20 @@ def ensure_payment_settlement_records(payment: Payment) -> None:
             defaults=defaults,
         )
         if not created and settlement.status != PaymentSettlement.Status.PAID:
+            destination_changed = any(
+                str(getattr(settlement, field) or "") != str(defaults[field] or "")
+                for field in ("bank_name", "bank_code", "account_number", "account_name")
+            )
+            if destination_changed:
+                defaults.update(
+                    {
+                        "transfer_recipient_id": "",
+                        "provider_payload": None,
+                        "transfer_payload": None,
+                        "status": PaymentSettlement.Status.PENDING,
+                        "last_error": "",
+                    }
+                )
             PaymentSettlement.objects.filter(pk=settlement.pk).update(**defaults, updated_at=timezone.now())
 
 

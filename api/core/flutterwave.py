@@ -25,6 +25,71 @@ class FlutterwaveError(ValueError):
     pass
 
 
+NIGERIAN_PAYOUT_BANK_CODES_BY_NAME = {
+    "accessbank": "044",
+    "ecobank": "050",
+    "fidelitybank": "070",
+    "firstbank": "011",
+    "firstbankofnigeria": "011",
+    "firstcitymonumentbank": "214",
+    "firstcitymonumentbankplc": "214",
+    "fcmb": "214",
+    "gtbank": "058",
+    "guarantytrustbank": "058",
+    "opay": "100004",
+    "paycom": "100004",
+    "opaydigitalservices": "100004",
+    "palmpay": "100033",
+    "moniepoint": "50515",
+    "moniepointmfb": "50515",
+    "moniepointmicrofinancebank": "50515",
+    "providus": "101",
+    "providusbank": "101",
+    "providusbankplc": "101",
+    "sterlingbank": "232",
+    "uba": "033",
+    "unitedbankforafrica": "033",
+    "wemabank": "035",
+    "zenithbank": "057",
+}
+
+NIGERIAN_PAYOUT_BANK_CODE_CANDIDATES_BY_NAME = {
+    "opay": ("100004", "999992"),
+    "paycom": ("100004", "999992"),
+    "opaydigitalservices": ("100004", "999992"),
+    "palmpay": ("100033",),
+    "moniepoint": ("50515", "090405"),
+    "moniepointmfb": ("50515", "090405"),
+    "moniepointmicrofinancebank": ("50515", "090405"),
+    "firstcitymonumentbank": ("214",),
+    "firstcitymonumentbankplc": ("214",),
+    "fcmb": ("214",),
+}
+
+
+def normalize_bank_name_key(bank_name: str) -> str:
+    return "".join(character for character in str(bank_name or "").lower() if character.isalnum())
+
+
+def resolve_nigerian_payout_bank_code(bank_name: str, bank_code: str = "") -> str:
+    normalized_bank_name = normalize_bank_name_key(bank_name)
+    configured_bank_code = str(bank_code or "").strip()
+    return NIGERIAN_PAYOUT_BANK_CODES_BY_NAME.get(normalized_bank_name, configured_bank_code)
+
+
+def nigerian_payout_bank_code_candidates(bank_name: str, bank_code: str = "") -> list[str]:
+    normalized_bank_name = normalize_bank_name_key(bank_name)
+    configured_bank_code = str(bank_code or "").strip()
+    known_candidates = NIGERIAN_PAYOUT_BANK_CODE_CANDIDATES_BY_NAME.get(normalized_bank_name)
+    if known_candidates:
+        candidates = list(known_candidates)
+    else:
+        candidates = [resolve_nigerian_payout_bank_code(bank_name, configured_bank_code)]
+    if configured_bank_code and (not known_candidates or configured_bank_code in known_candidates):
+        candidates.append(configured_bank_code)
+    return list(dict.fromkeys(candidate for candidate in candidates if candidate))
+
+
 def append_query_params(url: str, **params: Any) -> str:
     parsed = urlparse(url)
     query = dict(parse_qsl(parsed.query, keep_blank_values=True))
@@ -711,26 +776,33 @@ def create_transfer_recipient(
     national_identification: dict[str, Any] | None = None,
     idempotency_key: str | None = None,
 ) -> dict[str, Any]:
+    last_error = None
     bank_payload = {
         "account_number": account_number,
     }
-    if bank_code:
-        bank_payload["code"] = bank_code
-
-    payload = {
-        "type": "bank_ngn",
-        "bank": bank_payload,
-    }
-    if national_identification:
-        payload["national_identification"] = national_identification
-    if address:
-        payload["address"] = address
-    return _request_json_v4(
-        method="POST",
-        path="/transfers/recipients",
-        payload=payload,
-        idempotency_key=idempotency_key,
-    )
+    for candidate_bank_code in nigerian_payout_bank_code_candidates(bank_name, bank_code):
+        payload = {
+            "type": "bank_ngn",
+            "bank": {**bank_payload, "code": candidate_bank_code},
+        }
+        if national_identification:
+            payload["national_identification"] = national_identification
+        if address:
+            payload["address"] = address
+        try:
+            return _request_json_v4(
+                method="POST",
+                path="/transfers/recipients",
+                payload=payload,
+                idempotency_key=idempotency_key,
+            )
+        except FlutterwaveError as exc:
+            last_error = exc
+            if "invalid bank code" not in str(exc).lower() and "bank.code" not in str(exc).lower():
+                raise
+    if last_error:
+        raise last_error
+    raise FlutterwaveError("Flutterwave transfer recipient requires a bank code.")
 
 
 def create_bank_transfer(
@@ -746,6 +818,7 @@ def create_bank_transfer(
     account_name: str = "",
     idempotency_key: str | None = None,
 ) -> dict[str, Any]:
+    bank_code = resolve_nigerian_payout_bank_code(bank_name, bank_code)
     if recipient_id and should_use_v4():
         try:
             payload: dict[str, Any] = {

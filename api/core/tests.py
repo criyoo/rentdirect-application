@@ -2332,7 +2332,7 @@ class FlutterwaveTransferPayloadTests(TestCase):
             full_name="RentDirect Operations",
             phone_number="08099446062",
             bank_name="PalmPay",
-            bank_code="100033",
+            bank_code="999992",
             account_number="9041487757",
             account_name="RentDirect Operations",
             idempotency_key="recipient-key-123",
@@ -2345,6 +2345,23 @@ class FlutterwaveTransferPayloadTests(TestCase):
         self.assertNotIn("name", payload)
         self.assertNotIn("phone", payload)
         self.assertNotIn("national_identification", payload)
+
+    @patch("core.flutterwave._request_json_v4")
+    def test_transfer_recipient_normalizes_moniepoint_bank_code(self, request_mock):
+        request_mock.return_value = {"status": "success", "data": {"id": "recipient_123"}}
+
+        flutterwave.create_transfer_recipient(
+            full_name="RentDirect Operations",
+            phone_number="08099446062",
+            bank_name="Moniepoint",
+            bank_code="090405",
+            account_number="8099446062",
+            account_name="RentDirect Operations",
+            idempotency_key="recipient-key-123",
+        )
+
+        payload = request_mock.call_args.kwargs["payload"]
+        self.assertEqual(payload["bank"], {"account_number": "8099446062", "code": "50515"})
 
     @override_settings(
         FLUTTERWAVE_CLIENT_ID="test-client-id",
@@ -3200,6 +3217,59 @@ class BookingPaymentTests(TestCase):
 
         self.assertIn("Failure Reason", str(rendered))
         self.assertIn("Transfer rejected by beneficiary bank", str(rendered))
+
+    @override_settings(
+        RENTDIRECT_OPERATING_BANK_CODE="090405",
+        RENTDIRECT_OPERATING_BANK_NAME="Moniepoint",
+        RENTDIRECT_OPERATING_ACCOUNT_NUMBER="8099446062",
+        RENTDIRECT_OPERATING_ACCOUNT_NAME="Christian Odezi Aluya",
+    )
+    def test_settlement_records_reset_stale_recipient_when_bank_code_changes(self):
+        from core.views import ensure_payment_settlement_records
+
+        total_amount = calculate_booking_total(self.listing.price_per_year)
+        booking = Booking.objects.create(
+            tenant=self.tenant,
+            listing=self.listing,
+            start_date=date(2026, 6, 19),
+            end_date=date(2027, 6, 19),
+            total_amount=total_amount,
+            paid_amount=total_amount,
+        )
+        payment = Payment.objects.create(
+            booking=booking,
+            amount=total_amount,
+            payment_method="bank",
+            status="completed",
+            transaction_id="STALEBANKCODE1",
+            provider="flutterwave",
+            currency="NGN",
+        )
+        settlement = PaymentSettlement.objects.create(
+            payment=payment,
+            purpose=PaymentSettlement.Purpose.OPERATIONS,
+            amount=Decimal("120000.00"),
+            currency="NGN",
+            bank_name="Moniepoint",
+            bank_code="090405",
+            account_number="8099446062",
+            account_name="Christian Odezi Aluya",
+            transfer_recipient_id="stale_recipient",
+            provider_payload={"data": {"id": "stale_recipient"}},
+            transfer_payload={"status": "failed"},
+            status=PaymentSettlement.Status.READY,
+            last_error="Invalid bank code",
+        )
+
+        ensure_payment_settlement_records(payment)
+
+        settlement.refresh_from_db()
+        self.assertEqual(settlement.bank_code, "50515")
+        self.assertEqual(settlement.transfer_recipient_id, "")
+        self.assertIsNone(settlement.provider_payload)
+        self.assertIsNone(settlement.transfer_payload)
+        self.assertEqual(settlement.status, PaymentSettlement.Status.PENDING)
+        self.assertEqual(settlement.last_error, "")
 
 
 class BookingRentalProgressTests(TestCase):
