@@ -33,7 +33,7 @@ MIDDLEWARE = [  # noqa: F405
 
 PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
 EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
-VERIFICATION_SERVICE = "prembly"
+VERIFICATION_SERVICE = "dikript"
 PAYMENT_QUEUE_BACKEND = "sync"
 PAYMENT_QUEUE_REDIS_URL = ""
 PAYMENT_QUEUE_URL = ""

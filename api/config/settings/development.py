@@ -32,5 +32,8 @@ CSRF_COOKIE_SECURE = env_bool("CSRF_COOKIE_SECURE", not DEBUG)  # noqa: F405
 SECURE_HSTS_SECONDS = env_int("SECURE_HSTS_SECONDS", 3600 if not DEBUG else 0)  # noqa: F405
 SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool("SECURE_HSTS_INCLUDE_SUBDOMAINS", False)  # noqa: F405
 SECURE_HSTS_PRELOAD = env_bool("SECURE_HSTS_PRELOAD", False)  # noqa: F405
-FLUTTERWAVE_PAYOUT_BALANCE_DELAY_MINUTES = env_payout_delay_minutes(10)  # noqa: F405
+
 SEED_DEMO_ACCOUNTS = env_bool("SEED_DEMO_ACCOUNTS", True)  # noqa: F405
+
+# Development-specific payout balance delay (10 minutes for testing)
+FLUTTERWAVE_PAYOUT_BALANCE_DELAY_MINUTES = env_payout_delay_minutes(10)  # noqa: F405
