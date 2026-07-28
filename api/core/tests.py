@@ -3693,7 +3693,7 @@ class SeedDemoTests(TestCase):
         self.assertEqual(subscription.status, SubscriptionPayment.Status.COMPLETED)
         self.assertEqual(subscription.provider, "seed_demo")
         self.assertEqual(subscription.billing_reason, "seed_demo")
-        self.assertEqual(str(subscription.amount), "500.00")
+        self.assertEqual(str(subscription.amount), "2000.00")
         self.assertEqual(subscription.provider_charge_id, subscription.transaction_id)
         self.assertFalse(subscription.recurring_enabled)
         self.assertTrue(subscription.provider_payload["dummy_payment"])
