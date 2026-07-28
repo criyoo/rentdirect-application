@@ -3417,20 +3417,50 @@ class SeedDemoTests(TestCase):
         self.assertEqual(VerificationRequest.objects.count(), 0)
 
     @override_settings(SEED_DEMO_ACCOUNTS=True)
-    def test_seed_demo_skips_when_landlord_or_tenant_accounts_exist(self):
-        AppUser.objects.create_user(
-            email="manual-landlord@example.com",
-            password="password-123",
-            name="Manual Landlord",
-            role=AppUser.Role.LANDLORD,
-        )
-        out = StringIO()
+    def test_seed_demo_creates_missing_seed_accounts_when_other_accounts_exist(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            landlord_seed_path = f"{temp_dir}/landlord.json"
+            tenant_seed_path = f"{temp_dir}/tenants.json"
+            Path(landlord_seed_path).write_text(json.dumps({"landlord": {"email": "seed-landlord@example.com"}}))
+            Path(tenant_seed_path).write_text(json.dumps({"tenant": {"email": "seed-tenant@example.com"}}))
+            AppUser.objects.create_user(
+                email="manual-landlord@example.com",
+                password="password-123",
+                name="Manual Landlord",
+                role=AppUser.Role.LANDLORD,
+            )
 
-        call_command("seed_demo_data", stdout=out)
+            with override_settings(
+                SEED_LANDLORD_DATA_PATH=landlord_seed_path,
+                SEED_TENANT_DATA_PATH=tenant_seed_path,
+            ):
+                call_command("seed_demo_data")
 
-        self.assertIn("Landlord or tenant accounts already exist; skipping demo account seed", out.getvalue())
-        self.assertEqual(AppUser.objects.count(), 1)
+        self.assertTrue(AppUser.objects.filter(email="seed-landlord@example.com", role=AppUser.Role.LANDLORD).exists())
+        self.assertTrue(AppUser.objects.filter(email="seed-tenant@example.com", role=AppUser.Role.TENANT).exists())
+        self.assertEqual(AppUser.objects.filter(role=AppUser.Role.LANDLORD).count(), 2)
+        self.assertEqual(AppUser.objects.filter(role=AppUser.Role.TENANT).count(), 1)
         self.assertFalse(Listing.objects.exists())
+
+    @override_settings(SEED_DEMO_ACCOUNTS=True)
+    def test_seed_demo_skips_when_all_seed_accounts_exist(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            landlord_seed_path = f"{temp_dir}/landlord.json"
+            tenant_seed_path = f"{temp_dir}/tenants.json"
+            Path(landlord_seed_path).write_text(json.dumps({"landlord": {"email": "seed-landlord@example.com"}}))
+            Path(tenant_seed_path).write_text(json.dumps({"tenant": {"email": "seed-tenant@example.com"}}))
+            out = StringIO()
+
+            with override_settings(
+                SEED_LANDLORD_DATA_PATH=landlord_seed_path,
+                SEED_TENANT_DATA_PATH=tenant_seed_path,
+            ):
+                call_command("seed_demo_data")
+                call_command("seed_demo_data", stdout=out)
+
+        self.assertIn("Seed demo landlord and tenant accounts already exist; skipping demo account seed", out.getvalue())
+        self.assertEqual(AppUser.objects.filter(role=AppUser.Role.LANDLORD).count(), 1)
+        self.assertEqual(AppUser.objects.filter(role=AppUser.Role.TENANT).count(), 1)
 
     @override_settings(SEED_DEMO_ACCOUNTS=True)
     def test_seed_demo_resolves_seed_assets_with_alternate_extensions(self):

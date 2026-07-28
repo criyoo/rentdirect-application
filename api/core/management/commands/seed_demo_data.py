@@ -46,27 +46,37 @@ class Command(BaseCommand):
             self.stdout.write("SEED_DEMO_ACCOUNTS is false; skipping")
             return
 
-        if not options.get("force") and self.landlord_or_tenant_accounts_exist():
-            self.stdout.write("Landlord or tenant accounts already exist; skipping demo account seed")
-            return
-
         seed_specs = [
             (settings.SEED_LANDLORD_DATA_PATH, AppUser.Role.LANDLORD),
             (settings.SEED_TENANT_DATA_PATH, AppUser.Role.TENANT),
         ]
+        seed_payloads = self.load_seed_payloads(seed_specs)
+        force = options.get("force")
+
+        if not force and self.landlord_or_tenant_accounts_exist():
+            missing_seed_keys = self.missing_seed_account_keys(seed_payloads)
+            if not missing_seed_keys:
+                self.stdout.write("Seed demo landlord and tenant accounts already exist; skipping demo account seed")
+                return
+            seed_payloads = [
+                (
+                    seed_path,
+                    role,
+                    {
+                        seed_key: data
+                        for seed_key, data in payload.items()
+                        if seed_key in missing_seed_keys.get(role, set())
+                    },
+                )
+                for seed_path, role, payload in seed_payloads
+            ]
 
         created_users = 0
         created_listings = 0
 
         self.seed_homepage_video()
 
-        for path_value, role in seed_specs:
-            seed_path = self.resolve_path(path_value)
-            if not seed_path or not seed_path.exists():
-                self.stdout.write(f"Seed file not found: {path_value}")
-                continue
-
-            payload = json.loads(seed_path.read_text())
+        for seed_path, role, payload in seed_payloads:
             for seed_key, data in payload.items():
                 user, created = self.upsert_user(seed_key, data, role, seed_path)
                 if created:
@@ -83,8 +93,64 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS(f"Seed complete. Created {created_users} users and {created_listings} listings."))
 
+    def load_seed_payloads(self, seed_specs: list[tuple[str, str]]) -> list[tuple[Path, str, dict]]:
+        seed_payloads = []
+        for path_value, role in seed_specs:
+            seed_path = self.resolve_path(path_value)
+            if not seed_path or not seed_path.exists():
+                self.stdout.write(f"Seed file not found: {path_value}")
+                seed_payloads.append((seed_path or Path(path_value), role, {}))
+                continue
+
+            payload = json.loads(seed_path.read_text())
+            seed_payloads.append((seed_path, role, payload))
+        return seed_payloads
+
     def landlord_or_tenant_accounts_exist(self) -> bool:
         return AppUser.objects.filter(role__in=[AppUser.Role.LANDLORD, AppUser.Role.TENANT]).exists()
+
+    def missing_seed_account_keys(self, seed_payloads: list[tuple[Path, str, dict]]) -> dict[str, set[str]]:
+        missing_keys: dict[str, set[str]] = {}
+        for _seed_path, role, payload in seed_payloads:
+            if not payload:
+                continue
+
+            seed_email_by_key = {
+                seed_key: self.seed_user_email(data)
+                for seed_key, data in payload.items()
+            }
+            existing_emails = set(
+                AppUser.objects.filter(
+                    role=role,
+                    email__in=[email for email in seed_email_by_key.values() if email],
+                ).values_list("email", flat=True)
+            )
+            role_missing_keys = {
+                seed_key
+                for seed_key, email in seed_email_by_key.items()
+                if not email or email not in existing_emails
+            }
+            if role_missing_keys:
+                missing_keys[role] = role_missing_keys
+        return missing_keys
+
+    def seed_user_email(self, data: dict) -> str:
+        registration = self.get_seed_dict(data, "registration_credentials")
+        login = self.get_seed_dict(data, "login", "login_credentials")
+        profile = data.get("profile") or {}
+        verification = data.get("verification") or {}
+        profile_personal = self.get_seed_dict(profile, "personal_information")
+        landlord_identification = self.get_seed_dict(verification, "landlord_identification")
+        landlord_identification_personal = self.get_seed_dict(landlord_identification, "personal_information")
+        return self.seed_text(
+            login.get("email"),
+            registration.get("email"),
+            profile.get("email"),
+            profile_personal.get("email"),
+            verification.get("email"),
+            landlord_identification_personal.get("email"),
+            data.get("email"),
+        ).lower()
 
     def seed_homepage_video(self) -> None:
         storage_name = str(getattr(settings, "HOMEPAGE_VIDEO_STORAGE_NAME", "") or "").strip()
@@ -120,15 +186,7 @@ class Command(BaseCommand):
         landlord_identification = self.get_seed_dict(verification, "landlord_identification")
         landlord_identification_personal = self.get_seed_dict(landlord_identification, "personal_information")
         identity_and_bank_verification = self.get_seed_dict(profile, "identity_and_bank_verification")
-        email = self.seed_text(
-            login.get("email"),
-            registration.get("email"),
-            profile.get("email"),
-            profile_personal.get("email"),
-            verification.get("email"),
-            landlord_identification_personal.get("email"),
-            data.get("email"),
-        ).lower()
+        email = self.seed_user_email(data)
         if not email:
             raise ValueError(f"Seed entry {seed_key} is missing an email address")
 
