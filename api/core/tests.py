@@ -3090,6 +3090,39 @@ class BookingRentalProgressTests(TestCase):
         self.assertEqual(response_step["selected_value"], "yes")
         self.assertTrue(response_step["completed"])
 
+    def test_rental_progress_updates_listing_status(self):
+        client = APIClient()
+        client.force_authenticate(user=self.tenant)
+
+        save_rental_progress_steps(
+            self,
+            client,
+            self.booking.id,
+            step_keys=[
+                "viewing_appointment_booked",
+                "house_viewed",
+                "tenancy_agreement_signed",
+            ],
+        )
+
+        self.listing.refresh_from_db()
+        self.assertEqual(self.listing.status, Listing.Status.PROCESSING)
+
+        save_rental_progress_steps(
+            self,
+            client,
+            self.booking.id,
+            step_keys=[
+                "tenant_paid_deposit",
+                "tenant_paid_rent_in_full",
+                "check_in_inventory_completed",
+                "tenant_collected_house_key",
+            ],
+        )
+
+        self.listing.refresh_from_db()
+        self.assertEqual(self.listing.status, Listing.Status.RENTED)
+
     def test_rental_progress_steps_must_be_completed_in_order(self):
         client = APIClient()
         client.force_authenticate(user=self.tenant)

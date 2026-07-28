@@ -39,6 +39,7 @@ from .models import (
     SubscriptionPayment,
     SubscriptionPaymentMethod,
     SupportChatMessage,
+    sync_listing_status_from_rental_progress,
     TenantProfile,
     VerificationRequest,
 )
@@ -974,6 +975,7 @@ class RentalProgressUpdateSerializer(serializers.Serializer):
 
         setattr(booking, progress_field, current_progress)
         booking.save(update_fields=[progress_field, "updated_at"])
+        sync_listing_status_from_rental_progress(booking.listing)
         return booking
 
 

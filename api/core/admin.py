@@ -2,11 +2,11 @@ from django import forms
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.forms import UserChangeForm
-from django.db.models import OuterRef, Subquery
+from django.db.models import OuterRef, Prefetch, Subquery
 from django.utils.html import format_html, format_html_join
 from django.utils import timezone
 
-from .models import AdminUser, AppUser, Booking, Document, Feedback, Favourite, FeaturedPayment, Landlord, LandlordProfile, Listing, ListingImage, Message, Payment, PaymentSettlement, Review, SubscriptionPayment, SubscriptionPaymentMethod, Tenant, TenantProfile, VerificationRequest
+from .models import AdminUser, AppUser, Booking, Document, Feedback, Favourite, FeaturedPayment, Landlord, LandlordProfile, Listing, ListingImage, Message, Payment, PaymentSettlement, Review, SubscriptionPayment, SubscriptionPaymentMethod, Tenant, TenantProfile, VerificationRequest, infer_listing_rental_status, sync_listing_status_from_rental_progress
 
 
 PREFERRED_CONTACT_METHOD_CHOICES = (
@@ -988,7 +988,7 @@ class ListingAdmin(admin.ModelAdmin):
         "city",
         "landlord",
         "price_per_year",
-        "status",
+        "rental_status",
         "property_document_verification_status",
         "physical_property_status",
         "featured",
@@ -1005,6 +1005,16 @@ class ListingAdmin(admin.ModelAdmin):
     search_fields = ("title", "description", "address", "city", "landlord__email")
     filter_horizontal = ("property_documents",)
     inlines = [ListingImageInline]
+
+    def get_queryset(self, request):
+        bookings = Booking.objects.exclude(status=Booking.Status.CANCELLED)
+        return super().get_queryset(request).select_related("landlord").prefetch_related(
+            Prefetch("bookings", queryset=bookings),
+        )
+
+    @admin.display(ordering="status", description="Status")
+    def rental_status(self, obj):
+        return dict(Listing.Status.choices).get(infer_listing_rental_status(obj), obj.status)
 
 
 @admin.register(Document)
@@ -1031,6 +1041,10 @@ class BookingAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         return super().get_queryset(request).select_related("tenant", "listing")
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        sync_listing_status_from_rental_progress(obj.listing)
 
     @admin.display(ordering="tenant__email", description="Tenant Email")
     def tenant_email(self, obj):

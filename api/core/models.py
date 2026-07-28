@@ -286,6 +286,44 @@ def listing_has_deposit_secured_booking(listing) -> bool:
     return deposit_secured_booking_queryset().filter(listing=listing).exists()
 
 
+def booking_progress_step_completed_by_any_party(booking, step_key: str) -> bool:
+    tenant_progress = normalize_booking_progress(getattr(booking, "tenant_rental_progress", {}))
+    landlord_progress = normalize_booking_progress(getattr(booking, "landlord_rental_progress", {}))
+    return (
+        booking_progress_step_completed(tenant_progress, step_key)
+        or booking_progress_step_completed(landlord_progress, step_key)
+    )
+
+
+def infer_listing_rental_status(listing) -> str:
+    if listing.status in {Listing.Status.DRAFT, Listing.Status.ARCHIVED}:
+        return listing.status
+
+    prefetched_bookings = getattr(listing, "_prefetched_objects_cache", {}).get("bookings")
+    if prefetched_bookings is None:
+        bookings = listing.bookings.exclude(status=Booking.Status.CANCELLED)
+    else:
+        bookings = [
+            booking
+            for booking in prefetched_bookings
+            if booking.status != Booking.Status.CANCELLED
+        ]
+
+    if any(booking_progress_step_completed_by_any_party(booking, "tenant_collected_house_key") for booking in bookings):
+        return Listing.Status.RENTED
+    if any(booking_progress_step_completed_by_any_party(booking, "tenancy_agreement_signed") for booking in bookings):
+        return Listing.Status.PROCESSING
+    return listing.status
+
+
+def sync_listing_status_from_rental_progress(listing) -> str:
+    status = infer_listing_rental_status(listing)
+    if status != listing.status:
+        listing.status = status
+        listing.save(update_fields=["status", "updated_at"])
+    return status
+
+
 def get_booking_progress_field_name(role: str) -> str:
     return BOOKING_PROGRESS_FIELD_BY_ROLE.get(role, "")
 
@@ -333,6 +371,7 @@ def build_booking_progress_data(booking, role: str) -> dict:
 class Listing(models.Model):
     class Status(models.TextChoices):
         AVAILABLE = "available", "Available"
+        PROCESSING = "processing", "Processing"
         RENTED = "rented", "Rented"
         DRAFT = "draft", "Draft"
         ARCHIVED = "archived", "Archived"
