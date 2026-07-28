@@ -1,8 +1,8 @@
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api, getWebSocketUrl } from '@/lib/api'
 import { Listing, User } from '@/types'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import { resolveMediaUrl } from '@/lib/api'
 import { formatCurrencyWithSymbol } from '@/utils/currency'
@@ -23,6 +23,13 @@ type PublicTenantProfile = {
     profile_photo_url?: string | null
 }
 
+function mergeMessages(current: Message[], nextMessage: Message) {
+    if (current.some((item) => item.id === nextMessage.id)) {
+        return current
+    }
+    return [...current, nextMessage].sort((left, right) => new Date(left.created_at).getTime() - new Date(right.created_at).getTime())
+}
+
 export default function ContactLandlordPage() {
     const { id } = useParams()
     const [searchParams] = useSearchParams()
@@ -32,6 +39,10 @@ export default function ContactLandlordPage() {
     const [message, setMessage] = useState('')
     const [viewingAvailability, setViewingAvailability] = useState('')
     const [isTyping, setIsTyping] = useState(false)
+    const [liveMessages, setLiveMessages] = useState<Message[]>([])
+    const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'closed'>('connecting')
+    const socketRef = useRef<WebSocket | null>(null)
+    const bottomRef = useRef<HTMLDivElement | null>(null)
     const tenantId = searchParams.get('tenantId') || ''
     const isLandlordChat = user?.role === 'landlord' && Boolean(tenantId)
 
@@ -41,7 +52,7 @@ export default function ContactLandlordPage() {
         queryFn: async () => (await api.get<Listing>(`/listings/${id}`)).data
     })
 
-    const { data: messages, isLoading: messagesLoading } = useQuery({
+    const { data: messageHistory, isLoading: messagesLoading } = useQuery({
         queryKey: ['messages', 'listing', id, tenantId],
         enabled: !!id && !!user,
         queryFn: async () => (await api.get<Message[]>(`/messages/listing/${id}`, {
@@ -71,6 +82,49 @@ export default function ContactLandlordPage() {
         queryFn: async () => (await api.get<SubscriptionPaymentRecord[] | { results?: SubscriptionPaymentRecord[] }>('/subscriptions')).data,
     })
     const isBronzeTenant = user?.role === 'tenant' && subscriptionPaymentResponse !== undefined && hasBronzeAccess(subscriptionPaymentResponse)
+
+    useEffect(() => {
+        if (!messageHistory) return
+        setLiveMessages(messageHistory)
+    }, [messageHistory])
+
+    useEffect(() => {
+        if (!id || !user || isBronzeTenant) return
+        if (isLandlordChat && !tenantId) return
+
+        const params = new URLSearchParams({ listing_id: id })
+        if (isLandlordChat) {
+            params.set('counterpart_id', tenantId)
+        }
+        const socket = new WebSocket(getWebSocketUrl(`/ws/messages?${params.toString()}`))
+        socketRef.current = socket
+        setConnectionStatus('connecting')
+
+        socket.onopen = () => setConnectionStatus('connected')
+        socket.onclose = () => setConnectionStatus('closed')
+        socket.onerror = () => setConnectionStatus('closed')
+        socket.onmessage = (event) => {
+            try {
+                const payload = JSON.parse(event.data)
+                if (payload?.type === 'error') {
+                    alert(payload.detail || 'Unable to send message.')
+                    return
+                }
+                setLiveMessages((current) => mergeMessages(current, payload as Message))
+            } catch {
+                return
+            }
+        }
+
+        return () => {
+            socket.close()
+            socketRef.current = null
+        }
+    }, [id, user, isLandlordChat, tenantId, isBronzeTenant])
+
+    useEffect(() => {
+        bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }, [liveMessages.length])
 
     const containsContactInfo = (text: string) => {
         const t = (text || '').toLowerCase()
@@ -102,13 +156,14 @@ export default function ContactLandlordPage() {
             const fullMessage = !isLandlordChat && viewingAvailability.trim()
                 ? `Viewing Availability: ${viewingAvailability}\n\n${message}`
                 : message
-            await api.post('/messages', {
+            return (await api.post<Message>('/messages', {
                 receiver_id: isLandlordChat ? tenantId : listing!.landlord_id,
                 listing_id: listing!.id,
                 content: fullMessage
-            })
+            })).data
         },
-        onSuccess: () => {
+        onSuccess: (createdMessage) => {
+            setLiveMessages((current) => mergeMessages(current, createdMessage))
             setMessage('')
             setViewingAvailability('')
             qc.invalidateQueries({ queryKey: ['messages', 'listing', id, tenantId] })
@@ -132,6 +187,12 @@ export default function ContactLandlordPage() {
             : message
         if (containsContactInfo(fullMessage)) {
             alert('Phone numbers, emails, and social media handles are not allowed. Please use chat only.')
+            return
+        }
+        if (socketRef.current?.readyState === WebSocket.OPEN) {
+            socketRef.current.send(JSON.stringify({ content: fullMessage }))
+            setMessage('')
+            setViewingAvailability('')
             return
         }
         sendMessage.mutate()
@@ -241,7 +302,7 @@ export default function ContactLandlordPage() {
                                 </svg>
                             </button>
                             <div>
-                                <h1 className="text-2xl font-bold text-gray-900">{isLandlordChat ? `Chat with ${counterpartFirstName}` : 'Contact Landlord'}</h1>
+                                <h1 className="text-2xl font-bold text-gray-900">{isLandlordChat ? `Chat with ${counterpartFirstName}` : 'Chat with Landlord'}</h1>
                                 <p className="text-gray-600">{isLandlordChat ? 'Continue the tenant conversation about this property' : 'Send a message about this property'}</p>
                             </div>
                         </div>
@@ -344,12 +405,12 @@ export default function ContactLandlordPage() {
                                     <div>
                                         <h3 className="text-lg font-semibold text-gray-900">Messages</h3>
                                         <p className="text-sm text-gray-600">
-                                            {messages?.length || 0} message{messages?.length !== 1 ? 's' : ''}
+                                            {liveMessages.length} message{liveMessages.length !== 1 ? 's' : ''}
                                         </p>
                                     </div>
                                     <div className="flex items-center space-x-2">
-                                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                                        <span className="text-sm text-gray-600">Landlord online</span>
+                                        <div className={`w-2 h-2 rounded-full ${connectionStatus === 'connected' ? 'bg-green-500' : connectionStatus === 'connecting' ? 'bg-amber-500' : 'bg-gray-400'}`}></div>
+                                        <span className="text-sm capitalize text-gray-600">{connectionStatus}</span>
                                     </div>
                                 </div>
                             </div>
@@ -383,8 +444,9 @@ export default function ContactLandlordPage() {
                                     <div className="flex items-center justify-center h-full">
                                         <div className="animate-pulse text-gray-500">Loading messages...</div>
                                     </div>
-                                ) : messages && messages.length > 0 ? (
-                                    messages.map((msg) => (
+                                ) : liveMessages.length > 0 ? (
+                                    <>
+                                    {liveMessages.map((msg) => (
                                         <div
                                             key={msg.id}
                                             className={`flex items-end gap-3 ${msg.sender_id === String(user?.id || '') ? 'justify-end' : 'justify-start'}`}
@@ -429,7 +491,9 @@ export default function ContactLandlordPage() {
                                                 />
                                             )}
                                         </div>
-                                    ))
+                                    ))}
+                                    <div ref={bottomRef} />
+                                    </>
                                 ) : (
                                     <div className="text-center py-20">
                                         <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-1">
@@ -454,6 +518,7 @@ export default function ContactLandlordPage() {
                                             placeholder="Type your message here..."
                                             className="w-full px-4 py-4 border border-gray-300 rounded-2xl resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                             rows={3}
+                                            maxLength={1000}
                                             disabled={sendMessage.isPending}
                                         />
                                     </div>

@@ -13,7 +13,7 @@ class Command(BaseCommand):
     help = "Run the rent-payout release check on a fixed interval."
 
     def handle(self, *args, **options):
-        interval_seconds = max(int(getattr(settings, "FLUTTERWAVE_PAYOUT_RELEASE_WATCH_INTERVAL_SECONDS", 900)), 60)
+        interval_seconds = max(int(getattr(settings, "FLUTTERWAVE_PAYOUT_RELEASE_WATCH_INTERVAL_SECONDS", 300)), 60)
         self.stdout.write(f"Watching ready payouts every {interval_seconds} second(s).")
 
         while True:

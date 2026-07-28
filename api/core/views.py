@@ -32,6 +32,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import (
     AppUser,
+    build_booking_progress_data,
     booking_progress_step_completed,
     booking_progress_step_selected_value,
     Booking,
@@ -66,6 +67,7 @@ from .flutterwave import (
     extract_payment_channel_details,
     extract_payment_method_card_details,
     extract_payment_state,
+    extract_provider_data,
     extract_provider_transaction_id,
     extract_resource_id,
     extract_reference,
@@ -1543,16 +1545,64 @@ def map_transfer_status_to_settlement_status(payload: dict | None) -> str:
     return PaymentSettlement.Status.PROCESSING
 
 
+def extract_settlement_failure_reason(payload: dict | None, fallback: str = "Flutterwave transfer failed.") -> str:
+    if not isinstance(payload, dict):
+        return fallback
+
+    data = extract_provider_data(payload)
+    containers = [data, payload]
+    for container in containers:
+        if not isinstance(container, dict):
+            continue
+        for key in (
+            "failure_reason",
+            "failed_reason",
+            "reason",
+            "processor_response",
+            "gateway_response",
+            "complete_message",
+            "message",
+            "detail",
+            "description",
+        ):
+            value = container.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        error = container.get("error")
+        if isinstance(error, str) and error.strip():
+            return error.strip()
+        if isinstance(error, dict):
+            for key in ("message", "detail", "reason"):
+                value = error.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+
+    status_value = str(data.get("status") or payload.get("status") or "").strip()
+    if status_value:
+        return f"{fallback.rstrip('.')} with provider status: {status_value}."
+    return fallback
+
+
 def sync_payment_settlement_transfer(settlement: PaymentSettlement, payload: dict | None) -> PaymentSettlement:
     next_status = map_transfer_status_to_settlement_status(payload)
     settlement.transfer_payload = payload
-    settlement.last_error = "" if next_status != PaymentSettlement.Status.FAILED else "Flutterwave transfer failed."
+    settlement.last_error = "" if next_status != PaymentSettlement.Status.FAILED else extract_settlement_failure_reason(payload)
     settlement.status = next_status
     update_fields = ["transfer_payload", "last_error", "status", "updated_at"]
     if next_status == PaymentSettlement.Status.PAID and settlement.transferred_at is None:
         settlement.transferred_at = timezone.now()
         update_fields.append("transferred_at")
     settlement.save(update_fields=update_fields)
+    if next_status == PaymentSettlement.Status.FAILED:
+        logger.error(
+            "Payment settlement transfer failed from webhook. settlement_id=%s payment_id=%s purpose=%s reference=%s reason=%s payload=%s",
+            settlement.id,
+            settlement.payment_id,
+            settlement.purpose,
+            settlement.transfer_reference or "-",
+            settlement.last_error,
+            payload,
+        )
     return settlement
 
 
@@ -1615,6 +1665,16 @@ def trigger_payment_settlements(payment: Payment) -> None:
                 settlement.status = PaymentSettlement.Status.FAILED
                 settlement.last_error = str(exc)
                 settlement.save(update_fields=["status", "last_error", "updated_at"])
+                logger.exception(
+                    "Payment settlement recipient creation failed. settlement_id=%s payment_id=%s booking_id=%s purpose=%s bank_name=%s account_number=%s reason=%s",
+                    settlement.id,
+                    payment.id,
+                    payment.booking_id,
+                    settlement.purpose,
+                    settlement.bank_name,
+                    settlement.account_number,
+                    settlement.last_error,
+                )
                 continue
 
             settlement.transfer_recipient_id = extract_resource_id(recipient_response)
@@ -1635,6 +1695,17 @@ def trigger_payment_settlements(payment: Payment) -> None:
                 ]
             )
             if not settlement.transfer_recipient_id:
+                logger.error(
+                    "Payment settlement recipient creation returned no recipient id. settlement_id=%s payment_id=%s booking_id=%s purpose=%s bank_name=%s account_number=%s reason=%s payload=%s",
+                    settlement.id,
+                    payment.id,
+                    payment.booking_id,
+                    settlement.purpose,
+                    settlement.bank_name,
+                    settlement.account_number,
+                    settlement.last_error,
+                    recipient_response,
+                )
                 continue
 
         transfer_reference = settlement.transfer_reference or build_settlement_transfer_reference(payment, settlement)
@@ -1656,12 +1727,27 @@ def trigger_payment_settlements(payment: Payment) -> None:
             settlement.transfer_reference = transfer_reference
             settlement.last_error = str(exc)
             settlement.save(update_fields=["status", "transfer_reference", "last_error", "updated_at"])
+            logger.exception(
+                "Payment settlement transfer request failed. settlement_id=%s payment_id=%s booking_id=%s purpose=%s reference=%s bank_name=%s account_number=%s reason=%s",
+                settlement.id,
+                payment.id,
+                payment.booking_id,
+                settlement.purpose,
+                transfer_reference,
+                settlement.bank_name,
+                settlement.account_number,
+                settlement.last_error,
+            )
             continue
 
         settlement.transfer_reference = transfer_reference
         settlement.transfer_payload = transfer_response
         settlement.status = map_transfer_status_to_settlement_status(transfer_response)
-        settlement.last_error = ""
+        settlement.last_error = (
+            extract_settlement_failure_reason(transfer_response)
+            if settlement.status == PaymentSettlement.Status.FAILED
+            else ""
+        )
         settlement_update_fields = [
             "transfer_reference",
             "transfer_payload",
@@ -1673,6 +1759,19 @@ def trigger_payment_settlements(payment: Payment) -> None:
             settlement.transferred_at = timezone.now()
             settlement_update_fields.append("transferred_at")
         settlement.save(update_fields=settlement_update_fields)
+        if settlement.status == PaymentSettlement.Status.FAILED:
+            logger.error(
+                "Payment settlement transfer failed. settlement_id=%s payment_id=%s booking_id=%s purpose=%s reference=%s bank_name=%s account_number=%s reason=%s payload=%s",
+                settlement.id,
+                payment.id,
+                payment.booking_id,
+                settlement.purpose,
+                transfer_reference,
+                settlement.bank_name,
+                settlement.account_number,
+                settlement.last_error,
+                transfer_response,
+            )
 
         # Send settlement notification emails after successful recipient creation
         try:
@@ -3971,6 +4070,29 @@ class MessageViewSet(viewsets.ModelViewSet):
             or booking_progress_step_completed(booking.landlord_rental_progress, "viewing_appointment_booked")
         )
 
+    def _rental_stage_for(self, booking, *, has_viewing_requested):
+        if not booking:
+            return "Viewing requested" if has_viewing_requested else "Message received"
+
+        stage_checks = [
+            ("tenant_collected_house_key", "Keys collected"),
+            ("check_in_inventory_completed", "Inventory completed"),
+            ("tenant_paid_rent_in_full", "Rent paid in full"),
+            ("rental_payment_notification_received", "Rent paid in full"),
+            ("tenant_paid_deposit", "Deposit paid"),
+            ("deposit_payment_notification_received", "Deposit paid"),
+            ("tenancy_agreement_signed", "Agreement signed"),
+            ("house_viewed", "House viewed"),
+            ("viewing_appointment_booked", "Viewing arranged"),
+        ]
+        for step_key, label in stage_checks:
+            if (
+                booking_progress_step_completed(booking.tenant_rental_progress, step_key)
+                or booking_progress_step_completed(booking.landlord_rental_progress, step_key)
+            ):
+                return label
+        return "Viewing requested" if has_viewing_requested else booking.get_status_display()
+
     def perform_create(self, serializer):
         if self.request.user.role == "tenant" and not self.request.user.is_verified:
             raise PermissionDenied("Your account must be verified before contacting landlords. Please submit your NIN for verification.")
@@ -4056,6 +4178,70 @@ class MessageViewSet(viewsets.ModelViewSet):
             })
 
         results.sort(key=lambda r: r["last_message_time"], reverse=True)
+        return Response(results)
+
+    @action(detail=False, methods=["get"], url_path="listing/(?P<listing_id>[^/.]+)/viewing-requests")
+    def listing_viewing_requests(self, request, listing_id=None):
+        listing = get_object_or_404(Listing.objects.select_related("landlord"), id=listing_id)
+        if request.user.role != AppUser.Role.ADMIN and listing.landlord_id != request.user.id:
+            raise PermissionDenied("Only the property landlord can view tenant requests for this listing.")
+
+        messages = (
+            Message.objects
+            .filter(listing=listing)
+            .filter(Q(sender__role=AppUser.Role.TENANT) | Q(receiver__role=AppUser.Role.TENANT))
+            .select_related("sender", "receiver")
+            .order_by("-created_at")
+        )
+        grouped = {}
+        for msg in messages:
+            tenant = msg.sender if msg.sender.role == AppUser.Role.TENANT else msg.receiver
+            tenant_key = str(tenant.id)
+            entry = grouped.setdefault(
+                tenant_key,
+                {
+                    "tenant": tenant,
+                    "latest_message": msg,
+                    "message_count": 0,
+                    "has_viewing_requested": False,
+                },
+            )
+            entry["message_count"] += 1
+            if "viewing availability:" in msg.content.lower():
+                entry["has_viewing_requested"] = True
+            if msg.created_at > entry["latest_message"].created_at:
+                entry["latest_message"] = msg
+
+        results = []
+        for entry in grouped.values():
+            if not entry["has_viewing_requested"]:
+                continue
+
+            tenant = entry["tenant"]
+            booking = (
+                Booking.objects
+                .filter(tenant=tenant, listing=listing)
+                .order_by("-created_at")
+                .first()
+            )
+            results.append({
+                "tenant_id": str(tenant.id),
+                "tenant_name": tenant.name,
+                "tenant_email": tenant.email,
+                "tenant_profile_photo_url": tenant.profile_photo_url,
+                "listing_id": str(listing.id),
+                "booking_id": str(booking.id) if booking else "",
+                "booking_status": booking.status if booking else "",
+                "stage": self._rental_stage_for(booking, has_viewing_requested=entry["has_viewing_requested"]),
+                "rental_progress": build_booking_progress_data(booking, AppUser.Role.LANDLORD) if booking else None,
+                "last_message": entry["latest_message"].content,
+                "last_message_time": entry["latest_message"].created_at,
+                "message_count": entry["message_count"],
+                "has_viewing_requested": entry["has_viewing_requested"],
+                "has_viewing_arranged": self._viewing_arranged_for(tenant_user=tenant, listing=listing),
+            })
+
+        results.sort(key=lambda item: item["last_message_time"], reverse=True)
         return Response(results)
 
     @action(detail=False, methods=["get"], url_path="conversations")

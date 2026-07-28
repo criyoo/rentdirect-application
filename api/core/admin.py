@@ -1183,6 +1183,7 @@ class PaymentSettlementAdmin(admin.ModelAdmin):
             '<th style="text-align: left; padding: 6px; border-bottom: 1px solid #ddd;">Bank Name</th>'
             '<th style="text-align: left; padding: 6px; border-bottom: 1px solid #ddd;">Account Number</th>'
             '<th style="text-align: left; padding: 6px; border-bottom: 1px solid #ddd;">Status</th>'
+            '<th style="text-align: left; padding: 6px; border-bottom: 1px solid #ddd;">Failure Reason</th>'
             '<th style="text-align: left; padding: 6px; border-bottom: 1px solid #ddd;">Transfer Reference</th>'
             '<th style="text-align: left; padding: 6px; border-bottom: 1px solid #ddd;">Transferred At</th>'
             "</tr>"
@@ -1192,6 +1193,7 @@ class PaymentSettlementAdmin(admin.ModelAdmin):
             format_html_join(
                 "",
                 "<tr>"
+                '<td style="padding: 6px; border-bottom: 1px solid #eee;">{}</td>'
                 '<td style="padding: 6px; border-bottom: 1px solid #eee;">{}</td>'
                 '<td style="padding: 6px; border-bottom: 1px solid #eee;">{}</td>'
                 '<td style="padding: 6px; border-bottom: 1px solid #eee;">{}</td>'
@@ -1211,6 +1213,7 @@ class PaymentSettlementAdmin(admin.ModelAdmin):
                         settlement.bank_name,
                         settlement.account_number,
                         settlement.get_status_display(),
+                        settlement.last_error or "-",
                         settlement.transfer_reference or "-",
                         self._format_datetime(settlement.transferred_at),
                     )

@@ -1,7 +1,7 @@
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import { LandlordPublicProfile, Listing, NearestAmenitiesResponse, Review } from '@/types'
+import { LandlordPublicProfile, Listing, NearestAmenitiesResponse, RentalProgress, Review } from '@/types'
 import { useEffect, useState, useRef } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import { resolveMediaUrl } from '@/lib/api'
@@ -59,6 +59,27 @@ const amenityCategoryLabels: Record<string, string> = {
     other: 'Other',
 }
 
+type TenantViewingRequest = {
+    tenant_id: string
+    tenant_name: string
+    tenant_email: string
+    tenant_profile_photo_url?: string | null
+    listing_id: string
+    booking_id?: string
+    booking_status?: string
+    stage: string
+    rental_progress?: RentalProgress | null
+    last_message: string
+    last_message_time: string
+    message_count: number
+    has_viewing_requested: boolean
+    has_viewing_arranged: boolean
+}
+
+function formatStatusLabel(value?: string) {
+    return (value || '').replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
 export default function ListingDetailPage() {
     const { id } = useParams()
     const { user } = useAuth()
@@ -77,6 +98,8 @@ export default function ListingDetailPage() {
         enabled: !!id,
         queryFn: async () => (await api.get<Listing>(`/listings/${id}`)).data
     })
+    const isLandlordUser = user?.role === 'landlord'
+    const isListingLandlord = isLandlordUser && !!listing && listing.landlord_id === user?.id
     const { data: tenantProfile } = useQuery({
         queryKey: ['tenant-profile', 'listing-detail', user?.id],
         enabled: user?.role === 'tenant',
@@ -120,6 +143,11 @@ export default function ListingDetailPage() {
         queryKey: ['subscription-payments', 'listing-detail', user?.id],
         enabled: user?.role === 'tenant',
         queryFn: async () => (await api.get<SubscriptionPaymentRecord[] | { results?: SubscriptionPaymentRecord[] }>('/subscriptions')).data,
+    })
+    const { data: viewingRequests = [] } = useQuery({
+        queryKey: ['listing', listing?.id, 'viewing-requests'],
+        enabled: isListingLandlord,
+        queryFn: async () => (await api.get<TenantViewingRequest[]>(`/messages/listing/${listing!.id}/viewing-requests`)).data,
     })
 
     // Check if this listing is in user's favourites
@@ -435,72 +463,111 @@ export default function ListingDetailPage() {
                     <div className="grid grid-cols-1 gap-8 lg:grid-cols-4">
                         {/* Price + Actions */}
                         <div className="rounded-2xl bg-white p-6 shadow-lg border">
-                            <p className="text-[20px] font-bold text-gray-900 mb-3 text-center">Start Rental Journey</p>
+                            <p className="text-[20px] font-bold text-gray-900 mb-3 text-center">
+                                {isLandlordUser ? 'Property Management' : 'Start Rental Journey'}
+                            </p>
                             <div className="mt-6 space-y-3">
-                                {canManageFavourites && (
-                                    <button
-                                        onClick={() => toggleFavourite.mutate()}
-                                        disabled={toggleFavourite.isPending}
-                                        className={`w-full rounded-lg px-4 py-3 font-medium transition ${isFavourite
-                                            ? 'bg-red-100 text-red-700 hover:bg-red-200'
-                                            : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-                                            }`}
-                                    >
-                                        {toggleFavourite.isPending ? '...' : (
-                                            isFavourite ? '❤️ Remove from Favourites' : '🤍 Add to Favourites'
+                                {isLandlordUser ? (
+                                    <>
+                                        <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 text-sm text-slate-700">
+                                            <div className="flex items-center justify-between">
+                                                <span>Status</span>
+                                                <span className="font-semibold text-gray-900">{formatStatusLabel(listing.status)}</span>
+                                            </div>
+                                            <div className="mt-2 flex items-center justify-between">
+                                                <span>Tenant requests</span>
+                                                <span className="font-semibold text-gray-900">{viewingRequests.length}</span>
+                                            </div>
+                                        </div>
+                                        {isListingLandlord ? (
+                                            <>
+                                                <button
+                                                    onClick={() => navigate(`/listings/${listing.id}/edit`)}
+                                                    className="w-full rounded-lg bg-blue-600 px-4 py-3 font-medium text-white hover:bg-blue-700 transition"
+                                                >
+                                                    Edit Property
+                                                </button>
+                                                <button
+                                                    onClick={() => navigate('/dashboard/landlord/' + user!.id)}
+                                                    className="w-full rounded-lg bg-slate-100 px-4 py-3 font-medium text-slate-700 hover:bg-slate-200 transition"
+                                                >
+                                                    Open Landlord Dashboard
+                                                </button>
+                                            </>
+                                        ) : (
+                                            <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
+                                                This property belongs to another landlord account.
+                                            </div>
                                         )}
-                                    </button>
-                                )}
-
-                                {user?.role === 'tenant' && (
-                                    <button
-                                        onClick={() => {
-                                            if (isBronzeTenant) {
-                                                alert('Reviews are not available on the Bronze free plan.')
-                                                navigate('/billing')
-                                                return
-                                            }
-                                            setIsReviewOpen(true)
-                                        }}
-                                        className={`w-full rounded-lg px-4 py-3 font-medium transition ${isBronzeTenant
-                                            ? 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                                            : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
-                                            }`}
-                                    >
-                                        {isBronzeTenant ? 'Upgrade to Review' : existingReview ? 'Edit Property Review' : 'Review Property'}
-                                    </button>
-                                )}
-
-                                {requiresTenantVerification ? (
-                                    <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
-                                        <p className="font-medium">Verification Required</p>
-                                        <p className="mt-1">
-                                            {tenantVerificationStatus === 'pending' || tenantVerificationStatus === 'under_review'
-                                                ? 'Your tenant verification is still pending review. Open the verification page to check status and continue.'
-                                                : 'Please complete your tenant verification before you can contact landlords or rent this property.'}
-                                        </p>
-                                        <button
-                                            onClick={redirectToTenantVerification}
-                                            className="mt-2 text-blue-600 hover:text-blue-700 font-medium text-sm underline"
-                                        >
-                                            Go to Tenant Verification
-                                        </button>
-                                    </div>
+                                    </>
                                 ) : (
                                     <>
-                                        <button
-                                            onClick={handleArrangeViewing}
-                                            className="w-full rounded-lg bg-blue-600 px-4 py-3 font-medium text-white hover:bg-blue-700 transition"
-                                        >
-                                            Arrange viewing
-                                        </button>
+                                        {canManageFavourites && (
+                                            <button
+                                                onClick={() => toggleFavourite.mutate()}
+                                                disabled={toggleFavourite.isPending}
+                                                className={`w-full rounded-lg px-4 py-3 font-medium transition ${isFavourite
+                                                    ? 'bg-red-100 text-red-700 hover:bg-red-200'
+                                                    : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                                                    }`}
+                                            >
+                                                {toggleFavourite.isPending ? '...' : (
+                                                    isFavourite ? '❤️ Remove from Favourites' : '🤍 Add to Favourites'
+                                                )}
+                                            </button>
+                                        )}
 
-                                        <button
-                                            onClick={handleRentNow}
-                                            className="w-full rounded-lg bg-green-600 px-4 py-3 font-medium text-white hover:bg-green-700 transition"
-                                        >
-                                            Rent Now
-                                        </button>
+                                        {user?.role === 'tenant' && (
+                                            <button
+                                                onClick={() => {
+                                                    if (isBronzeTenant) {
+                                                        alert('Reviews are not available on the Bronze free plan.')
+                                                        navigate('/billing')
+                                                        return
+                                                    }
+                                                    setIsReviewOpen(true)
+                                                }}
+                                                className={`w-full rounded-lg px-4 py-3 font-medium transition ${isBronzeTenant
+                                                    ? 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                                                    : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                                                    }`}
+                                            >
+                                                {isBronzeTenant ? 'Upgrade to Review' : existingReview ? 'Edit Property Review' : 'Review Property'}
+                                            </button>
+                                        )}
+
+                                        {requiresTenantVerification ? (
+                                            <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
+                                                <p className="font-medium">Verification Required</p>
+                                                <p className="mt-1">
+                                                    {tenantVerificationStatus === 'pending' || tenantVerificationStatus === 'under_review'
+                                                        ? 'Your tenant verification is still pending review. Open the verification page to check status and continue.'
+                                                        : 'Please complete your tenant verification before you can contact landlords or rent this property.'}
+                                                </p>
+                                                <button
+                                                    onClick={redirectToTenantVerification}
+                                                    className="mt-2 text-blue-600 hover:text-blue-700 font-medium text-sm underline"
+                                                >
+                                                    Go to Tenant Verification
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <button
+                                                    onClick={handleArrangeViewing}
+                                                    className="w-full rounded-lg bg-blue-600 px-4 py-3 font-medium text-white hover:bg-blue-700 transition"
+                                                >
+                                                    Arrange viewing
+                                                </button>
+
+                                                <button
+                                                    onClick={handleRentNow}
+                                                    className="w-full rounded-lg bg-green-600 px-4 py-3 font-medium text-white hover:bg-green-700 transition"
+                                                >
+                                                    Rent Now
+                                                </button>
+                                            </>
+                                        )}
                                     </>
                                 )}
                             </div>
@@ -622,7 +689,7 @@ export default function ListingDetailPage() {
                         </div>
                     </div>
 
-                    {landlordProfile && (
+                    {landlordProfile && !isLandlordUser && (
                         <div className="mt-4 rounded-2xl bg-white p-6 shadow-lg border">
                             <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
                                 <div className="flex items-center gap-4">
@@ -650,6 +717,84 @@ export default function ListingDetailPage() {
                                     </Link>
                                 </div>
                             </div>
+                        </div>
+                    )}
+
+                    {isListingLandlord && (
+                        <div className="mt-4 rounded-2xl bg-white p-6 shadow-lg border">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                                <div>
+                                    <h3 className="text-xl font-semibold text-gray-900">Viewing Requests</h3>
+                                    <p className="mt-1 text-sm text-gray-600">Tenants who have requested a viewing for this property.</p>
+                                </div>
+                                <span className="rounded-full bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700">
+                                    {viewingRequests.length} tenant{viewingRequests.length === 1 ? '' : 's'}
+                                </span>
+                            </div>
+
+                            {viewingRequests.length > 0 ? (
+                                <div className="mt-5 overflow-hidden rounded-xl border border-slate-200">
+                                    <div className="hidden grid-cols-[1.5fr_1fr_1fr_1fr] gap-4 bg-slate-50 px-4 py-3 text-xs font-semibold uppercase text-slate-500 md:grid">
+                                        <span>Tenant</span>
+                                        <span>Stage</span>
+                                        <span>Progress</span>
+                                        <span>Last Message</span>
+                                    </div>
+                                    <div className="divide-y divide-slate-200">
+                                        {viewingRequests.map((request) => (
+                                            <div key={request.tenant_id} className="grid gap-4 px-4 py-4 md:grid-cols-[1.5fr_1fr_1fr_1fr] md:items-center">
+                                                <div className="flex items-center gap-3">
+                                                    <img
+                                                        src={resolveMediaUrl(request.tenant_profile_photo_url)}
+                                                        alt={request.tenant_name}
+                                                        loading="lazy"
+                                                        decoding="async"
+                                                        className="h-11 w-11 rounded-full object-cover"
+                                                        onError={(event) => {
+                                                            event.currentTarget.src = '/placeholder.jpg'
+                                                        }}
+                                                    />
+                                                    <div>
+                                                        <p className="font-semibold text-gray-900">{request.tenant_name}</p>
+                                                        <p className="text-sm text-gray-500">{request.tenant_email}</p>
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <span className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-700">
+                                                        {request.stage}
+                                                    </span>
+                                                    {request.booking_status ? (
+                                                        <p className="mt-2 text-xs text-slate-500">{formatStatusLabel(request.booking_status)}</p>
+                                                    ) : null}
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm font-semibold text-gray-900">
+                                                        {request.rental_progress ? `${request.rental_progress.progress_percent}%` : 'Not started'}
+                                                    </p>
+                                                    <p className="mt-1 text-xs text-slate-500">
+                                                        {request.rental_progress
+                                                            ? `${request.rental_progress.completed_count}/${request.rental_progress.total_count} steps`
+                                                            : 'No booking yet'}
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <p className="line-clamp-2 text-sm text-gray-700">{request.last_message}</p>
+                                                    <Link
+                                                        to={`/contact-landlord/${listing.id}?tenantId=${request.tenant_id}`}
+                                                        className="mt-2 inline-block text-sm font-semibold text-blue-700 hover:text-blue-800"
+                                                    >
+                                                        Open conversation
+                                                    </Link>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="mt-5 rounded-xl border border-dashed border-slate-200 p-6 text-center text-slate-500">
+                                    No tenant has requested a viewing for this property yet.
+                                </div>
+                            )}
                         </div>
                     )}
 

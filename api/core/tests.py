@@ -2923,6 +2923,62 @@ class BookingPaymentTests(TestCase):
         self.assertEqual(settlement.status, PaymentSettlement.Status.PAID)
         self.assertIsNotNone(settlement.transferred_at)
 
+    @override_settings(
+        ENFORCE_FLUTTERWAVE_WEBHOOK_SIGNATURE=False,
+        FLUTTERWAVE_WEBHOOK_SECRET_HASH="",
+    )
+    def test_flutterwave_transfer_webhook_stores_failure_reason(self):
+        booking = Booking.objects.create(
+            tenant=self.tenant,
+            listing=self.listing,
+            start_date=date(2026, 6, 19),
+            end_date=date(2027, 6, 19),
+            total_amount=calculate_booking_total(self.listing.price_per_year),
+            paid_amount=calculate_booking_total(self.listing.price_per_year),
+        )
+        payment = Payment.objects.create(
+            booking=booking,
+            amount=calculate_booking_total(self.listing.price_per_year),
+            payment_method="bank",
+            status="completed",
+            transaction_id="WEBHOOKTRANSFERFAILED",
+            provider="flutterwave",
+            currency="NGN",
+        )
+        settlement = PaymentSettlement.objects.create(
+            payment=payment,
+            purpose=PaymentSettlement.Purpose.LANDLORD_RENT,
+            amount=self.listing.price_per_year,
+            currency="NGN",
+            bank_name="Monie Point",
+            account_number="1234567890",
+            account_name="Booking Landlord",
+            transfer_reference="WEBHOOKTRANSFERFAILED-LANDLORDRENT",
+            status=PaymentSettlement.Status.PROCESSING,
+        )
+
+        with self.assertLogs("core.views", level="ERROR") as logs:
+            response = self.client.post(
+                "/api/v1/payments/webhook/flutterwave",
+                {
+                    "type": "transfer.disburse",
+                    "data": {
+                        "reference": settlement.transfer_reference,
+                        "status": "FAILED",
+                        "amount": float(settlement.amount),
+                        "currency": "NGN",
+                        "processor_response": "Transfer rejected by beneficiary bank",
+                    },
+                },
+                format="json",
+            )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        settlement.refresh_from_db()
+        self.assertEqual(settlement.status, PaymentSettlement.Status.FAILED)
+        self.assertEqual(settlement.last_error, "Transfer rejected by beneficiary bank")
+        self.assertIn("Transfer rejected by beneficiary bank", "\n".join(logs.output))
+
     @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
     @patch("core.views.create_bank_transfer")
     @patch("core.views.create_transfer_recipient")
@@ -2979,6 +3035,107 @@ class BookingPaymentTests(TestCase):
         )
         self.assertTrue(all(settlements.values_list("transfer_reference", flat=True)))
         self.assertEqual(len(mail.outbox), 3)
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    @patch("core.views.create_bank_transfer")
+    @patch("core.views.create_transfer_recipient")
+    def test_ready_payout_worker_logs_and_stores_provider_failure_reason(self, create_transfer_recipient_mock, create_bank_transfer_mock):
+        create_transfer_recipient_mock.side_effect = [
+            {"status": "success", "data": {"id": "recipient_caution_failed"}},
+            {"status": "success", "data": {"id": "recipient_landlord_ok"}},
+            {"status": "success", "data": {"id": "recipient_ops_ok"}},
+        ]
+        create_bank_transfer_mock.side_effect = [
+            {
+                "status": "success",
+                "data": {
+                    "id": "transfer_caution_failed",
+                    "status": "FAILED",
+                    "processor_response": "Beneficiary account number is invalid",
+                },
+            },
+            {"status": "success", "data": {"id": "transfer_landlord_ok", "status": "NEW"}},
+            {"status": "success", "data": {"id": "transfer_ops_ok", "status": "NEW"}},
+        ]
+        total_amount = calculate_booking_total(self.listing.price_per_year)
+        booking = Booking.objects.create(
+            tenant=self.tenant,
+            listing=self.listing,
+            start_date=date(2026, 6, 19),
+            end_date=date(2027, 6, 19),
+            total_amount=total_amount,
+            paid_amount=total_amount,
+            tenant_rental_progress={
+                "tenant_collected_house_key": timezone.now().isoformat(),
+                "rentdirect_transfer_to_landlord": {
+                    "value": "yes",
+                    "completed_at": timezone.now().isoformat(),
+                },
+            },
+            landlord_rental_progress={
+                "tenant_collected_house_key": timezone.now().isoformat(),
+            },
+        )
+        Payment.objects.create(
+            booking=booking,
+            amount=total_amount,
+            payment_method="bank",
+            status="completed",
+            transaction_id="WORKERPAYOUTFAILED1",
+            provider="flutterwave",
+            currency="NGN",
+            payment_date=timezone.now() - timedelta(hours=25),
+        )
+
+        with self.assertLogs("core.views", level="ERROR") as logs:
+            call_command("process_ready_payouts")
+
+        failed_settlement = PaymentSettlement.objects.get(
+            payment__transaction_id="WORKERPAYOUTFAILED1",
+            purpose=PaymentSettlement.Purpose.CAUTION_FEE,
+        )
+        self.assertEqual(failed_settlement.status, PaymentSettlement.Status.FAILED)
+        self.assertEqual(failed_settlement.last_error, "Beneficiary account number is invalid")
+        self.assertIn("Beneficiary account number is invalid", "\n".join(logs.output))
+        self.assertIn(str(failed_settlement.id), "\n".join(logs.output))
+
+    def test_payment_settlement_admin_displays_failure_reason(self):
+        from django.contrib import admin as django_admin
+
+        from core.admin import PaymentSettlementAdmin
+
+        booking = Booking.objects.create(
+            tenant=self.tenant,
+            listing=self.listing,
+            start_date=date(2026, 6, 19),
+            end_date=date(2027, 6, 19),
+            total_amount=calculate_booking_total(self.listing.price_per_year),
+        )
+        payment = Payment.objects.create(
+            booking=booking,
+            amount=calculate_booking_total(self.listing.price_per_year),
+            payment_method="bank",
+            status="completed",
+            transaction_id="ADMINFAILEDSETTLEMENT1",
+            provider="flutterwave",
+            currency="NGN",
+        )
+        settlement = PaymentSettlement.objects.create(
+            payment=payment,
+            purpose=PaymentSettlement.Purpose.LANDLORD_RENT,
+            amount=self.listing.price_per_year,
+            currency="NGN",
+            bank_name="Monie Point",
+            account_number="1234567890",
+            account_name="Booking Landlord",
+            status=PaymentSettlement.Status.FAILED,
+            last_error="Transfer rejected by beneficiary bank",
+        )
+
+        rendered = PaymentSettlementAdmin(PaymentSettlement, django_admin.site).settlement_accounts(settlement)
+
+        self.assertIn("Failure Reason", str(rendered))
+        self.assertIn("Transfer rejected by beneficiary bank", str(rendered))
 
 
 class BookingRentalProgressTests(TestCase):
@@ -5021,6 +5178,14 @@ class MessageEnquiryTests(TestCase):
         arranged_response = client.get("/api/v1/messages/enquiries")
         self.assertEqual(arranged_response.status_code, 200, arranged_response.json())
         self.assertTrue(arranged_response.json()[0]["has_viewing_arranged"])
+
+        viewing_requests_response = client.get(f"/api/v1/messages/listing/{listing.id}/viewing-requests")
+        self.assertEqual(viewing_requests_response.status_code, 200, viewing_requests_response.json())
+        viewing_requests = viewing_requests_response.json()
+        self.assertEqual(len(viewing_requests), 1)
+        self.assertEqual(viewing_requests[0]["tenant_id"], str(tenant.id))
+        self.assertEqual(viewing_requests[0]["stage"], "Viewing arranged")
+        self.assertEqual(viewing_requests[0]["rental_progress"]["completed_count"], 0)
 
     def test_landlord_enquiries_include_messages_attached_to_landlord_listing(self):
         landlord = AppUser.objects.create_user(
