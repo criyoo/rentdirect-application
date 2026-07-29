@@ -2796,7 +2796,8 @@ class PaymentQueueTests(TestCase):
 
 
 class FlutterwaveTransferPayloadTests(TestCase):
-    def test_flutterwave_v4_get_headers_include_trace_id_without_idempotency_header(self):
+    @patch("core.flutterwave._get_v4_access_token", return_value="test-access-token")
+    def test_flutterwave_v4_get_headers_include_trace_id_without_idempotency_header(self, _get_token_mock):
         headers = flutterwave._build_v4_headers(
             method="GET",
             idempotency_key="recipient-lookup-trace",
