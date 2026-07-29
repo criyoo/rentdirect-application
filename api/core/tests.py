@@ -3017,6 +3017,26 @@ class FlutterwaveTransferPayloadTests(TestCase):
         self.assertNotIn("recipient_id", payload)
         request_v3_mock.assert_not_called()
 
+    @override_settings(
+        FLUTTERWAVE_CLIENT_ID="test-client-id",
+        FLUTTERWAVE_CLIENT_SECRET="test-client-secret",
+        FLUTTERWAVE_API_BASE_URL="https://developersandbox-api.flutterwave.com",
+    )
+    @patch("core.flutterwave._request_json_v4")
+    def test_retrieve_bank_transfer_fetches_current_v4_status(self, request_v4_mock):
+        request_v4_mock.return_value = {
+            "status": "success",
+            "data": {"id": "transfer_123", "status": "SUCCESSFUL"},
+        }
+
+        response = flutterwave.retrieve_bank_transfer(transfer_id="transfer_123")
+
+        self.assertEqual(response["data"]["status"], "SUCCESSFUL")
+        request_v4_mock.assert_called_once_with(
+            method="GET",
+            path="/transfers/transfer_123",
+        )
+
 
 class BookingPaymentTests(TestCase):
     def setUp(self):
@@ -3599,6 +3619,58 @@ class BookingPaymentTests(TestCase):
         self.assertEqual(response.status_code, 400, response.json())
         self.assertIn("payment_method", response.json())
         self.assertIn("Bank Transfer", str(response.json()["payment_method"]))
+
+    @patch("core.views.retrieve_bank_transfer")
+    def test_ready_payout_worker_reconciles_processing_settlement_status(self, retrieve_bank_transfer_mock):
+        retrieve_bank_transfer_mock.return_value = {
+            "status": "success",
+            "data": {
+                "id": "transfer_reconcile_123",
+                "status": "SUCCESSFUL",
+            },
+        }
+        total_amount = calculate_booking_total(self.listing.price_per_year)
+        booking = Booking.objects.create(
+            tenant=self.tenant,
+            listing=self.listing,
+            start_date=date(2026, 6, 19),
+            end_date=date(2027, 6, 19),
+            total_amount=total_amount,
+            paid_amount=total_amount,
+        )
+        payment = Payment.objects.create(
+            booking=booking,
+            amount=total_amount,
+            payment_method="bank",
+            status="completed",
+            transaction_id="WORKERRECONCILESTATUS1",
+            provider="flutterwave",
+            currency="NGN",
+            payment_date=timezone.now() - timedelta(hours=25),
+        )
+        settlement = PaymentSettlement.objects.create(
+            payment=payment,
+            purpose=PaymentSettlement.Purpose.OPERATIONS,
+            amount=Decimal("120000.00"),
+            currency="NGN",
+            bank_name="Moniepoint",
+            account_number="8099446062",
+            account_name="RentDirect Operations",
+            transfer_reference="WORKERRECONCILESTATUS1-OPERATIONS",
+            status=PaymentSettlement.Status.PROCESSING,
+            transfer_payload={
+                "status": "success",
+                "data": {"id": "transfer_reconcile_123", "status": "NEW"},
+            },
+        )
+
+        call_command("process_ready_payouts")
+
+        settlement.refresh_from_db()
+        self.assertEqual(settlement.status, PaymentSettlement.Status.PAID)
+        self.assertIsNotNone(settlement.transferred_at)
+        self.assertEqual(settlement.transfer_payload["data"]["status"], "SUCCESSFUL")
+        retrieve_bank_transfer_mock.assert_called_once_with(transfer_id="transfer_reconcile_123")
 
     @override_settings(
         EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",

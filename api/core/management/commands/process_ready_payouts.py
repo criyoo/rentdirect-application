@@ -5,6 +5,7 @@ from core.views import (
     booking_is_fully_paid,
     booking_payout_balance_available,
     booking_payout_release_conditions_met,
+    reconcile_processing_payment_settlements,
     trigger_booking_payouts_if_ready,
 )
 
@@ -13,6 +14,7 @@ class Command(BaseCommand):
     help = "Process completed rent payments whose rental-progress payout conditions are now satisfied."
 
     def handle(self, *args, **options):
+        reconcile_processing_payment_settlements()
         checked_count = 0
         ready_count = 0
 

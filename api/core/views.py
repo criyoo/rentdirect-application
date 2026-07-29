@@ -77,6 +77,7 @@ from .flutterwave import (
     map_redirect_status,
     normalize_decimal_amount,
     query_transaction,
+    retrieve_bank_transfer,
     resolve_nigerian_payout_bank_code,
     should_use_v4,
     verify_webhook_signature,
@@ -1881,6 +1882,46 @@ def sync_payment_settlement_transfer(settlement: PaymentSettlement, payload: dic
             payload,
         )
     return settlement
+
+
+def reconcile_processing_payment_settlements(payment: Payment | None = None) -> int:
+    settlements = (
+        PaymentSettlement.objects
+        .filter(status=PaymentSettlement.Status.PROCESSING)
+        .exclude(transfer_reference="")
+        .select_related("payment")
+        .order_by("updated_at")
+    )
+    if payment is not None:
+        settlements = settlements.filter(payment_id=payment.pk)
+
+    reconciled_count = 0
+    for settlement in settlements:
+        transfer_id = extract_resource_id(settlement.transfer_payload)
+        if not transfer_id:
+            logger.warning(
+                "Payment settlement status reconciliation skipped because provider transfer id is missing. settlement_id=%s reference=%s",
+                settlement.id,
+                settlement.transfer_reference,
+            )
+            continue
+
+        try:
+            transfer_payload = retrieve_bank_transfer(transfer_id=transfer_id)
+        except FlutterwaveError as exc:
+            logger.warning(
+                "Payment settlement status reconciliation failed. settlement_id=%s reference=%s transfer_id=%s reason=%s",
+                settlement.id,
+                settlement.transfer_reference,
+                transfer_id,
+                exc,
+            )
+            continue
+
+        sync_payment_settlement_transfer(settlement, transfer_payload)
+        reconciled_count += 1
+
+    return reconciled_count
 
 
 def ensure_payment_settlement_records(payment: Payment) -> None:

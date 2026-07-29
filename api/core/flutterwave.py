@@ -9,7 +9,7 @@ import time
 from decimal import Decimal, InvalidOperation
 from functools import lru_cache
 from typing import Any
-from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+from urllib.parse import parse_qsl, quote, urlencode, urlparse, urlunparse
 
 import requests
 from django.conf import settings
@@ -863,6 +863,9 @@ def create_bank_transfer(
                     "bank_code": bank_code,
                 },
             }
+            callback_url = str(getattr(settings, "FLUTTERWAVE_WEBHOOK_URL", "") or "").strip()
+            if callback_url:
+                payload["callback_url"] = callback_url
             response = _request_json_v4(
                 method="POST",
                 path="/transfers",
@@ -896,6 +899,22 @@ def create_bank_transfer(
     if str(response.get("status") or "").lower() not in {"success", "successful"}:
         raise FlutterwaveError(_extract_gateway_error_message(json.dumps(response), "Flutterwave transfer request failed."))
     return response
+
+
+def retrieve_bank_transfer(*, transfer_id: str) -> dict[str, Any]:
+    normalized_transfer_id = str(transfer_id or "").strip()
+    if not normalized_transfer_id:
+        raise FlutterwaveError("Flutterwave transfer id is required to retrieve a transfer.")
+
+    path = f"/transfers/{quote(normalized_transfer_id, safe='')}"
+    if should_use_v4():
+        try:
+            return _request_json_v4(method="GET", path=path)
+        except FlutterwaveError:
+            if not str(getattr(settings, "FLUTTERWAVE_SECRET_KEY", "") or "").strip():
+                raise
+
+    return _request_json_v3(method="GET", path=path)
 
 
 def extract_resource_id(payload: dict[str, Any] | None) -> str:
