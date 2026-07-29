@@ -781,6 +781,17 @@ def create_transfer_recipient(
         "account_number": account_number,
     }
     for candidate_bank_code in nigerian_payout_bank_code_candidates(bank_name, bank_code):
+        try:
+            existing_recipient = find_transfer_recipient(
+                account_number=account_number,
+                bank_name=bank_name,
+                bank_code=candidate_bank_code,
+            )
+        except FlutterwaveError:
+            existing_recipient = None
+        if existing_recipient is not None:
+            return existing_recipient
+
         payload = {
             "type": "bank_ngn",
             "bank": {**bank_payload, "code": candidate_bank_code},
@@ -798,6 +809,17 @@ def create_transfer_recipient(
             )
         except FlutterwaveError as exc:
             last_error = exc
+            if "recipient already exists" in str(exc).lower():
+                try:
+                    existing_recipient = find_transfer_recipient(
+                        account_number=account_number,
+                        bank_name=bank_name,
+                        bank_code=candidate_bank_code,
+                    )
+                except FlutterwaveError:
+                    existing_recipient = None
+                if existing_recipient is not None:
+                    return existing_recipient
             if "invalid bank code" not in str(exc).lower() and "bank.code" not in str(exc).lower():
                 raise
     if last_error:
@@ -909,6 +931,70 @@ def extract_virtual_account_details(payload: dict[str, Any] | None) -> dict[str,
         "bank_code": str(data.get("bank_code") or bank.get("code") or account.get("bank_code") or "").strip(),
         "reference": str(data.get("reference") or data.get("tx_ref") or "").strip(),
     }
+
+
+def _normalize_account_number(value: Any) -> str:
+    return "".join(character for character in str(value or "") if character.isdigit())
+
+
+def _transfer_recipient_matches(
+    recipient: dict[str, Any],
+    *,
+    account_number: str,
+    bank_codes: list[str],
+) -> bool:
+    bank = recipient.get("bank") if isinstance(recipient.get("bank"), dict) else {}
+    recipient_account_number = _normalize_account_number(
+        recipient.get("account_number")
+        or recipient.get("accountNumber")
+        or bank.get("account_number")
+        or bank.get("accountNumber")
+    )
+    normalized_account_number = _normalize_account_number(account_number)
+    if not normalized_account_number or recipient_account_number != normalized_account_number:
+        return False
+
+    recipient_bank_code = str(
+        recipient.get("bank_code")
+        or recipient.get("bankCode")
+        or bank.get("code")
+        or bank.get("bank_code")
+        or ""
+    ).strip()
+    return not recipient_bank_code or not bank_codes or recipient_bank_code in bank_codes
+
+
+def find_transfer_recipient(
+    *,
+    account_number: str,
+    bank_name: str,
+    bank_code: str = "",
+) -> dict[str, Any] | None:
+    candidate_bank_codes = nigerian_payout_bank_code_candidates(bank_name, bank_code)
+    payload = _request_json_v4(
+        method="GET",
+        path=f"/transfers/recipients?{urlencode({'size': 50})}",
+    )
+    recipients = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(recipients, list):
+        return None
+
+    recipient = next(
+        (
+            item
+            for item in recipients
+            if isinstance(item, dict)
+            and _transfer_recipient_matches(
+                item,
+                account_number=account_number,
+                bank_codes=candidate_bank_codes,
+            )
+        ),
+        None,
+    )
+    if recipient is None:
+        return None
+    return {"status": "success", "data": recipient}
 
 
 def _request_json_v4(

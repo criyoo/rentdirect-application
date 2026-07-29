@@ -785,7 +785,8 @@ export default function RentPage() {
                                             </div>
                                         </div>
                                         <p className="mt-4 text-sm text-blue-800">
-                                            Transfer the exact amount to this account. Your booking updates automatically after Flutterwave confirms the payment.
+                                            Your booking updates automatically after payment is confirmed.<br />
+                                            Allow few seconds for confirmation of payment, do not leave the page.
                                         </p>
                                     </div>
                                     <div className="mt-4 flex flex-col gap-3 sm:flex-row">

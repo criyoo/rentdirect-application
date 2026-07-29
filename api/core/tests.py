@@ -2797,6 +2797,63 @@ class PaymentQueueTests(TestCase):
 
 class FlutterwaveTransferPayloadTests(TestCase):
     @patch("core.flutterwave._request_json_v4")
+    def test_transfer_recipient_reuses_existing_account(self, request_mock):
+        request_mock.return_value = {
+            "status": "success",
+            "data": [
+                {
+                    "id": "recipient_existing",
+                    "bank": {"account_number": "9041487757", "code": "100004"},
+                },
+            ],
+        }
+
+        recipient = flutterwave.create_transfer_recipient(
+            full_name="RentDirect Operations",
+            phone_number="08099446062",
+            bank_name="Opay",
+            bank_code="999992",
+            account_number="9041487757",
+            account_name="RentDirect Operations",
+            idempotency_key="recipient-existing-key",
+        )
+
+        self.assertEqual(recipient["data"]["id"], "recipient_existing")
+        request_mock.assert_called_once_with(
+            method="GET",
+            path="/transfers/recipients?size=50",
+        )
+
+    @patch("core.flutterwave._request_json_v4")
+    def test_transfer_recipient_recovers_from_existing_recipient_conflict(self, request_mock):
+        request_mock.side_effect = [
+            {"status": "success", "data": []},
+            FlutterwaveError("Recipient already exists."),
+            {
+                "status": "success",
+                "data": [
+                    {
+                        "id": "recipient_after_conflict",
+                        "bank": {"account_number": "9041487757", "code": "100004"},
+                    },
+                ],
+            },
+        ]
+
+        recipient = flutterwave.create_transfer_recipient(
+            full_name="RentDirect Operations",
+            phone_number="08099446062",
+            bank_name="Opay",
+            bank_code="999992",
+            account_number="9041487757",
+            account_name="RentDirect Operations",
+            idempotency_key="recipient-conflict-key",
+        )
+
+        self.assertEqual(recipient["data"]["id"], "recipient_after_conflict")
+        self.assertEqual(request_mock.call_args_list[1].kwargs["method"], "POST")
+
+    @patch("core.flutterwave._request_json_v4")
     def test_customer_phone_payload_uses_numeric_three_digit_country_code(self, request_mock):
         request_mock.return_value = {"status": "success", "data": {"id": "customer_123"}}
 

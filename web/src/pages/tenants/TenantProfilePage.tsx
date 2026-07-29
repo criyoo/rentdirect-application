@@ -71,6 +71,23 @@ function calculateAge(dateOfBirth?: string): number | undefined {
     return age >= 0 ? age : undefined
 }
 
+function currentResidenceMoveInDateIsAtLeastFiveYears(value?: unknown): boolean {
+    const rawValue = String(value || '').trim()
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(rawValue)) {
+        return false
+    }
+
+    const moveInDate = new Date(`${rawValue}T00:00:00`)
+    if (Number.isNaN(moveInDate.getTime())) {
+        return false
+    }
+
+    const threshold = new Date()
+    threshold.setHours(0, 0, 0, 0)
+    threshold.setFullYear(threshold.getFullYear() - 5)
+    return moveInDate <= threshold
+}
+
 function isEmptyValue(value: unknown): boolean {
     return value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0)
 }
@@ -288,7 +305,7 @@ function tenantProfileNeedsDetails(profile?: TenantProfileSummary['tenant_profil
     const householdInfo = profile.household_info || {}
     const criminalDeclaration = profile.criminal_declaration || {}
 
-    return [
+    const hasMissingDetails = [
         profile.residence_country,
         profile.residence_state,
         profile.residence_city,
@@ -297,7 +314,6 @@ function tenantProfileNeedsDetails(profile?: TenantProfileSummary['tenant_profil
         profile.length_of_stay,
         profile.housing_status,
         financialInfo.current_rent_amount,
-        financialInfo.current_service_charge,
         financialInfo.current_move_in_date,
         financialInfo.expected_move_out_date,
         financialInfo.reason_for_wanting_to_leave,
@@ -311,8 +327,12 @@ function tenantProfileNeedsDetails(profile?: TenantProfileSummary['tenant_profil
         criminalDeclaration.ongoing_tenancy_litigation,
         criminalDeclaration.rent_arrears_history,
         criminalDeclaration.legal_dispute_with_landlords,
-        profile.rental_history,
     ].some(isEmptyValue)
+
+    return hasMissingDetails || (
+        !currentResidenceMoveInDateIsAtLeastFiveYears(financialInfo.current_move_in_date)
+        && isEmptyValue(profile.rental_history)
+    )
 }
 
 function Section({ title, icon, children }: { title: string; icon: ReactNode; children: ReactNode }) {
@@ -342,9 +362,13 @@ export default function TenantProfilePage() {
         enabled: Boolean(tenantId) && !(isOwnTenantProfile && requestedEditMode),
         queryFn: async () => (await api.get<TenantProfileSummary>(`/users/tenants/${tenantId}/profile`)).data,
     })
+    const profileIsApproved = String(data?.tenant_profile?.status || '').trim().toLowerCase() === 'approved'
     const shouldShowEditForm = isOwnTenantProfile && (
         requestedEditMode
-        || (!isLoading && !isError && (!data?.profile_photo_url || tenantProfileNeedsDetails(data?.tenant_profile)))
+        || (!isLoading && !isError && (
+            !data?.profile_photo_url
+            || (!profileIsApproved && tenantProfileNeedsDetails(data?.tenant_profile))
+        ))
     )
 
     if (shouldShowEditForm) {
@@ -402,7 +426,6 @@ export default function TenantProfilePage() {
         ? [profile.first_name, profile.middle_name, profile.last_name].filter(Boolean).join(' ')
         : data.name
     const financialInfo = profile?.financial_info || {}
-    const profileIsApproved = String(profile?.status || '').trim().toLowerCase() === 'approved'
 
     return (
         <div className={`container-modern py-8 ${profileIsApproved ? '[&_p[data-detail-value]]:text-gray-500' : ''}`}>
