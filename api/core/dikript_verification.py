@@ -16,6 +16,8 @@ from django.core.cache import cache
 from django.utils.dateparse import parse_date
 from rest_framework.exceptions import APIException, ValidationError
 
+from .verification_records import get_verification_record_payload, store_verification_record_payload
+
 logger = logging.getLogger(__name__)
 
 
@@ -89,6 +91,15 @@ def dikript_lookup(*, verification_type: str, path: str, lookup_value: str, quer
     if isinstance(cached_payload, dict) and cached_payload.get("status") and isinstance(cached_payload.get("data"), dict):
         return cached_payload
 
+    database_payload = get_verification_record_payload(
+        provider="dikript",
+        verification_type=verification_type,
+        lookup_value=lookup_value,
+    )
+    if isinstance(database_payload, dict) and database_payload.get("status") and isinstance(database_payload.get("data"), dict):
+        cache.set(cache_key, database_payload, timeout=getattr(settings, "DIKRIPT_LOOKUP_CACHE_TIMEOUT_SECONDS", 86400))
+        return database_payload
+
     payload = dikript_get(path, query)
     if isinstance(payload, dict) and payload.get("status") and isinstance(payload.get("data"), dict):
         sanitized = json.loads(json.dumps(payload))
@@ -96,6 +107,12 @@ def dikript_lookup(*, verification_type: str, path: str, lookup_value: str, quer
         if isinstance(data, dict):
             data.pop("photo", None)
             data.pop("signature", None)
+        sanitized = store_verification_record_payload(
+            provider="dikript",
+            verification_type=verification_type,
+            lookup_value=lookup_value,
+            payload=sanitized,
+        )
         cache.set(cache_key, sanitized, timeout=getattr(settings, "DIKRIPT_LOOKUP_CACHE_TIMEOUT_SECONDS", 86400))
         return sanitized
     return payload

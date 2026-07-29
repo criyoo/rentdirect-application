@@ -51,12 +51,19 @@ type RecurringConfig = {
 }
 
 type BillingHistoryRecord = {
+    type: 'subscription' | 'rental'
     id: string
     amount: number | string
     currency: string
     status: string
     created_at: string
     title: string
+    transaction_id?: string | null
+    role?: BillingRole
+    plan_code?: PlanCode
+    billing_cycle?: BillingCycle
+    payment_date?: string | null
+    expires_at?: string | null
 }
 
 type PaginatedResponse<T> = {
@@ -114,7 +121,8 @@ const tenantSubscriptionBlueprints: PlanBlueprint[] = [
             'Rent property through RentDirect',
             'See property location and map',
             'Instant property enquiries',
-            'up to 3 days response time',
+            'Track rental progress',
+            'Up to 3 days response time',
         ],
     },
     {
@@ -129,7 +137,6 @@ const tenantSubscriptionBlueprints: PlanBlueprint[] = [
             'Everything in silver plan, plus:',
             'Access community chat room',
             'Review landlords',
-            'Track rental progress',
             'See property verification badge',
             'Priority issue handling',
             'Up to 24hrs response time',
@@ -250,6 +257,83 @@ function capitalizePlanName(planCode: PlanCode) {
     return planCode.charAt(0).toUpperCase() + planCode.slice(1)
 }
 
+function receiptValue(value?: string | number | null) {
+    const normalized = String(value ?? '').normalize('NFKD').replace(/[^\x20-\x7E]/g, ' ').replace(/\s+/g, ' ').trim()
+    return normalized || 'N/A'
+}
+
+function escapePdfText(value: string) {
+    return String(value ?? '')
+        .normalize('NFKD')
+        .replace(/[^\x20-\x7E]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/\\/g, '\\\\')
+        .replace(/\(/g, '\\(')
+        .replace(/\)/g, '\\)')
+}
+
+function formatReceiptDate(date: Date) {
+    return new Intl.DateTimeFormat('en-GB', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+    }).format(date)
+}
+
+function formatReceiptTime(date: Date) {
+    return new Intl.DateTimeFormat('en-GB', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+    }).format(date)
+}
+
+function formatReceiptCurrency(amount: number | string, currency = 'NGN') {
+    const normalizedCurrency = String(currency || 'NGN').toUpperCase()
+    try {
+        return new Intl.NumberFormat('en-NG', {
+            style: 'currency',
+            currency: normalizedCurrency,
+            currencyDisplay: 'code',
+        }).format(Number(amount || 0)).replace(/\s+/g, ' ')
+    } catch {
+        return `${normalizedCurrency} ${Number(amount || 0).toLocaleString('en-NG')}`
+    }
+}
+
+function buildReceiptPdf(lines: string[]) {
+    const stream = [
+        'BT',
+        '/F1 11 Tf',
+        '72 740 Td',
+        '15 TL',
+        ...lines.map((line) => `(${escapePdfText(line)}) Tj T*`),
+        'ET',
+    ].join('\n')
+    const objects = [
+        '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
+        '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
+        '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>\nendobj\n',
+        `4 0 obj\n<< /Length ${stream.length} >>\nstream\n${stream}\nendstream\nendobj\n`,
+        '5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n',
+    ]
+
+    let pdf = '%PDF-1.4\n'
+    const offsets: number[] = []
+    for (const object of objects) {
+        offsets.push(pdf.length)
+        pdf += object
+    }
+    const xrefOffset = pdf.length
+    pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`
+    pdf += offsets.map((offset) => `${String(offset).padStart(10, '0')} 00000 n \n`).join('')
+    pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`
+
+    return new Blob([pdf], { type: 'application/pdf' })
+}
+
 export default function BillingPage() {
     const navigate = useNavigate()
     const queryClient = useQueryClient()
@@ -326,14 +410,22 @@ export default function BillingPage() {
     const billingHistory = useMemo<BillingHistoryRecord[]>(
         () => [
             ...subscriptionPayments.map((payment) => ({
+                type: 'subscription' as const,
                 id: payment.id,
                 amount: payment.amount,
                 currency: payment.currency,
                 status: payment.status,
                 created_at: payment.created_at,
                 title: `${payment.plan_code.charAt(0).toUpperCase()}${payment.plan_code.slice(1)} ${payment.billing_cycle} subscription`,
+                transaction_id: payment.transaction_id,
+                role: payment.role,
+                plan_code: payment.plan_code,
+                billing_cycle: payment.billing_cycle,
+                payment_date: payment.payment_date,
+                expires_at: payment.expires_at,
             })),
             ...payments.map((payment) => ({
+                type: 'rental' as const,
                 id: payment.id,
                 amount: payment.amount,
                 currency: payment.currency,
@@ -600,6 +692,54 @@ export default function BillingPage() {
 
         startSubscriptionCheckout.mutate({ planCode: plan.code, cycle })
     }
+
+    const downloadSubscriptionReceipt = (payment: BillingHistoryRecord) => {
+        if (payment.type !== 'subscription') {
+            return
+        }
+
+        const rawPaymentDate = new Date(payment.payment_date || payment.created_at)
+        const receiptDate = Number.isNaN(rawPaymentDate.getTime()) ? new Date() : rawPaymentDate
+        const receiptLines = [
+            'RENTDIRECT - SUBSCRIPTION RECEIPT',
+            '==================================',
+            '',
+            'TRANSACTION DETAILS:',
+            `Receipt No: ${receiptValue(payment.id)}`,
+            `Transaction ID: ${receiptValue(payment.transaction_id)}`,
+            `Date: ${formatReceiptDate(receiptDate)}`,
+            `Time: ${formatReceiptTime(receiptDate)}`,
+            '',
+            'SUBSCRIPTION DETAILS:',
+            `Plan: ${receiptValue(payment.plan_code ? capitalizePlanName(payment.plan_code) : null)}`,
+            `Billing Cycle: ${receiptValue(payment.billing_cycle)}`,
+            `Role: ${receiptValue(payment.role)}`,
+            `Status: ${receiptValue(payment.status).toUpperCase()}`,
+            `Expires At: ${payment.expires_at ? receiptValue(new Date(payment.expires_at).toLocaleString()) : 'N/A'}`,
+            '',
+            'PAYMENT DETAILS:',
+            `Amount Paid: ${formatReceiptCurrency(payment.amount, payment.currency)}`,
+            `Currency: ${receiptValue(payment.currency).toUpperCase()}`,
+            '',
+            'CUSTOMER DETAILS:',
+            `Name: ${receiptValue(me?.name)}`,
+            `Email: ${receiptValue(me?.email)}`,
+            '',
+            '==================================',
+            'Thank you for using RentDirect!',
+        ]
+
+        const blob = buildReceiptPdf(receiptLines)
+        const url = window.URL.createObjectURL(blob)
+        const anchor = document.createElement('a')
+        anchor.href = url
+        anchor.download = `subscription-receipt-${payment.id}-${receiptDate.toISOString().split('T')[0]}.pdf`
+        document.body.appendChild(anchor)
+        anchor.click()
+        document.body.removeChild(anchor)
+        window.URL.revokeObjectURL(url)
+    }
+
     const comparisonRows = useMemo(
         () => {
             if (!subscriptionPricing) {
@@ -1028,10 +1168,23 @@ export default function BillingPage() {
                                             <p className="mt-1 text-xs text-slate-500">#{payment.id}</p>
                                             <p className="mt-1 text-sm text-slate-600">{new Date(payment.created_at).toLocaleString()}</p>
                                         </div>
-                                        <div className="text-sm text-slate-700">{formatCurrencyWithSymbol(payment.amount)} {payment.currency.toUpperCase()}</div>
-                                        <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-700">
-                                            {payment.status}
-                                        </span>
+                                        <div className="flex flex-col gap-3 md:items-end">
+                                            <div className="text-sm text-slate-700">{formatCurrencyWithSymbol(payment.amount)} {payment.currency.toUpperCase()}</div>
+                                            <div className="flex flex-wrap items-center gap-2 md:justify-end">
+                                                <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-700">
+                                                    {payment.status}
+                                                </span>
+                                                {payment.type === 'subscription' && payment.status === 'completed' && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => downloadSubscriptionReceipt(payment)}
+                                                        className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 transition hover:bg-blue-100"
+                                                    >
+                                                        Download Receipt
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
                                     </div>
                                 ))}
                             </div>

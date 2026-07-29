@@ -112,6 +112,10 @@ class AppUser(AbstractBaseUser, PermissionsMixin):
             ).exists()
 
         tenant_profile = getattr(self, "tenant_profile", None)
+        if self.role == self.Role.TENANT and self.verification_requests.filter(
+            identity_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
+        ).exists():
+            return True
         if tenant_profile and tenant_profile.status == TenantProfile.Status.APPROVED:
             return True
 
@@ -565,6 +569,73 @@ class VerificationRequest(models.Model):
         ]
         constraints = [
             models.UniqueConstraint(fields=["user"], name="core_verify_unique_user"),
+        ]
+
+
+class VerificationRecordProvider(models.TextChoices):
+    DIKRIPT = "dikript", "Dikript"
+    PREMBLY = "prembly", "Prembly"
+
+
+class _VerificationLookupRecord(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    provider = models.CharField(max_length=32, choices=VerificationRecordProvider.choices)
+    response_payload = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        abstract = True
+
+
+class NinVerificationRecord(_VerificationLookupRecord):
+    nin = models.CharField(max_length=80)
+
+    def __str__(self) -> str:
+        return f"{self.provider}: {self.nin}"
+
+    class Meta:
+        ordering = ["-updated_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["provider", "nin"], name="core_ninvr_provider_nin_uniq"),
+        ]
+        indexes = [
+            models.Index(fields=["nin"], name="core_ninvr_nin_idx"),
+            models.Index(fields=["provider", "-updated_at"], name="core_ninvr_provider_upd_idx"),
+        ]
+
+
+class BvnVerificationRecord(_VerificationLookupRecord):
+    bvn = models.CharField(max_length=80)
+
+    def __str__(self) -> str:
+        return f"{self.provider}: {self.bvn}"
+
+    class Meta:
+        ordering = ["-updated_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["provider", "bvn"], name="core_bvnvr_provider_bvn_uniq"),
+        ]
+        indexes = [
+            models.Index(fields=["bvn"], name="core_bvnvr_bvn_idx"),
+            models.Index(fields=["provider", "-updated_at"], name="core_bvnvr_provider_upd_idx"),
+        ]
+
+
+class CacVerificationRecord(_VerificationLookupRecord):
+    registration_number = models.CharField(max_length=120)
+
+    def __str__(self) -> str:
+        return f"{self.provider}: {self.registration_number}"
+
+    class Meta:
+        ordering = ["-updated_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["provider", "registration_number"], name="core_cacvr_provider_reg_uniq"),
+        ]
+        indexes = [
+            models.Index(fields=["registration_number"], name="core_cacvr_reg_idx"),
+            models.Index(fields=["provider", "-updated_at"], name="core_cacvr_provider_upd_idx"),
         ]
 
 

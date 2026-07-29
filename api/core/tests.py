@@ -24,7 +24,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from core import flutterwave
 from core.management.commands.seed_demo_data import Command as SeedDemoDataCommand
 from core.flutterwave import FlutterwaveError
-from core.models import AppUser, Booking, CommunityChatMessage, Document, Feedback, FeaturedPayment, Listing, ListingImage, Message, Payment, PaymentSettlement, Review, SubscriptionPayment, SubscriptionPaymentMethod, SupportChatMessage, TenantProfile, VerificationRequest
+from core.models import AppUser, Booking, BvnVerificationRecord, CacVerificationRecord, CommunityChatMessage, Document, Feedback, FeaturedPayment, Listing, ListingImage, Message, NinVerificationRecord, Payment, PaymentSettlement, Review, SubscriptionPayment, SubscriptionPaymentMethod, SupportChatMessage, TenantProfile, VerificationRequest
 from core.payment_queue import TASK_PROCESS_READY_PAYOUTS, enqueue_payment_task
 from core.prembly_verification import (
     PremblyWebhookVerificationError,
@@ -296,6 +296,19 @@ class AuthViewSetTests(TestCase):
 
 
 class ListingTests(TestCase):
+    def tenant_client_with_plan(self, plan_code, suffix):
+        tenant = AppUser.objects.create_user(
+            email=f"listing-{suffix}@example.com",
+            password="password-123",
+            name="Listing Plan Tenant",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        create_active_subscription(tenant, plan_code)
+        client = APIClient()
+        client.force_authenticate(user=tenant)
+        return client
+
     def test_public_listing_search_returns_available_listings(self):
         landlord = AppUser.objects.create_user(
             email="landlord@example.com",
@@ -462,7 +475,8 @@ class ListingTests(TestCase):
             price_per_year=3500000,
         )
 
-        response = self.client.get("/api/v1/listings/search?latitude=6.4281&longitude=3.4219&radius_km=5")
+        client = self.tenant_client_with_plan(SubscriptionPayment.PlanCode.SILVER, "stored-distance")
+        response = client.get("/api/v1/listings/search?latitude=6.4281&longitude=3.4219&radius_km=5")
 
         self.assertEqual(response.status_code, 200, response.json())
         payload = response.json()
@@ -492,7 +506,8 @@ class ListingTests(TestCase):
             price_per_year=3000000,
         )
 
-        response = self.client.get("/api/v1/listings/search?latitude=6.4541&longitude=3.4351&radius_km=2")
+        client = self.tenant_client_with_plan(SubscriptionPayment.PlanCode.SILVER, "city-coordinates")
+        response = client.get("/api/v1/listings/search?latitude=6.4541&longitude=3.4351&radius_km=2")
 
         self.assertEqual(response.status_code, 200, response.json())
         payload = response.json()
@@ -534,7 +549,8 @@ class ListingTests(TestCase):
             price_per_year=2500000,
         )
 
-        response = self.client.get("/api/v1/listings/search?origin_city=Apapa&origin_state=Lagos&radius_km=25")
+        client = self.tenant_client_with_plan(SubscriptionPayment.PlanCode.SILVER, "origin-distance")
+        response = client.get("/api/v1/listings/search?origin_city=Apapa&origin_state=Lagos&radius_km=25")
 
         self.assertEqual(response.status_code, 200, response.json())
         payload = response.json()
@@ -564,7 +580,8 @@ class ListingTests(TestCase):
             price_per_year=3000000,
         )
 
-        response = self.client.get("/api/v1/listings/search?city=Apapa&state=Lagos&radius_km=25")
+        client = self.tenant_client_with_plan(SubscriptionPayment.PlanCode.SILVER, "filter-origin")
+        response = client.get("/api/v1/listings/search?city=Apapa&state=Lagos&radius_km=25")
 
         self.assertEqual(response.status_code, 200, response.json())
         payload = response.json()
@@ -606,7 +623,8 @@ class ListingTests(TestCase):
             price_per_year=4000000,
         )
 
-        response = self.client.get("/api/v1/listings/location-analytics")
+        client = self.tenant_client_with_plan(SubscriptionPayment.PlanCode.SILVER, "analytics")
+        response = client.get("/api/v1/listings/location-analytics")
 
         self.assertEqual(response.status_code, 200, response.json())
         payload = response.json()
@@ -642,13 +660,114 @@ class ListingTests(TestCase):
             price_per_year=3500000,
         )
 
-        response = self.client.get(f"/api/v1/listings/{listing.id}/nearest-amenities?radius_km=15&limit=2")
+        client = self.tenant_client_with_plan(SubscriptionPayment.PlanCode.SILVER, "amenities")
+        response = client.get(f"/api/v1/listings/{listing.id}/nearest-amenities?radius_km=15&limit=2")
 
         self.assertEqual(response.status_code, 200, response.json())
         payload = response.json()
         self.assertTrue(payload["location_available"])
         self.assertGreaterEqual(len(payload["amenities"]["schools"]), 1)
         self.assertGreaterEqual(len(payload["amenities"]["supermarkets"]), 1)
+
+    def test_tenant_plan_tiers_control_location_and_property_verification_visibility(self):
+        landlord = AppUser.objects.create_user(
+            email="listing-visibility-landlord@example.com",
+            password="password-123",
+            name="Visibility Landlord",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+        )
+        listing = Listing.objects.create(
+            landlord=landlord,
+            title="Visibility Listing",
+            description="Plan visibility checks",
+            address="10 Premium Location",
+            city="Ikoyi",
+            state="Lagos",
+            postal_code="100001",
+            latitude=Decimal("6.454100"),
+            longitude=Decimal("3.435100"),
+            property_type="Apartment",
+            bedrooms=2,
+            bathrooms=2,
+            price_per_year=3000000,
+            property_document_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
+            physical_property_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
+        )
+
+        public_payload = self.client.get(f"/api/v1/listings/{listing.id}").json()
+        self.assertEqual(public_payload["address"], "")
+        self.assertEqual(public_payload["city"], "")
+        self.assertIsNone(public_payload["latitude"])
+        self.assertIsNone(public_payload["property_document_verification_status"])
+
+        bronze_client = self.tenant_client_with_plan(SubscriptionPayment.PlanCode.BRONZE, "bronze-visibility")
+        bronze_payload = bronze_client.get(f"/api/v1/listings/{listing.id}").json()
+        self.assertEqual(bronze_payload["address"], "")
+        self.assertEqual(bronze_payload["city"], "")
+        self.assertIsNone(bronze_payload["property_document_verification_status"])
+
+        silver_client = self.tenant_client_with_plan(SubscriptionPayment.PlanCode.SILVER, "silver-visibility")
+        silver_payload = silver_client.get(f"/api/v1/listings/{listing.id}").json()
+        self.assertEqual(silver_payload["address"], listing.address)
+        self.assertEqual(silver_payload["city"], listing.city)
+        self.assertIsNone(silver_payload["property_document_verification_status"])
+
+        gold_client = self.tenant_client_with_plan(SubscriptionPayment.PlanCode.GOLD, "gold-visibility")
+        gold_payload = gold_client.get(f"/api/v1/listings/{listing.id}").json()
+        self.assertEqual(gold_payload["address"], listing.address)
+        self.assertEqual(
+            gold_payload["property_document_verification_status"],
+            VerificationRequest.VerificationProgressStatus.VERIFIED,
+        )
+
+        platinum_client = self.tenant_client_with_plan(
+            SubscriptionPayment.PlanCode.PLATINUM,
+            "platinum-visibility",
+        )
+        platinum_payload = platinum_client.get(f"/api/v1/listings/{listing.id}").json()
+        self.assertEqual(platinum_payload["address"], listing.address)
+        self.assertEqual(
+            platinum_payload["property_document_verification_status"],
+            VerificationRequest.VerificationProgressStatus.VERIFIED,
+        )
+
+    def test_bronze_tenant_cannot_use_paid_location_endpoints(self):
+        landlord = AppUser.objects.create_user(
+            email="listing-location-lock-landlord@example.com",
+            password="password-123",
+            name="Location Lock Landlord",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+        )
+        listing = Listing.objects.create(
+            landlord=landlord,
+            title="Location Lock Listing",
+            description="Location endpoints are gated",
+            address="12 Locked Road",
+            city="Ikoyi",
+            state="Lagos",
+            latitude=Decimal("6.454100"),
+            longitude=Decimal("3.435100"),
+            property_type="Apartment",
+            bedrooms=2,
+            bathrooms=2,
+            price_per_year=3000000,
+        )
+        client = self.tenant_client_with_plan(SubscriptionPayment.PlanCode.BRONZE, "location-lock")
+
+        distance_response = client.get(
+            "/api/v1/listings/search?latitude=6.4541&longitude=3.4351&radius_km=5"
+        )
+        analytics_response = client.get("/api/v1/listings/location-analytics")
+        amenities_response = client.get(f"/api/v1/listings/{listing.id}/nearest-amenities")
+        cities_response = client.get("/api/v1/listings/cities")
+
+        self.assertEqual(distance_response.status_code, 403)
+        self.assertEqual(analytics_response.status_code, 403)
+        self.assertEqual(amenities_response.status_code, 403)
+        self.assertEqual(cities_response.status_code, 200)
+        self.assertEqual(cities_response.json(), [])
 
     def test_landlord_cannot_retrieve_another_landlords_listing_detail(self):
         owner = AppUser.objects.create_user(
@@ -1752,7 +1871,225 @@ class VerificationRequestViewSetTests(TestCase):
             "verification_status": "verified",
         }
 
-    @patch("core.dikript.dikript_lookup")
+    def _complete_tenant_profile_payload(self):
+        return {
+            "nin_number": "12345678901",
+            "bvn_number": "22347235093",
+            "first_name": "Christian",
+            "middle_name": "Odezi",
+            "last_name": "Aluya",
+            "date_of_birth": "1977-02-06",
+            "gender": "Male",
+            "nationality": "Nigerian",
+            "state_of_origin": "Delta",
+            "lga": "Isoko North",
+            "employment_status": "Employed",
+            "residence_country": "Nigeria",
+            "residence_state": "Lagos",
+            "residence_city": "Ikeja",
+            "residence_lga": "Ikeja",
+            "residence_address": "10 Marina Road",
+            "length_of_stay": "3 years",
+            "housing_status": "Rented",
+            "financial_info": {
+                "current_rent_amount": "1200000",
+                "current_service_charge": "",
+                "current_move_in_date": "2024-01-01",
+                "expected_move_out_date": "2026-01-01",
+                "reason_for_wanting_to_leave": "Need more space",
+            },
+            "employment_info": {
+                "company_name": "Acme Limited",
+                "company_contact_number": "09080350066",
+                "industry": "Technology",
+                "employment_type": "Full-time",
+                "employment_start_date": "2020-01-01",
+                "position_job_title": "Product Manager",
+                "company_address": "22 Broad Street",
+                "company_website": "https://acme.example",
+                "hr_contact_name": "Ada Manager",
+                "hr_email": "hr@acme.example",
+                "hr_contact_phone": "09080350066",
+            },
+            "guarantor_details": {
+                "full_name": "Jane Guarantor",
+                "relationship": "Sibling",
+                "email": "jane@example.com",
+                "mobile_number": "09080350066",
+                "occupation": "Accountant",
+                "employer": "Audit House",
+                "residential_address": "15 Guarantee Close",
+            },
+            "landlord_info": {
+                "name": "Current Landlord",
+                "mobile": "09080350066",
+                "email": "landlord@example.com",
+                "address": "10 Marina Road",
+                "property_manager_name": "Property Manager",
+                "property_manager_phone": "09080350066",
+                "property_manager_email": "manager@example.com",
+                "property_manager_address": "10 Marina Road",
+            },
+            "rental_history": [
+                {
+                    "property_address": "8 Old Street",
+                    "annual_rent": "900000",
+                    "service_charge": "90000",
+                    "move_in_date": "2021-01-01",
+                    "move_out_date": "2023-12-31",
+                    "reason_for_leave": "Lease ended",
+                }
+            ],
+            "household_info": {
+                "marital_status": "Single",
+                "number_of_adults": "1",
+                "number_of_children": "0",
+                "has_pets": False,
+                "work_from_home": False,
+                "commercial_activities_at_home": False,
+                "has_smokers": False,
+            },
+            "criminal_declaration": {
+                "convicted_of_crime": False,
+                "evicted_from_property": False,
+                "ongoing_tenancy_litigation": False,
+                "rent_arrears_history": False,
+                "legal_dispute_with_landlords": False,
+            },
+        }
+
+    def _tenant_employment_document_ids(self, user):
+        documents = [
+            Document.objects.create(
+                owner=user,
+                title=title,
+                file=SimpleUploadedFile(f"{title.lower().replace(' ', '-')}.pdf", b"test", content_type="application/pdf"),
+            )
+            for title in ("Employment Letter", "Staff ID")
+        ]
+        return [str(document.id) for document in documents]
+
+    def test_dikript_lookup_stores_successful_nin_bvn_and_cac_records(self):
+        from core.dikript_verification import dikript_lookup
+
+        cache.clear()
+        self.addCleanup(cache.clear)
+        nin_payload = self._nin_payload()
+        nin_payload["data"]["photo"] = "base64-photo"
+        with patch("core.dikript_verification.dikript_get", side_effect=[nin_payload, self._bvn_payload(), self._cac_payload()]):
+            dikript_lookup(verification_type="nin", path="/nin", lookup_value="12345678901", query={"nin": "12345678901"})
+            dikript_lookup(verification_type="bvn", path="/bvn", lookup_value="22347235093", query={"bvn": "22347235093"})
+            dikript_lookup(verification_type="cac", path="/cac", lookup_value="9463122", query={"regNumber": "9463122"})
+
+        nin_record = NinVerificationRecord.objects.get(provider="dikript", nin="12345678901")
+        bvn_record = BvnVerificationRecord.objects.get(provider="dikript", bvn="22347235093")
+        cac_record = CacVerificationRecord.objects.get(provider="dikript", registration_number="9463122")
+        self.assertEqual(nin_record.response_payload["data"]["nin"], "12345678901")
+        self.assertNotIn("photo", nin_record.response_payload["data"])
+        self.assertEqual(bvn_record.response_payload["data"]["bvn"], "22347235093")
+        self.assertEqual(cac_record.response_payload["data"]["rcNumber"], "9463122")
+
+    def test_dikript_lookup_uses_cache_before_database_or_api(self):
+        from core.dikript_verification import dikript_lookup
+
+        cache.clear()
+        self.addCleanup(cache.clear)
+        lookup_hash = hashlib.sha256("12345678901".encode("utf-8")).hexdigest()
+        cache.set(f"dikript_lookup:nin:{lookup_hash}", self._nin_payload(nin="99999999999"))
+
+        with (
+            patch("core.dikript_verification.get_verification_record_payload") as record_lookup_mock,
+            patch("core.dikript_verification.dikript_get") as dikript_get_mock,
+        ):
+            payload = dikript_lookup(
+                verification_type="nin",
+                path="/nin",
+                lookup_value="12345678901",
+                query={"nin": "12345678901"},
+            )
+
+        self.assertFalse(record_lookup_mock.called)
+        self.assertFalse(dikript_get_mock.called)
+        self.assertEqual(payload["data"]["nin"], "99999999999")
+
+    def test_dikript_lookup_uses_database_when_cache_misses(self):
+        from core.dikript_verification import dikript_lookup
+
+        cache.clear()
+        self.addCleanup(cache.clear)
+        NinVerificationRecord.objects.create(
+            provider="dikript",
+            nin="12345678901",
+            response_payload=self._nin_payload(nin="12345678901"),
+        )
+
+        with patch("core.dikript_verification.dikript_get") as dikript_get_mock:
+            payload = dikript_lookup(
+                verification_type="nin",
+                path="/nin",
+                lookup_value="12345678901",
+                query={"nin": "12345678901"},
+            )
+
+        self.assertFalse(dikript_get_mock.called)
+        self.assertEqual(payload["data"]["nin"], "12345678901")
+
+    def test_prembly_lookup_uses_cache_before_database_or_api(self):
+        from core.prembly_verification import prembly_lookup
+
+        cache.clear()
+        self.addCleanup(cache.clear)
+        cached_payload = self._prembly_cac_payload()
+        cached_payload["data"]["company_name"] = "CACHE COMPANY LIMITED"
+        lookup_hash = hashlib.sha256("RC:9629888".encode("utf-8")).hexdigest()
+        cache.set(f"prembly_lookup:cac:{lookup_hash}", cached_payload)
+
+        with (
+            patch("core.prembly_verification.get_verification_record_payload") as record_lookup_mock,
+            patch("core.prembly_verification.prembly_post") as prembly_post_mock,
+        ):
+            payload = prembly_lookup(
+                verification_type="cac",
+                path="/cac",
+                lookup_value="RC:9629888",
+                body={"rc_number": "9629888", "company_type": "RC"},
+            )
+
+        self.assertFalse(record_lookup_mock.called)
+        self.assertFalse(prembly_post_mock.called)
+        self.assertEqual(payload["data"]["company_name"], "CACHE COMPANY LIMITED")
+
+    def test_prembly_lookup_stores_and_reuses_successful_database_record(self):
+        from core.prembly_verification import prembly_lookup
+
+        cache.clear()
+        self.addCleanup(cache.clear)
+        with patch("core.prembly_verification.prembly_post", return_value=self._prembly_cac_payload()) as prembly_post_mock:
+            payload = prembly_lookup(
+                verification_type="cac",
+                path="/cac",
+                lookup_value="RC:9629888",
+                body={"rc_number": "9629888", "company_type": "RC"},
+            )
+
+        self.assertEqual(prembly_post_mock.call_count, 1)
+        self.assertEqual(payload["data"]["rc_number"], "9629888")
+        record = CacVerificationRecord.objects.get(provider="prembly", registration_number="RC:9629888")
+        self.assertEqual(record.response_payload["data"]["company_name"], "SUMMITROCK LIMITED")
+
+        cache.clear()
+        with patch("core.prembly_verification.prembly_post") as prembly_post_mock:
+            payload = prembly_lookup(
+                verification_type="cac",
+                path="/cac",
+                lookup_value="RC:9629888",
+                body={"rc_number": "9629888", "company_type": "RC"},
+            )
+
+        self.assertFalse(prembly_post_mock.called)
+        self.assertEqual(payload["data"]["rc_number"], "9629888")
+
+    @patch("core.dikript_verification.dikript_lookup")
     def test_tenant_profile_submission_verifies_nin_and_bvn(self, dikript_lookup_mock):
         dikript_lookup_mock.side_effect = [self._nin_payload(), self._bvn_payload()]
         user = AppUser.objects.create_user(
@@ -1793,8 +2130,74 @@ class VerificationRequestViewSetTests(TestCase):
         self.assertEqual(user.tenant_verification_profile["nin_number"], "12345678901")
         self.assertEqual(user.tenant_verification_profile["bvn_number"], "22347235093")
         request = VerificationRequest.objects.get(user=user)
+        profile = TenantProfile.objects.get(user=user)
+        self.assertEqual(profile.status, TenantProfile.Status.PENDING)
+        self.assertEqual(request.status, VerificationRequest.Status.APPROVED)
         self.assertEqual(request.identity_verification_status, VerificationRequest.VerificationProgressStatus.VERIFIED)
         self.assertEqual(request.verification_method, VerificationRequest.Method.AUTOMATED)
+        self.assertIsNotNone(request.submitted_at)
+        self.assertIsNotNone(request.reviewed_at)
+        user.refresh_from_db()
+        self.assertTrue(user.is_verified)
+
+    @patch("core.dikript_verification.dikript_lookup")
+    def test_complete_tenant_profile_submission_is_automatically_approved(self, dikript_lookup_mock):
+        dikript_lookup_mock.side_effect = [self._nin_payload(), self._bvn_payload()]
+        user = AppUser.objects.create_user(
+            email="tenant-auto-approved@example.com",
+            password="password-123",
+            name="Tenant Auto Approved",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+            mobile="09080350066",
+        )
+        client = APIClient()
+        client.force_authenticate(user=user)
+        payload = self._complete_tenant_profile_payload()
+        payload["document_ids"] = self._tenant_employment_document_ids(user)
+
+        response = client.post(
+            "/api/v1/users/me/tenant-profile",
+            payload,
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.json())
+        self.assertEqual(response.json()["status"], TenantProfile.Status.APPROVED)
+        profile = TenantProfile.objects.get(user=user)
+        self.assertEqual(profile.status, TenantProfile.Status.APPROVED)
+        request = VerificationRequest.objects.get(user=user)
+        self.assertEqual(request.status, VerificationRequest.Status.APPROVED)
+        self.assertEqual(request.identity_verification_status, VerificationRequest.VerificationProgressStatus.VERIFIED)
+        self.assertEqual(request.verification_method, VerificationRequest.Method.AUTOMATED)
+        self.assertIsNotNone(request.reviewed_at)
+
+    @patch("core.dikript_verification.dikript_lookup")
+    def test_complete_tenant_profile_with_five_year_current_residence_does_not_require_rental_history(self, dikript_lookup_mock):
+        dikript_lookup_mock.side_effect = [self._nin_payload(), self._bvn_payload()]
+        user = AppUser.objects.create_user(
+            email="tenant-five-year-residence@example.com",
+            password="password-123",
+            name="Tenant Five Year Residence",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+            mobile="09080350066",
+        )
+        client = APIClient()
+        client.force_authenticate(user=user)
+        payload = self._complete_tenant_profile_payload()
+        payload["financial_info"]["current_move_in_date"] = "2018-01-01"
+        payload["rental_history"] = []
+        payload["document_ids"] = self._tenant_employment_document_ids(user)
+
+        response = client.post(
+            "/api/v1/users/me/tenant-profile",
+            payload,
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.json())
+        self.assertEqual(response.json()["status"], TenantProfile.Status.APPROVED)
 
     @override_settings(VERIFICATION_SERVICE="prembly")
     @patch("core.prembly_verification.prembly_lookup")
@@ -1833,7 +2236,51 @@ class VerificationRequestViewSetTests(TestCase):
         self.assertEqual(prembly_lookup_mock.call_args_list[0].kwargs["body"], {"number_nin": "91231161558"})
         self.assertEqual(prembly_lookup_mock.call_args_list[1].kwargs["body"], {"number": "22347235093"})
 
-    @patch("core.dikript.dikript_lookup")
+    @patch("core.dikript_verification.dikript_lookup")
+    def test_tenant_identification_request_is_automated_without_manual_review(self, dikript_lookup_mock):
+        dikript_lookup_mock.side_effect = [self._nin_payload(), self._bvn_payload()]
+        user = AppUser.objects.create_user(
+            email="tenant-automated-verification@example.com",
+            password="password-123",
+            name="Tenant Automated Verification",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+            mobile="09080350066",
+            tenant_verification_profile={
+                "first_name": "Christian",
+                "middle_name": "Odezi",
+                "last_name": "Aluya",
+                "date_of_birth": "1977-02-06",
+                "gender": "Male",
+                "nationality": "Nigerian",
+                "state_of_origin": "Delta",
+                "lga": "Isoko North",
+                "employment_status": "Employed",
+                "nin_number": "12345678901",
+                "bvn_number": "22347235093",
+            },
+        )
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        response = client.post(
+            "/api/v1/tenant-verification-requests/submit",
+            {"document_ids": [], "request_type": "identification"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.json())
+        request = VerificationRequest.objects.get(user=user)
+        self.assertEqual(response.json()["status"], VerificationRequest.Status.APPROVED)
+        self.assertEqual(request.status, VerificationRequest.Status.APPROVED)
+        self.assertEqual(request.identity_verification_status, VerificationRequest.VerificationProgressStatus.VERIFIED)
+        self.assertEqual(request.verification_method, VerificationRequest.Method.AUTOMATED)
+        self.assertIsNotNone(request.submitted_at)
+        self.assertIsNotNone(request.reviewed_at)
+        user.refresh_from_db()
+        self.assertTrue(user.is_verified)
+
+    @patch("core.dikript_verification.dikript_lookup")
     def test_tenant_profile_submission_reuses_preverified_tenant_identity(self, dikript_lookup_mock):
         user = AppUser.objects.create_user(
             email="seeded-tenant@example.com",
@@ -1885,7 +2332,7 @@ class VerificationRequestViewSetTests(TestCase):
         self.assertEqual(response.status_code, 201, response.json())
         self.assertFalse(dikript_lookup_mock.called)
 
-    @patch("core.dikript.dikript_lookup")
+    @patch("core.dikript_verification.dikript_lookup")
     def test_tenant_profile_submission_rejects_mismatched_bvn(self, dikript_lookup_mock):
         dikript_lookup_mock.side_effect = [self._nin_payload(), self._bvn_payload()]
         user = AppUser.objects.create_user(
@@ -1921,7 +2368,7 @@ class VerificationRequestViewSetTests(TestCase):
         self.assertIn("lga", response.json())
         self.assertFalse(TenantProfile.objects.filter(user=user).exists())
 
-    @patch("core.dikript.dikript_lookup")
+    @patch("core.dikript_verification.dikript_lookup")
     def test_landlord_individual_identification_verifies_nin_and_bvn(self, dikript_lookup_mock):
         dikript_lookup_mock.side_effect = [self._nin_payload(), self._bvn_payload()]
         user = AppUser.objects.create_user(
@@ -1937,13 +2384,17 @@ class VerificationRequestViewSetTests(TestCase):
                 "middle_name": "Odezi",
                 "last_name": "Aluya",
                 "date_of_birth": "1977-02-06",
+                "country_of_birth": "Nigeria",
+                "state_of_birth": "Delta",
                 "gender": "Male",
                 "nationality": "Nigerian",
                 "state_of_origin": "Delta",
                 "lga_of_origin": "Isoko North",
                 "contact_number": "09080350066",
+                "email": "landlord-dikript@example.com",
                 "nin": "12345678901",
                 "bvn": "22347235093",
+                "residential_address": "10 Marina Road",
             },
         )
         client = APIClient()
@@ -1960,9 +2411,13 @@ class VerificationRequestViewSetTests(TestCase):
         self.assertEqual(user.nin_number, "12345678901")
         self.assertEqual(user.bvn_number, "22347235093")
         request = VerificationRequest.objects.get(user=user)
+        self.assertEqual(response.json()["status"], VerificationRequest.Status.APPROVED)
+        self.assertEqual(request.status, VerificationRequest.Status.APPROVED)
         self.assertEqual(request.identity_verification_status, VerificationRequest.VerificationProgressStatus.VERIFIED)
+        self.assertEqual(request.verification_method, VerificationRequest.Method.AUTOMATED)
+        self.assertIsNotNone(request.reviewed_at)
 
-    @patch("core.dikript.dikript_lookup")
+    @patch("core.dikript_verification.dikript_lookup")
     def test_landlord_identification_ignores_bvn_phone_when_nin_phone_matches(self, dikript_lookup_mock):
         dikript_lookup_mock.side_effect = [
             self._nin_payload(phone="09080350066"),
@@ -2003,7 +2458,7 @@ class VerificationRequestViewSetTests(TestCase):
         self.assertEqual(dikript_lookup_mock.call_args_list[0].kwargs["verification_type"], "nin")
         self.assertEqual(dikript_lookup_mock.call_args_list[1].kwargs["verification_type"], "bvn")
 
-    @patch("core.dikript.dikript_lookup")
+    @patch("core.dikript_verification.dikript_lookup")
     def test_landlord_identification_accepts_bvn_phone_when_nin_phone_differs(self, dikript_lookup_mock):
         dikript_lookup_mock.side_effect = [
             self._nin_payload(phone="08011111111"),
@@ -2044,7 +2499,7 @@ class VerificationRequestViewSetTests(TestCase):
         request = VerificationRequest.objects.get(user=user)
         self.assertEqual(request.identity_verification_status, VerificationRequest.VerificationProgressStatus.VERIFIED)
 
-    @patch("core.dikript.dikript_lookup")
+    @patch("core.dikript_verification.dikript_lookup")
     def test_landlord_identification_rejects_phone_that_matches_neither_nin_nor_bvn(self, dikript_lookup_mock):
         dikript_lookup_mock.side_effect = [
             self._nin_payload(phone="08011111111"),
@@ -2084,7 +2539,7 @@ class VerificationRequestViewSetTests(TestCase):
         self.assertEqual(response.status_code, 400, response.json())
         self.assertEqual(response.json()["mobile"], "Mobile number does not match the NIN or BVN records.")
 
-    @patch("core.dikript.dikript_lookup")
+    @patch("core.dikript_verification.dikript_lookup")
     def test_landlord_identification_requires_phone_for_nin(self, dikript_lookup_mock):
         dikript_lookup_mock.side_effect = [self._nin_payload(), self._bvn_payload()]
         user = AppUser.objects.create_user(
@@ -2122,7 +2577,7 @@ class VerificationRequestViewSetTests(TestCase):
         self.assertEqual(response.json()["mobile"], "Contact number is required for NIN verification.")
         self.assertEqual(dikript_lookup_mock.call_count, 1)
 
-    @patch("core.dikript.dikript_lookup")
+    @patch("core.dikript_verification.dikript_lookup")
     def test_landlord_corporate_identification_verifies_cac(self, dikript_lookup_mock):
         dikript_lookup_mock.return_value = self._cac_payload()
         user = AppUser.objects.create_user(
@@ -2134,8 +2589,21 @@ class VerificationRequestViewSetTests(TestCase):
             landlord_verification_type=AppUser.LandlordVerificationType.CORPORATE,
             landlord_verification_profile={
                 "company_name": "TConnect Technologies Ltd",
+                "business_state": "Lagos",
+                "business_city": "Ikeja",
+                "business_address": "10 Marina Road",
+                "company_phone_number": "09080350066",
+                "company_email": "info@tconnect.example",
+                "contact_person_name": "Christian Aluya",
+                "contact_person_position": "Director",
                 "cac_registration_number": "9463122",
                 "cac_registration_date": "2026-04-02",
+                "tax_identification_number": "TIN123456",
+                "nin": "12345678901",
+                "bvn": "22347235093",
+                "bank_name": "OPay",
+                "account_name": "TConnect Technologies Ltd",
+                "account_number": "9041487757",
             },
         )
         client = APIClient()
@@ -2149,7 +2617,11 @@ class VerificationRequestViewSetTests(TestCase):
 
         self.assertEqual(response.status_code, 201, response.json())
         request = VerificationRequest.objects.get(user=user)
+        self.assertEqual(response.json()["status"], VerificationRequest.Status.APPROVED)
+        self.assertEqual(request.status, VerificationRequest.Status.APPROVED)
         self.assertEqual(request.identity_verification_status, VerificationRequest.VerificationProgressStatus.VERIFIED)
+        self.assertEqual(request.verification_method, VerificationRequest.Method.AUTOMATED)
+        self.assertIsNotNone(request.reviewed_at)
 
     @override_settings(VERIFICATION_SERVICE="prembly")
     @patch("core.prembly_verification.prembly_lookup")
@@ -2482,6 +2954,38 @@ class BookingPaymentTests(TestCase):
 
         self.assertEqual(response.status_code, 403, response.json())
         self.assertFalse(Booking.objects.filter(tenant=tenant, listing=self.listing).exists())
+
+    def test_bronze_tenant_cannot_start_rental_payment_for_existing_booking(self):
+        tenant = AppUser.objects.create_user(
+            email="payment-bronze-tenant@example.com",
+            password="password-123",
+            name="Payment Bronze Tenant",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        create_active_subscription(tenant, SubscriptionPayment.PlanCode.BRONZE, days=14)
+        booking = Booking.objects.create(
+            tenant=tenant,
+            listing=self.listing,
+            start_date=date(2026, 6, 19),
+            end_date=date(2027, 6, 19),
+            total_amount=calculate_booking_total(self.listing.price_per_year),
+        )
+        client = APIClient()
+        client.force_authenticate(user=tenant)
+
+        response = client.post(
+            "/api/v1/payments",
+            {
+                "booking_id": str(booking.id),
+                "amount": "100000.00",
+                "payment_method": "bank",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 403, response.json())
+        self.assertFalse(Payment.objects.filter(booking=booking).exists())
 
     def test_tenant_can_cancel_pending_rental_payment(self):
         booking = Booking.objects.create(
@@ -3288,6 +3792,7 @@ class BookingRentalProgressTests(TestCase):
             role=AppUser.Role.TENANT,
             email_verified=True,
         )
+        create_active_subscription(self.tenant, SubscriptionPayment.PlanCode.SILVER)
         self.listing = Listing.objects.create(
             landlord=self.landlord,
             title="Progress Listing",
@@ -3307,6 +3812,40 @@ class BookingRentalProgressTests(TestCase):
             end_date=date(2027, 6, 19),
             total_amount=calculate_booking_total(self.listing.price_per_year),
         )
+
+    def test_bronze_tenant_cannot_access_rental_progress_or_precise_booking_location(self):
+        bronze_tenant = AppUser.objects.create_user(
+            email="progress-bronze-tenant@example.com",
+            password="password-123",
+            name="Progress Bronze Tenant",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        create_active_subscription(bronze_tenant, SubscriptionPayment.PlanCode.BRONZE, days=14)
+        bronze_booking = Booking.objects.create(
+            tenant=bronze_tenant,
+            listing=self.listing,
+            start_date=date(2026, 7, 1),
+            end_date=date(2027, 7, 1),
+            total_amount=calculate_booking_total(self.listing.price_per_year),
+        )
+        client = APIClient()
+        client.force_authenticate(user=bronze_tenant)
+
+        progress_response = client.get(f"/api/v1/bookings/{bronze_booking.id}/rental-progress")
+        bookings_response = client.get("/api/v1/bookings")
+
+        self.assertEqual(progress_response.status_code, 403)
+        bookings_payload = bookings_response.json()
+        booking_results = (
+            bookings_payload["results"]
+            if isinstance(bookings_payload, dict) and "results" in bookings_payload
+            else bookings_payload
+        )
+        booking_payload = next(item for item in booking_results if item["id"] == str(bronze_booking.id))
+        self.assertIsNone(booking_payload["rental_progress"])
+        self.assertEqual(booking_payload["listing_address"], "")
+        self.assertEqual(booking_payload["listing_city"], "")
 
     def test_tenant_can_fetch_and_update_rental_progress(self):
         client = APIClient()
@@ -4882,7 +5421,7 @@ class ReviewTests(TestCase):
             role=AppUser.Role.TENANT,
             email_verified=True,
         )
-        create_active_subscription(tenant, SubscriptionPayment.PlanCode.SILVER)
+        create_active_subscription(tenant, SubscriptionPayment.PlanCode.GOLD)
         listing = Listing.objects.create(
             landlord=landlord,
             title="Review Listing",
@@ -4950,7 +5489,7 @@ class ReviewTests(TestCase):
         self.assertEqual(len(landlord_reviews_response.json()), 1)
         self.assertEqual(landlord_reviews_response.json()[0]["comment"], "Great landlord.")
 
-    def test_bronze_tenant_cannot_create_listing_review(self):
+    def test_silver_tenant_cannot_create_listing_review(self):
         landlord = AppUser.objects.create_user(
             email="review-bronze-landlord@example.com",
             password="password-123",
@@ -4965,7 +5504,7 @@ class ReviewTests(TestCase):
             role=AppUser.Role.TENANT,
             email_verified=True,
         )
-        create_active_subscription(tenant, SubscriptionPayment.PlanCode.BRONZE, days=14)
+        create_active_subscription(tenant, SubscriptionPayment.PlanCode.SILVER)
         listing = Listing.objects.create(
             landlord=landlord,
             title="Bronze Review Listing",
@@ -5008,7 +5547,7 @@ class ReviewTests(TestCase):
             role=AppUser.Role.TENANT,
             email_verified=True,
         )
-        create_active_subscription(tenant, SubscriptionPayment.PlanCode.SILVER)
+        create_active_subscription(tenant, SubscriptionPayment.PlanCode.GOLD)
         listing_one = Listing.objects.create(
             landlord=landlord,
             title="Review Listing One",
@@ -5084,6 +5623,55 @@ class FeedbackTests(TestCase):
         self.assertEqual(feedback.role, AppUser.Role.TENANT)
         self.assertEqual(feedback.topic, "Search quality")
 
+    def test_tenant_issue_priority_is_derived_from_active_plan(self):
+        bronze_tenant = AppUser.objects.create_user(
+            email="feedback-bronze-priority@example.com",
+            password="password-123",
+            name="Bronze Support Tenant",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        gold_tenant = AppUser.objects.create_user(
+            email="feedback-gold-priority@example.com",
+            password="password-123",
+            name="Gold Support Tenant",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        platinum_tenant = AppUser.objects.create_user(
+            email="feedback-platinum-priority@example.com",
+            password="password-123",
+            name="Platinum Support Tenant",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        create_active_subscription(bronze_tenant, SubscriptionPayment.PlanCode.BRONZE, days=14)
+        create_active_subscription(gold_tenant, SubscriptionPayment.PlanCode.GOLD)
+        create_active_subscription(platinum_tenant, SubscriptionPayment.PlanCode.PLATINUM)
+
+        client = APIClient()
+        for tenant, submitted_topic, expected_topic in [
+            (bronze_tenant, "Priority Issue: Payment help", "Issue: Payment help"),
+            (gold_tenant, "Issue: Payment help", "Priority Issue: Payment help"),
+            (
+                platinum_tenant,
+                "Issue: Payment help",
+                "Premium Rental Workflow: Payment help",
+            ),
+        ]:
+            client.force_authenticate(user=tenant)
+            response = client.post(
+                "/api/v1/feedback",
+                {
+                    "name": tenant.name,
+                    "topic": submitted_topic,
+                    "message": "Please help with this rental.",
+                },
+                format="json",
+            )
+            self.assertEqual(response.status_code, 201, response.json())
+            self.assertEqual(Feedback.objects.get(id=response.json()["id"]).topic, expected_topic)
+
 
 class MessageSubscriptionAccessTests(TestCase):
     def create_verified_tenant(self, email):
@@ -5128,6 +5716,43 @@ class MessageSubscriptionAccessTests(TestCase):
 
         self.assertEqual(response.status_code, 403, response.json())
         self.assertFalse(Message.objects.filter(sender=tenant, receiver=landlord).exists())
+
+    def test_silver_tenant_can_contact_landlord_and_read_conversation(self):
+        tenant = self.create_verified_tenant("message-silver-access-tenant@example.com")
+        landlord = self.create_landlord("message-silver-access-landlord@example.com")
+        create_active_subscription(tenant, SubscriptionPayment.PlanCode.SILVER)
+        create_active_subscription(landlord, SubscriptionPayment.PlanCode.SILVER)
+
+        client = APIClient()
+        client.force_authenticate(user=tenant)
+        create_response = client.post(
+            "/api/v1/messages",
+            {
+                "receiver_id": str(landlord.id),
+                "content": "I would like to arrange a viewing.",
+            },
+            format="json",
+        )
+        conversations_response = client.get("/api/v1/messages")
+
+        self.assertEqual(create_response.status_code, 201, create_response.json())
+        self.assertEqual(conversations_response.status_code, 200, conversations_response.json())
+
+    def test_bronze_tenant_cannot_read_landlord_conversations(self):
+        tenant = self.create_verified_tenant("message-bronze-history-tenant@example.com")
+        landlord = self.create_landlord("message-bronze-history-landlord@example.com")
+        create_active_subscription(tenant, SubscriptionPayment.PlanCode.BRONZE, days=14)
+        Message.objects.create(
+            sender=tenant,
+            receiver=landlord,
+            content="An existing conversation.",
+        )
+
+        client = APIClient()
+        client.force_authenticate(user=tenant)
+        response = client.get("/api/v1/messages")
+
+        self.assertEqual(response.status_code, 403, response.json())
 
     def test_tenant_cannot_contact_bronze_landlord(self):
         tenant = self.create_verified_tenant("message-silver-tenant@example.com")
@@ -5745,8 +6370,21 @@ class LandlordPublicProfileTests(TestCase):
         self.assertEqual(payload["metrics"]["active_tenancies"], 1)
         self.assertEqual(payload["metrics"]["completed_tenancies"], 1)
         self.assertEqual(payload["metrics"]["reviews_count"], 1)
-        self.assertTrue(payload["verification_badges"]["identity_verified"])
+        self.assertFalse(payload["verification_badges"]["identity_verified"])
+        self.assertIsNone(payload["verification_score"])
         self.assertEqual(payload["reviews"][0]["comment"], "Excellent communication.")
+
+        create_active_subscription(tenant, SubscriptionPayment.PlanCode.PLATINUM)
+        client = APIClient()
+        client.force_authenticate(user=tenant)
+        platinum_response = client.get(f"/api/v1/users/landlords/{landlord.id}/public-profile")
+
+        self.assertEqual(platinum_response.status_code, 200, platinum_response.json())
+        platinum_payload = platinum_response.json()
+        self.assertTrue(platinum_payload["verification_badges"]["identity_verified"])
+        self.assertTrue(platinum_payload["verification_badges"]["phone_verified"])
+        self.assertTrue(platinum_payload["verification_badges"]["email_verified"])
+        self.assertEqual(platinum_payload["verification_score"], 75)
 
 
 class RenewalReminderCommandTests(TestCase):

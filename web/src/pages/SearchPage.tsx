@@ -3,9 +3,10 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import ListingCard from '@/components/ListingCard'
 import { Listing, SearchFilters } from '@/types'
-import { api, getApiUrl } from '@/lib/api'
+import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
 import { nigeriaStateLgaMap, nigerianStates } from '@/lib/locations'
+import { hasSilverAccess, SubscriptionPaymentRecord } from '@/lib/subscriptions'
 
 const OTHER_CITY_OPTION = '__other__'
 const radiusOptions = [1, 5, 10, 25, 50, 100]
@@ -85,6 +86,19 @@ export default function SearchPage() {
         furnished: searchParams.get('furnished') === 'true',
         utilities_included: searchParams.get('utilities_included') === 'true'
     })
+    const { data: subscriptionPaymentResponse, isLoading: isSubscriptionLoading } = useQuery({
+        queryKey: ['subscription-payments', 'property-search', user?.id],
+        queryFn: async () => (await api.get<SubscriptionPaymentRecord[] | { results?: SubscriptionPaymentRecord[] }>('/subscriptions')).data,
+        enabled: user?.role === 'tenant',
+    })
+    const canUseLocationFeatures = user?.role === 'landlord'
+        || user?.role === 'admin'
+        || (
+            user?.role === 'tenant'
+            && subscriptionPaymentResponse !== undefined
+            && hasSilverAccess(subscriptionPaymentResponse)
+        )
+    const locationAccessReady = user?.role !== 'tenant' || !isSubscriptionLoading
 
     // Fetch user's favourites
     const { data: favourites } = useQuery({
@@ -142,6 +156,21 @@ export default function SearchPage() {
     }, [availableCities, filters.city, filters.state])
 
     const searchListings = async (searchFilters: SearchFilters) => {
+        if (!canUseLocationFeatures && (
+            searchFilters.latitude !== undefined
+            || searchFilters.longitude !== undefined
+            || searchFilters.radius_km !== undefined
+        )) {
+            searchFilters = {
+                ...searchFilters,
+                latitude: undefined,
+                longitude: undefined,
+                radius_km: undefined,
+            }
+            setFilters(searchFilters)
+            setLocationStatus('')
+        }
+
         setLoading(true)
         try {
             // Check if any filters are applied
@@ -156,7 +185,7 @@ export default function SearchPage() {
                 && value !== false
             )
 
-            let url: string
+            let endpoint: string
             if (hasFilters) {
                 // Use search endpoint with filters
                 const params = new URLSearchParams()
@@ -184,27 +213,15 @@ export default function SearchPage() {
                 if (searchFilters.furnished === true) params.append('furnished', 'true')
                 if (searchFilters.utilities_included === true) params.append('utilities_included', 'true')
 
-                url = `${getApiUrl()}/listings/search?${params.toString()}`
+                endpoint = `/listings/search?${params.toString()}`
             } else {
                 // Use simple listings endpoint for all available listings
-                url = `${getApiUrl()}/listings`
+                endpoint = '/listings'
             }
 
-            console.log('Searching with URL:', url)
-            console.log('Search filters:', searchFilters)
-
-            const response = await fetch(url)
-            if (response.ok) {
-                const data = await response.json()
-                console.log('Search results:', data)
-                setListings(normalizeResults(data))
-                syncSearchParams(searchFilters)
-            } else {
-                console.error('Failed to fetch listings:', response.status, response.statusText)
-                const errorText = await response.text()
-                console.error('Error response:', errorText)
-                setListings([])
-            }
+            const response = await api.get<Listing[] | { results?: Listing[] }>(endpoint)
+            setListings(normalizeResults(response.data))
+            syncSearchParams(searchFilters)
         } catch (error) {
             console.error('Error searching listings:', error)
             setListings([])
@@ -277,6 +294,11 @@ export default function SearchPage() {
     }
 
     const handleUseCurrentLocation = () => {
+        if (!canUseLocationFeatures) {
+            setLocationStatus('Property location search is available from the Silver plan.')
+            return
+        }
+
         if (filters.city || filters.state) {
             const nextFilters = {
                 ...filters,
@@ -364,8 +386,10 @@ export default function SearchPage() {
 
     // Initial search on component mount
     useEffect(() => {
-        searchListings(filters)
-    }, [])
+        if (locationAccessReady) {
+            searchListings(filters)
+        }
+    }, [locationAccessReady, canUseLocationFeatures])
 
     return (
         <div className="bg-gray-50 min-h-screen py-8">
@@ -544,46 +568,63 @@ export default function SearchPage() {
                             </label>
                         </div>
 
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Radius</label>
-                            <select
-                                value={filters.radius_km || ''}
-                                onChange={(e) => handleFilterChange('radius_km', e.target.value ? Number(e.target.value) : undefined)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            >
-                                <option value="">Any distance</option>
-                                {radiusOptions.map((radius) => (
-                                    <option key={radius} value={radius}>{radius} km</option>
-                                ))}
-                            </select>
-                        </div>
-
-                        <div className="flex min-h-[76px] flex-col justify-start gap-2 lg:pt-6">
-                            <div className="flex gap-2">
-                                <button
-                                    type="button"
-                                    onClick={handleUseCurrentLocation}
-                                    className={`flex-1 px-3 py-2 text-sm font-medium border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${locationButtonActive
-                                        ? 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700'
-                                        : 'border-blue-200 text-blue-700 hover:bg-blue-50'
-                                        }`}
-                                >
-                                    Use my location
-                                </button>
-                                {filters.latitude !== undefined && filters.longitude !== undefined ? (
-                                    <button
-                                        type="button"
-                                        onClick={handleClearLocation}
-                                        className="px-3 py-2 text-sm font-medium text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        {canUseLocationFeatures ? (
+                            <>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Radius</label>
+                                    <select
+                                        value={filters.radius_km || ''}
+                                        onChange={(e) => handleFilterChange('radius_km', e.target.value ? Number(e.target.value) : undefined)}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                                     >
-                                        Clear
-                                    </button>
-                                ) : null}
+                                        <option value="">Any distance</option>
+                                        {radiusOptions.map((radius) => (
+                                            <option key={radius} value={radius}>{radius} km</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="flex min-h-[76px] flex-col justify-start gap-2 lg:pt-6">
+                                    <div className="flex gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={handleUseCurrentLocation}
+                                            className={`flex-1 px-3 py-2 text-sm font-medium border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${locationButtonActive
+                                                ? 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700'
+                                                : 'border-blue-200 text-blue-700 hover:bg-blue-50'
+                                                }`}
+                                        >
+                                            Use my location
+                                        </button>
+                                        {filters.latitude !== undefined && filters.longitude !== undefined ? (
+                                            <button
+                                                type="button"
+                                                onClick={handleClearLocation}
+                                                className="px-3 py-2 text-sm font-medium text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            >
+                                                Clear
+                                            </button>
+                                        ) : null}
+                                    </div>
+                                    <p className={`min-h-4 text-xs ${locationStatus ? 'text-gray-600' : 'text-transparent'}`}>
+                                        {locationStatus || 'Location status'}
+                                    </p>
+                                </div>
+                            </>
+                        ) : (
+                            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 lg:col-span-2">
+                                {isSubscriptionLoading
+                                    ? 'Checking property location access...'
+                                    : (
+                                        <>
+                                            Precise location, radius search, maps, and location analytics are available from the Silver plan.{' '}
+                                            <Link to={user ? '/billing' : '/login'} className="font-semibold underline">
+                                                {user ? 'View plans' : 'Sign in'}
+                                            </Link>
+                                        </>
+                                    )}
                             </div>
-                            <p className={`min-h-4 text-xs ${locationStatus ? 'text-gray-600' : 'text-transparent'}`}>
-                                {locationStatus || 'Location status'}
-                            </p>
-                        </div>
+                        )}
                     </div>
 
                     <div className="flex justify-between items-center mt-8">
@@ -609,12 +650,14 @@ export default function SearchPage() {
                         <h2 className="text-xl font-semibold text-gray-900">
                             {loading ? 'Searching...' : `${listings.length} Properties Found`}
                         </h2>
-                        <Link
-                            to={analyticsLink}
-                            className="text-xl font-semibold text-blue-700 hover:text-blue-800"
-                        >
-                            Location Analytics
-                        </Link>
+                        {canUseLocationFeatures ? (
+                            <Link
+                                to={analyticsLink}
+                                className="text-xl font-semibold text-blue-700 hover:text-blue-800"
+                            >
+                                Location Analytics
+                            </Link>
+                        ) : null}
                     </div>
                 </div>
 

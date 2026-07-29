@@ -1,10 +1,16 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 
 import { useAuth } from '@/hooks/useAuth'
 import { api } from '@/lib/api'
 import { landlordIssueTopics, landlordSupportFaqs, tenantIssueTopics, tenantSupportFaqs } from '@/lib/tenantSupport'
+import {
+    getTenantSupportResponseTime,
+    hasGoldAccess,
+    hasPlatinumAccess,
+    SubscriptionPaymentRecord,
+} from '@/lib/subscriptions'
 
 function extractErrorMessage(error: any, fallback: string) {
     const detail = error?.response?.data?.detail
@@ -20,6 +26,14 @@ export default function TenantIssuesPage() {
     const dashboardPath = user?.id ? `/dashboard/${role}/${user.id}` : '/'
     const issueTopics = role === 'landlord' ? landlordIssueTopics : tenantIssueTopics
     const faqs = role === 'landlord' ? landlordSupportFaqs : tenantSupportFaqs
+    const { data: subscriptionPaymentResponse, isLoading: isSubscriptionLoading } = useQuery({
+        queryKey: ['subscription-payments', 'issues', user?.id],
+        queryFn: async () => (await api.get<SubscriptionPaymentRecord[] | { results?: SubscriptionPaymentRecord[] }>('/subscriptions')).data,
+        enabled: user?.role === 'tenant',
+    })
+    const hasPriorityIssueHandling = role === 'tenant' && subscriptionPaymentResponse !== undefined && hasGoldAccess(subscriptionPaymentResponse)
+    const hasPremiumRentalSupport = role === 'tenant' && subscriptionPaymentResponse !== undefined && hasPlatinumAccess(subscriptionPaymentResponse)
+    const tenantSupportResponseTime = getTenantSupportResponseTime(subscriptionPaymentResponse)
     const [topic, setTopic] = useState('')
     const [message, setMessage] = useState('')
     const [error, setError] = useState('')
@@ -68,6 +82,17 @@ export default function TenantIssuesPage() {
 
                     <div className="card p-6">
                         <h2 className="text-xl font-semibold text-gray-900">Submit an issue</h2>
+                        {role === 'tenant' && (
+                            <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+                                {isSubscriptionLoading
+                                    ? 'Checking support response time...'
+                                    : hasPremiumRentalSupport
+                                    ? `Premium rental workflow support is active. Target response time: ${tenantSupportResponseTime}.`
+                                    : hasPriorityIssueHandling
+                                        ? `Your issue will receive priority handling. Target response time: ${tenantSupportResponseTime}.`
+                                        : `Target response time for your plan: ${tenantSupportResponseTime}.`}
+                            </div>
+                        )}
                         {error && <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div>}
                         <div className="mt-5">
                             <label className="form-label">Topic</label>

@@ -44,7 +44,7 @@ from .models import (
     VerificationRequest,
 )
 from .pricing import calculate_booking_total, calculate_remaining_balance, resolve_booking_total
-from .subscription_access import user_has_bronze_access
+from .subscription_access import user_has_gold_access, user_has_silver_access
 from .tenant_scoring import build_tenant_screening_summary
 from .location_services import decimal_from_float, resolve_city_state_coordinates
 from .image_optimization import optimize_listing_image
@@ -563,18 +563,45 @@ class ListingSerializer(serializers.ModelSerializer):
         data = super().to_representation(instance)
         request = self.context.get("request")
         user = getattr(request, "user", None)
-        user_has_bronze = False
-        if getattr(user, "is_authenticated", False) and user.role == AppUser.Role.TENANT:
-            cache_key = "_request_user_has_bronze_access"
-            if cache_key not in self.context:
-                self.context[cache_key] = user_has_bronze_access(user)
-            user_has_bronze = self.context[cache_key]
-        if user_has_bronze:
+        is_authenticated = getattr(user, "is_authenticated", False)
+        is_listing_owner = (
+            is_authenticated
+            and user.role == AppUser.Role.LANDLORD
+            and instance.landlord_id == user.id
+        )
+        is_admin = is_authenticated and user.role == AppUser.Role.ADMIN
+        is_tenant = is_authenticated and user.role == AppUser.Role.TENANT
+
+        can_view_precise_location = is_admin or is_listing_owner
+        can_view_property_verification = is_admin or is_listing_owner
+        if is_tenant:
+            silver_cache_key = "_request_user_has_silver_access"
+            if silver_cache_key not in self.context:
+                self.context[silver_cache_key] = user_has_silver_access(user)
+            can_view_precise_location = self.context[silver_cache_key]
+
+            gold_cache_key = "_request_user_has_gold_access"
+            if gold_cache_key not in self.context:
+                self.context[gold_cache_key] = user_has_gold_access(user)
+            can_view_property_verification = self.context[gold_cache_key]
+
+        if not can_view_precise_location:
             data["address"] = ""
             data["city"] = ""
             data["postal_code"] = ""
             data["latitude"] = None
             data["longitude"] = None
+            data["distance_km"] = None
+            data["location_source"] = None
+        if not can_view_property_verification:
+            data["property_document_verification_status"] = None
+            data["physical_property_status"] = None
+        if not (is_admin or is_listing_owner):
+            data["ownership_status"] = ""
+            data["ownership_types"] = []
+            data["property_ownership_documents"] = []
+            data["property_documents"] = []
+            data["property_document_submission"] = None
         return data
 
     @transaction.atomic
@@ -830,10 +857,26 @@ class BookingSerializer(serializers.ModelSerializer):
 
     def get_rental_progress(self, obj):
         request = self.context.get("request")
-        role = getattr(getattr(request, "user", None), "role", "")
+        user = getattr(request, "user", None)
+        role = getattr(user, "role", "")
         if role not in {AppUser.Role.TENANT, AppUser.Role.LANDLORD}:
             return None
+        if role == AppUser.Role.TENANT and not user_has_silver_access(user):
+            return None
         return build_booking_progress_data(obj, role)
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if (
+            getattr(user, "is_authenticated", False)
+            and user.role == AppUser.Role.TENANT
+            and not user_has_silver_access(user)
+        ):
+            data["listing_address"] = ""
+            data["listing_city"] = ""
+        return data
 
     def get_tenant_key_collection_confirmed(self, obj):
         progress = obj.tenant_rental_progress if isinstance(obj.tenant_rental_progress, dict) else {}
@@ -865,8 +908,10 @@ class BookingSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         request = self.context["request"]
-        if request.user.role == AppUser.Role.TENANT and user_has_bronze_access(request.user):
-            raise serializers.ValidationError({"detail": "Renting property is not available on the Bronze free plan."})
+        if request.user.role != AppUser.Role.TENANT:
+            raise serializers.ValidationError({"detail": "Only tenants can rent properties."})
+        if not user_has_silver_access(request.user):
+            raise serializers.ValidationError({"detail": "Renting property is available from the Silver plan."})
         listing_id = validated_data.pop("listing_id")
         listing = Listing.objects.get(id=listing_id, status=Listing.Status.AVAILABLE)
         if listing_has_deposit_secured_booking(listing):
@@ -1305,5 +1350,5 @@ class TenantProfileSerializer(serializers.ModelSerializer):
         instance.save()
         if doc_ids is not None:
             docs = Document.objects.filter(id__in=doc_ids, owner=instance.user)
-            instance.supporting_documents.set(docs)
+            instance.supporting_documents.add(*docs)
         return instance

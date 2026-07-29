@@ -7,7 +7,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { resolveMediaUrl } from '@/lib/api'
 import { formatCurrencyWithSymbol } from '@/utils/currency'
 import ReviewModal from '@/components/ReviewModal'
-import { hasBronzeAccess, SubscriptionPaymentRecord } from '@/lib/subscriptions'
+import { hasBronzeAccess, hasGoldAccess, hasSilverAccess, SubscriptionPaymentRecord } from '@/lib/subscriptions'
 
 // Icons for property features
 const Icons = {
@@ -100,7 +100,7 @@ export default function ListingDetailPage() {
     })
     const isLandlordUser = user?.role === 'landlord'
     const isListingLandlord = isLandlordUser && !!listing && listing.landlord_id === user?.id
-    const { data: tenantProfile } = useQuery({
+    const { data: tenantProfile, isLoading: isTenantProfileLoading } = useQuery({
         queryKey: ['tenant-profile', 'listing-detail', user?.id],
         enabled: user?.role === 'tenant',
         queryFn: async () => {
@@ -111,7 +111,7 @@ export default function ListingDetailPage() {
             }
         },
     })
-    const { data: freshUser } = useQuery({
+    const { data: freshUser, isLoading: isFreshUserLoading } = useQuery({
         queryKey: ['me', 'listing-detail', user?.id],
         enabled: !!user,
         queryFn: async () => (await api.get<{ is_verified: boolean }>('/users/me')).data,
@@ -139,7 +139,7 @@ export default function ListingDetailPage() {
             },
         })).data,
     })
-    const { data: subscriptionPaymentResponse } = useQuery({
+    const { data: subscriptionPaymentResponse, isLoading: isSubscriptionPaymentsLoading } = useQuery({
         queryKey: ['subscription-payments', 'listing-detail', user?.id],
         enabled: user?.role === 'tenant',
         queryFn: async () => (await api.get<SubscriptionPaymentRecord[] | { results?: SubscriptionPaymentRecord[] }>('/subscriptions')).data,
@@ -161,7 +161,22 @@ export default function ListingDetailPage() {
     const existingReview = myReviews[0]
     const landlordProfileHref = listing ? `/landlords/${listing.landlord_id}?listingId=${listing.id}` : '#'
     const isBronzeTenant = user?.role === 'tenant' && subscriptionPaymentResponse !== undefined && hasBronzeAccess(subscriptionPaymentResponse)
-    const canLoadNearestAmenities = !!listing?.id && (user?.role !== 'tenant' || subscriptionPaymentResponse !== undefined) && !isBronzeTenant
+    const canSeePreciseLocation = isListingLandlord
+        || user?.role === 'admin'
+        || (
+            user?.role === 'tenant'
+            && subscriptionPaymentResponse !== undefined
+            && hasSilverAccess(subscriptionPaymentResponse)
+        )
+    const canReviewAsTenant = user?.role === 'tenant' && subscriptionPaymentResponse !== undefined && hasGoldAccess(subscriptionPaymentResponse)
+    const canSeePropertyVerification = isListingLandlord
+        || user?.role === 'admin'
+        || (
+            user?.role === 'tenant'
+            && subscriptionPaymentResponse !== undefined
+            && hasGoldAccess(subscriptionPaymentResponse)
+        )
+    const canLoadNearestAmenities = !!listing?.id && canSeePreciseLocation
     const { data: nearestAmenities } = useQuery({
         queryKey: ['listing', listing?.id, 'nearest-amenities'],
         enabled: canLoadNearestAmenities,
@@ -217,8 +232,8 @@ export default function ListingDetailPage() {
             if (!listing?.id) {
                 throw new Error('Property review is unavailable.')
             }
-            if (isBronzeTenant) {
-                throw new Error('Reviews are not available on the Bronze free plan.')
+            if (!canReviewAsTenant) {
+                throw new Error('Property reviews are available from the Gold plan.')
             }
 
             if (existingReview?.id) {
@@ -281,12 +296,20 @@ export default function ListingDetailPage() {
     }, [currentImageIndex])
 
     const tenantProfileStatus = tenantProfile?.status
-    const isVerifiedFresh = freshUser?.is_verified
-    const tenantVerificationStatus = tenantProfileStatus || (isVerifiedFresh ? 'approved' : 'unverified')
-    const requiresTenantVerification = user?.role === 'tenant' && tenantVerificationStatus !== 'approved'
+    const isVerifiedFresh = freshUser?.is_verified ?? user?.is_verified
+    const isTenantVerificationLoading = user?.role === 'tenant' && (isTenantProfileLoading || isFreshUserLoading)
+    const tenantIdentityVerified = Boolean(isVerifiedFresh || tenantProfileStatus === 'approved')
+    const tenantVerificationStatus = tenantIdentityVerified ? 'approved' : tenantProfileStatus || 'unverified'
+    const requiresTenantVerification = user?.role === 'tenant' && !isTenantVerificationLoading && !tenantIdentityVerified
+    const isTenantSubscriptionLoading = user?.role === 'tenant' && !requiresTenantVerification && isSubscriptionPaymentsLoading
+    const requiresTenantSubscription = user?.role === 'tenant' && !requiresTenantVerification && isBronzeTenant
 
     const redirectToTenantVerification = () => {
         navigate('/verify')
+    }
+
+    const redirectToBilling = () => {
+        navigate('/billing')
     }
 
     const handleArrangeViewing = () => {
@@ -295,13 +318,13 @@ export default function ListingDetailPage() {
             navigate('/login')
             return
         }
+        if (requiresTenantVerification) {
+            redirectToTenantVerification()
+            return
+        }
         if (isBronzeTenant) {
             alert('Arranging a viewing is not available on the Bronze free plan.')
             navigate('/billing')
-            return
-        }
-        if (requiresTenantVerification) {
-            redirectToTenantVerification()
             return
         }
         navigate(`/contact-landlord/${listing!.id}`)
@@ -313,20 +336,20 @@ export default function ListingDetailPage() {
             navigate('/login')
             return
         }
+        if (requiresTenantVerification) {
+            redirectToTenantVerification()
+            return
+        }
         if (isBronzeTenant) {
             alert('Renting property is not available on the Bronze free plan.')
             navigate('/billing')
-            return
-        }
-        if (requiresTenantVerification) {
-            redirectToTenantVerification()
             return
         }
         navigate(`/rent/${listing!.id}`)
     }
 
     const listingLocationSummary = listing
-        ? isBronzeTenant
+        ? !canSeePreciseLocation
             ? listing.state || 'State not provided'
             : `${listing.city}, ${listing.state || ''} ${listing.postal_code}`.trim()
         : ''
@@ -460,10 +483,10 @@ export default function ListingDetailPage() {
                 </div>
 
                 <div className="max-w-6xl mx-auto">
-                    <div className="grid grid-cols-1 gap-8 lg:grid-cols-4">
+                    <div className="grid grid-cols-1 gap-3 lg:grid-cols-5">
                         {/* Price + Actions */}
-                        <div className="rounded-2xl bg-white p-6 shadow-lg border">
-                            <p className="text-[20px] font-bold text-gray-900 mb-3 text-center">
+                        <div className="rounded-2xl bg-white px-3 pb-3 pt-6 shadow-lg border">
+                            <p className="text-[16px] font-bold text-gray-900 text-center">
                                 {isLandlordUser ? 'Property Management' : 'Start Rental Journey'}
                             </p>
                             <div className="mt-6 space-y-3">
@@ -506,9 +529,9 @@ export default function ListingDetailPage() {
                                             <button
                                                 onClick={() => toggleFavourite.mutate()}
                                                 disabled={toggleFavourite.isPending}
-                                                className={`w-full rounded-lg px-4 py-3 font-medium transition ${isFavourite
+                                                className={`text-sm w-full rounded-lg px-3 py-1.5 font-medium transition ${isFavourite
                                                     ? 'bg-red-100 text-red-700 hover:bg-red-200'
-                                                    : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                                                    : 'bg-blue-200 text-black-700 hover:bg-purple-600'
                                                     }`}
                                             >
                                                 {toggleFavourite.isPending ? '...' : (
@@ -520,49 +543,66 @@ export default function ListingDetailPage() {
                                         {user?.role === 'tenant' && (
                                             <button
                                                 onClick={() => {
-                                                    if (isBronzeTenant) {
-                                                        alert('Reviews are not available on the Bronze free plan.')
+                                                    if (!canReviewAsTenant) {
+                                                        alert('Property reviews are available from the Gold plan.')
                                                         navigate('/billing')
                                                         return
                                                     }
                                                     setIsReviewOpen(true)
                                                 }}
-                                                className={`w-full rounded-lg px-4 py-3 font-medium transition ${isBronzeTenant
+                                                className={`text-sm w-full rounded-lg px-3 py-1.5 font-medium transition ${!canReviewAsTenant
                                                     ? 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                                                    : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                                                    : 'bg-amber-400 text-blue-900 hover:bg-amber-600'
                                                     }`}
                                             >
-                                                {isBronzeTenant ? 'Upgrade to Review' : existingReview ? 'Edit Property Review' : 'Review Property'}
+                                                {!canReviewAsTenant ? 'Upgrade to Review' : existingReview ? 'Edit Property Review' : 'Review Property'}
                                             </button>
                                         )}
 
-                                        {requiresTenantVerification ? (
+                                        {isTenantVerificationLoading || isTenantSubscriptionLoading ? (
+                                            <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 text-sm text-slate-700">
+                                                Checking your account access...
+                                            </div>
+                                        ) : requiresTenantVerification ? (
                                             <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
-                                                <p className="font-medium">Verification Required</p>
-                                                <p className="mt-1">
+                                                <p className="text-sm font-medium">Verification Required</p>
+                                                <p className="text-xs mt-1">
                                                     {tenantVerificationStatus === 'pending' || tenantVerificationStatus === 'under_review'
                                                         ? 'Your tenant verification is still pending review. Open the verification page to check status and continue.'
                                                         : 'Please complete your tenant verification before you can contact landlords or rent this property.'}
                                                 </p>
                                                 <button
                                                     onClick={redirectToTenantVerification}
-                                                    className="mt-2 text-blue-600 hover:text-blue-700 font-medium text-sm underline"
+                                                    className="text-sm mt-2 text-blue-600 hover:text-blue-700 font-medium text-sm underline"
                                                 >
-                                                    Go to Tenant Verification
+                                                    Complete Verification
+                                                </button>
+                                            </div>
+                                        ) : requiresTenantSubscription ? (
+                                            <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-sm text-blue-800">
+                                                <p className="text-sm font-medium">Subscription Required</p>
+                                                <p className="mt-1">
+                                                    Upgrade your tenant subscription to contact landlords, arrange viewing, or rent this property.
+                                                </p>
+                                                <button
+                                                    onClick={redirectToBilling}
+                                                    className="text-sm mt-3 w-full rounded-lg bg-blue-600 px-3 py-1.5 font-medium text-white hover:bg-blue-700 transition"
+                                                >
+                                                    Upgrade to Continue
                                                 </button>
                                             </div>
                                         ) : (
                                             <>
                                                 <button
                                                     onClick={handleArrangeViewing}
-                                                    className="w-full rounded-lg bg-blue-600 px-4 py-3 font-medium text-white hover:bg-blue-700 transition"
+                                                    className="text-sm w-full rounded-lg bg-blue-500 px-3 py-1.5 font-medium text-white hover:bg-blue-800 transition"
                                                 >
                                                     Arrange viewing
                                                 </button>
 
                                                 <button
                                                     onClick={handleRentNow}
-                                                    className="w-full rounded-lg bg-green-600 px-4 py-3 font-medium text-white hover:bg-green-700 transition"
+                                                    className="text-sm w-full rounded-lg bg-green-500 px-3 py-1.5 font-medium text-white hover:bg-green-800 transition"
                                                 >
                                                     Rent Now
                                                 </button>
@@ -575,7 +615,7 @@ export default function ListingDetailPage() {
 
                         {/* Property Details with Icons */}
                         <div className="rounded-2xl bg-white p-6 shadow-lg border">
-                            <p className="text-[20px] font-bold text-gray-900 mb-3 text-center">Property Details</p>
+                            <p className="text-[16px] font-bold text-gray-900 mb-3 text-center">Property Details</p>
                             <br />
                             <div className="space-y-4">
                                 {/* Amount/Duration */}
@@ -583,7 +623,7 @@ export default function ListingDetailPage() {
 
                                 {/* Rooms and Location */}
                                 <div className="text-sm text-gray-600">
-                                    {listing.bedrooms} Bed {listing.property_type}, {isBronzeTenant ? listing.state || 'State not provided' : `${listing.city}${listing.state ? `, ${listing.state}` : ''}`}
+                                    {listing.bedrooms} Bed {listing.property_type}, {!canSeePreciseLocation ? listing.state || 'State not provided' : `${listing.city}${listing.state ? `, ${listing.state}` : ''}`}
                                 </div>
 
                                 {/* Bedroom and Bathroom Icons */}
@@ -615,9 +655,18 @@ export default function ListingDetailPage() {
                             </div>
                         </div>
 
+                        {canSeePropertyVerification && listing.property_document_verification_status === 'verified' && (
+                            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 shadow-lg">
+                                <p className="text-[16px] font-bold text-emerald-900">Property verification</p>
+                                <p className="mt-3 text-sm font-medium text-emerald-800">
+                                    ✓ This property has passed RentDirect property verification.
+                                </p>
+                            </div>
+                        )}
+
                         {/* Features */}
                         <div className="rounded-2xl bg-white p-6 shadow-lg border">
-                            <p className="text-[20px] font-bold text-gray-900 mb-3 text-center">Features</p>
+                            <p className="text-[16px] font-bold text-gray-900 mb-3 text-center">Features</p>
                             <br />
                             <div className="flex flex-wrap gap-4 text-sm">
                                 <ul className="list-none space-y-4">
@@ -645,13 +694,13 @@ export default function ListingDetailPage() {
 
                         {/* Location with Map */}
                         <div className="rounded-2xl bg-white p-6 shadow-lg border text-center">
-                            <p className="text-[20px] font-bold text-gray-900 mb-3">Location</p>
+                            <p className="text-[16px] font-bold text-gray-900 mb-3">Location</p>
                             <br />
                             <p className="text-gray-700 flex flex-col gap-3 text-sm text-center">
                                 {listingLocationSummary}
-                                {isBronzeTenant ? (
+                                {!canSeePreciseLocation ? (
                                     <span className="rounded-lg bg-amber-50 px-3 py-2 text-amber-800">
-                                        Full address and map are not available on the Bronze free plan.
+                                        Sign in with a Silver or higher tenant plan to see the full address and map.
                                     </span>
                                 ) : (
                                     <>
@@ -709,10 +758,10 @@ export default function ListingDetailPage() {
                                     </div>
                                 </div>
                                 <div className="flex gap-2">
-                                    <Link to={landlordProfileHref} className="btn btn-outline">
+                                    <Link to={landlordProfileHref} className="btn btn-outline hover:text-white-800">
                                         View Landlord Profile
                                     </Link>
-                                    <Link to={`/landlords/${listing.landlord_id}/properties`} className="btn btn-outline">
+                                    <Link to={`/landlords/${listing.landlord_id}/properties`} className="btn btn-outline hover:text-white-800">
                                         View All Landlord Properties
                                     </Link>
                                 </div>
@@ -817,7 +866,7 @@ export default function ListingDetailPage() {
                         )}
                     </div>
 
-                    {!isBronzeTenant && nearestAmenities ? (
+                    {canSeePreciseLocation && nearestAmenities ? (
                         <div className="mt-4 rounded-2xl bg-white p-6 shadow-lg border">
                             <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                                 <div>

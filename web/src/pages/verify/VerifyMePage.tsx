@@ -9,7 +9,21 @@ import { useAuth } from '@/hooks/useAuth'
 import { useAppPopup } from '@/contexts/AppPopupContext'
 import { api } from '@/lib/api'
 import { isNigeriaSelection, nigeriaStateLgaMap, nigerianStates, worldCountryOptions } from '@/lib/locations'
-import { validateMobile, validateNin } from '@/lib/profile'
+import {
+    BVN_ERROR_MESSAGE,
+    BVN_INPUT_PATTERN,
+    BVN_INPUT_PLACEHOLDER,
+    MOBILE_ERROR_MESSAGE,
+    MOBILE_INPUT_PATTERN,
+    MOBILE_INPUT_PLACEHOLDER,
+    NIN_ERROR_MESSAGE,
+    NIN_INPUT_PATTERN,
+    NIN_INPUT_PLACEHOLDER,
+    formatIdentityNumberInput,
+    validateBvn,
+    validateMobile,
+    validateNin,
+} from '@/lib/profile'
 import { User } from '@/types'
 
 const schema = z.object({
@@ -23,10 +37,10 @@ const schema = z.object({
     state_of_origin: z.string().min(1, 'State of origin is required'),
     lga: z.string().min(1, 'LGA is required'),
     email: z.string().min(1, 'Email is required').email('Enter a valid email address.'),
-    mobile: z.string().min(1, 'Mobile number is required').refine((value) => !validateMobile(value), 'Use 11 digits starting with 07, 08, or 09, or +234 followed by 70, 71, 80, 81, 90, or 91.'),
+    mobile: z.string().min(1, 'Mobile number is required').refine((value) => !validateMobile(value), MOBILE_ERROR_MESSAGE),
     employment_status: z.string().min(1, 'Employment status is required'),
-    nin_number: z.string().min(1, 'NIN is required').refine((value) => !validateNin(value), 'NIN must be exactly 11 digits.'),
-    bvn_number: z.string().min(1, 'BVN is required').refine((value) => /^\d{11}$/.test(value), 'BVN must be exactly 11 digits.'),
+    nin_number: z.string().min(1, 'NIN is required').refine((value) => !validateNin(value), NIN_ERROR_MESSAGE),
+    bvn_number: z.string().min(1, 'BVN is required').refine((value) => !validateBvn(value), BVN_ERROR_MESSAGE),
 })
 
 type VerificationFormValues = z.infer<typeof schema>
@@ -112,15 +126,74 @@ function InputRow({ label, children, error }: { label: string; children: React.R
     )
 }
 
-function TextInput({ register, name, error, placeholder, type = 'text' }: { register: any; name: keyof VerificationFormValues; error?: string; placeholder?: string; type?: string }) {
+function TextInput({
+    register,
+    name,
+    error,
+    placeholder,
+    type = 'text',
+    inputMode,
+    pattern,
+    maxLength,
+    title,
+    formatValue,
+}: {
+    register: any
+    name: keyof VerificationFormValues
+    error?: string
+    placeholder?: string
+    type?: string
+    inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode']
+    pattern?: string
+    maxLength?: number
+    title?: string
+    formatValue?: (value: string) => string
+}) {
+    const registerOptions = formatValue
+        ? {
+            setValueAs: formatValue,
+            onChange: (event: React.ChangeEvent<HTMLInputElement>) => {
+                event.target.value = formatValue(event.target.value)
+            },
+        }
+        : undefined
+
     return (
         <input
-            {...register(name)}
+            {...register(name, registerOptions)}
             type={type}
+            inputMode={inputMode}
+            pattern={pattern}
+            maxLength={maxLength}
+            title={title}
             placeholder={placeholder}
             className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${error ? 'border-red-300' : 'border-gray-300'}`}
         />
     )
+}
+
+const mobileInputProps = {
+    type: 'tel',
+    inputMode: 'tel' as const,
+    pattern: MOBILE_INPUT_PATTERN,
+    maxLength: 14,
+    title: MOBILE_ERROR_MESSAGE,
+}
+
+const ninInputProps = {
+    inputMode: 'numeric' as const,
+    pattern: NIN_INPUT_PATTERN,
+    maxLength: 11,
+    title: NIN_ERROR_MESSAGE,
+    formatValue: formatIdentityNumberInput,
+}
+
+const bvnInputProps = {
+    inputMode: 'numeric' as const,
+    pattern: BVN_INPUT_PATTERN,
+    maxLength: 11,
+    title: BVN_ERROR_MESSAGE,
+    formatValue: formatIdentityNumberInput,
 }
 
 function SelectInput({ register, name, options, placeholder, error }: { register: any; name: keyof VerificationFormValues; options: string[]; placeholder: string; error?: string }) {
@@ -340,7 +413,7 @@ export default function VerifyMePage() {
                                     <TextInput register={register} name="state_of_origin" placeholder="State of origin" error={errors.state_of_origin?.message} />
                                 )}
                             </InputRow>
-                            <InputRow label="LGA" error={errors.lga?.message}>
+                            <InputRow label="LGA of Origin" error={errors.lga?.message}>
                                 {nationalityIsNigeria ? (
                                     <SelectInput register={register} name="lga" options={lgaOptions} placeholder={stateOfOrigin ? 'Select LGA' : 'Select state first'} error={errors.lga?.message} />
                                 ) : (
@@ -351,10 +424,10 @@ export default function VerifyMePage() {
 
                         <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                             <InputRow label="National Identification Number (NIN)" error={errors.nin_number?.message}>
-                                <TextInput register={register} name="nin_number" placeholder="11 digit NIN" error={errors.nin_number?.message} />
+                                <TextInput register={register} name="nin_number" placeholder={NIN_INPUT_PLACEHOLDER} error={errors.nin_number?.message} {...ninInputProps} />
                             </InputRow>
                             <InputRow label="Bank Verification Number (BVN)" error={errors.bvn_number?.message}>
-                                <TextInput register={register} name="bvn_number" placeholder="11 digit BVN" error={errors.bvn_number?.message} />
+                                <TextInput register={register} name="bvn_number" placeholder={BVN_INPUT_PLACEHOLDER} error={errors.bvn_number?.message} {...bvnInputProps} />
                             </InputRow>
                         </div>
 
@@ -363,7 +436,7 @@ export default function VerifyMePage() {
                                 <TextInput register={register} name="email" type="email" placeholder="Email address" error={errors.email?.message} />
                             </InputRow>
                             <InputRow label="Mobile (linked to NIN or BVN)" error={errors.mobile?.message}>
-                                <TextInput register={register} name="mobile" placeholder="Mobile number" error={errors.mobile?.message} />
+                                <TextInput register={register} name="mobile" placeholder={MOBILE_INPUT_PLACEHOLDER} error={errors.mobile?.message} {...mobileInputProps} />
                             </InputRow>
                             <InputRow label="Employment Status" error={errors.employment_status?.message}>
                                 <SelectInput register={register} name="employment_status" options={employmentOptions} placeholder="Select employment status" error={errors.employment_status?.message} />

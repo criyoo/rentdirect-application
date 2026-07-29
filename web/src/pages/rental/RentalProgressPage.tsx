@@ -5,6 +5,7 @@ import { Link, useParams } from 'react-router-dom'
 
 import { useAuth } from '@/hooks/useAuth'
 import { api, resolveMediaUrl } from '@/lib/api'
+import { hasPlatinumAccess, hasSilverAccess, SubscriptionPaymentRecord } from '@/lib/subscriptions'
 import { Booking, RentalProgressStep } from '@/types'
 import { formatCurrencyWithSymbol } from '@/utils/currency'
 
@@ -42,9 +43,21 @@ export default function RentalProgressPage() {
     const [selectedStepKeys, setSelectedStepKeys] = useState<string[]>([])
     const [selectedStepResponses, setSelectedStepResponses] = useState<Record<string, string>>({})
 
+    const { data: subscriptionPaymentResponse, isLoading: isSubscriptionLoading } = useQuery({
+        queryKey: ['subscription-payments', 'rental-progress', user?.id],
+        queryFn: async () => (await api.get<SubscriptionPaymentRecord[] | { results?: SubscriptionPaymentRecord[] }>('/subscriptions')).data,
+        enabled: user?.role === 'tenant',
+    })
+    const hasRentalProgressAccess = user?.role !== 'tenant'
+        || (
+            subscriptionPaymentResponse !== undefined
+            && hasSilverAccess(subscriptionPaymentResponse)
+        )
+    const hasPremiumRentalSupport = user?.role === 'tenant' && subscriptionPaymentResponse !== undefined && hasPlatinumAccess(subscriptionPaymentResponse)
+
     const { data: booking, isLoading, error } = useQuery({
         queryKey: ['rental-progress', bookingId],
-        enabled: !!bookingId,
+        enabled: !!bookingId && hasRentalProgressAccess,
         queryFn: async () => (await api.get<Booking>(`/bookings/${bookingId}/rental-progress`)).data,
     })
 
@@ -101,6 +114,31 @@ export default function RentalProgressPage() {
                 ? Object.fromEntries(Object.entries(current).filter(([key]) => key !== stepKey))
                 : { ...current, [stepKey]: value }
         ))
+    }
+
+    if (user?.role === 'tenant' && isSubscriptionLoading) {
+        return (
+            <div className="container-modern py-8">
+                <div className="rounded-2xl border bg-white p-8 text-gray-600 shadow-sm">Checking rental progress access...</div>
+            </div>
+        )
+    }
+
+    if (!hasRentalProgressAccess) {
+        return (
+            <div className="container-modern py-8">
+                <div className="rounded-2xl border bg-white p-8 shadow-sm">
+                    <h1 className="text-2xl font-semibold text-gray-900">Rental Progress</h1>
+                    <p className="mt-3 text-gray-600">
+                        Rental progress tracking is available with the Silver tenant plan and every higher plan.
+                    </p>
+                    <div className="mt-6 flex flex-wrap gap-3">
+                        <Link to="/billing" className="btn btn-primary">Upgrade Plan</Link>
+                        <Link to={`/dashboard/tenant/${user?.id}`} className="btn btn-outline">Back to dashboard</Link>
+                    </div>
+                </div>
+            </div>
+        )
     }
 
     if (isLoading) {
@@ -211,6 +249,12 @@ export default function RentalProgressPage() {
                                     <p className="mt-2 text-lg font-semibold text-gray-900">{progress?.completed_count || 0}</p>
                                 </div>
                             </div>
+
+                            {hasPremiumRentalSupport && (
+                                <div className="mt-5 rounded-2xl border border-purple-200 bg-purple-50 p-4 text-sm text-purple-900">
+                                    Premium rental workflow support is active for your Platinum subscription.
+                                </div>
+                            )}
 
                             <div className="mt-6">
                                 <div className="h-3 overflow-hidden rounded-full bg-gray-200">

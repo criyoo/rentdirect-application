@@ -7,6 +7,7 @@ import { Link } from 'react-router-dom'
 import { api, resolveMediaUrl } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
 import { isNigeriaSelection, nigeriaStateLgaMap, nigerianStates, worldCountryOptions } from '@/lib/locations'
+import { MOBILE_ERROR_MESSAGE, MOBILE_INPUT_PATTERN, MOBILE_INPUT_PLACEHOLDER, validateMobile } from '@/lib/profile'
 import { User } from '@/types'
 
 const rentalHistoryItemSchema = z.object({
@@ -23,19 +24,41 @@ const requiredBooleanField = z.boolean({
     invalid_type_error: 'Please select Yes or No.',
 })
 
-function parseYearsOfStay(value?: string | null): number {
+const requiredFieldMessage = 'This field is required.'
+
+const optionalMobileField = z.string().optional().refine((value) => !value || !validateMobile(value), MOBILE_ERROR_MESSAGE)
+
+function parseDateInput(value?: string | null): Date | null {
     const normalizedValue = String(value || '').trim()
-    if (!normalizedValue) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(normalizedValue)) {
+        return null
+    }
+    const parsedDate = new Date(`${normalizedValue}T00:00:00`)
+    return Number.isNaN(parsedDate.getTime()) ? null : parsedDate
+}
+
+function currentResidenceMoveInDateIsAtLeastFiveYears(value?: string | null): boolean {
+    const moveInDate = parseDateInput(value)
+    if (!moveInDate) {
+        return false
+    }
+
+    const threshold = new Date()
+    threshold.setHours(0, 0, 0, 0)
+    threshold.setFullYear(threshold.getFullYear() - 5)
+    return moveInDate <= threshold
+}
+
+function yearsSinceMoveInDate(value?: string | null): number {
+    const moveInDate = parseDateInput(value)
+    if (!moveInDate) {
         return 0
     }
 
-    const parsedValue = Number.parseFloat(normalizedValue)
-    if (Number.isFinite(parsedValue)) {
-        return parsedValue
-    }
-
-    const match = normalizedValue.match(/(\d+(?:\.\d+)?)/)
-    return match ? Number.parseFloat(match[1]) : 0
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const elapsedMilliseconds = today.getTime() - moveInDate.getTime()
+    return Math.max(0, elapsedMilliseconds / (365.2425 * 24 * 60 * 60 * 1000))
 }
 
 function rentalHistoryItemHasAnyValue(item?: Record<string, string | undefined>): boolean {
@@ -59,9 +82,37 @@ function rentalHistoryItemMissingFields(item?: Record<string, string | undefined
     return requiredKeys.filter((key) => String(item?.[key] || '').trim() === '')
 }
 
+function hasSubmittedValue(value: unknown): boolean {
+    if (typeof value === 'boolean') {
+        return true
+    }
+    return String(value || '').trim() !== ''
+}
+
+function addRequiredIssue(ctx: z.RefinementCtx, path: (string | number)[], message = requiredFieldMessage) {
+    ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path,
+        message,
+    })
+}
+
+function requireNestedFields(
+    ctx: z.RefinementCtx,
+    parent: Record<string, unknown> | undefined,
+    parentPath: string,
+    fields: readonly string[],
+) {
+    fields.forEach((fieldName) => {
+        if (!hasSubmittedValue(parent?.[fieldName])) {
+            addRequiredIssue(ctx, [parentPath, fieldName])
+        }
+    })
+}
+
 const schema = z.object({
     first_name: z.string().min(1, 'First name is required'),
-    middle_name: z.string().optional(),
+    middle_name: z.string().min(1, 'Middle name is required'),
     last_name: z.string().min(1, 'Last name is required'),
     date_of_birth: z.string().min(1, 'Date of birth is required'),
     gender: z.string().min(1, 'Gender is required'),
@@ -78,7 +129,7 @@ const schema = z.object({
     housing_status: z.string().min(1, 'Housing status is required'),
     employment_info: z.object({
         company_name: z.string().optional(),
-        company_contact_number: z.string().optional(),
+        company_contact_number: optionalMobileField,
         industry: z.string().optional(),
         employment_type: z.string().optional(),
         employment_start_date: z.string().optional(),
@@ -87,7 +138,7 @@ const schema = z.object({
         company_website: z.string().optional(),
         hr_contact_name: z.string().optional(),
         hr_email: z.string().optional(),
-        hr_contact_phone: z.string().optional(),
+        hr_contact_phone: optionalMobileField,
     }).optional(),
     financial_info: z.object({
         bank_name: z.string().optional(),
@@ -100,7 +151,7 @@ const schema = z.object({
         monthly_income_amount: z.string().optional(),
         monthly_expenses: z.string().optional(),
         current_rent_amount: z.string().min(1, 'Annual rent is required'),
-        current_service_charge: z.string().min(1, 'Service charge is required'),
+        current_service_charge: z.string().optional(),
         current_move_in_date: z.string().min(1, 'Move in date is required'),
         expected_move_out_date: z.string().min(1, 'Expected move out date is required'),
         reason_for_wanting_to_leave: z.string().min(1, 'Reason for wanting to leave is required'),
@@ -111,19 +162,19 @@ const schema = z.object({
         full_name: z.string().optional(),
         relationship: z.string().optional(),
         email: z.string().optional(),
-        mobile_number: z.string().optional(),
+        mobile_number: optionalMobileField,
         occupation: z.string().optional(),
         employer: z.string().optional(),
         residential_address: z.string().optional(),
     }).optional(),
     landlord_info: z.object({
         name: z.string().optional(),
-        mobile: z.string().optional(),
+        mobile: optionalMobileField,
         email: z.string().optional(),
         address: z.string().optional(),
         same_as_current_address: z.boolean().optional(),
         property_manager_name: z.string().optional(),
-        property_manager_phone: z.string().optional(),
+        property_manager_phone: optionalMobileField,
         property_manager_email: z.string().optional(),
         property_manager_address: z.string().optional(),
         property_manager_same_as_landlord_name: z.boolean().optional(),
@@ -160,6 +211,69 @@ const schema = z.object({
     }).optional(),
     document_ids: z.array(z.string()).optional(),
 }).superRefine((data, ctx) => {
+    if (data.employment_status === 'Employed') {
+        requireNestedFields(ctx, data.employment_info, 'employment_info', [
+            'company_name',
+            'company_contact_number',
+            'industry',
+            'employment_type',
+            'employment_start_date',
+            'position_job_title',
+            'company_address',
+            'company_website',
+            'hr_contact_name',
+            'hr_email',
+            'hr_contact_phone',
+        ])
+    }
+
+    if (data.employment_status && data.employment_status !== 'Employed') {
+        requireNestedFields(ctx, data.financial_info, 'financial_info', [
+            'bank_name',
+            'bank_address',
+            'account_name',
+            'account_number',
+            'business_name',
+            'business_address',
+            'business_type',
+            'monthly_income_amount',
+            'monthly_expenses',
+            'credit_commitment',
+            'outstanding_loans',
+        ])
+    }
+
+    requireNestedFields(ctx, data.guarantor_details, 'guarantor_details', [
+        'full_name',
+        'relationship',
+        'email',
+        'mobile_number',
+        'occupation',
+        'employer',
+        'residential_address',
+    ])
+
+    requireNestedFields(ctx, data.landlord_info, 'landlord_info', [
+        'name',
+        'mobile',
+        'email',
+        'address',
+        'property_manager_name',
+        'property_manager_phone',
+        'property_manager_email',
+        'property_manager_address',
+    ])
+
+    requireNestedFields(ctx, data.household_info, 'household_info', [
+        'marital_status',
+        'number_of_adults',
+        'number_of_children',
+        'has_pets',
+        'work_from_home',
+        'commercial_activities_at_home',
+        'has_smokers',
+    ])
+
     if (data.household_info?.has_pets && !String(data.household_info.number_of_pets || '').trim()) {
         ctx.addIssue({
             code: z.ZodIssueCode.custom,
@@ -170,7 +284,10 @@ const schema = z.object({
 
     const filledRentalHistory = (data.rental_history || []).filter((item) => rentalHistoryItemHasAnyValue(item))
 
-    filledRentalHistory.forEach((item, index) => {
+    ;(data.rental_history || []).forEach((item, index) => {
+        if (!rentalHistoryItemHasAnyValue(item)) {
+            return
+        }
         rentalHistoryItemMissingFields(item).forEach((fieldName) => {
             ctx.addIssue({
                 code: z.ZodIssueCode.custom,
@@ -180,12 +297,17 @@ const schema = z.object({
         })
     })
 
+    const currentResidenceIsFiveYearsOrMore = currentResidenceMoveInDateIsAtLeastFiveYears(data.financial_info?.current_move_in_date)
+    if (currentResidenceIsFiveYearsOrMore) {
+        return
+    }
+
     if (data.rental_history_same_as_current_residence) {
-        if (parseYearsOfStay(data.length_of_stay) < 5 && filledRentalHistory.length === 0) {
+        if (filledRentalHistory.length === 0) {
             ctx.addIssue({
                 code: z.ZodIssueCode.custom,
                 path: ['rental_history', 0, 'property_address'],
-                message: 'Add at least one previous rental property because your current residence is less than 5 years.',
+                message: 'Add at least one previous rental property because your current residence move in date is less than 5 years ago.',
             })
         }
         return
@@ -209,6 +331,32 @@ const employmentTypeOptions = ['Full-time', 'Part-time', 'Contract', 'Internship
 const maritalStatusOptions = ['Married', 'Single', 'Divorced', 'Separated', 'Widow/Widower']
 
 type FileMap = Record<string, File[]>
+type UploadFileItem = { key: string; file: File }
+
+const employmentDocumentKeys = ['employment_letter', 'staff_id', 'payslip'] as const
+const supportingDocumentLabels: Record<string, string> = {
+    employment_letter: 'Employment Letter',
+    staff_id: 'Staff ID',
+    payslip: 'Payslip',
+    bank_statement: 'Bank Statement',
+    tax_clearance: 'Tax Clearance',
+    cac_registration: 'CAC Registration Document',
+    guarantor_gov_id: 'Guarantor Government ID',
+    guarantor_photo: 'Guarantor Passport Photo',
+    guarantor_utility: 'Guarantor Utility Bill',
+    bank_statement_6m: 'Bank Statement',
+    gov_id: 'Government ID',
+    passport_photo: 'Passport Photo',
+    utility_bill: 'Utility Bill',
+    cac_doc: 'CAC Registration',
+    tax_clearance_doc: 'Tax Clearance',
+    payment_slip: 'Payment Slip',
+    student_id: 'Student ID',
+}
+
+function selectedEmploymentDocumentTypeCount(fileMap: FileMap): number {
+    return employmentDocumentKeys.filter((key) => (fileMap[key] || []).length > 0).length
+}
 
 type SectionProps = {
     title: string
@@ -261,6 +409,10 @@ function TextInput({
     min,
     step,
     disabled = false,
+    inputMode,
+    pattern,
+    maxLength,
+    title,
 }: {
     register: any
     name: string
@@ -270,6 +422,10 @@ function TextInput({
     min?: string
     step?: string
     disabled?: boolean
+    inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode']
+    pattern?: string
+    maxLength?: number
+    title?: string
 }) {
     return (
         <input
@@ -277,11 +433,23 @@ function TextInput({
             type={type}
             min={min}
             step={step}
+            inputMode={inputMode}
+            pattern={pattern}
+            maxLength={maxLength}
+            title={title}
             placeholder={placeholder}
             readOnly={disabled}
             className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${error ? 'border-red-300' : disabled ? 'border-gray-200 bg-gray-100 text-gray-500' : 'border-gray-300'}`}
         />
     )
+}
+
+const mobileInputProps = {
+    type: 'tel',
+    inputMode: 'tel' as const,
+    pattern: MOBILE_INPUT_PATTERN,
+    maxLength: 14,
+    title: MOBILE_ERROR_MESSAGE,
 }
 
 function SameAsLandlordCheckbox({ register, name }: { register: any; name: string }) {
@@ -669,7 +837,6 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
     const residenceLga = watch('residence_lga')
     const residenceAddress = watch('residence_address')
     const residenceCity = watch('residence_city')
-    const residenceLengthOfStay = watch('length_of_stay')
     const residenceAnnualRent = watch('financial_info.current_rent_amount')
     const residenceServiceCharge = watch('financial_info.current_service_charge')
     const residenceMoveInDate = watch('financial_info.current_move_in_date')
@@ -685,11 +852,14 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
         ? nigeriaStateLgaMap[residenceState] || []
         : []
     const currentResidenceYears = useMemo(
-        () => parseYearsOfStay(residenceLengthOfStay),
-        [residenceLengthOfStay],
+        () => yearsSinceMoveInDate(residenceMoveInDate),
+        [residenceMoveInDate],
     )
-    const requiresAdditionalRentalHistory = Boolean(rentalHistorySameAsCurrent && currentResidenceYears < 5)
-    const currentResidenceMeetsMinimumHistory = currentResidenceYears >= 5
+    const currentResidenceMeetsMinimumHistory = currentResidenceMoveInDateIsAtLeastFiveYears(residenceMoveInDate)
+    const requiresAdditionalRentalHistory = Boolean(rentalHistorySameAsCurrent && !currentResidenceMeetsMinimumHistory)
+    const existingSupportingDocumentCount = existingProfile?.supporting_document_urls?.filter(Boolean).length || 0
+    const employmentDocumentTypeCount = Math.min(existingSupportingDocumentCount, 2) + selectedEmploymentDocumentTypeCount(fileMap)
+    const hasRequiredEmploymentDocuments = employmentStatus !== 'Employed' || employmentDocumentTypeCount >= 2
     const currentResidenceRentalHistoryPreview = useMemo(() => ({
         property_address: [residenceAddress, residenceCity, residenceState].filter(Boolean).join(', '),
         annual_rent: residenceAnnualRent || '',
@@ -812,12 +982,12 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
     }, [landlordAddress, propertyManagerSameAsLandlordAddress, setValue])
 
     const uploadFiles = useMutation({
-        mutationFn: async (files: File[]) => {
+        mutationFn: async (files: UploadFileItem[]) => {
             const ids: string[] = []
-            for (const file of files) {
+            for (const { key, file } of files) {
                 const formData = new FormData()
                 formData.append('file', file)
-                formData.append('title', file.name)
+                formData.append('title', supportingDocumentLabels[key] || file.name)
                 const res = await api.post('/documents', formData, {
                     headers: { 'Content-Type': 'multipart/form-data' },
                 })
@@ -841,7 +1011,7 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
         const currentResidenceHistory = buildCurrentResidenceRentalHistoryEntry(data)
 
         if (data.rental_history_same_as_current_residence) {
-            if (parseYearsOfStay(data.length_of_stay) >= 5) {
+            if (currentResidenceMoveInDateIsAtLeastFiveYears(data.financial_info?.current_move_in_date)) {
                 return [currentResidenceHistory]
             }
             return [currentResidenceHistory, ...manualHistory]
@@ -866,7 +1036,7 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                 localStorage.setItem('user', JSON.stringify(photoResponse.data))
             }
 
-            const allFiles = Object.values(fileMap).flat()
+            const allFiles = Object.entries(fileMap).flatMap(([key, files]) => files.map((file) => ({ key, file })))
             const payload: Record<string, any> = {
                 ...data,
                 country_of_birth: stringValue(verificationProfile.country_of_birth),
@@ -911,11 +1081,17 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
         setIsSubmitting(true)
         setSubmitError('')
         try {
+            if (!hasRequiredEmploymentDocuments) {
+                setActiveStep(3)
+                setSubmitError('Upload any 2 of Employment Letter, Staff ID, or Payslip before submitting.')
+                window.scrollTo({ top: 0, behavior: 'smooth' })
+                return
+            }
             await submitProfile.mutateAsync(data)
         } finally {
             setIsSubmitting(false)
         }
-    }, [submitProfile])
+    }, [hasRequiredEmploymentDocuments, submitProfile])
 
     const onInvalid = useCallback((formErrors: FieldErrors<FormValues>) => {
         const errorPaths = collectErrorPaths(formErrors)
@@ -988,8 +1164,8 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                             <InputRow label="First Name" error={errors.first_name?.message}>
                                 <TextInput register={register} name="first_name" placeholder="First name" error={errors.first_name?.message} />
                             </InputRow>
-                            <InputRow label="Middle Name">
-                                <TextInput register={register} name="middle_name" placeholder="Middle name" />
+                            <InputRow label="Middle Name" error={errors.middle_name?.message}>
+                                <TextInput register={register} name="middle_name" placeholder="Middle name" error={errors.middle_name?.message} />
                             </InputRow>
                             <InputRow label="Last Name" error={errors.last_name?.message}>
                                 <TextInput register={register} name="last_name" placeholder="Last name" error={errors.last_name?.message} />
@@ -1081,7 +1257,7 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                             <InputRow label="Annual Rent" error={errors.financial_info?.current_rent_amount?.message}>
                                 <TextInput register={register} name="financial_info.current_rent_amount" placeholder="e.g. 1200000" error={errors.financial_info?.current_rent_amount?.message} />
                             </InputRow>
-                            <InputRow label="Service Charge" error={errors.financial_info?.current_service_charge?.message}>
+                            <InputRow label="Service Charge (Optional)" error={errors.financial_info?.current_service_charge?.message}>
                                 <TextInput register={register} name="financial_info.current_service_charge" placeholder="e.g. 150000" error={errors.financial_info?.current_service_charge?.message} />
                             </InputRow>
                         </div>
@@ -1109,51 +1285,51 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                     {employmentStatus === 'Employed' && (
                         <SectionCard title="Employment Information" step={3} activeStep={activeStep} setActiveStep={setActiveStep}>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <InputRow label="Company Name">
-                                    <TextInput register={register} name="employment_info.company_name" placeholder="Company name" />
+                                <InputRow label="Company Name" error={errors.employment_info?.company_name?.message}>
+                                    <TextInput register={register} name="employment_info.company_name" placeholder="Company name" error={errors.employment_info?.company_name?.message} />
                                 </InputRow>
-                                <InputRow label="Company Contact Number">
-                                    <TextInput register={register} name="employment_info.company_contact_number" placeholder="Company phone" />
+                                <InputRow label="Company Contact Number" error={errors.employment_info?.company_contact_number?.message}>
+                                    <TextInput register={register} name="employment_info.company_contact_number" placeholder={MOBILE_INPUT_PLACEHOLDER} error={errors.employment_info?.company_contact_number?.message} {...mobileInputProps} />
                                 </InputRow>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-                                <InputRow label="Industry">
-                                    <TextInput register={register} name="employment_info.industry" placeholder="Industry" />
+                                <InputRow label="Industry" error={errors.employment_info?.industry?.message}>
+                                    <TextInput register={register} name="employment_info.industry" placeholder="Industry" error={errors.employment_info?.industry?.message} />
                                 </InputRow>
-                                <InputRow label="Employment Type">
-                                    <SelectInput register={register} name="employment_info.employment_type" options={employmentTypeOptions} placeholder="Select type" />
+                                <InputRow label="Employment Type" error={errors.employment_info?.employment_type?.message}>
+                                    <SelectInput register={register} name="employment_info.employment_type" options={employmentTypeOptions} placeholder="Select type" error={errors.employment_info?.employment_type?.message} />
                                 </InputRow>
-                                <InputRow label="Employment Start Date">
-                                    <TextInput register={register} name="employment_info.employment_start_date" type="date" />
+                                <InputRow label="Employment Start Date" error={errors.employment_info?.employment_start_date?.message}>
+                                    <TextInput register={register} name="employment_info.employment_start_date" type="date" error={errors.employment_info?.employment_start_date?.message} />
                                 </InputRow>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                                <InputRow label="Position / Job Title">
-                                    <TextInput register={register} name="employment_info.position_job_title" placeholder="Job title" />
+                                <InputRow label="Position / Job Title" error={errors.employment_info?.position_job_title?.message}>
+                                    <TextInput register={register} name="employment_info.position_job_title" placeholder="Job title" error={errors.employment_info?.position_job_title?.message} />
                                 </InputRow>
-                                <InputRow label="Company Website">
-                                    <TextInput register={register} name="employment_info.company_website" placeholder="www.example.com" />
+                                <InputRow label="Company Website" error={errors.employment_info?.company_website?.message}>
+                                    <TextInput register={register} name="employment_info.company_website" placeholder="www.example.com" error={errors.employment_info?.company_website?.message} />
                                 </InputRow>
                             </div>
                             <div className="mt-4">
-                                <InputRow label="Company Address">
+                                <InputRow label="Company Address" error={errors.employment_info?.company_address?.message}>
                                     <textarea
                                         {...register('employment_info.company_address')}
                                         placeholder="Company address"
                                         rows={2}
-                                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.employment_info?.company_address ? 'border-red-300' : 'border-gray-300'}`}
                                     />
                                 </InputRow>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-                                <InputRow label="HR Contact Name">
-                                    <TextInput register={register} name="employment_info.hr_contact_name" placeholder="HR name" />
+                                <InputRow label="HR Contact Name" error={errors.employment_info?.hr_contact_name?.message}>
+                                    <TextInput register={register} name="employment_info.hr_contact_name" placeholder="HR name" error={errors.employment_info?.hr_contact_name?.message} />
                                 </InputRow>
-                                <InputRow label="HR Email">
-                                    <TextInput register={register} name="employment_info.hr_email" placeholder="hr@company.com" />
+                                <InputRow label="HR Email" error={errors.employment_info?.hr_email?.message}>
+                                    <TextInput register={register} name="employment_info.hr_email" placeholder="hr@company.com" error={errors.employment_info?.hr_email?.message} />
                                 </InputRow>
-                                <InputRow label="HR Contact Phone">
-                                    <TextInput register={register} name="employment_info.hr_contact_phone" placeholder="HR phone" />
+                                <InputRow label="HR Contact Phone" error={errors.employment_info?.hr_contact_phone?.message}>
+                                    <TextInput register={register} name="employment_info.hr_contact_phone" placeholder={MOBILE_INPUT_PLACEHOLDER} error={errors.employment_info?.hr_contact_phone?.message} {...mobileInputProps} />
                                 </InputRow>
                             </div>
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1161,6 +1337,9 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                                 <FileUploadBox label="Staff ID Card" files={fileMap['staff_id'] || []} onChange={setFilesForKey('staff_id')} />
                                 <FileUploadBox label="Payslip (Last 3-6 months)" files={fileMap['payslip'] || []} onChange={setFilesForKey('payslip')} />
                             </div>
+                            {!hasRequiredEmploymentDocuments && (
+                                <p className="mt-2 text-sm text-red-600">Upload any 2 of Employment Letter, Staff ID, or Payslip.</p>
+                            )}
                         </SectionCard>
                     )}
 
@@ -1168,54 +1347,54 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                     {employmentStatus && employmentStatus !== 'Employed' && (
                         <SectionCard title="Financial Verification" step={4} activeStep={activeStep} setActiveStep={setActiveStep}>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <InputRow label="Bank Name">
-                                    <TextInput register={register} name="financial_info.bank_name" placeholder="Bank name" />
+                                <InputRow label="Bank Name" error={errors.financial_info?.bank_name?.message}>
+                                    <TextInput register={register} name="financial_info.bank_name" placeholder="Bank name" error={errors.financial_info?.bank_name?.message} />
                                 </InputRow>
-                                <InputRow label="Bank Address">
-                                    <TextInput register={register} name="financial_info.bank_address" placeholder="Bank branch address" />
+                                <InputRow label="Bank Address" error={errors.financial_info?.bank_address?.message}>
+                                    <TextInput register={register} name="financial_info.bank_address" placeholder="Bank branch address" error={errors.financial_info?.bank_address?.message} />
                                 </InputRow>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                                <InputRow label="Account Name">
-                                    <TextInput register={register} name="financial_info.account_name" placeholder="Account name" />
+                                <InputRow label="Account Name" error={errors.financial_info?.account_name?.message}>
+                                    <TextInput register={register} name="financial_info.account_name" placeholder="Account name" error={errors.financial_info?.account_name?.message} />
                                 </InputRow>
-                                <InputRow label="Account Number">
-                                    <TextInput register={register} name="financial_info.account_number" placeholder="Account number" />
+                                <InputRow label="Account Number" error={errors.financial_info?.account_number?.message}>
+                                    <TextInput register={register} name="financial_info.account_number" placeholder="Account number" error={errors.financial_info?.account_number?.message} />
                                 </InputRow>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-                                <InputRow label="Business Name">
-                                    <TextInput register={register} name="financial_info.business_name" placeholder="Business name" />
+                                <InputRow label="Business Name" error={errors.financial_info?.business_name?.message}>
+                                    <TextInput register={register} name="financial_info.business_name" placeholder="Business name" error={errors.financial_info?.business_name?.message} />
                                 </InputRow>
-                                <InputRow label="Business Address">
-                                    <TextInput register={register} name="financial_info.business_address" placeholder="Business address" />
+                                <InputRow label="Business Address" error={errors.financial_info?.business_address?.message}>
+                                    <TextInput register={register} name="financial_info.business_address" placeholder="Business address" error={errors.financial_info?.business_address?.message} />
                                 </InputRow>
-                                <InputRow label="Business Type">
-                                    <TextInput register={register} name="financial_info.business_type" placeholder="Business type" />
-                                </InputRow>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                                <InputRow label="Monthly Income Amount">
-                                    <TextInput register={register} name="financial_info.monthly_income_amount" placeholder="e.g. 500000" />
-                                </InputRow>
-                                <InputRow label="Monthly Expenses">
-                                    <TextInput register={register} name="financial_info.monthly_expenses" placeholder="e.g. 200000" />
+                                <InputRow label="Business Type" error={errors.financial_info?.business_type?.message}>
+                                    <TextInput register={register} name="financial_info.business_type" placeholder="Business type" error={errors.financial_info?.business_type?.message} />
                                 </InputRow>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                                <InputRow label="Current Rent Amount">
-                                    <TextInput register={register} name="financial_info.current_rent_amount" placeholder="e.g. 1500000/year" />
+                                <InputRow label="Monthly Income Amount" error={errors.financial_info?.monthly_income_amount?.message}>
+                                    <TextInput register={register} name="financial_info.monthly_income_amount" placeholder="e.g. 500000" error={errors.financial_info?.monthly_income_amount?.message} />
                                 </InputRow>
-                                <InputRow label="Current Service Charge">
-                                    <TextInput register={register} name="financial_info.current_service_charge" placeholder="e.g. 100000/year" />
+                                <InputRow label="Monthly Expenses" error={errors.financial_info?.monthly_expenses?.message}>
+                                    <TextInput register={register} name="financial_info.monthly_expenses" placeholder="e.g. 200000" error={errors.financial_info?.monthly_expenses?.message} />
                                 </InputRow>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                                <InputRow label="Credit Commitment">
-                                    <TextInput register={register} name="financial_info.credit_commitment" placeholder="e.g. 50000/month" />
+                                <InputRow label="Current Rent Amount" error={errors.financial_info?.current_rent_amount?.message}>
+                                    <TextInput register={register} name="financial_info.current_rent_amount" placeholder="e.g. 1500000/year" error={errors.financial_info?.current_rent_amount?.message} />
                                 </InputRow>
-                                <InputRow label="Outstanding Loans">
-                                    <TextInput register={register} name="financial_info.outstanding_loans" placeholder="e.g. 2000000" />
+                                <InputRow label="Current Service Charge (Optional)" error={errors.financial_info?.current_service_charge?.message}>
+                                    <TextInput register={register} name="financial_info.current_service_charge" placeholder="e.g. 100000/year" error={errors.financial_info?.current_service_charge?.message} />
+                                </InputRow>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                                <InputRow label="Credit Commitment" error={errors.financial_info?.credit_commitment?.message}>
+                                    <TextInput register={register} name="financial_info.credit_commitment" placeholder="e.g. 50000/month" error={errors.financial_info?.credit_commitment?.message} />
+                                </InputRow>
+                                <InputRow label="Outstanding Loans" error={errors.financial_info?.outstanding_loans?.message}>
+                                    <TextInput register={register} name="financial_info.outstanding_loans" placeholder="e.g. 2000000" error={errors.financial_info?.outstanding_loans?.message} />
                                 </InputRow>
                             </div>
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1229,36 +1408,36 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                     {/* 5. Guarantor Details */}
                     <SectionCard title="Guarantor Details" step={5} activeStep={activeStep} setActiveStep={setActiveStep}>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <InputRow label="Full Name">
-                                <TextInput register={register} name="guarantor_details.full_name" placeholder="Guarantor full name" />
+                            <InputRow label="Full Name" error={errors.guarantor_details?.full_name?.message}>
+                                <TextInput register={register} name="guarantor_details.full_name" placeholder="Guarantor full name" error={errors.guarantor_details?.full_name?.message} />
                             </InputRow>
-                            <InputRow label="Relationship">
-                                <TextInput register={register} name="guarantor_details.relationship" placeholder="e.g. Parent, Sibling, Friend" />
-                            </InputRow>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                            <InputRow label="Email">
-                                <TextInput register={register} name="guarantor_details.email" placeholder="guarantor@email.com" />
-                            </InputRow>
-                            <InputRow label="Mobile Number">
-                                <TextInput register={register} name="guarantor_details.mobile_number" placeholder="Phone number" />
+                            <InputRow label="Relationship" error={errors.guarantor_details?.relationship?.message}>
+                                <TextInput register={register} name="guarantor_details.relationship" placeholder="e.g. Parent, Sibling, Friend" error={errors.guarantor_details?.relationship?.message} />
                             </InputRow>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                            <InputRow label="Occupation">
-                                <TextInput register={register} name="guarantor_details.occupation" placeholder="Occupation" />
+                            <InputRow label="Email" error={errors.guarantor_details?.email?.message}>
+                                <TextInput register={register} name="guarantor_details.email" placeholder="guarantor@email.com" error={errors.guarantor_details?.email?.message} />
                             </InputRow>
-                            <InputRow label="Employer">
-                                <TextInput register={register} name="guarantor_details.employer" placeholder="Employer name" />
+                            <InputRow label="Mobile Number" error={errors.guarantor_details?.mobile_number?.message}>
+                                <TextInput register={register} name="guarantor_details.mobile_number" placeholder={MOBILE_INPUT_PLACEHOLDER} error={errors.guarantor_details?.mobile_number?.message} {...mobileInputProps} />
+                            </InputRow>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                            <InputRow label="Occupation" error={errors.guarantor_details?.occupation?.message}>
+                                <TextInput register={register} name="guarantor_details.occupation" placeholder="Occupation" error={errors.guarantor_details?.occupation?.message} />
+                            </InputRow>
+                            <InputRow label="Employer" error={errors.guarantor_details?.employer?.message}>
+                                <TextInput register={register} name="guarantor_details.employer" placeholder="Employer name" error={errors.guarantor_details?.employer?.message} />
                             </InputRow>
                         </div>
                         <div className="mt-4">
-                            <InputRow label="Residential Address">
+                            <InputRow label="Residential Address" error={errors.guarantor_details?.residential_address?.message}>
                                 <textarea
                                     {...register('guarantor_details.residential_address')}
                                     placeholder="Guarantor residential address"
                                     rows={2}
-                                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.guarantor_details?.residential_address ? 'border-red-300' : 'border-gray-300'}`}
                                 />
                             </InputRow>
                         </div>
@@ -1272,14 +1451,14 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                     {/* 6. Landlord Information */}
                     <SectionCard title="Current Landlord Information" step={6} activeStep={activeStep} setActiveStep={setActiveStep}>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <InputRow label="Full Name">
-                                <TextInput register={register} name="landlord_info.name" placeholder="Landlord full name" />
+                            <InputRow label="Full Name" error={errors.landlord_info?.name?.message}>
+                                <TextInput register={register} name="landlord_info.name" placeholder="Landlord full name" error={errors.landlord_info?.name?.message} />
                             </InputRow>
-                            <InputRow label="Mobile">
-                                <TextInput register={register} name="landlord_info.mobile" placeholder="Landlord phone" />
+                            <InputRow label="Mobile" error={errors.landlord_info?.mobile?.message}>
+                                <TextInput register={register} name="landlord_info.mobile" placeholder={MOBILE_INPUT_PLACEHOLDER} error={errors.landlord_info?.mobile?.message} {...mobileInputProps} />
                             </InputRow>
-                            <InputRow label="Email">
-                                <TextInput register={register} name="landlord_info.email" type="email" placeholder="Landlord email" />
+                            <InputRow label="Email" error={errors.landlord_info?.email?.message}>
+                                <TextInput register={register} name="landlord_info.email" type="email" placeholder="Landlord email" error={errors.landlord_info?.email?.message} />
                             </InputRow>
                         </div>
                         <div className="mt-4">
@@ -1299,34 +1478,41 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                                 placeholder="Landlord address"
                                 rows={2}
                                 readOnly={sameAsCurrent}
-                                className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${sameAsCurrent ? 'border-gray-200 bg-gray-100 text-gray-500' : 'border-gray-300'}`}
+                                className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${sameAsCurrent ? 'border-gray-200 bg-gray-100 text-gray-500' : errors.landlord_info?.address ? 'border-red-300' : 'border-gray-300'}`}
                             />
+                            {errors.landlord_info?.address?.message && <p className="mt-1 text-sm text-red-600">{errors.landlord_info.address.message}</p>}
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
                             <InputRow
                                 label="Property Manager Name"
+                                error={errors.landlord_info?.property_manager_name?.message}
                                 action={<SameAsLandlordCheckbox register={register} name="landlord_info.property_manager_same_as_landlord_name" />}
                             >
                                 <TextInput
                                     register={register}
                                     name="landlord_info.property_manager_name"
                                     placeholder="Property manager name"
+                                    error={errors.landlord_info?.property_manager_name?.message}
                                     disabled={propertyManagerSameAsLandlordName}
                                 />
                             </InputRow>
                             <InputRow
                                 label="Property Manager Phone"
+                                error={errors.landlord_info?.property_manager_phone?.message}
                                 action={<SameAsLandlordCheckbox register={register} name="landlord_info.property_manager_same_as_landlord_phone" />}
                             >
                                 <TextInput
                                     register={register}
                                     name="landlord_info.property_manager_phone"
-                                    placeholder="Property manager phone"
+                                    placeholder={MOBILE_INPUT_PLACEHOLDER}
+                                    error={errors.landlord_info?.property_manager_phone?.message}
                                     disabled={propertyManagerSameAsLandlordPhone}
+                                    {...mobileInputProps}
                                 />
                             </InputRow>
                             <InputRow
                                 label="Property Manager Email"
+                                error={errors.landlord_info?.property_manager_email?.message}
                                 action={<SameAsLandlordCheckbox register={register} name="landlord_info.property_manager_same_as_landlord_email" />}
                             >
                                 <TextInput
@@ -1334,6 +1520,7 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                                     name="landlord_info.property_manager_email"
                                     type="email"
                                     placeholder="Property manager email"
+                                    error={errors.landlord_info?.property_manager_email?.message}
                                     disabled={propertyManagerSameAsLandlordEmail}
                                 />
                             </InputRow>
@@ -1341,6 +1528,7 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                         <div className="mt-4">
                             <InputRow
                                 label="Property Manager Address"
+                                error={errors.landlord_info?.property_manager_address?.message}
                                 action={<SameAsLandlordCheckbox register={register} name="landlord_info.property_manager_same_as_landlord_address" />}
                             >
                                 <textarea
@@ -1348,7 +1536,7 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                                     placeholder="Property manager address"
                                     rows={2}
                                     readOnly={propertyManagerSameAsLandlordAddress}
-                                    className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${propertyManagerSameAsLandlordAddress ? 'border-gray-200 bg-gray-100 text-gray-500' : 'border-gray-300'}`}
+                                    className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${propertyManagerSameAsLandlordAddress ? 'border-gray-200 bg-gray-100 text-gray-500' : errors.landlord_info?.property_manager_address ? 'border-red-300' : 'border-gray-300'}`}
                                 />
                             </InputRow>
                         </div>
@@ -1356,7 +1544,7 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
 
                     {/* 7. Rental History */}
                     <SectionCard title="Rental History (Not less than 5 Years)" step={7} activeStep={activeStep} setActiveStep={setActiveStep}>
-                        <p className="text-sm text-gray-500 mb-4">If less than five years, provide information for all properties you have lived in.</p>
+                        <p className="text-sm text-gray-500 mb-4">If your current residence move in date is less than five years ago, provide information for previous properties.</p>
                         <div className="mb-4 flex items-center gap-2">
                             <input
                                 type="checkbox"
@@ -1472,11 +1660,11 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                             <InputRow label="Marital Status" error={errors.household_info?.marital_status?.message}>
                                 <SelectInput register={register} name="household_info.marital_status" options={maritalStatusOptions} placeholder="Select marital status" error={errors.household_info?.marital_status?.message} />
                             </InputRow>
-                            <InputRow label="Number of Adults">
-                                <TextInput register={register} name="household_info.number_of_adults" placeholder="e.g. 2" />
+                            <InputRow label="Number of Adults" error={errors.household_info?.number_of_adults?.message}>
+                                <TextInput register={register} name="household_info.number_of_adults" placeholder="e.g. 2" error={errors.household_info?.number_of_adults?.message} />
                             </InputRow>
-                            <InputRow label="Number of Children">
-                                <TextInput register={register} name="household_info.number_of_children" placeholder="e.g. 1" />
+                            <InputRow label="Number of Children" error={errors.household_info?.number_of_children?.message}>
+                                <TextInput register={register} name="household_info.number_of_children" placeholder="e.g. 1" error={errors.household_info?.number_of_children?.message} />
                             </InputRow>
                         </div>
                         <div className="mt-4 space-y-4">
@@ -1582,12 +1770,15 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                         <SectionCard title="Supporting Documents" step={11} activeStep={activeStep} setActiveStep={setActiveStep}>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <FileUploadBox label="Staff ID Card" files={fileMap['staff_id'] || []} onChange={setFilesForKey('staff_id')} />
-                                <FileUploadBox label="Pay Slip" files={fileMap['utility_bill'] || []} onChange={setFilesForKey('utility_bill')} />
+                                <FileUploadBox label="Pay Slip" files={fileMap['payslip'] || []} onChange={setFilesForKey('payslip')} />
                                 <FileUploadBox label="Bank Statement (6 Months)" files={fileMap['bank_statement_6m'] || []} onChange={setFilesForKey('bank_statement_6m')} />
                                 <FileUploadBox label="Government ID (NIN Card or Slip/Driver's License/Passport)" files={fileMap['gov_id'] || []} onChange={setFilesForKey('gov_id')} />
                                 <FileUploadBox label="Passport Photo" files={fileMap['passport_photo'] || []} onChange={setFilesForKey('passport_photo')} />
                                 <FileUploadBox label="Utility Bill (Proof of Address)" files={fileMap['utility_bill'] || []} onChange={setFilesForKey('utility_bill')} />
                             </div>
+                            {!hasRequiredEmploymentDocuments && (
+                                <p className="mt-2 text-sm text-red-600">Upload any 2 of Employment Letter, Staff ID, or Payslip.</p>
+                            )}
                         </SectionCard>
                     )}
 

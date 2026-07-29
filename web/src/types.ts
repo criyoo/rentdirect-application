@@ -91,6 +91,7 @@ export type LandlordPublicProfile = {
     landlord_verification_type?: LandlordVerificationType | ''
     profile_photo_url?: string | null
     verification_badges: LandlordVerificationBadges
+    verification_score?: number | null
     metrics: LandlordPublicMetrics
     listings: LandlordPublicListing[]
     reviews: Array<{

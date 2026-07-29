@@ -6,7 +6,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useAppPopup } from '@/contexts/AppPopupContext'
 import { api, resolveMediaUrl } from '@/lib/api'
 import { HostedCheckoutPayload, launchHostedCheckout } from '@/lib/payments'
-import { hasBronzeAccess, SubscriptionPaymentRecord } from '@/lib/subscriptions'
+import { hasSilverAccess, SubscriptionPaymentRecord } from '@/lib/subscriptions'
 import { Booking, Listing, Payment } from '@/types'
 import { formatCurrencyWithSymbol } from '@/utils/currency'
 import { calculateRentBreakdown } from '@/utils/rent'
@@ -145,12 +145,16 @@ export default function RentPage() {
             }
         }
     })
-    const { data: subscriptionPaymentResponse } = useQuery({
+    const { data: subscriptionPaymentResponse, isLoading: isSubscriptionLoading } = useQuery({
         queryKey: ['subscription-payments', 'rent', user?.id],
         enabled: user?.role === 'tenant',
         queryFn: async () => (await api.get<SubscriptionPaymentRecord[] | { results?: SubscriptionPaymentRecord[] }>('/subscriptions')).data,
     })
-    const isBronzeTenant = user?.role === 'tenant' && subscriptionPaymentResponse !== undefined && hasBronzeAccess(subscriptionPaymentResponse)
+    const hasRentAccess = user?.role === 'tenant'
+        && (
+            subscriptionPaymentResponse !== undefined
+            && hasSilverAccess(subscriptionPaymentResponse)
+        )
 
     const isBookingCancelled = booking?.status === 'cancelled'
     const showCancelledPaymentState = isBookingCancelled || Boolean(cancelledPaymentId)
@@ -240,8 +244,8 @@ export default function RentPage() {
 
     const createBooking = useMutation({
         mutationFn: async () => {
-            if (isBronzeTenant) {
-                throw new Error('Renting property is not available on the Bronze free plan.')
+            if (!hasRentAccess) {
+                throw new Error('Renting property is available from the Silver plan.')
             }
             return (await api.post<Booking>('/bookings', {
                 listing_id: listing!.id,
@@ -487,7 +491,7 @@ export default function RentPage() {
         }
     }
 
-    if (isLoading) {
+    if (isLoading || (user?.role === 'tenant' && isSubscriptionLoading)) {
         return (
             <div className="min-h-[80vh] flex items-center justify-center bg-gray-50">
                 <div className="animate-pulse text-gray-500">Loading rental information…</div>
@@ -503,18 +507,22 @@ export default function RentPage() {
         )
     }
 
-    if (isBronzeTenant) {
+    if (!hasRentAccess) {
         return (
             <div className="min-h-[80vh] flex items-center justify-center bg-gray-50 px-4">
                 <div className="max-w-md w-full rounded-2xl border bg-white p-8 text-center shadow-lg">
-                    <h1 className="text-2xl font-bold text-gray-900">Upgrade Required</h1>
-                    <p className="mt-3 text-gray-600">Renting property is not available on the Bronze free plan.</p>
+                    <h1 className="text-2xl font-bold text-gray-900">{user ? 'Upgrade Required' : 'Sign In Required'}</h1>
+                    <p className="mt-3 text-gray-600">
+                        {user
+                            ? 'Renting property is available to tenants from the Silver plan.'
+                            : 'Sign in with a Silver or higher tenant plan to rent this property.'}
+                    </p>
                     <button
                         type="button"
-                        onClick={() => navigate('/billing')}
+                        onClick={() => navigate(user?.role === 'tenant' ? '/billing' : '/login')}
                         className="mt-6 w-full rounded-lg bg-blue-600 px-4 py-3 font-medium text-white hover:bg-blue-700"
                     >
-                        View Subscription Plans
+                        {user?.role === 'tenant' ? 'View Subscription Plans' : 'Sign In'}
                     </button>
                     <button
                         type="button"

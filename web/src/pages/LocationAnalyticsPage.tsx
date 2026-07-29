@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import { LocationAnalyticsGroup, LocationAnalyticsResponse } from '@/types'
 import { api } from '@/lib/api'
 import { formatCurrencyWithSymbol } from '@/utils/currency'
+import { useAuth } from '@/hooks/useAuth'
+import { hasSilverAccess, SubscriptionPaymentRecord } from '@/lib/subscriptions'
 
 function hasLocationSearch(searchParams: URLSearchParams) {
     const hasRadius = Boolean(searchParams.get('radius_km'))
@@ -68,15 +70,58 @@ function AnalyticsTable({ title, items }: { title: string; items: LocationAnalyt
 }
 
 export default function LocationAnalyticsPage() {
+    const { user } = useAuth()
     const [searchParams] = useSearchParams()
     const requestParams = analyticsRequestParams(searchParams)
     const suffix = requestParams.toString()
+    const { data: subscriptionPaymentResponse, isLoading: isSubscriptionLoading } = useQuery({
+        queryKey: ['subscription-payments', 'location-analytics', user?.id],
+        queryFn: async () => (await api.get<SubscriptionPaymentRecord[] | { results?: SubscriptionPaymentRecord[] }>('/subscriptions')).data,
+        enabled: user?.role === 'tenant',
+    })
+    const canViewLocationAnalytics = user?.role === 'landlord'
+        || user?.role === 'admin'
+        || (
+            user?.role === 'tenant'
+            && subscriptionPaymentResponse !== undefined
+            && hasSilverAccess(subscriptionPaymentResponse)
+        )
     const { data: locationAnalytics, isLoading } = useQuery({
         queryKey: ['listings', 'location-analytics-page', suffix],
         queryFn: async () => {
             return (await api.get<LocationAnalyticsResponse>(`/listings/location-analytics${suffix ? `?${suffix}` : ''}`)).data
         },
+        enabled: canViewLocationAnalytics,
     })
+
+    if (user?.role === 'tenant' && isSubscriptionLoading) {
+        return (
+            <div className="container-modern py-8">
+                <div className="rounded-lg border border-gray-200 bg-white p-8 text-center text-gray-500">
+                    Checking location analytics access...
+                </div>
+            </div>
+        )
+    }
+
+    if (!canViewLocationAnalytics) {
+        return (
+            <div className="container-modern py-8">
+                <div className="rounded-lg border border-blue-200 bg-white p-8 text-center">
+                    <h1 className="text-2xl font-bold text-gray-900">Location Analytics</h1>
+                    <p className="mt-3 text-gray-600">
+                        Property location and analytics are available with the Silver tenant plan and every higher plan.
+                    </p>
+                    <div className="mt-6 flex justify-center gap-3">
+                        <Link to={user ? '/billing' : '/login'} className="btn btn-primary">
+                            {user ? 'View Plans' : 'Sign In'}
+                        </Link>
+                        <Link to="/search" className="btn btn-outline">Back to Search</Link>
+                    </div>
+                </div>
+            </div>
+        )
+    }
 
     return (
         <div className="min-h-screen bg-gray-50 py-8">

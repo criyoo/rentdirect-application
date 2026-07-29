@@ -17,6 +17,8 @@ from django.core.cache import cache
 from django.utils.dateparse import parse_date
 from rest_framework.exceptions import APIException, ValidationError
 
+from .verification_records import get_verification_record_payload, store_verification_record_payload
+
 logger = logging.getLogger(__name__)
 
 
@@ -221,9 +223,24 @@ def prembly_lookup(*, verification_type: str, path: str, lookup_value: str, body
     if isinstance(cached_payload, dict) and _payload_verified(cached_payload):
         return cached_payload
 
+    database_payload = get_verification_record_payload(
+        provider="prembly",
+        verification_type=verification_type,
+        lookup_value=lookup_value,
+    )
+    if isinstance(database_payload, dict) and _payload_verified(database_payload):
+        cache.set(cache_key, database_payload, timeout=getattr(settings, "PREMBLY_LOOKUP_CACHE_TIMEOUT_SECONDS", 86400))
+        return database_payload
+
     payload = prembly_post(path, body)
     if isinstance(payload, dict) and _payload_verified(payload):
         sanitized = _strip_sensitive_media(json.loads(json.dumps(payload)))
+        sanitized = store_verification_record_payload(
+            provider="prembly",
+            verification_type=verification_type,
+            lookup_value=lookup_value,
+            payload=sanitized,
+        )
         cache.set(cache_key, sanitized, timeout=getattr(settings, "PREMBLY_LOOKUP_CACHE_TIMEOUT_SECONDS", 86400))
         return sanitized
     return payload

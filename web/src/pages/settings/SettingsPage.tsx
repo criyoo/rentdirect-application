@@ -6,7 +6,7 @@ import { useAppPopup } from '@/contexts/AppPopupContext'
 import { useAuth } from '@/hooks/useAuth'
 import DashboardBackButton from '@/components/DashboardBackButton'
 import { api } from '@/lib/api'
-import { validateMobile, validateResidence } from '@/lib/profile'
+import { MOBILE_ERROR_MESSAGE, MOBILE_INPUT_PATTERN, MOBILE_INPUT_PLACEHOLDER, validateMobile, validateResidence } from '@/lib/profile'
 import { User, UserResidence } from '@/types'
 
 type VerificationProgress = {
@@ -546,7 +546,17 @@ export default function SettingsPage() {
                             </div>
                             <div>
                                 <label className="form-label">Change Phone Number</label>
-                                <input className="form-input" value={mobile} onChange={e => setMobile(e.target.value)} placeholder="08012345678 or +2348012345678" />
+                                <input
+                                    className="form-input"
+                                    type="tel"
+                                    inputMode="tel"
+                                    pattern={MOBILE_INPUT_PATTERN}
+                                    maxLength={14}
+                                    title={MOBILE_ERROR_MESSAGE}
+                                    value={mobile}
+                                    onChange={e => setMobile(e.target.value)}
+                                    placeholder={MOBILE_INPUT_PLACEHOLDER}
+                                />
                                 {fieldErrors.mobile && <p className="form-error">{fieldErrors.mobile}</p>}
                             </div>
                         </div>
@@ -633,9 +643,14 @@ export default function SettingsPage() {
                                     <label className="form-label">Phone number</label>
                                     <input
                                         className="form-input"
+                                        type="tel"
+                                        inputMode="tel"
+                                        pattern={MOBILE_INPUT_PATTERN}
+                                        maxLength={14}
+                                        title={MOBILE_ERROR_MESSAGE}
                                         value={emergencyContact.phone_number}
                                         onChange={e => setEmergencyContact(current => ({ ...current, phone_number: e.target.value }))}
-                                        placeholder="08012345678 or +2348012345678"
+                                        placeholder={MOBILE_INPUT_PLACEHOLDER}
                                     />
                                     {fieldErrors.emergency_phone_number && <p className="form-error">{fieldErrors.emergency_phone_number}</p>}
                                 </div>

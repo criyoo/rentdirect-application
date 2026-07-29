@@ -3,6 +3,24 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@/lib/api'
 import { isNigeriaSelection, nigeriaStateLgaMap, nigerianStates, worldCountryOptions } from '@/lib/locations'
+import {
+    BVN_ERROR_MESSAGE,
+    BVN_INPUT_PATTERN,
+    BVN_INPUT_PLACEHOLDER,
+    CAC_REGISTRATION_ERROR_MESSAGE,
+    CAC_REGISTRATION_INPUT_PATTERN,
+    CAC_REGISTRATION_INPUT_PLACEHOLDER,
+    NIN_ERROR_MESSAGE,
+    NIN_INPUT_PATTERN,
+    NIN_INPUT_PLACEHOLDER,
+    MOBILE_ERROR_MESSAGE,
+    MOBILE_INPUT_PATTERN,
+    MOBILE_INPUT_PLACEHOLDER,
+    formatCacRegistrationNumberInput,
+    formatIdentityNumberInput,
+    validateCacRegistrationNumber,
+    validateMobile,
+} from '@/lib/profile'
 import { LandlordVerificationType, User } from '@/types'
 
 type PaginatedResponse<T> = { results?: T[] }
@@ -240,6 +258,16 @@ function dateInputValue(value: unknown): string {
     return rawValue
 }
 
+function formatVerificationFieldValue(name: string, value: string): string {
+    if (name === 'nin' || name === 'bvn') {
+        return formatIdentityNumberInput(value)
+    }
+    if (name === 'cac_registration_number') {
+        return formatCacRegistrationNumberInput(value)
+    }
+    return value
+}
+
 function isKnownNigerianCity(state: string, city: string): boolean {
     if (!state || !city) {
         return false
@@ -339,8 +367,8 @@ function buildInitialIndividualForm(me?: User): IndividualForm {
         gender: String(savedProfile.gender || ''),
         contact_number: String(savedProfile.contact_number || me?.mobile || ''),
         email: String(savedProfile.email || me?.email || ''),
-        nin: String(savedProfile.nin || me?.nin_number || ''),
-        bvn: String(savedProfile.bvn || me?.bvn_number || ''),
+        nin: formatIdentityNumberInput(String(savedProfile.nin || me?.nin_number || '')),
+        bvn: formatIdentityNumberInput(String(savedProfile.bvn || me?.bvn_number || '')),
         residential_address: String(savedProfile.residential_address || me?.residence?.address || ''),
         bank_name: String(savedProfile.bank_name || ''),
         account_name: String(savedProfile.account_name || ''),
@@ -366,11 +394,11 @@ function buildInitialCorporateForm(me?: User): CorporateForm {
         company_email: String(savedProfile.company_email || me?.email || ''),
         contact_person_name: String(savedProfile.contact_person_name || me?.name || ''),
         contact_person_position: String(savedProfile.contact_person_position || ''),
-        cac_registration_number: String(savedProfile.cac_registration_number || ''),
+        cac_registration_number: formatCacRegistrationNumberInput(String(savedProfile.cac_registration_number || '')),
         cac_registration_date: String(savedProfile.cac_registration_date || ''),
         tax_identification_number: String(savedProfile.tax_identification_number || ''),
-        nin: String(savedProfile.nin || me?.nin_number || ''),
-        bvn: String(savedProfile.bvn || me?.bvn_number || ''),
+        nin: formatIdentityNumberInput(String(savedProfile.nin || me?.nin_number || '')),
+        bvn: formatIdentityNumberInput(String(savedProfile.bvn || me?.bvn_number || '')),
         bank_name: String(savedProfile.bank_name || corporateBankingInformation.bank_name || ''),
         account_name: String(savedProfile.account_name || corporateBankingInformation.account_name || ''),
         account_number: String(savedProfile.account_number || corporateBankingInformation.account_number || ''),
@@ -487,7 +515,8 @@ export default function LandlordVerificationPage() {
     ])
 
     const handleIndividualChange = (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-        const { name, value } = event.target
+        const { name } = event.target
+        const value = formatVerificationFieldValue(name, event.target.value)
         setIndividualForm((current) => {
             const nextForm = { ...current, [name]: value }
 
@@ -517,7 +546,8 @@ export default function LandlordVerificationPage() {
     }
 
     const handleCorporateChange = (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-        const { name, value } = event.target
+        const { name } = event.target
+        const value = formatVerificationFieldValue(name, event.target.value)
         setCorporateForm((current) => {
             if (name === 'business_state') {
                 return {
@@ -573,11 +603,15 @@ export default function LandlordVerificationPage() {
                 }
             })
 
-            if (individualForm.nin.trim() && !/^\d{11}$/.test(individualForm.nin.trim())) {
-                nextErrors.nin = 'NIN must be exactly 11 digits.'
+            if (individualForm.nin.trim() && !new RegExp(NIN_INPUT_PATTERN).test(individualForm.nin.trim())) {
+                nextErrors.nin = NIN_ERROR_MESSAGE
             }
-            if (individualForm.bvn.trim() && !/^\d{11}$/.test(individualForm.bvn.trim())) {
-                nextErrors.bvn = 'BVN must be exactly 11 digits.'
+            if (individualForm.bvn.trim() && !new RegExp(BVN_INPUT_PATTERN).test(individualForm.bvn.trim())) {
+                nextErrors.bvn = BVN_ERROR_MESSAGE
+            }
+            const contactNumberError = validateMobile(individualForm.contact_number)
+            if (contactNumberError) {
+                nextErrors.contact_number = contactNumberError
             }
         }
 
@@ -609,11 +643,21 @@ export default function LandlordVerificationPage() {
             if (!buildCorporateProfilePayload(corporateForm).business_city.trim()) {
                 nextErrors.business_city = 'This field is required.'
             }
-            if (corporateForm.nin.trim() && !/^\d{11}$/.test(corporateForm.nin.trim())) {
-                nextErrors.nin = 'NIN must be exactly 11 digits.'
+            if (corporateForm.cac_registration_number.trim()) {
+                const cacRegistrationNumberError = validateCacRegistrationNumber(corporateForm.cac_registration_number)
+                if (cacRegistrationNumberError) {
+                    nextErrors.cac_registration_number = cacRegistrationNumberError
+                }
             }
-            if (corporateForm.bvn.trim() && !/^\d{11}$/.test(corporateForm.bvn.trim())) {
-                nextErrors.bvn = 'BVN must be exactly 11 digits.'
+            if (corporateForm.nin.trim() && !new RegExp(NIN_INPUT_PATTERN).test(corporateForm.nin.trim())) {
+                nextErrors.nin = NIN_ERROR_MESSAGE
+            }
+            if (corporateForm.bvn.trim() && !new RegExp(BVN_INPUT_PATTERN).test(corporateForm.bvn.trim())) {
+                nextErrors.bvn = BVN_ERROR_MESSAGE
+            }
+            const companyPhoneError = validateMobile(corporateForm.company_phone_number)
+            if (companyPhoneError) {
+                nextErrors.company_phone_number = companyPhoneError
             }
         }
 
@@ -963,7 +1007,18 @@ export default function LandlordVerificationPage() {
                                             </div>
                                             <div>
                                                 <label className={formLabelDefault}>Contact Number (linked to NIN)</label>
-                                                <input className="form-input" name="contact_number" value={individualForm.contact_number} onChange={handleIndividualChange} />
+                                                <input
+                                                    className="form-input"
+                                                    name="contact_number"
+                                                    type="tel"
+                                                    inputMode="tel"
+                                                    pattern={MOBILE_INPUT_PATTERN}
+                                                    maxLength={14}
+                                                    title={MOBILE_ERROR_MESSAGE}
+                                                    placeholder={MOBILE_INPUT_PLACEHOLDER}
+                                                    value={individualForm.contact_number}
+                                                    onChange={handleIndividualChange}
+                                                />
                                                 {fieldErrors.contact_number && <p className="form-error">{fieldErrors.contact_number}</p>}
                                             </div>
                                             <div>
@@ -976,12 +1031,32 @@ export default function LandlordVerificationPage() {
                                         <div className="grid gap-4 md:grid-cols-2">
                                             <div>
                                                 <label className={formLabelDefault}>National Identification Number (NIN)</label>
-                                                <input className="form-input" name="nin" value={individualForm.nin} onChange={handleIndividualChange} />
+                                                <input
+                                                    className="form-input"
+                                                    name="nin"
+                                                    inputMode="numeric"
+                                                    pattern={NIN_INPUT_PATTERN}
+                                                    maxLength={11}
+                                                    title={NIN_ERROR_MESSAGE}
+                                                    placeholder={NIN_INPUT_PLACEHOLDER}
+                                                    value={individualForm.nin}
+                                                    onChange={handleIndividualChange}
+                                                />
                                                 {fieldErrors.nin && <p className="form-error">{fieldErrors.nin}</p>}
                                             </div>
                                             <div>
                                                 <label className={formLabelDefault}>Bank Verification Number (BVN)</label>
-                                                <input className="form-input" name="bvn" value={individualForm.bvn} onChange={handleIndividualChange} />
+                                                <input
+                                                    className="form-input"
+                                                    name="bvn"
+                                                    inputMode="numeric"
+                                                    pattern={BVN_INPUT_PATTERN}
+                                                    maxLength={11}
+                                                    title={BVN_ERROR_MESSAGE}
+                                                    placeholder={BVN_INPUT_PLACEHOLDER}
+                                                    value={individualForm.bvn}
+                                                    onChange={handleIndividualChange}
+                                                />
                                                 {fieldErrors.bvn && <p className="form-error">{fieldErrors.bvn}</p>}
                                             </div>
                                         </div>
@@ -1084,7 +1159,18 @@ export default function LandlordVerificationPage() {
                                     <div className="grid gap-4 md:grid-cols-2">
                                         <div>
                                             <label className={formLabelDefault}>Company Phone Number</label>
-                                            <input className="form-input" name="company_phone_number" value={corporateForm.company_phone_number} onChange={handleCorporateChange} />
+                                            <input
+                                                className="form-input"
+                                                name="company_phone_number"
+                                                type="tel"
+                                                inputMode="tel"
+                                                pattern={MOBILE_INPUT_PATTERN}
+                                                maxLength={14}
+                                                title={MOBILE_ERROR_MESSAGE}
+                                                placeholder={MOBILE_INPUT_PLACEHOLDER}
+                                                value={corporateForm.company_phone_number}
+                                                onChange={handleCorporateChange}
+                                            />
                                             {fieldErrors.company_phone_number && <p className="form-error">{fieldErrors.company_phone_number}</p>}
                                         </div>
                                         <div>
@@ -1110,7 +1196,18 @@ export default function LandlordVerificationPage() {
                                     <div className="grid gap-4 md:grid-cols-3">
                                         <div>
                                             <label className={formLabelDefault}>CAC Registration Number</label>
-                                            <input className="form-input" name="cac_registration_number" value={corporateForm.cac_registration_number} onChange={handleCorporateChange} />
+                                            <input
+                                                className="form-input"
+                                                name="cac_registration_number"
+                                                inputMode="text"
+                                                pattern={CAC_REGISTRATION_INPUT_PATTERN}
+                                                maxLength={10}
+                                                title={CAC_REGISTRATION_ERROR_MESSAGE}
+                                                placeholder={CAC_REGISTRATION_INPUT_PLACEHOLDER}
+                                                autoCapitalize="characters"
+                                                value={corporateForm.cac_registration_number}
+                                                onChange={handleCorporateChange}
+                                            />
                                             {fieldErrors.cac_registration_number && <p className="form-error">{fieldErrors.cac_registration_number}</p>}
                                         </div>
                                         <div>
@@ -1128,12 +1225,32 @@ export default function LandlordVerificationPage() {
                                     <div className="grid gap-4 md:grid-cols-2">
                                         <div>
                                             <label className={formLabelDefault}>Director's NIN</label>
-                                            <input className="form-input" name="nin" value={corporateForm.nin} onChange={handleCorporateChange} />
+                                            <input
+                                                className="form-input"
+                                                name="nin"
+                                                inputMode="numeric"
+                                                pattern={NIN_INPUT_PATTERN}
+                                                maxLength={11}
+                                                title={NIN_ERROR_MESSAGE}
+                                                placeholder={NIN_INPUT_PLACEHOLDER}
+                                                value={corporateForm.nin}
+                                                onChange={handleCorporateChange}
+                                            />
                                             {fieldErrors.nin && <p className="form-error">{fieldErrors.nin}</p>}
                                         </div>
                                         <div>
                                             <label className={formLabelDefault}>Director's BVN</label>
-                                            <input className="form-input" name="bvn" value={corporateForm.bvn} onChange={handleCorporateChange} />
+                                            <input
+                                                className="form-input"
+                                                name="bvn"
+                                                inputMode="numeric"
+                                                pattern={BVN_INPUT_PATTERN}
+                                                maxLength={11}
+                                                title={BVN_ERROR_MESSAGE}
+                                                placeholder={BVN_INPUT_PLACEHOLDER}
+                                                value={corporateForm.bvn}
+                                                onChange={handleCorporateChange}
+                                            />
                                             {fieldErrors.bvn && <p className="form-error">{fieldErrors.bvn}</p>}
                                         </div>
                                     </div>

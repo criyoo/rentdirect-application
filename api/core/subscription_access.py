@@ -4,9 +4,11 @@ from .models import SubscriptionPayment
 
 
 FREE_PLAN_CODE = SubscriptionPayment.PlanCode.BRONZE
-COMMUNITY_CHAT_PLAN_CODES = {
-    SubscriptionPayment.PlanCode.GOLD,
-    SubscriptionPayment.PlanCode.PLATINUM,
+PLAN_RANK = {
+    SubscriptionPayment.PlanCode.BRONZE: 0,
+    SubscriptionPayment.PlanCode.SILVER: 1,
+    SubscriptionPayment.PlanCode.GOLD: 2,
+    SubscriptionPayment.PlanCode.PLATINUM: 3,
 }
 
 
@@ -36,5 +38,21 @@ def user_has_bronze_access(user):
     return active_plan_code_for(user) == FREE_PLAN_CODE
 
 
+def user_has_plan_access(user, required_plan):
+    return PLAN_RANK.get(active_plan_code_for(user), 0) >= PLAN_RANK[required_plan]
+
+
+def user_has_silver_access(user):
+    return user_has_plan_access(user, SubscriptionPayment.PlanCode.SILVER)
+
+
+def user_has_gold_access(user):
+    return user_has_plan_access(user, SubscriptionPayment.PlanCode.GOLD)
+
+
+def user_has_platinum_access(user):
+    return user_has_plan_access(user, SubscriptionPayment.PlanCode.PLATINUM)
+
+
 def user_has_active_community_chat_subscription(user):
-    return active_plan_code_for(user) in COMMUNITY_CHAT_PLAN_CODES
+    return user_has_gold_access(user)

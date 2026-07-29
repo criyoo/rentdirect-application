@@ -1,5 +1,19 @@
 export type PlanCode = 'bronze' | 'silver' | 'gold' | 'platinum'
 
+export const PLAN_RANK: Record<PlanCode, number> = {
+    bronze: 0,
+    silver: 1,
+    gold: 2,
+    platinum: 3,
+}
+
+export const TENANT_SUPPORT_RESPONSE_TIME: Record<PlanCode, string> = {
+    bronze: 'up to 7 days',
+    silver: 'up to 3 days',
+    gold: 'up to 24 hours',
+    platinum: 'up to 4 hours',
+}
+
 export type SubscriptionPaymentRecord = {
     id: string
     role: 'tenant' | 'landlord'
@@ -47,14 +61,45 @@ export function getActivePlanCode(
     return activeSubscriptions[0]?.plan_code || 'bronze'
 }
 
+export function hasPlanAccess(
+    response: SubscriptionPaymentRecord[] | PaginatedResponse<SubscriptionPaymentRecord> | null | undefined,
+    requiredPlan: PlanCode,
+) {
+    return PLAN_RANK[getActivePlanCode(response)] >= PLAN_RANK[requiredPlan]
+}
+
 export function hasBronzeAccess(
     response?: SubscriptionPaymentRecord[] | PaginatedResponse<SubscriptionPaymentRecord> | null,
 ) {
-    return getActivePlanCode(response) === 'bronze'
+    return !hasPlanAccess(response, 'silver')
+}
+
+export function hasSilverAccess(
+    response?: SubscriptionPaymentRecord[] | PaginatedResponse<SubscriptionPaymentRecord> | null,
+) {
+    return hasPlanAccess(response, 'silver')
+}
+
+export function hasGoldAccess(
+    response?: SubscriptionPaymentRecord[] | PaginatedResponse<SubscriptionPaymentRecord> | null,
+) {
+    return hasPlanAccess(response, 'gold')
+}
+
+export function hasPlatinumAccess(
+    response?: SubscriptionPaymentRecord[] | PaginatedResponse<SubscriptionPaymentRecord> | null,
+) {
+    return hasPlanAccess(response, 'platinum')
 }
 
 export function hasCommunityChatAccess(
     response?: SubscriptionPaymentRecord[] | PaginatedResponse<SubscriptionPaymentRecord> | null,
 ) {
-    return ['gold', 'platinum'].includes(getActivePlanCode(response))
+    return hasGoldAccess(response)
+}
+
+export function getTenantSupportResponseTime(
+    response?: SubscriptionPaymentRecord[] | PaginatedResponse<SubscriptionPaymentRecord> | null,
+) {
+    return TENANT_SUPPORT_RESPONSE_TIME[getActivePlanCode(response)]
 }

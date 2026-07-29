@@ -159,7 +159,7 @@ export default function HomePage() {
 
             {/* Featured Properties Section */}
             <section className="section bg-gray-50">
-                <div className="mx-auto flex max-w-[108rem] flex-col gap-6 px-4 sm:px-6 lg:px-8">
+                <div className="mx-auto flex max-w-[100rem] flex-col gap-2 px-4 sm:px-6 lg:px-8">
                     <div className="text-center mb-4">
                         <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
                             Featured Properties
@@ -170,7 +170,7 @@ export default function HomePage() {
                     </div>
 
                     {featured && featured.length > 0 ? (
-                        <div className="grid-modern grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                        <div className="grid-modern grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                             {featured.map((listing: Listing) => (
                                 <div key={listing.id} className="animate-fade-in">
                                     <ListingCard listing={listing} isFavourite={favouriteIds.has(listing.id)} />

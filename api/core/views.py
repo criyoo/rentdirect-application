@@ -4,7 +4,7 @@ import logging
 import re
 import uuid
 from calendar import monthrange
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
@@ -93,7 +93,12 @@ from .security import OTP_MAX_ATTEMPTS, OTP_TTL_MINUTES, contains_contact_info, 
 from .tenant_verification import normalize_tenant_verification_profile
 from .throttling import production_ratelimit
 from .community_chat import COMMUNITY_CHAT_ROLES, user_has_active_community_chat_subscription
-from .subscription_access import user_has_bronze_access
+from .subscription_access import (
+    user_has_bronze_access,
+    user_has_gold_access,
+    user_has_platinum_access,
+    user_has_silver_access,
+)
 from .location_services import (
     AMENITY_CATEGORIES,
     attach_distance_to_listing,
@@ -524,6 +529,290 @@ def verification_progress_to_legacy_status(progress_status: str) -> str:
     return VerificationRequest.Status.REJECTED
 
 
+def _append_update_fields(update_fields: list[str], *field_names: str) -> None:
+    for field_name in field_names:
+        if field_name not in update_fields:
+            update_fields.append(field_name)
+
+
+def _has_submitted_value(value) -> bool:
+    if isinstance(value, bool):
+        return True
+    if value is None:
+        return False
+    return bool(str(value).strip())
+
+
+def _profile_has_fields(profile: dict, fields: tuple[str, ...]) -> bool:
+    return all(_has_submitted_value(profile.get(field_name)) for field_name in fields)
+
+
+def _profile_has_nested_fields(profile: dict | None, fields: tuple[str, ...]) -> bool:
+    if not isinstance(profile, dict):
+        return False
+    return _profile_has_fields(profile, fields)
+
+
+TENANT_PROFILE_REQUIRED_FIELDS = (
+    "first_name",
+    "middle_name",
+    "last_name",
+    "date_of_birth",
+    "gender",
+    "nationality",
+    "state_of_origin",
+    "lga",
+    "employment_status",
+    "residence_country",
+    "residence_state",
+    "residence_city",
+    "residence_lga",
+    "residence_address",
+    "length_of_stay",
+    "housing_status",
+)
+TENANT_PROFILE_REQUIRED_CURRENT_RESIDENCE_FINANCIAL_FIELDS = (
+    "current_rent_amount",
+    "current_move_in_date",
+    "expected_move_out_date",
+    "reason_for_wanting_to_leave",
+)
+TENANT_PROFILE_REQUIRED_EMPLOYMENT_FIELDS = (
+    "company_name",
+    "company_contact_number",
+    "industry",
+    "employment_type",
+    "employment_start_date",
+    "position_job_title",
+    "company_address",
+    "company_website",
+    "hr_contact_name",
+    "hr_email",
+    "hr_contact_phone",
+)
+TENANT_PROFILE_REQUIRED_FINANCIAL_VERIFICATION_FIELDS = (
+    "bank_name",
+    "bank_address",
+    "account_name",
+    "account_number",
+    "business_name",
+    "business_address",
+    "business_type",
+    "monthly_income_amount",
+    "monthly_expenses",
+    "credit_commitment",
+    "outstanding_loans",
+)
+TENANT_PROFILE_REQUIRED_GUARANTOR_FIELDS = (
+    "full_name",
+    "relationship",
+    "email",
+    "mobile_number",
+    "occupation",
+    "employer",
+    "residential_address",
+)
+TENANT_PROFILE_REQUIRED_LANDLORD_FIELDS = (
+    "name",
+    "mobile",
+    "email",
+    "address",
+    "property_manager_name",
+    "property_manager_phone",
+    "property_manager_email",
+    "property_manager_address",
+)
+TENANT_PROFILE_REQUIRED_HOUSEHOLD_FIELDS = (
+    "marital_status",
+    "number_of_adults",
+    "number_of_children",
+    "has_pets",
+    "work_from_home",
+    "commercial_activities_at_home",
+    "has_smokers",
+)
+TENANT_PROFILE_REQUIRED_CRIMINAL_FIELDS = (
+    "convicted_of_crime",
+    "evicted_from_property",
+    "ongoing_tenancy_litigation",
+    "rent_arrears_history",
+    "legal_dispute_with_landlords",
+)
+TENANT_PROFILE_REQUIRED_RENTAL_HISTORY_FIELDS = (
+    "property_address",
+    "annual_rent",
+    "service_charge",
+    "move_in_date",
+    "move_out_date",
+    "reason_for_leave",
+)
+TENANT_PROFILE_EMPLOYMENT_DOCUMENT_LABELS = {
+    "employment_letter": ("employment letter",),
+    "staff_id": ("staff id", "staff id card"),
+    "payslip": ("payslip", "pay slip"),
+}
+LANDLORD_INDIVIDUAL_REQUIRED_PROFILE_FIELDS = (
+    "first_name",
+    "last_name",
+    "date_of_birth",
+    "country_of_birth",
+    "state_of_birth",
+    "nationality",
+    "state_of_origin",
+    "lga_of_origin",
+    "gender",
+    "contact_number",
+    "email",
+    "nin",
+    "bvn",
+    "residential_address",
+)
+LANDLORD_CORPORATE_REQUIRED_PROFILE_FIELDS = (
+    "company_name",
+    "business_state",
+    "business_city",
+    "business_address",
+    "company_phone_number",
+    "company_email",
+    "contact_person_name",
+    "contact_person_position",
+    "cac_registration_number",
+    "cac_registration_date",
+    "tax_identification_number",
+    "nin",
+    "bvn",
+    "bank_name",
+    "account_name",
+    "account_number",
+)
+
+
+def _parse_iso_date(value) -> date | None:
+    if isinstance(value, date):
+        return value
+    raw_value = str(value or "").strip()
+    if not raw_value:
+        return None
+    try:
+        return date.fromisoformat(raw_value[:10])
+    except ValueError:
+        return None
+
+
+def _is_at_least_five_years_ago(value) -> bool:
+    parsed_date = _parse_iso_date(value)
+    if parsed_date is None:
+        return False
+    today = timezone.localdate()
+    try:
+        threshold = today.replace(year=today.year - 5)
+    except ValueError:
+        threshold = today.replace(year=today.year - 5, day=28)
+    return parsed_date <= threshold
+
+
+def _normalise_document_title(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
+
+
+def _tenant_profile_employment_document_type_count(profile: TenantProfile) -> int:
+    matched_document_types = set()
+    for document_title in profile.supporting_documents.values_list("title", flat=True):
+        normalized_title = _normalise_document_title(document_title)
+        for document_type, labels in TENANT_PROFILE_EMPLOYMENT_DOCUMENT_LABELS.items():
+            if any(label in normalized_title for label in labels):
+                matched_document_types.add(document_type)
+    return len(matched_document_types)
+
+
+def _tenant_profile_requires_rental_history(profile: TenantProfile) -> bool:
+    financial_info = profile.financial_info if isinstance(profile.financial_info, dict) else {}
+    return not _is_at_least_five_years_ago(financial_info.get("current_move_in_date"))
+
+
+def tenant_profile_has_mandatory_fields(profile: TenantProfile) -> bool:
+    if not all(_has_submitted_value(getattr(profile, field_name, None)) for field_name in TENANT_PROFILE_REQUIRED_FIELDS):
+        return False
+
+    if not _profile_has_nested_fields(profile.financial_info, TENANT_PROFILE_REQUIRED_CURRENT_RESIDENCE_FINANCIAL_FIELDS):
+        return False
+
+    if str(profile.employment_status or "").strip().lower() == "employed":
+        if not _profile_has_nested_fields(profile.employment_info, TENANT_PROFILE_REQUIRED_EMPLOYMENT_FIELDS):
+            return False
+        if _tenant_profile_employment_document_type_count(profile) < 2:
+            return False
+    elif not _profile_has_nested_fields(profile.financial_info, TENANT_PROFILE_REQUIRED_FINANCIAL_VERIFICATION_FIELDS):
+        return False
+
+    if not _profile_has_nested_fields(profile.guarantor_details, TENANT_PROFILE_REQUIRED_GUARANTOR_FIELDS):
+        return False
+    if not _profile_has_nested_fields(profile.landlord_info, TENANT_PROFILE_REQUIRED_LANDLORD_FIELDS):
+        return False
+    if not _profile_has_nested_fields(profile.household_info, TENANT_PROFILE_REQUIRED_HOUSEHOLD_FIELDS):
+        return False
+    if profile.household_info.get("has_pets") and not _has_submitted_value(profile.household_info.get("number_of_pets")):
+        return False
+    if not _profile_has_nested_fields(profile.criminal_declaration, TENANT_PROFILE_REQUIRED_CRIMINAL_FIELDS):
+        return False
+
+    if not _tenant_profile_requires_rental_history(profile):
+        return True
+
+    rental_history = profile.rental_history if isinstance(profile.rental_history, list) else []
+    return any(
+        isinstance(item, dict) and _profile_has_fields(item, TENANT_PROFILE_REQUIRED_RENTAL_HISTORY_FIELDS)
+        for item in rental_history
+    )
+
+
+def landlord_profile_has_mandatory_fields(user: AppUser) -> bool:
+    profile = user.landlord_verification_profile if isinstance(user.landlord_verification_profile, dict) else {}
+    if user.landlord_verification_type == AppUser.LandlordVerificationType.INDIVIDUAL:
+        return _profile_has_fields(profile, LANDLORD_INDIVIDUAL_REQUIRED_PROFILE_FIELDS)
+    if user.landlord_verification_type == AppUser.LandlordVerificationType.CORPORATE:
+        return _profile_has_fields(profile, LANDLORD_CORPORATE_REQUIRED_PROFILE_FIELDS)
+    return False
+
+
+def sync_tenant_profile_approval(user: AppUser, profile: TenantProfile) -> VerificationRequest:
+    complete_profile = tenant_profile_has_mandatory_fields(profile)
+    next_profile_status = TenantProfile.Status.APPROVED if complete_profile else TenantProfile.Status.PENDING
+    if profile.status != next_profile_status:
+        profile.status = next_profile_status
+        profile.save(update_fields=["status", "updated_at"])
+
+    verified_at = timezone.now()
+    verification, _ = VerificationRequest.objects.get_or_create(
+        user=user,
+        defaults={
+            "request_type": VerificationRequest.RequestType.IDENTIFICATION,
+            "status": VerificationRequest.Status.APPROVED,
+            "identity_verification_status": VerificationRequest.VerificationProgressStatus.VERIFIED,
+            "verification_method": VerificationRequest.Method.AUTOMATED,
+            "submitted_at": verified_at,
+            "reviewed_at": verified_at,
+        },
+    )
+    verification.request_type = VerificationRequest.RequestType.IDENTIFICATION
+    verification.submitted_at = verified_at
+    verification.identity_verification_status = VerificationRequest.VerificationProgressStatus.VERIFIED
+    verification.verification_method = VerificationRequest.Method.AUTOMATED
+    verification.status = VerificationRequest.Status.APPROVED
+    verification.reviewed_at = verified_at
+    verification.save(
+        update_fields=[
+            "request_type",
+            "submitted_at",
+            "status",
+            "identity_verification_status",
+            "verification_method",
+            "reviewed_at",
+        ]
+    )
+    return verification
+
+
 def build_flutterwave_webhook_url() -> str | None:
     explicit = settings.FLUTTERWAVE_WEBHOOK_URL.strip()
     if explicit:
@@ -628,7 +917,7 @@ def format_average_response_time(seconds: float | None) -> str:
     return f"{days} days"
 
 
-def build_landlord_public_profile_payload(landlord: AppUser) -> dict:
+def build_landlord_public_profile_payload(landlord: AppUser, viewer=None) -> dict:
     listings = (
         Listing.objects
         .filter(landlord=landlord)
@@ -665,6 +954,24 @@ def build_landlord_public_profile_payload(landlord: AppUser) -> dict:
     phone_verified = bool((landlord.mobile or "").strip())
     email_verified = bool(landlord.email_verified)
 
+    viewer_is_authenticated = getattr(viewer, "is_authenticated", False)
+    can_view_verification_badges = viewer_is_authenticated and (
+        viewer.role == AppUser.Role.ADMIN
+        or (viewer.role == AppUser.Role.LANDLORD and viewer.id == landlord.id)
+        or (viewer.role == AppUser.Role.TENANT and user_has_platinum_access(viewer))
+    )
+    verification_badges = {
+        "identity_verified": identity_verified if can_view_verification_badges else False,
+        "house_ownership_verified": house_ownership_verified if can_view_verification_badges else False,
+        "phone_verified": phone_verified if can_view_verification_badges else False,
+        "email_verified": email_verified if can_view_verification_badges else False,
+    }
+    verification_score = (
+        round(sum(verification_badges.values()) / len(verification_badges) * 100)
+        if can_view_verification_badges
+        else None
+    )
+
     return {
         "id": str(landlord.id),
         "display_name": resolve_landlord_display_name(landlord),
@@ -673,12 +980,8 @@ def build_landlord_public_profile_payload(landlord: AppUser) -> dict:
         "role": landlord.role,
         "landlord_verification_type": landlord.landlord_verification_type,
         "profile_photo_url": landlord.profile_photo_url,
-        "verification_badges": {
-            "identity_verified": identity_verified,
-            "house_ownership_verified": house_ownership_verified,
-            "phone_verified": phone_verified,
-            "email_verified": email_verified,
-        },
+        "verification_badges": verification_badges,
+        "verification_score": verification_score,
         "metrics": {
             "properties_listed": listings.count(),
             "active_tenancies": active_tenancies,
@@ -2445,25 +2748,10 @@ class UserViewSet(viewsets.GenericViewSet):
                 request.user.tenant_verification_profile = verification_profile
                 request.user.save(update_fields=["nin_number", "bvn_number", "tenant_verification_profile", "updated_at"])
                 new_profile = serializer.save(user=request.user)
-            vr, created = VerificationRequest.objects.get_or_create(
-                user=request.user,
-                defaults={
-                    "request_type": VerificationRequest.RequestType.IDENTIFICATION,
-                    "status": VerificationRequest.Status.PENDING,
-                    "identity_verification_status": VerificationRequest.VerificationProgressStatus.VERIFIED,
-                    "verification_method": VerificationRequest.Method.AUTOMATED,
-                },
-            )
-            vr.request_type = VerificationRequest.RequestType.IDENTIFICATION
-            vr.identity_verification_status = VerificationRequest.VerificationProgressStatus.VERIFIED
-            vr.verification_method = VerificationRequest.Method.AUTOMATED
-            if not created and vr.status != VerificationRequest.Status.APPROVED:
-                vr.status = VerificationRequest.Status.PENDING
-                vr.reviewed_at = None
-            vr.save(update_fields=["request_type", "status", "identity_verification_status", "verification_method", "reviewed_at"])
+            vr = sync_tenant_profile_approval(request.user, new_profile)
             if new_profile.supporting_documents.exists():
                 vr.documents.set(new_profile.supporting_documents.all())
-            return Response(serializer.data, status=201)
+            return Response(TenantProfileSerializer(new_profile).data, status=201)
 
         # PUT
         if not profile:
@@ -2499,8 +2787,11 @@ class UserViewSet(viewsets.GenericViewSet):
             request.user.bvn_number = bvn_number
             request.user.tenant_verification_profile = verification_profile
             request.user.save(update_fields=["nin_number", "bvn_number", "tenant_verification_profile", "updated_at"])
-            serializer.save()
-        return Response(serializer.data)
+            updated_profile = serializer.save()
+        vr = sync_tenant_profile_approval(request.user, updated_profile)
+        if updated_profile.supporting_documents.exists():
+            vr.documents.set(updated_profile.supporting_documents.all())
+        return Response(TenantProfileSerializer(updated_profile).data)
 
     @action(detail=False, methods=["get"], url_path="tenants/(?P<tenant_id>[^/.]+)/profile")
     def tenant_profile_detail(self, request, tenant_id=None):
@@ -2559,7 +2850,7 @@ class UserViewSet(viewsets.GenericViewSet):
             User.objects.filter(role=AppUser.Role.LANDLORD),
             id=landlord_id,
         )
-        return Response(build_landlord_public_profile_payload(landlord))
+        return Response(build_landlord_public_profile_payload(landlord, request.user))
 
 
 class ListingViewSet(viewsets.ModelViewSet):
@@ -2616,13 +2907,18 @@ class ListingViewSet(viewsets.ModelViewSet):
         instance.status = Listing.Status.ARCHIVED
         instance.save(update_fields=["status", "updated_at"])
 
+    @staticmethod
+    def _can_access_location_features(request):
+        user = request.user
+        if not getattr(user, "is_authenticated", False):
+            return False
+        if user.role == AppUser.Role.TENANT:
+            return user_has_silver_access(user)
+        return user.role in {AppUser.Role.LANDLORD, AppUser.Role.ADMIN}
+
     @action(detail=False, methods=["get"], url_path="cities", permission_classes=[AllowAny])
     def cities(self, request):
-        if (
-            getattr(request.user, "is_authenticated", False)
-            and request.user.role == AppUser.Role.TENANT
-            and user_has_bronze_access(request.user)
-        ):
+        if not self._can_access_location_features(request):
             return Response([])
         qs = self.get_queryset().exclude(city="")
         state = (request.query_params.get("state") or "").strip()
@@ -2778,6 +3074,8 @@ class ListingViewSet(viewsets.ModelViewSet):
         toilets = request.query_params.get("toilets")
         property_type = request.query_params.get("property_type")
         distance_params = self._distance_query_params(request)
+        if distance_params and not self._can_access_location_features(request):
+            raise PermissionDenied("Distance and map-based property search is available from the Silver plan.")
         using_filter_location_as_origin = False
         if distance_params:
             latitude, longitude, radius_km, using_filter_location_as_origin = distance_params
@@ -2819,6 +3117,8 @@ class ListingViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="location-analytics", permission_classes=[AllowAny])
     def location_analytics(self, request):
+        if not self._can_access_location_features(request):
+            raise PermissionDenied("Property location analytics is available from the Silver plan.")
         qs = self.get_queryset()
         state = (request.query_params.get("state") or "").strip()
         city = (request.query_params.get("city") or "").strip()
@@ -2843,6 +3143,8 @@ class ListingViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get"], url_path="nearest-amenities", permission_classes=[AllowAny])
     def nearest_amenities(self, request, pk=None):
+        if not self._can_access_location_features(request):
+            raise PermissionDenied("Property location and nearby amenities are available from the Silver plan.")
         listing = self.get_object()
         coordinates = coordinates_for_listing(listing)
         categories_payload = {category: [] for category in AMENITY_CATEGORIES}
@@ -2993,6 +3295,11 @@ class VerificationRequestBaseViewSet(viewsets.GenericViewSet):
         return verification
 
     def serialize_submission_response(self, verification):
+        message = (
+            "Verification approved automatically."
+            if verification.status == VerificationRequest.Status.APPROVED
+            else "Verification submitted for manual review."
+        )
         return {
             "id": verification.id,
             "request_type": verification.request_type,
@@ -3000,7 +3307,7 @@ class VerificationRequestBaseViewSet(viewsets.GenericViewSet):
             "identity_verification_status": verification.identity_verification_status,
             "property_document_verification_status": verification.property_document_verification_status,
             "physical_property_status": verification.physical_property_status,
-            "message": "Verification submitted for manual review.",
+            "message": message,
         }
 
     @action(detail=False, methods=["get"], url_path="status")
@@ -3137,15 +3444,19 @@ class LandlordVerificationRequestViewSet(VerificationRequestBaseViewSet):
                 verify_landlord_identity_or_raise(request.user)
                 verification.identity_verification_status = VerificationRequest.VerificationProgressStatus.VERIFIED
                 verification.verification_method = VerificationRequest.Method.AUTOMATED
-                update_fields.extend(["identity_verification_status", "verification_method"])
+                if landlord_profile_has_mandatory_fields(request.user):
+                    verification.status = VerificationRequest.Status.APPROVED
+                    verification.reviewed_at = timezone.now()
+                    _append_update_fields(update_fields, "status", "reviewed_at")
+                _append_update_fields(update_fields, "identity_verification_status", "verification_method")
             else:
                 verification.identity_verification_status = VerificationRequest.VerificationProgressStatus.PENDING
-                update_fields.append("identity_verification_status")
+                _append_update_fields(update_fields, "identity_verification_status")
 
         if request_type == VerificationRequest.RequestType.PROPERTY_DOCUMENTS:
             verification.property_document_verification_status = VerificationRequest.VerificationProgressStatus.PENDING
             verification.physical_property_status = physical_property_status
-            update_fields.extend(["property_document_verification_status", "physical_property_status"])
+            _append_update_fields(update_fields, "property_document_verification_status", "physical_property_status")
 
 
 class TenantVerificationRequestViewSet(VerificationRequestBaseViewSet):
@@ -3160,8 +3471,46 @@ class TenantVerificationRequestViewSet(VerificationRequestBaseViewSet):
             raise ValidationError({"request_type": "Tenant verification requests do not accept property documents."})
 
         if request_type == VerificationRequest.RequestType.IDENTIFICATION:
-            verification.identity_verification_status = VerificationRequest.VerificationProgressStatus.PENDING
-            update_fields.append("identity_verification_status")
+            profile = TenantProfile.objects.filter(user=request.user).first()
+            profile_data = normalize_tenant_verification_profile(request.user.tenant_verification_profile, request.user)
+            if profile:
+                profile_data = normalize_tenant_verification_profile(
+                    {
+                        **profile_data,
+                        "first_name": profile.first_name,
+                        "middle_name": profile.middle_name,
+                        "last_name": profile.last_name,
+                        "date_of_birth": profile.date_of_birth,
+                        "gender": profile.gender,
+                        "nationality": profile.nationality,
+                        "state_of_origin": profile.state_of_origin,
+                        "lga": profile.lga,
+                        "employment_status": profile.employment_status,
+                    },
+                    request.user,
+                )
+            nin_number = str(profile_data.get("nin_number") or request.user.nin_number or "").strip()
+            bvn_number = str(profile_data.get("bvn_number") or request.user.bvn_number or "").strip()
+            verify_tenant_identity_or_raise(request.user, profile_data, nin_number, bvn_number)
+            request.user.nin_number = nin_number
+            request.user.bvn_number = bvn_number
+            request.user.tenant_verification_profile = normalize_tenant_verification_profile(
+                {
+                    **profile_data,
+                    "nin_number": nin_number,
+                    "bvn_number": bvn_number,
+                },
+                request.user,
+            )
+            request.user.save(update_fields=["nin_number", "bvn_number", "tenant_verification_profile", "updated_at"])
+            if profile and tenant_profile_has_mandatory_fields(profile):
+                profile.status = TenantProfile.Status.APPROVED
+                profile.save(update_fields=["status", "updated_at"])
+            verification.identity_verification_status = VerificationRequest.VerificationProgressStatus.VERIFIED
+            verification.verification_method = VerificationRequest.Method.AUTOMATED
+            verification.status = VerificationRequest.Status.APPROVED
+            verification.reviewed_at = timezone.now()
+            _append_update_fields(update_fields, "identity_verification_status", "verification_method", "status", "reviewed_at")
 
 
 class BookingViewSet(viewsets.ModelViewSet):
@@ -3177,8 +3526,10 @@ class BookingViewSet(viewsets.ModelViewSet):
         return qs.order_by("-created_at")
 
     def perform_create(self, serializer):
-        if self.request.user.role == AppUser.Role.TENANT and user_has_bronze_access(self.request.user):
-            raise PermissionDenied("Renting property is not available on the Bronze free plan.")
+        if self.request.user.role != AppUser.Role.TENANT:
+            raise PermissionDenied("Only tenants can rent properties.")
+        if not user_has_silver_access(self.request.user):
+            raise PermissionDenied("Renting property is available from the Silver plan.")
         serializer.save()
 
     def destroy(self, request, *args, **kwargs):
@@ -3212,6 +3563,9 @@ class BookingViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get", "patch"], url_path="rental-progress")
     def rental_progress(self, request, pk=None):
         booking = self.get_object()
+
+        if request.user.role == AppUser.Role.TENANT and not user_has_silver_access(request.user):
+            raise PermissionDenied("Rental progress tracking is available from the Silver plan.")
 
         if request.method == "PATCH":
             serializer = RentalProgressUpdateSerializer(
@@ -3332,6 +3686,10 @@ class PaymentViewSet(viewsets.ModelViewSet):
         )
 
     def create(self, request, *args, **kwargs):
+        if request.user.role != AppUser.Role.TENANT:
+            raise PermissionDenied("Only tenants can make rental payments.")
+        if not user_has_silver_access(request.user):
+            raise PermissionDenied("Rental payments are available from the Silver plan.")
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         booking = Booking.objects.select_related("listing", "tenant").get(
@@ -3413,6 +3771,8 @@ class PaymentViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="flutterwave/checkout")
     def flutterwave_checkout(self, request, pk=None):
+        if request.user.role == AppUser.Role.TENANT and not user_has_silver_access(request.user):
+            raise PermissionDenied("Rental payments are available from the Silver plan.")
         payment = self.get_object()
         if payment.status not in OPEN_PAYMENT_STATUSES:
             raise ValidationError("Payment is no longer pending.")
@@ -3972,8 +4332,8 @@ class ReviewViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         if self.request.user.role != AppUser.Role.TENANT:
             raise PermissionDenied("Only tenants can submit reviews.")
-        if user_has_bronze_access(self.request.user):
-            raise PermissionDenied("Reviews are not available on the Bronze free plan.")
+        if not user_has_gold_access(self.request.user):
+            raise PermissionDenied("Landlord and property reviews are available from the Gold plan.")
 
         listing = get_object_or_404(Listing, id=self.request.data.get("listing_id"))
         review_type = serializer.validated_data.get("review_type") or Review.ReviewType.PROPERTY
@@ -3986,8 +4346,8 @@ class ReviewViewSet(viewsets.ModelViewSet):
         review = self.get_object()
         if self.request.user.role != AppUser.Role.ADMIN and review.tenant_id != self.request.user.id:
             raise PermissionDenied("Forbidden")
-        if self.request.user.role == AppUser.Role.TENANT and user_has_bronze_access(self.request.user):
-            raise PermissionDenied("Reviews are not available on the Bronze free plan.")
+        if self.request.user.role == AppUser.Role.TENANT and not user_has_gold_access(self.request.user):
+            raise PermissionDenied("Landlord and property reviews are available from the Gold plan.")
         serializer.save()
 
     def perform_destroy(self, instance):
@@ -4007,10 +4367,28 @@ class FeedbackViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
+        topic = (self.request.data.get("topic") or "").strip()
+        if self.request.user.role == AppUser.Role.TENANT:
+            normalized_issue_topic = re.sub(
+                r"^(?:Premium Rental Workflow|Priority Issue|Issue)\s*:\s*",
+                "",
+                topic,
+                flags=re.IGNORECASE,
+            ).strip()
+            is_issue = normalized_issue_topic != topic
+            if is_issue:
+                if user_has_platinum_access(self.request.user):
+                    support_prefix = "Premium Rental Workflow"
+                elif user_has_gold_access(self.request.user):
+                    support_prefix = "Priority Issue"
+                else:
+                    support_prefix = "Issue"
+                topic = f"{support_prefix}: {normalized_issue_topic or 'General support'}"
         serializer.save(
             user=self.request.user,
             name=(self.request.data.get("name") or self.request.user.name or "").strip() or self.request.user.name,
             role=self.request.user.role,
+            topic=topic,
         )
 
 
@@ -4019,6 +4397,8 @@ class MessageViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        if self.request.user.role == AppUser.Role.TENANT and not user_has_silver_access(self.request.user):
+            raise PermissionDenied("Landlord conversations and enquiries are available from the Silver plan.")
         filters = Q(sender=self.request.user) | Q(receiver=self.request.user)
         if self.request.user.role == AppUser.Role.LANDLORD:
             filters |= Q(listing__landlord=self.request.user)
@@ -4088,8 +4468,8 @@ class MessageViewSet(viewsets.ModelViewSet):
         if receiver is None:
             raise ValidationError({"receiver_id": "Receiver not found."})
         if self.request.user.role == AppUser.Role.TENANT and receiver.role == AppUser.Role.LANDLORD:
-            if user_has_bronze_access(self.request.user):
-                raise PermissionDenied("Contacting landlords is not available on the Bronze plan (free tiral).")
+            if not user_has_silver_access(self.request.user):
+                raise PermissionDenied("Contacting landlords is available from the Silver plan.")
             if user_has_bronze_access(receiver):
                 raise PermissionDenied("Landlord is unable to receive messages at this time until fully verified.")
         if self.request.user.role == AppUser.Role.LANDLORD and receiver.role == AppUser.Role.TENANT and user_has_bronze_access(self.request.user):

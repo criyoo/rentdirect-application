@@ -19,7 +19,7 @@ def _provider_module():
 
         return service
     if provider == "dikript":
-        from . import dikript as service
+        from . import dikript_verification as service
 
         return service
     raise VerificationProviderUnavailable(detail=f"Unsupported verification provider: {provider}")

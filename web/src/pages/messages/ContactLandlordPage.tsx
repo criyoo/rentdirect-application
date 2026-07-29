@@ -6,7 +6,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import { resolveMediaUrl } from '@/lib/api'
 import { formatCurrencyWithSymbol } from '@/utils/currency'
-import { hasBronzeAccess, SubscriptionPaymentRecord } from '@/lib/subscriptions'
+import { hasSilverAccess, SubscriptionPaymentRecord } from '@/lib/subscriptions'
 
 interface Message {
     id: string
@@ -52,14 +52,6 @@ export default function ContactLandlordPage() {
         queryFn: async () => (await api.get<Listing>(`/listings/${id}`)).data
     })
 
-    const { data: messageHistory, isLoading: messagesLoading } = useQuery({
-        queryKey: ['messages', 'listing', id, tenantId],
-        enabled: !!id && !!user,
-        queryFn: async () => (await api.get<Message[]>(`/messages/listing/${id}`, {
-            params: isLandlordChat ? { counterpart_id: tenantId } : undefined,
-        })).data
-    })
-
     const { data: currentUser } = useQuery({
         queryKey: ['users', 'me'],
         enabled: !!user,
@@ -76,12 +68,24 @@ export default function ContactLandlordPage() {
         enabled: isLandlordChat,
         queryFn: async () => (await api.get<PublicTenantProfile>(`/users/tenants/${tenantId}/public-profile`)).data,
     })
-    const { data: subscriptionPaymentResponse } = useQuery({
+    const { data: subscriptionPaymentResponse, isLoading: isSubscriptionLoading } = useQuery({
         queryKey: ['subscription-payments', 'contact-landlord', user?.id],
         enabled: user?.role === 'tenant',
         queryFn: async () => (await api.get<SubscriptionPaymentRecord[] | { results?: SubscriptionPaymentRecord[] }>('/subscriptions')).data,
     })
-    const isBronzeTenant = user?.role === 'tenant' && subscriptionPaymentResponse !== undefined && hasBronzeAccess(subscriptionPaymentResponse)
+    const canUseTenantMessaging = user?.role === 'landlord'
+        || (
+            subscriptionPaymentResponse !== undefined
+            && user?.role === 'tenant'
+            && hasSilverAccess(subscriptionPaymentResponse)
+        )
+    const { data: messageHistory, isLoading: messagesLoading } = useQuery({
+        queryKey: ['messages', 'listing', id, tenantId],
+        enabled: !!id && !!user && canUseTenantMessaging,
+        queryFn: async () => (await api.get<Message[]>(`/messages/listing/${id}`, {
+            params: isLandlordChat ? { counterpart_id: tenantId } : undefined,
+        })).data
+    })
 
     useEffect(() => {
         if (!messageHistory) return
@@ -89,7 +93,7 @@ export default function ContactLandlordPage() {
     }, [messageHistory])
 
     useEffect(() => {
-        if (!id || !user || isBronzeTenant) return
+        if (!id || !user || !canUseTenantMessaging) return
         if (isLandlordChat && !tenantId) return
 
         const params = new URLSearchParams({ listing_id: id })
@@ -120,7 +124,7 @@ export default function ContactLandlordPage() {
             socket.close()
             socketRef.current = null
         }
-    }, [id, user, isLandlordChat, tenantId, isBronzeTenant])
+    }, [id, user, isLandlordChat, tenantId, canUseTenantMessaging])
 
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -176,8 +180,8 @@ export default function ContactLandlordPage() {
 
     const handleSendMessage = () => {
         if (!message.trim()) return
-        if (isBronzeTenant) {
-            alert('Contacting landlords is not available on the Bronze free plan.')
+        if (!canUseTenantMessaging) {
+            alert('Contacting landlords is available from the Silver plan.')
             navigate('/billing')
             return
         }
@@ -205,7 +209,7 @@ export default function ContactLandlordPage() {
         }
     }
 
-    if (listingLoading) {
+    if (listingLoading || (user?.role === 'tenant' && isSubscriptionLoading)) {
         return (
             <div className="min-h-screen bg-gray-50 flex items-center justify-center">
                 <div className="animate-pulse text-gray-500">Loading...</div>
@@ -249,7 +253,7 @@ export default function ContactLandlordPage() {
         )
     }
 
-    if (isBronzeTenant) {
+    if (!canUseTenantMessaging) {
         return (
             <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
                 <div className="max-w-md w-full bg-white rounded-2xl shadow-lg border p-8 text-center">
@@ -258,13 +262,17 @@ export default function ContactLandlordPage() {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v8m4-4H8" />
                         </svg>
                     </div>
-                    <h2 className="text-xl font-bold text-gray-900 mb-2">Upgrade Required</h2>
-                    <p className="text-gray-600 mb-6">Contacting landlords and arranging viewings are not available on the Bronze free plan.</p>
+                    <h2 className="text-xl font-bold text-gray-900 mb-2">{user ? 'Upgrade Required' : 'Sign In Required'}</h2>
+                    <p className="text-gray-600 mb-6">
+                        {user
+                            ? 'Contacting landlords and arranging viewings are available from the Silver plan.'
+                            : 'Sign in with a Silver or higher tenant plan to contact landlords and arrange viewings.'}
+                    </p>
                     <button
-                        onClick={() => navigate('/billing')}
+                        onClick={() => navigate(user ? '/billing' : '/login')}
                         className="w-full rounded-lg bg-blue-600 px-4 py-3 font-medium text-white hover:bg-blue-700 transition"
                     >
-                        View Subscription Plans
+                        {user ? 'View Subscription Plans' : 'Sign In'}
                     </button>
                     <button
                         onClick={() => navigate(`/listings/${listing.id}`)}
@@ -355,10 +363,9 @@ export default function ContactLandlordPage() {
                                 <div>
                                     <h3 className="font-bold text-gray-900 text-[20px]">{listing.title}</h3>
                                     <p className="text-gray-600 text-sm">
-                                        {isBronzeTenant ? listing.state || 'State not provided' : listing.city}, {listing.state}<br />
+                                        {listing.city}, {listing.state}<br />
                                         <p className="text-xs">Zip Code: {listing.postal_code}</p>
                                     </p>
-                                    {/* {!isBronzeTenant && <p className="text-gray-600 text-sm">{listing.city}, {listing.postal_code}</p>} */}
                                 </div>
 
                                 <div className="flex items-center justify-between py-2 border-t border-gray-100">

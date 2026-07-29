@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import ReviewModal from '@/components/ReviewModal'
 import { useAuth } from '@/hooks/useAuth'
 import { api, resolveMediaUrl } from '@/lib/api'
-import { hasBronzeAccess, SubscriptionPaymentRecord } from '@/lib/subscriptions'
+import { hasGoldAccess, hasPlatinumAccess, SubscriptionPaymentRecord } from '@/lib/subscriptions'
 import { LandlordPublicProfile, Review } from '@/types'
 
 function extractErrorMessage(error: any, fallback: string) {
@@ -71,15 +71,24 @@ export default function PublicLandlordProfilePage() {
     })
 
     const existingReview = myReviews[0]
-    const isBronzeTenant = user?.role === 'tenant' && subscriptionPaymentResponse !== undefined && hasBronzeAccess(subscriptionPaymentResponse)
+    const canReviewLandlord = user?.role === 'tenant' && subscriptionPaymentResponse !== undefined && hasGoldAccess(subscriptionPaymentResponse)
+    const canSeeLandlordVerification = user?.role === 'admin'
+        || user?.id === profile?.id
+        || (
+            user?.role === 'tenant'
+            && subscriptionPaymentResponse !== undefined
+            && hasPlatinumAccess(subscriptionPaymentResponse)
+        )
+    const landlordVerificationScore = profile?.verification_score ?? 0
+    const landlordFirstName = user?.name?.trim().split(/\s+/)[0] || 'Landlord'
 
     const submitReview = useMutation({
         mutationFn: async ({ rating, comment }: { rating: number; comment: string }) => {
             if (!selectedListingId) {
                 throw new Error('Select a property before submitting a review.')
             }
-            if (isBronzeTenant) {
-                throw new Error('Reviews are not available on the Bronze free plan.')
+            if (!canReviewLandlord) {
+                throw new Error('Landlord reviews are available from the Gold plan.')
             }
 
             if (existingReview?.id) {
@@ -132,7 +141,7 @@ export default function PublicLandlordProfilePage() {
     }
 
     return (
-        <div className="container-modern py-8">
+        <div className="container-modern py-6">
             <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
                 <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
                     <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
@@ -144,8 +153,8 @@ export default function PublicLandlordProfilePage() {
                             className="h-28 w-28 rounded-3xl object-cover ring-4 ring-slate-100"
                         />
                         <div>
-                            <p className="text-sm font-medium uppercase tracking-[0.2em] text-emerald-600">Landlord Profile</p>
-                            <h1 className="mt-2 text-3xl font-bold text-slate-900">{profile.display_name}</h1>
+                            <p className="text-xs font-medium uppercase tracking-[0.2em] text-emerald-600">Landlord Profile</p>
+                            <h1 className="mt-2 text-2xl font-bold text-slate-900">{landlordFirstName}</h1>
                             <p className="mt-2 text-sm font-medium text-slate-700">Full Name: {profile.full_name}</p>
                             <p className="mt-2 text-sm text-slate-600">{profile.subtitle}</p>
                             <div className="mt-4 flex flex-wrap gap-2">
@@ -164,15 +173,15 @@ export default function PublicLandlordProfilePage() {
                             <button
                                 type="button"
                                 onClick={() => {
-                                    if (isBronzeTenant) {
-                                        alert('Reviews are not available on the Bronze free plan.')
+                                    if (!canReviewLandlord) {
+                                        alert('Landlord reviews are available from the Gold plan.')
                                         return
                                     }
                                     setIsReviewOpen(true)
                                 }}
-                                className={isBronzeTenant ? 'btn btn-outline' : 'btn btn-primary'}
+                                className={canReviewLandlord ? 'btn btn-primary' : 'btn btn-outline'}
                             >
-                                {isBronzeTenant ? 'Upgrade to Review' : existingReview ? 'Edit Review' : 'Review Landlord'}
+                                {!canReviewLandlord ? 'Upgrade to Review' : existingReview ? 'Edit Review' : 'Review Landlord'}
                             </button>
                         ) : null}
                         <Link to="/search" className="btn btn-outline">
@@ -181,8 +190,10 @@ export default function PublicLandlordProfilePage() {
                     </div>
                 </div>
 
-                <div className="mt-8 rounded-2xl border border-slate-200 bg-slate-50 p-5">
-                    <h2 className="text-2xl font-semibold text-blue-600">Verification Badge</h2>
+            {canSeeLandlordVerification && (
+            <div className="mt-8 rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                    <h2 className="text-xl font-semibold text-blue-600">Verification Badge</h2>
+                    <p className="mt-2 text-sm text-slate-600">Verification category score: <span className="font-semibold text-slate-900">{landlordVerificationScore}%</span></p>
                     <div className="mt-4 grid gap-3 md:grid-cols-2">
                         {[
                             { label: 'Identity Verified', value: profile.verification_badges.identity_verified },
@@ -196,70 +207,71 @@ export default function PublicLandlordProfilePage() {
                         ))}
                     </div>
                 </div>
+            )}
             </div>
 
-            <div className="mt-8 grid gap-6 lg:grid-cols-2">
+            <div className="grid gap-6 lg:grid-cols-2">
                 <section className="card p-6">
-                    <h2 className="text-xl font-bold text-blue-600">Reputation Metrics</h2>
+                    <h2 className="text-lg font-bold text-blue-600">Reputation Metrics</h2>
                     <div className="mt-5 grid gap-4 sm:grid-cols-2">
                         <div className="rounded-2xl bg-slate-50 p-4">
                             <p className="text-sm text-slate-500">Properties Listed</p>
-                            <p className="mt-2 text-2xl font-bold text-slate-900">{profile.metrics.properties_listed}</p>
+                            <p className="mt-2 text-lg font-bold text-slate-900">{profile.metrics.properties_listed}</p>
                         </div>
                         <div className="rounded-2xl bg-slate-50 p-4">
                             <p className="text-sm text-slate-500">Active Tenancies</p>
-                            <p className="mt-2 text-2xl font-bold text-slate-900">{profile.metrics.active_tenancies}</p>
+                            <p className="mt-2 text-lg font-bold text-slate-900">{profile.metrics.active_tenancies}</p>
                         </div>
                         <div className="rounded-2xl bg-slate-50 p-4">
                             <p className="text-sm text-slate-500">Completed Tenancies</p>
-                            <p className="mt-2 text-2xl font-bold text-slate-900">{profile.metrics.completed_tenancies}</p>
+                            <p className="mt-2 text-lg font-bold text-slate-900">{profile.metrics.completed_tenancies}</p>
                         </div>
                         <div className="rounded-2xl bg-slate-50 p-4">
                             <p className="text-sm text-slate-500">Average Rating</p>
-                            <p className="mt-2 text-2xl font-bold text-slate-900">{profile.metrics.average_rating.toFixed(1)}</p>
+                            <p className="mt-2 text-lg font-bold text-slate-900">{profile.metrics.average_rating.toFixed(1)}</p>
                         </div>
                         <div className="rounded-2xl bg-slate-50 p-4">
                             <p className="text-sm text-slate-500">Tenant Satisfaction Score</p>
-                            <p className="mt-2 text-2xl font-bold text-slate-900">{profile.metrics.tenant_satisfaction_score.toFixed(1)}%</p>
+                            <p className="mt-2 text-lg font-bold text-slate-900">{profile.metrics.tenant_satisfaction_score.toFixed(1)}%</p>
                         </div>
                         <div className="rounded-2xl bg-slate-50 p-4">
                             <p className="text-sm text-slate-500">Reviews</p>
-                            <p className="mt-2 text-2xl font-bold text-slate-900">{profile.metrics.reviews_count}</p>
+                            <p className="mt-2 text-lg font-bold text-slate-900">{profile.metrics.reviews_count}</p>
                         </div>
                     </div>
                 </section>
 
                 <section className="card p-6">
-                    <h2 className="text-xl font-bold text-blue-600">Response Metrics</h2>
+                    <h2 className="text-lg font-bold text-blue-600">Response Metrics</h2>
                     <div className="mt-5 grid gap-4 sm:grid-cols-2">
                         <div className="rounded-2xl bg-slate-50 p-4">
                             <p className="text-sm text-slate-500">Average Response Time</p>
-                            <p className="mt-2 text-xl font-bold text-slate-900">{profile.metrics.average_response_time}</p>
+                            <p className="mt-2 text-lg font-bold text-slate-900">{profile.metrics.average_response_time}</p>
                         </div>
                         <div className="rounded-2xl bg-slate-50 p-4">
                             <p className="text-sm text-slate-500">Application Approval Rate</p>
-                            <p className="mt-2 text-xl font-bold text-slate-900">{profile.metrics.application_approval_rate.toFixed(1)}%</p>
+                            <p className="mt-2 text-lg font-bold text-slate-900">{profile.metrics.application_approval_rate.toFixed(1)}%</p>
                         </div>
                     </div>
 
-                    <h2 className="mt-8 text-xl font-bold text-blue-600">Rental History Metrics</h2>
+                    <h2 className="mt-8 text-lg font-bold text-blue-600">Rental History Metrics</h2>
                     <div className="mt-5 grid gap-4 sm:grid-cols-2">
                         <div className="rounded-2xl bg-slate-50 p-4">
                             <p className="text-sm text-slate-500">Years on Platform</p>
-                            <p className="mt-2 text-xl font-bold text-slate-900">{profile.metrics.years_on_platform.toFixed(1)}</p>
+                            <p className="mt-2 text-lg font-bold text-slate-900">{profile.metrics.years_on_platform.toFixed(1)}</p>
                         </div>
                         <div className="rounded-2xl bg-slate-50 p-4">
-                            <p className="text-sm text-slate-500">Number of Successful Rentals</p>
-                            <p className="mt-2 text-xl font-bold text-slate-900">{profile.metrics.successful_rentals}</p>
+                            <p className="text-sm text-slate-500">Successful Rentals</p>
+                            <p className="mt-2 text-lg font-bold text-slate-900">{profile.metrics.successful_rentals}</p>
                         </div>
                     </div>
                 </section>
             </div>
 
-            <section className="card mt-8 p-6">
+            <section className="card p-6">
                 <div className="flex items-center justify-between gap-4">
                     <div>
-                        <h2 className="text-2xl font-bold text-slate-900">Landlord Reviews</h2>
+                        <h2 className="text-xl font-bold text-slate-900">Landlord Reviews</h2>
                         <p className="mt-2 text-sm text-slate-600">Feedback from tenants who interacted with this landlord through listed properties.</p>
                     </div>
                     {profile.metrics.reviews_count ? (
