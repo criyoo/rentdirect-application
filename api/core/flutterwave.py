@@ -961,7 +961,7 @@ def _transfer_recipient_matches(
         or bank.get("bank_code")
         or ""
     ).strip()
-    return not recipient_bank_code or not bank_codes or recipient_bank_code in bank_codes
+    return bool(recipient_bank_code and bank_codes and recipient_bank_code in bank_codes)
 
 
 def find_transfer_recipient(
@@ -971,30 +971,63 @@ def find_transfer_recipient(
     bank_code: str = "",
 ) -> dict[str, Any] | None:
     candidate_bank_codes = nigerian_payout_bank_code_candidates(bank_name, bank_code)
-    payload = _request_json_v4(
-        method="GET",
-        path=f"/transfers/recipients?{urlencode({'size': 50})}",
-    )
-    recipients = payload.get("data") if isinstance(payload, dict) else None
-    if not isinstance(recipients, list):
-        return None
+    next_cursor = ""
+    visited_cursors: set[str] = set()
 
-    recipient = next(
-        (
-            item
-            for item in recipients
-            if isinstance(item, dict)
-            and _transfer_recipient_matches(
-                item,
-                account_number=account_number,
-                bank_codes=candidate_bank_codes,
-            )
-        ),
-        None,
-    )
-    if recipient is None:
-        return None
-    return {"status": "success", "data": recipient}
+    while True:
+        query = {"size": 50}
+        if next_cursor:
+            query["next"] = next_cursor
+        payload = _request_json_v4(
+            method="GET",
+            path=f"/transfers/recipients?{urlencode(query)}",
+        )
+        raw_data = payload.get("data") if isinstance(payload, dict) else None
+        cursor_payload = raw_data if isinstance(raw_data, dict) else payload
+        if isinstance(raw_data, list):
+            recipients = raw_data
+        elif isinstance(raw_data, dict):
+            recipients = None
+            for collection_key in ("items", "recipients", "results", "data"):
+                if collection_key in raw_data:
+                    recipients = raw_data[collection_key]
+                    break
+            if recipients is None and raw_data.get("id"):
+                recipients = [raw_data]
+        else:
+            recipients = None
+        if not isinstance(recipients, list):
+            raise FlutterwaveError("Flutterwave returned an invalid transfer recipient list.")
+
+        recipient = next(
+            (
+                item
+                for item in recipients
+                if isinstance(item, dict)
+                and _transfer_recipient_matches(
+                    item,
+                    account_number=account_number,
+                    bank_codes=candidate_bank_codes,
+                )
+            ),
+            None,
+        )
+        if recipient is not None:
+            return {"status": "success", "data": recipient}
+
+        metadata = payload.get("meta") if isinstance(payload, dict) else None
+        page_info = metadata.get("page_info") if isinstance(metadata, dict) else None
+        cursor = cursor_payload.get("cursor") if isinstance(cursor_payload, dict) else None
+        next_cursor = str(
+            (cursor.get("next") if isinstance(cursor, dict) else None)
+            or (page_info.get("next") if isinstance(page_info, dict) else None)
+            or (metadata.get("next") if isinstance(metadata, dict) else None)
+            or payload.get("next")
+            or ""
+        ).strip()
+        if not next_cursor or next_cursor in visited_cursors:
+            return None
+        visited_cursors.add(next_cursor)
 
 
 def _request_json_v4(
@@ -1044,16 +1077,16 @@ def _request_json_v3(*, method: str, path: str, payload: dict[str, Any] | None =
 
 
 def _build_v4_headers(*, method: str, idempotency_key: str | None = None) -> dict[str, str]:
+    trace_id = idempotency_key or hashlib.sha256(str(time.time()).encode("utf-8")).hexdigest()
     headers = {
         "Accept": "application/json",
         "Content-Type": "application/json",
         "Authorization": f"Bearer {_get_v4_access_token()}",
         "User-Agent": "RentDirectPayments/1.0",
+        "X-Trace-Id": trace_id[:255],
     }
     if method != "GET":
-        key = idempotency_key or hashlib.sha256(str(time.time()).encode("utf-8")).hexdigest()
-        headers["X-Idempotency-Key"] = key[:255]
-        headers["X-Trace-Id"] = key[:255]
+        headers["X-Idempotency-Key"] = trace_id[:255]
     return headers
 
 

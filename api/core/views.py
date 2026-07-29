@@ -72,6 +72,7 @@ from .flutterwave import (
     extract_resource_id,
     extract_reference,
     extract_virtual_account_details,
+    find_transfer_recipient,
     get_or_create_collection_subaccount_id,
     map_redirect_status,
     normalize_decimal_amount,
@@ -1922,6 +1923,17 @@ def ensure_payment_settlement_records(payment: Payment) -> None:
 logger = logging.getLogger(__name__)
 
 
+def _settlement_recipient_already_exists(settlement: PaymentSettlement) -> bool:
+    provider_payload = settlement.provider_payload
+    if not isinstance(provider_payload, dict):
+        return False
+    recipient_resolution = provider_payload.get("recipient_resolution")
+    return (
+        isinstance(recipient_resolution, dict)
+        and recipient_resolution.get("status") == "already_exists"
+    )
+
+
 def trigger_payment_settlements(payment: Payment) -> None:
     if payment.status != "completed" or not booking_payout_release_conditions_met(payment.booking):
         return
@@ -1941,22 +1953,53 @@ def trigger_payment_settlements(payment: Payment) -> None:
                 settlement.status = PaymentSettlement.Status.READY
                 settlement.save(update_fields=["status", "updated_at"])
         else:
+            recipient_response = None
+            recipient_lookup_error = None
             try:
-                recipient_response = create_transfer_recipient(
-                    full_name=settlement.account_name or settlement.get_purpose_display(),
-                    phone_number=payment.booking.listing.landlord.mobile or payment.booking.tenant.mobile,
+                recipient_response = find_transfer_recipient(
+                    account_number=settlement.account_number,
                     bank_name=settlement.bank_name,
                     bank_code=settlement.bank_code,
-                    account_number=settlement.account_number,
-                    account_name=settlement.account_name,
-                    idempotency_key=f"{payment.transaction_id}-{settlement.purpose}-recipient",
                 )
             except FlutterwaveError as exc:
+                recipient_lookup_error = exc
+
+            if recipient_response is None and recipient_lookup_error is None and not _settlement_recipient_already_exists(settlement):
+                try:
+                    recipient_response = create_transfer_recipient(
+                        full_name=settlement.account_name or settlement.get_purpose_display(),
+                        phone_number=payment.booking.listing.landlord.mobile or payment.booking.tenant.mobile,
+                        bank_name=settlement.bank_name,
+                        bank_code=settlement.bank_code,
+                        account_number=settlement.account_number,
+                        account_name=settlement.account_name,
+                        idempotency_key=f"{payment.transaction_id}-{settlement.purpose}-recipient",
+                    )
+                except FlutterwaveError as exc:
+                    if "recipient already exists" not in str(exc).lower():
+                        recipient_lookup_error = exc
+                    else:
+                        provider_payload = (
+                            dict(settlement.provider_payload)
+                            if isinstance(settlement.provider_payload, dict)
+                            else {}
+                        )
+                        provider_payload["recipient_resolution"] = {
+                            "status": "already_exists",
+                            "account_number": settlement.account_number,
+                            "bank_code": settlement.bank_code,
+                        }
+                        settlement.provider_payload = provider_payload
+                        settlement.status = PaymentSettlement.Status.READY
+                        settlement.last_error = ""
+                        settlement.save(update_fields=["provider_payload", "status", "last_error", "updated_at"])
+
+            if recipient_lookup_error is not None and not _settlement_recipient_already_exists(settlement):
                 settlement.status = PaymentSettlement.Status.FAILED
-                settlement.last_error = str(exc)
+                settlement.last_error = str(recipient_lookup_error)
                 settlement.save(update_fields=["status", "last_error", "updated_at"])
-                logger.exception(
-                    "Payment settlement recipient creation failed. settlement_id=%s payment_id=%s booking_id=%s purpose=%s bank_name=%s account_number=%s reason=%s",
+                logger.error(
+                    "Payment settlement recipient lookup/creation failed. settlement_id=%s payment_id=%s booking_id=%s purpose=%s bank_name=%s account_number=%s reason=%s",
                     settlement.id,
                     payment.id,
                     payment.booking_id,
@@ -1967,36 +2010,37 @@ def trigger_payment_settlements(payment: Payment) -> None:
                 )
                 continue
 
-            settlement.transfer_recipient_id = extract_resource_id(recipient_response)
-            settlement.provider_payload = recipient_response
-            settlement.status = (
-                PaymentSettlement.Status.READY
-                if settlement.transfer_recipient_id
-                else PaymentSettlement.Status.PENDING
-            )
-            settlement.last_error = "" if settlement.transfer_recipient_id else "Flutterwave did not return a transfer recipient id."
-            settlement.save(
-                update_fields=[
-                    "transfer_recipient_id",
-                    "provider_payload",
-                    "status",
-                    "last_error",
-                    "updated_at",
-                ]
-            )
-            if not settlement.transfer_recipient_id:
-                logger.error(
-                    "Payment settlement recipient creation returned no recipient id. settlement_id=%s payment_id=%s booking_id=%s purpose=%s bank_name=%s account_number=%s reason=%s payload=%s",
-                    settlement.id,
-                    payment.id,
-                    payment.booking_id,
-                    settlement.purpose,
-                    settlement.bank_name,
-                    settlement.account_number,
-                    settlement.last_error,
-                    recipient_response,
+            if recipient_response is not None:
+                settlement.transfer_recipient_id = extract_resource_id(recipient_response)
+                settlement.provider_payload = recipient_response
+                settlement.status = (
+                    PaymentSettlement.Status.READY
+                    if settlement.transfer_recipient_id
+                    else PaymentSettlement.Status.PENDING
                 )
-                continue
+                settlement.last_error = "" if settlement.transfer_recipient_id else "Flutterwave did not return a transfer recipient id."
+                settlement.save(
+                    update_fields=[
+                        "transfer_recipient_id",
+                        "provider_payload",
+                        "status",
+                        "last_error",
+                        "updated_at",
+                    ]
+                )
+                if not settlement.transfer_recipient_id:
+                    logger.error(
+                        "Payment settlement recipient creation returned no recipient id. settlement_id=%s payment_id=%s booking_id=%s purpose=%s bank_name=%s account_number=%s reason=%s payload=%s",
+                        settlement.id,
+                        payment.id,
+                        payment.booking_id,
+                        settlement.purpose,
+                        settlement.bank_name,
+                        settlement.account_number,
+                        settlement.last_error,
+                        recipient_response,
+                    )
+                    continue
 
         transfer_reference = settlement.transfer_reference or build_settlement_transfer_reference(payment, settlement)
         try:

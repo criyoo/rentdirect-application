@@ -2796,6 +2796,15 @@ class PaymentQueueTests(TestCase):
 
 
 class FlutterwaveTransferPayloadTests(TestCase):
+    def test_flutterwave_v4_get_headers_include_trace_id_without_idempotency_header(self):
+        headers = flutterwave._build_v4_headers(
+            method="GET",
+            idempotency_key="recipient-lookup-trace",
+        )
+
+        self.assertEqual(headers["X-Trace-Id"], "recipient-lookup-trace")
+        self.assertNotIn("X-Idempotency-Key", headers)
+
     @patch("core.flutterwave._request_json_v4")
     def test_transfer_recipient_reuses_existing_account(self, request_mock):
         request_mock.return_value = {
@@ -2822,6 +2831,69 @@ class FlutterwaveTransferPayloadTests(TestCase):
         request_mock.assert_called_once_with(
             method="GET",
             path="/transfers/recipients?size=50",
+        )
+
+    @patch("core.flutterwave._request_json_v4")
+    def test_transfer_recipient_searches_all_recipient_pages(self, request_mock):
+        request_mock.side_effect = [
+            {
+                "status": "success",
+                "data": [],
+                "meta": {"page_info": {"next": "next-recipient-page"}},
+            },
+            {
+                "status": "success",
+                "data": [
+                    {
+                        "id": "recipient_on_next_page",
+                        "bank": {"account_number": "9041487757", "code": "100004"},
+                    },
+                ],
+            },
+        ]
+
+        recipient = flutterwave.find_transfer_recipient(
+            account_number="9041487757",
+            bank_name="Opay",
+            bank_code="999992",
+        )
+
+        self.assertEqual(recipient["data"]["id"], "recipient_on_next_page")
+        self.assertEqual(
+            request_mock.call_args_list[1].kwargs,
+            {"method": "GET", "path": "/transfers/recipients?size=50&next=next-recipient-page"},
+        )
+
+    @patch("core.flutterwave._request_json_v4")
+    def test_transfer_recipient_supports_cursor_pagination_payload(self, request_mock):
+        request_mock.side_effect = [
+            {
+                "status": "success",
+                "data": {"items": [], "cursor": {"next": "cursor-recipient-page"}},
+            },
+            {
+                "status": "success",
+                "data": {
+                    "items": [
+                        {
+                            "id": "recipient_on_cursor_page",
+                            "bank": {"account_number": "9041487757", "code": "100004"},
+                        },
+                    ],
+                },
+            },
+        ]
+
+        recipient = flutterwave.find_transfer_recipient(
+            account_number="9041487757",
+            bank_name="Opay",
+            bank_code="999992",
+        )
+
+        self.assertEqual(recipient["data"]["id"], "recipient_on_cursor_page")
+        self.assertEqual(
+            request_mock.call_args_list[1].kwargs["path"],
+            "/transfers/recipients?size=50&next=cursor-recipient-page",
         )
 
     @patch("core.flutterwave._request_json_v4")
@@ -3258,6 +3330,7 @@ class BookingPaymentTests(TestCase):
         FLUTTERWAVE_API_BASE_URL="https://f4bexperience.flutterwave.com",
         WEB_PUBLIC_URL="http://localhost:5173",
     )
+    @patch("core.views.find_transfer_recipient")
     @patch("core.views.create_bank_transfer")
     @patch("core.views.create_transfer_recipient")
     @patch("core.views.create_dynamic_virtual_account")
@@ -3270,7 +3343,9 @@ class BookingPaymentTests(TestCase):
         create_dynamic_virtual_account_mock,
         create_transfer_recipient_mock,
         create_bank_transfer_mock,
+        find_transfer_recipient_mock,
     ):
+        find_transfer_recipient_mock.return_value = None
         create_customer_mock.return_value = {"status": "success", "data": {"id": "cust_123"}}
         create_dynamic_virtual_account_mock.return_value = {
             "status": "success",
@@ -3635,9 +3710,16 @@ class BookingPaymentTests(TestCase):
         self.assertIn("Transfer rejected by beneficiary bank", "\n".join(logs.output))
 
     @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    @patch("core.views.find_transfer_recipient")
     @patch("core.views.create_bank_transfer")
     @patch("core.views.create_transfer_recipient")
-    def test_ready_payout_worker_processes_completed_payments_after_progress_conditions(self, create_transfer_recipient_mock, create_bank_transfer_mock):
+    def test_ready_payout_worker_processes_completed_payments_after_progress_conditions(
+        self,
+        create_transfer_recipient_mock,
+        create_bank_transfer_mock,
+        find_transfer_recipient_mock,
+    ):
+        find_transfer_recipient_mock.return_value = None
         create_transfer_recipient_mock.side_effect = [
             {"status": "success", "data": {"id": "recipient_ops_worker"}},
             {"status": "success", "data": {"id": "recipient_caution_worker"}},
@@ -3692,9 +3774,94 @@ class BookingPaymentTests(TestCase):
         self.assertEqual(len(mail.outbox), 3)
 
     @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    @patch("core.views.find_transfer_recipient")
     @patch("core.views.create_bank_transfer")
     @patch("core.views.create_transfer_recipient")
-    def test_ready_payout_worker_logs_and_stores_provider_failure_reason(self, create_transfer_recipient_mock, create_bank_transfer_mock):
+    def test_ready_payout_worker_transfers_when_recipient_already_exists(
+        self,
+        create_transfer_recipient_mock,
+        create_bank_transfer_mock,
+        find_transfer_recipient_mock,
+    ):
+        find_transfer_recipient_mock.side_effect = [
+            {"status": "success", "data": {"id": "recipient_existing_ops"}},
+            {"status": "success", "data": {"id": "recipient_existing_caution"}},
+            {"status": "success", "data": {"id": "recipient_existing_landlord"}},
+        ]
+        create_bank_transfer_mock.side_effect = [
+            {"status": "success", "data": {"id": "transfer_existing_recipient_ops", "status": "NEW"}},
+            {"status": "success", "data": {"id": "transfer_existing_recipient_caution", "status": "NEW"}},
+            {"status": "success", "data": {"id": "transfer_existing_recipient_landlord", "status": "NEW"}},
+        ]
+        total_amount = calculate_booking_total(self.listing.price_per_year)
+        booking = Booking.objects.create(
+            tenant=self.tenant,
+            listing=self.listing,
+            start_date=date(2026, 6, 19),
+            end_date=date(2027, 6, 19),
+            total_amount=total_amount,
+            paid_amount=total_amount,
+            tenant_rental_progress={
+                "tenant_collected_house_key": timezone.now().isoformat(),
+                "rentdirect_transfer_to_landlord": {
+                    "value": "yes",
+                    "completed_at": timezone.now().isoformat(),
+                },
+            },
+            landlord_rental_progress={
+                "tenant_collected_house_key": timezone.now().isoformat(),
+            },
+        )
+        payment = Payment.objects.create(
+            booking=booking,
+            amount=total_amount,
+            payment_method="bank",
+            status="completed",
+            transaction_id="WORKEREXISTINGRECIPIENT1",
+            provider="flutterwave",
+            currency="NGN",
+            payment_date=timezone.now() - timedelta(hours=25),
+        )
+
+        call_command("process_ready_payouts")
+
+        settlements = PaymentSettlement.objects.filter(payment=payment)
+        create_transfer_recipient_mock.assert_not_called()
+        self.assertEqual(create_bank_transfer_mock.call_count, 3)
+        self.assertSetEqual(
+            set(settlements.values_list("status", flat=True)),
+            {PaymentSettlement.Status.PROCESSING},
+        )
+        for settlement in settlements:
+            self.assertTrue(settlement.transfer_recipient_id)
+            self.assertEqual(settlement.provider_payload["status"], "success")
+
+        # A retry after a transfer failure must reuse the persisted resolution and
+        # initiate the transfer without attempting recipient creation again.
+        settlements.update(status=PaymentSettlement.Status.READY)
+        create_bank_transfer_mock.reset_mock()
+        create_bank_transfer_mock.side_effect = [
+            {"status": "success", "data": {"id": "transfer_existing_recipient_ops_retry", "status": "NEW"}},
+            {"status": "success", "data": {"id": "transfer_existing_recipient_caution_retry", "status": "NEW"}},
+            {"status": "success", "data": {"id": "transfer_existing_recipient_landlord_retry", "status": "NEW"}},
+        ]
+
+        call_command("process_ready_payouts")
+
+        create_transfer_recipient_mock.assert_not_called()
+        self.assertEqual(create_bank_transfer_mock.call_count, 3)
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    @patch("core.views.find_transfer_recipient")
+    @patch("core.views.create_bank_transfer")
+    @patch("core.views.create_transfer_recipient")
+    def test_ready_payout_worker_logs_and_stores_provider_failure_reason(
+        self,
+        create_transfer_recipient_mock,
+        create_bank_transfer_mock,
+        find_transfer_recipient_mock,
+    ):
+        find_transfer_recipient_mock.return_value = None
         create_transfer_recipient_mock.side_effect = [
             {"status": "success", "data": {"id": "recipient_caution_failed"}},
             {"status": "success", "data": {"id": "recipient_landlord_ok"}},
