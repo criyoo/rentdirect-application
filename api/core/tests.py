@@ -2797,6 +2797,19 @@ class PaymentQueueTests(TestCase):
 
 class FlutterwaveTransferPayloadTests(TestCase):
     @patch("core.flutterwave._request_json_v4")
+    def test_customer_phone_payload_uses_numeric_three_digit_country_code(self, request_mock):
+        request_mock.return_value = {"status": "success", "data": {"id": "customer_123"}}
+
+        flutterwave.create_customer(
+            email="tenant@example.com",
+            full_name="Booking Tenant",
+            phone_number="09080350066",
+        )
+
+        payload = request_mock.call_args.kwargs["payload"]
+        self.assertEqual(payload["phone"], {"country_code": "234", "number": "9080350066"})
+
+    @patch("core.flutterwave._request_json_v4")
     def test_transfer_recipient_payload_uses_flutterwave_ngn_bank_type(self, request_mock):
         request_mock.return_value = {"status": "success", "data": {"id": "recipient_123"}}
 

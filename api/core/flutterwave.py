@@ -974,10 +974,10 @@ def _build_v4_headers(*, method: str, idempotency_key: str | None = None) -> dic
 def _split_phone_number(phone_number: str) -> dict[str, str]:
     normalized = str(phone_number or "").strip()
     if normalized.startswith("+234"):
-        return {"country_code": "+234", "number": normalized[4:]}
+        return {"country_code": "234", "number": normalized[4:]}
     if normalized.startswith("+"):
-        return {"country_code": normalized[:4], "number": normalized[4:]}
-    return {"country_code": "+234", "number": "".join(character for character in normalized if character.isdigit())}
+        return {"country_code": normalized[1:4], "number": normalized[4:]}
+    return {"country_code": "234", "number": "".join(character for character in normalized if character.isdigit())}
 
 
 def _get_v4_access_token() -> str:

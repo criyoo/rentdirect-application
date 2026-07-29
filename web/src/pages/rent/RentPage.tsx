@@ -630,7 +630,7 @@ export default function RentPage() {
                                                         disabled={continuePendingPayment.isPending || cancelPayment.isPending}
                                                         className="rounded-lg bg-blue-600 px-2 py-3 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
                                                     >
-                                                        Continue Payment
+                                                        Continue
                                                     </button>
                                                     <button
                                                         type="button"
@@ -638,7 +638,7 @@ export default function RentPage() {
                                                         disabled={cancelPayment.isPending}
                                                         className="rounded-lg border border-red-200 bg-white px-2 py-3 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
                                                     >
-                                                        {cancelPayment.isPending ? 'Cancelling...' : 'Cancel Payment'}
+                                                        {cancelPayment.isPending ? 'Cancelling...' : 'Cancel'}
                                                     </button>
                                                 </div>
                                             ))}
