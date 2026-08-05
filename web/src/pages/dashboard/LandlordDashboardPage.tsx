@@ -280,22 +280,22 @@ export default function LandlordDashboardPage() {
 
                                         {booking.tenant_screening_summary ? (
                                             <div className="mt-5 rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
-                                                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                                                     <div>
                                                         <p className="text-xs uppercase tracking-[0.2em] text-blue-700">Tenant Screening</p>
-                                                        <p className="mt-2 text-lg font-semibold text-gray-900">
+                                                        <p className="mt-1 text-lg font-semibold text-gray-900">
                                                             Overall score: {booking.tenant_screening_summary.overall_score.toFixed(1)}%
                                                         </p>
                                                     </div>
-                                                    <p className="text-sm text-gray-600">
+                                                    {/* <p className="text-sm text-gray-600">
                                                         Category scores only. Raw tenant verification data remains hidden.
-                                                    </p>
+                                                    </p> */}
                                                 </div>
 
-                                                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-2">
+                                                <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-2">
                                                     {booking.tenant_screening_summary.categories.map((category) => (
-                                                        <div key={category.key} className="rounded-xl bg-white px-4 py-3 shadow-sm">
-                                                            <p className="text-sm font-medium text-gray-900">{category.label}: {category.score}%</p>
+                                                        <div key={category.key} className="rounded-xl bg-white px-4 py-1 shadow-sm">
+                                                            <p className="text-sm text-gray-900">{category.label}: {category.score}%</p>
                                                         </div>
                                                     ))}
                                                 </div>

@@ -5,9 +5,57 @@ import { Listing } from '@/types'
 import ListingCard from '@/components/ListingCard'
 import { Link } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
-import { HiSearch, HiHome, HiLocationMarker, HiBadgeCheck, HiArrowRight, HiShieldCheck, HiCurrencyDollar } from 'react-icons/hi'
+import { HiSearch, HiHome, HiLocationMarker, HiBadgeCheck, HiArrowRight, HiShieldCheck, HiCurrencyDollar, HiCheck } from 'react-icons/hi'
 
 const HERO_VIDEO_URL = `${getApiUrl()}/homepage-video`
+
+const subscriptionPlans = [
+    {
+        badge: 'Start here',
+        name: 'Bronze',
+        summary: 'The essentials for exploring RentDirect.',
+        features: [
+            'Browse verified properties',
+            'Save homes to your favourites',
+            'View landlord profiles',
+            'Access support and feedback tools',
+        ],
+    },
+    {
+        badge: 'Most popular',
+        name: 'Silver',
+        summary: 'Everything you need to move from search to rental.',
+        features: [
+            'Contact landlords directly',
+            'Arrange property viewings',
+            'Track rental progress',
+            'See property locations and maps',
+        ],
+        highlight: true,
+    },
+    {
+        badge: 'More flexibility',
+        name: 'Gold',
+        summary: 'Extra visibility and support for a smoother experience.',
+        features: [
+            'Access the community chat',
+            'Review landlords and properties',
+            'Priority issue handling',
+            'See property verification badges',
+        ],
+    },
+    {
+        badge: 'Full access',
+        name: 'Platinum',
+        summary: 'The complete RentDirect experience for confident decisions.',
+        features: [
+            'Premium rental workflow support',
+            'Deeper verification visibility',
+            'High-confidence verification insights',
+            'Faster support response times',
+        ],
+    },
+]
 
 export default function HomePage() {
     const { user } = useAuth()
@@ -37,7 +85,7 @@ export default function HomePage() {
     return (
         <div className="min-h-screen">
             {/* Hero Section */}
-            <section className="relative bg-gradient-to-br from-blue-600 via-blue-700 to-purple-800 overflow-hidden">
+            <section className="relative overflow-hidden rounded-bl-[3rem] rounded-br-[3rem] bg-gradient-to-br from-blue-600 via-blue-700 to-purple-800">
                 {/* Background Pattern */}
                 <div className="absolute inset-0 bg-black/10">
                     <div className="absolute inset-0 opacity-20" style={{
@@ -56,7 +104,7 @@ export default function HomePage() {
                                         Home Today
                                     </span>
                                 </h1>
-                                <h3 className="text-2xl text-blue-100 mb-3">Direct from Landlords</h3>
+                                <h3 className="text-4xl text-blue-100 mb-3">No agents. No middleman.</h3>
                                 <p className="text-xl text-blue-100 mb-8 max-w-2xl">
                                     Discover thousands of verified properties from trusted landlords.
                                     Direct communication, transparent pricing, and seamless rental experience.
@@ -170,7 +218,7 @@ export default function HomePage() {
                     </div>
 
                     {featured && featured.length > 0 ? (
-                        <div className="grid-modern grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                        <div className="grid-modern grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-4">
                             {featured.map((listing: Listing) => (
                                 <div key={listing.id} className="animate-fade-in">
                                     <ListingCard listing={listing} isFavourite={favouriteIds.has(listing.id)} />
@@ -209,8 +257,11 @@ export default function HomePage() {
                         <h2 className="text-2xl md:text-4xl font-bold text-blue-700 mb-4">
                             Why Choose RentDirect?
                         </h2>
+                        <p className="text-4xl text-gray-900 max-w-2xl mx-auto">
+                            A smarter way to rent in Nigeria
+                        </p>
                         <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-                            Experience the future of property rental with our innovative platform
+                            We've built a platform that cuts out agent fees, makes payments transparent, and puts tenants and landlords in direct contact.
                         </p>
                     </div>
 
@@ -221,7 +272,7 @@ export default function HomePage() {
                             </div>
                             <h3 className={classNameUSP}>Cost Effecfive</h3>
                             <p className="text-blue-600">
-                                Save on unneccessary cost trying to secure or rent a property.
+                                Connect directly with landlords and skip the 20–30% agent commission.
                             </p>
                         </div>
 
@@ -229,9 +280,9 @@ export default function HomePage() {
                             <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center mx-auto mb-4">
                                 <HiArrowRight className="w-6 h-6 text-purple-600" />
                             </div>
-                            <h3 className={classNameUSP}>Direct Contact</h3>
+                            <h3 className={classNameUSP}>In-App Chat</h3>
                             <p className="text-blue-600">
-                                Bypass the middle man and get direct access to landlords or Tenants
+                                Negotiate, ask questions, and arrange viewings through our secure messenger.
                             </p>
                         </div>
 
@@ -249,9 +300,9 @@ export default function HomePage() {
                             <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center mx-auto mb-4">
                                 <HiBadgeCheck className="w-6 h-6 text-green-600" />
                             </div>
-                            <h3 className={classNameUSP}>Verified Properties</h3>
+                            <h3 className={classNameUSP}>Verified Listings</h3>
                             <p className="text-blue-600">
-                                Verified properties listed by trusted landlords with complete transparency.
+                                Every listing is reviewed by our admin team for your peace of mind.
                             </p>
                         </div>
 
@@ -259,9 +310,9 @@ export default function HomePage() {
                             <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center mx-auto mb-4">
                                 <HiLocationMarker className="w-6 h-6 text-purple-600" />
                             </div>
-                            <h3 className={classNameUSP}>Prime Locations</h3>
+                            <h3 className={classNameUSP}>Seamless Payments</h3>
                             <p className="text-blue-600">
-                                Properties in the most desirable neighborhoods with easy access to amenities.
+                                Pay annual rent, deposits, and caution fees securely within the platform.
                             </p>
                         </div>
 
@@ -278,11 +329,87 @@ export default function HomePage() {
                 </div>
             </section>
 
+
+
+            {/* Subscription Plans Section */}
+            <section className="relative overflow-hidden bg-slate-50 py-20 md:py-28">
+                <div className="pointer-events-none absolute -left-24 top-10 h-72 w-72 rounded-full bg-orange-200/50 blur-3xl" />
+                <div className="pointer-events-none absolute -right-24 bottom-0 h-80 w-80 rounded-full bg-blue-200/60 blur-3xl" />
+
+                <div className="relative mx-auto max-w-[100rem] px-4 sm:px-6 lg:px-8">
+                    <div className="mx-auto max-w-3xl text-center">
+                        <p className="mb-4 text-sm font-bold uppercase tracking-[0.24em] text-orange-500">
+                            Simple pricing, your way
+                        </p>
+                        <h2 className="text-3xl font-bold tracking-tight text-slate-950 md:text-5xl">
+                            Pay only for what you need
+                        </h2>
+                        <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-slate-600">
+                            Transparent fees with no hidden charges. No agent commissions — ever.
+                        </p>
+                    </div>
+
+                    <div className="mt-14 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+                        {subscriptionPlans.map((plan) => (
+                            <article
+                                key={plan.name}
+                                className={`relative flex h-full flex-col rounded-[2rem] border p-7 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-xl ${plan.highlight
+                                    ? 'border-slate-950 bg-slate-950 text-white shadow-slate-950/20'
+                                    : 'border-slate-200 bg-white text-slate-950'
+                                    }`}
+                            >
+                                <div className="flex items-center justify-between gap-3">
+                                    <span className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] ${plan.highlight
+                                        ? 'bg-orange-400 text-slate-950'
+                                        : 'bg-orange-50 text-orange-600'
+                                        }`}>
+                                        {plan.badge}
+                                    </span>
+                                    {plan.highlight && <HiBadgeCheck className="h-6 w-6 text-orange-400" />}
+                                </div>
+
+                                <h3 className={`mt-8 text-3xl font-bold ${plan.highlight ? 'text-white' : 'text-slate-950'}`}>
+                                    {plan.name}
+                                </h3>
+                                <p className={`mt-3 min-h-14 text-sm leading-6 ${plan.highlight ? 'text-slate-300' : 'text-slate-600'}`}>
+                                    {plan.summary}
+                                </p>
+
+                                <ul className="mt-8 flex-1 space-y-4">
+                                    {plan.features.map((feature) => (
+                                        <li key={feature} className="flex items-start gap-3 text-sm leading-5">
+                                            <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${plan.highlight
+                                                ? 'bg-orange-400 text-slate-950'
+                                                : 'bg-slate-100 text-blue-600'
+                                                }`}>
+                                                <HiCheck className="h-3.5 w-3.5" />
+                                            </span>
+                                            <span className={plan.highlight ? 'text-slate-200' : 'text-slate-700'}>{feature}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+
+                                <Link
+                                    to={user ? '/billing' : '/register'}
+                                    className={`mt-10 inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-bold transition-colors ${plan.highlight
+                                        ? 'bg-white text-slate-950 hover:bg-orange-50'
+                                        : 'bg-slate-950 text-white hover:bg-blue-700'
+                                        }`}
+                                >
+                                    {user ? 'View your options' : 'Get started'}
+                                    <HiArrowRight className="h-4 w-4" />
+                                </Link>
+                            </article>
+                        ))}
+                    </div>
+                </div>
+            </section>
+
             {/* CTA Section */}
-            <section className="section bg-gradient-to-br from-blue-600 to-purple-700">
-                <div className="container-modern text-center">
+            <section className="section relative -mt-12 overflow-hidden bg-[linear-gradient(180deg,#f8fafc_0%,#f8fafc_9%,#dbe3f8_22%,#2563eb_48%,#7e22ce_100%)] pt-32 md:-mt-20 md:pt-40">
+                <div className="container-modern relative z-10 text-center">
                     <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
-                        Ready to Find Your Dream Home?
+                        Ready to Find Your Next Space?
                     </h2>
                     <p className="text-xl text-blue-100 mb-8 max-w-2xl mx-auto">
                         Join thousands of satisfied tenants who found their perfect home on RentDirect

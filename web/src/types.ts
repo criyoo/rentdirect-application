@@ -64,6 +64,8 @@ export type LandlordVerificationBadges = {
 }
 
 export type LandlordPublicMetrics = {
+    total_properties: number
+    properties_rented: number
     properties_listed: number
     active_tenancies: number
     completed_tenancies: number
@@ -169,6 +171,15 @@ export interface Listing {
     deposit_amount?: number
     utilities_included: boolean
     pet_friendly: boolean
+    parking?: boolean
+    garage?: boolean
+    garden?: boolean
+    lift?: boolean
+    balcony?: boolean
+    smart_lock?: boolean
+    pop_ceiling?: boolean
+    electric_fence?: boolean
+    fitted_kitchen?: boolean
     furnished: boolean
     amenities?: string[]
     ownership_status?: string
@@ -241,6 +252,10 @@ export interface RentalProgressStep {
     selected_value?: string | null
     completed: boolean
     completed_at?: string | null
+    counterpart_completed?: boolean
+    counterpart_completed_at?: string | null
+    counterpart_selected_value?: string | null
+    counterpart_step_key?: string | null
 }
 
 export interface RentalProgress {

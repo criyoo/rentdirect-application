@@ -194,7 +194,15 @@ function FinancialGrid({ value }: { value?: Record<string, any> | null }) {
             { label: 'Monthly Expenses', value: financialInfo.monthly_expenses },
         ],
         [
-            { label: 'Current Rent Amount', value: financialInfo.current_rent_amount },
+            { label: 'Average Monthly Income', value: financialInfo.average_monthly_income },
+            { label: 'Average Annual Income', value: financialInfo.average_annual_income },
+        ],
+        [
+            { label: 'Savings', value: financialInfo.savings },
+            { label: 'Outgoing Expenses', value: getRecordValue(financialInfo, ['outgoing_expenses', 'annual_outgoing_expenses']) },
+        ],
+        [
+            { label: 'Current Annual Rent', value: getRecordValue(financialInfo, ['current_annual_rent', 'current_rent_amount']) },
             { label: 'Current Service Charge', value: financialInfo.current_service_charge },
         ],
         [
@@ -313,7 +321,7 @@ function tenantProfileNeedsDetails(profile?: TenantProfileSummary['tenant_profil
         profile.residence_address,
         profile.length_of_stay,
         profile.housing_status,
-        financialInfo.current_rent_amount,
+        getRecordValue(financialInfo, ['current_annual_rent', 'current_rent_amount']),
         financialInfo.current_move_in_date,
         financialInfo.expected_move_out_date,
         financialInfo.reason_for_wanting_to_leave,

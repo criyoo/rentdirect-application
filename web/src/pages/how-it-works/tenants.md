@@ -1,147 +1,79 @@
 # How RentDirect Works
 
-RentDirect transforms the traditional rental process into a streamlined, transparent, and secure experience. This guide walks you through the complete journey for both tenants and landlords.
+RentDirect helps tenants move from a first search to a confident move-in with verified listings, direct communication, secure payments, and a clear rental record.
 
-## For Tenants: Your Rental Journey
+## Tenants journey
 
-### Step 1: Registration & Verification
+### Create your verified profile
 
-#### Create Your Account
+* Register with your name, email, password, and Tenant role
+* Confirm your email and complete identity verification
+* Add employment, financial, rental history, household, and guarantor details
+* Build a profile that helps trusted landlords understand your application
 
-* Sign up with your full name, email address, and password
-* Choose "Tenant" as your role during registration
-* Verify your email with the OTP code sent to your inbox
+### Discover a better-fit home
 
-#### Complete Tenant Verification
+* Search by state, city, property type, price, bedrooms, bathrooms, and features
+* Browse listings with verification status, photos, and detailed descriptions
+* Check the rent, deposit, fees, and included services before you apply
+* Save favourites so you can compare your options later
 
-* Navigate to the Verification section in your dashboard
-* Upload identification documents to verify your identity
-* Provide employment and rental history information
-* Build your tenant reputation profile that helps landlords assess your suitability
+### Speak with the landlord
 
-### Step 2: Search for Properties
+* Send an enquiry from the listing page
+* Ask about the home, terms, availability, and next steps
+* Arrange a viewing directly through secure platform messaging
+* Keep your conversations available as part of your rental record
 
-#### Use Advanced Search Filters
+### Apply and pay securely
 
-* Search by location (state and city)
-* Filter by property type (flat, apartment, house, studio, penthouse, villa, townhouse)
-* Set price range preferences
-* Specify bedrooms, bathrooms, and toilets
-* Filter for amenities (pet-friendly, furnished, utilities included)
+* Select Rent This Property and agree to the rental terms
+* Pay the required deposit, annual rent, and applicable service charges
+* Choose card or bank transfer through Flutterwave
+* View payment history, receipts, and outstanding balances in your dashboard
 
-#### Browse Verified Listings
+### Follow the move-in journey
 
-* All properties on RentDirect are verified for authenticity
-* View high-quality photos and detailed property descriptions
-* See exactly what's included in the rental price
+* Use the rental progress page to see what happens next
+* Complete your checklist and confirm your own milestones
+* Review agreements, inventory details, and payment records digitally
+* Communicate with your landlord and keep the full tenancy history in one place
 
-### Step 3: Save & Contact
+## A clearer rental experience
 
-#### Save Favorite Properties
+### Know what you are choosing
 
-* Add properties to your favourites for later review
-* Track your interested properties in one place
+* See the property details, photos, features, rent, deposit, and fees before applying
+* Compare saved properties without losing track of the important details
 
-#### Contact Landlords Directly
+### Know who you are dealing with
 
-* Send enquiries through the platform's messaging system
-* Ask questions about the property without intermediaries
-* Schedule viewings directly with verified landlords
+* Connect with verified landlords and browse verified properties
+* Use tenant verification and screening information to support a trusted relationship
 
-### Step 4: Rental Application & Payment
+### Know what happens next
 
-#### Submit Rental Application
+* Follow payment status and rental milestones from your dashboard
+* Keep receipts, messages, agreements, and progress updates together
 
-* Click "Rent This Property" on the listing page
-* Agree to rental terms and conditions
-* Create your booking application
+## Frequently asked questions
 
-#### Make Secure Payments
+### What payment methods are available?
 
-* Pay a 20% deposit (included in annual rent)
-* Choose between credit/debit card or bank transfer
-* Payment includes: Annual rent, Refundable security deposit, Administration fee, Legal fee, Verification fee, Lease agreement support, and Viewing fee
-* 10% flat fee covers admin, legal, verification, viewing & agreement costs
+You can pay by card or bank transfer through Flutterwave.
 
-#### Track Payment Progress
+### What does the tenant service fee cover?
 
-* View payment history and status in your dashboard
-* Download receipts for completed payments
-* Make partial payments up to the remaining balance
+The 10% service fee covers administration, legal, verification, viewing, and agreement support. The full amount is shown before you submit payment.
 
-### Step 5: Rental Progress & Move-in
+### Can I make a partial payment?
 
-#### Complete Rental Checklist
+Where partial payments are available, your dashboard shows the remaining amount and payment history.
 
-* Follow the rental progress tracker in your dashboard
-* Complete steps like inventory check, agreement signing, etc.
-* Both tenant and landlord confirm completed milestones
+### How do I know a property is verified?
 
-#### Manage Your Tenancy
+Verified property and landlord indicators appear on eligible listings and profiles.
 
-* Access digital records of your rental agreement
-* Communicate with your landlord through the platform
-* Track all payments and communications for future reference
+### How do I get help?
 
----
-
-## Key Features
-
-### Transparent Pricing
-
-* No hidden fees or surprise charges
-* All costs visible upfront before application
-* 10% flat fee covers administrative, legal, verification, viewing, and agreement costs
-
-### Verified Community
-
-* Tenants and landlords undergo identity verification
-* Properties are verified before listing
-* All users build reputation profiles
-
-### Direct Communication
-
-* No intermediaries or agents
-* Secure messaging system built into the platform
-* Documented conversations for reference
-
-### Secure Payments
-
-* Payments processed through Flutterwave
-* Multiple payment methods (card, bank transfer)
-* Payment tracking and receipt generation
-* Reduced payment disputes with platform records
-
-### Digital Tenancy Records
-
-* Complete history of rental agreements
-* Payment records for future reference
-* Useful for credit history and future rental applications
-
----
-
-## Frequently Asked Questions
-
-### How long does verification take?
-
-Tenant and landlord verification typically takes 1-2 business days. Property document verification may take longer depending on the complexity of documents submitted.
-
-### What payment methods are accepted?
-
-We accept credit/debit cards and bank transfers through Flutterwave, Nigeria's leading payment processor.
-
-### Can I list multiple properties?
-
-Yes, verified landlords can list unlimited properties and manage them all from their dashboard.
-
-### What fees do tenants pay?
-
-Tenants pay a 10% flat fee that covers administrative, legal, verification, viewing, and agreement costs. No hidden fees.
-
-### What fees do landlords pay?
-
-Landlords pay a ₦5,000 fee to feature properties for 30 days. Standard listings are free.
-
-### How do I contact support?
-
-Use the Feedback page to submit questions or report issues. Our team responds within 24 hours.
+Use the Feedback or Support pages to contact the RentDirect team.

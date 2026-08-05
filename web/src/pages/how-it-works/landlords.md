@@ -1,150 +1,79 @@
 # How RentDirect Works
 
-RentDirect transforms the traditional rental process into a streamlined, transparent, and secure experience. This guide walks you through the complete journey for both tenants and landlords.
+RentDirect gives landlords a calmer way to list, screen, rent, and manage property. Every stage is visible, from the first enquiry to the completed tenancy.
 
-## For Landlords: Your Property Journey
+## Landlords journey
 
-### Step 1: Registration & Verification
+### Verify your account
 
-#### Create Your Account
+* Create an account and choose Landlord
+* Complete identity verification as an individual or corporate landlord
+* Submit ownership and property documents for review
+* Request in-person property verification when you need it
 
-* Sign up with your full name, email address, and password
-* Choose "Landlord" as your role during registration
-* Verify your email with the OTP code
+### Present your property
 
-#### Complete Landlord Verification
+* Add the address, rental price, rooms, features, and availability
+* Upload a cover image and a complete gallery
+* Explain what is included so tenants can make an informed decision
+* Feature a property for a small fee to gain more visibility
 
-* Navigate to the Landlord Verification section
-* Choose your verification type (Individual Landlord for personal property owners, or Corporate Landlord for company-managed properties)
-* Complete identification verification with ID documents
-* Submit property documents
-* Optionally request in-person property verification for a small fee
+### Review the right applicants
 
-### Step 2: Create Property Listings
+* Receive enquiries from tenants who are interested in your property
+* Ask questions and arrange viewings through secure messaging
+* Review verification status, screening categories, and tenant profile details
+* Compare applications with the information you actually need
 
-#### Add Your Property
+### Confirm the rental
 
-* Click "Add Listing" in your dashboard
-* Fill in property details including Title, description, address, City, state, postal code, Property type, bedrooms, bathrooms, toilets, Price per year, deposit amount, and Available from date
-* Add property features (pet-friendly, furnished, utilities included)
+* Approve the tenant and follow the booking status in your dashboard
+* Monitor deposits, rent, outstanding balances, and payment receipts
+* Receive settlement updates through secure Flutterwave payments
+* Keep both parties aligned on the next milestone
 
-#### Upload Media
+### Manage the tenancy
 
-* Upload a cover image (required)
-* Add up to 9 additional images for the gallery
-* Include all amenities in your listing
+* Confirm each rental progress step as it happens
+* Maintain digital records of agreements, payments, and conversations
+* Track active tenancies, occupancy, and property performance
+* Manage renewals and build your reputation with verified reviews
 
-#### Feature Your Property (Optional)
+## Built for confident decisions
 
-* Make your listing featured for ₦5,000 for 30 days
-* Featured properties appear at the top of search results
-* Gain maximum visibility to quality tenants
+### Verified applicants
 
-### Step 3: Manage Applications
+* Identity, employment, rental history, guarantor, and financial information are organised in one profile
+* Screening categories help you assess an application consistently
 
-#### Review Tenant Enquiries
+### Transparent payments
 
-* View messages from interested tenants in your Enquiries dashboard
-* Communicate directly with prospective tenants
-* Review tenant verification scores and screening information
+* View the total, amount paid, and outstanding balance at a glance
+* Keep receipts and settlement records connected to the booking
 
-#### Tenant Screening
+### One property dashboard
 
-* Access category scores for each applicant including Overall screening score, Identity verification status, Employment verification, and Rental history assessment
-* Make informed decisions based on verified applicant data
+* Manage multiple properties from one place
+* Edit listings, monitor availability, and track rented properties
 
-### Step 4: Rental Process Management
-
-#### Accept Applications
-
-* Review and approve qualified tenants
-* Track booking status through the platform
-
-#### Monitor Payments
-
-* View payment status (total, paid, outstanding balance)
-* Receive payments through secure Flutterwave integration
-* Track all transactions in your dashboard
-
-#### Rental Progress Tracking
-
-* Monitor rental progress checklist completion
-* Confirm completed milestones with tenants
-* Maintain transparent records for dispute resolution
-
-### Step 5: Ongoing Property Management
-
-#### Manage Multiple Properties
-
-* View all your listings in one dashboard
-* Track occupancy and rental income
-* Edit or remove listings as needed
-
-#### Maintain Digital Records
-
-* Keep records of all tenancies
-* Manage renewals and communications
-* Build your reputation with verified reviews
-
----
-
-## Key Features
-
-### Transparent Pricing
-
-* No hidden fees or surprise charges
-* All costs visible upfront before application
-* 10% flat fee covers administrative, legal, verification, viewing, and agreement costs
-
-### Verified Community
-
-* Tenants and landlords undergo identity verification
-* Properties are verified before listing
-* All users build reputation profiles
-
-### Direct Communication
-
-* No intermediaries or agents
-* Secure messaging system built into the platform
-* Documented conversations for reference
-
-### Secure Payments
-
-* Payments processed through Flutterwave
-* Multiple payment methods (card, bank transfer)
-* Payment tracking and receipt generation
-* Reduced payment disputes with platform records
-
-### Digital Tenancy Records
-
-* Complete history of rental agreements
-* Payment records for future reference
-* Useful for credit history and future rental applications
-
----
-
-## Frequently Asked Questions
-
-### How long does verification take?
-
-Tenant and landlord verification typically takes 1-2 business days. Property document verification may take longer depending on the complexity of documents submitted.
-
-### What payment methods are accepted?
-
-We accept credit/debit cards and bank transfers through Flutterwave, Nigeria's leading payment processor.
+## Frequently asked questions
 
 ### Can I list multiple properties?
 
-Yes, verified landlords can list unlimited properties and manage them all from their dashboard.
+Yes. Once verified, you can create and manage multiple properties from your landlord dashboard.
 
-### What fees do tenants pay?
+### How much does it cost to feature a property?
 
-Tenants pay a 10% flat fee that covers administrative, legal, verification, viewing, and agreement costs. No hidden fees.
+Featuring a property costs ₦5,000 for 30 days. Standard listings are free.
 
-### What fees do landlords pay?
+### How do I screen a tenant?
 
-Landlords pay a ₦5,000 fee to feature properties for 30 days. Standard listings are free.
+Open the tenant application from your Enquiries or Bookings dashboard to review the available verification and screening information.
+
+### How do I receive payment?
+
+Payments are processed securely through Flutterwave, with settlement and status updates recorded against the booking.
 
 ### How do I contact support?
 
-Use the Feedback page to submit questions or report issues. Our team responds within 24 hours.
+Use the Feedback or Support pages to reach the RentDirect team.

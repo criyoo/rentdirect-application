@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
+import BrandLogo from '@/components/BrandLogo'
 
 export default function AdminRegisterPage()
 {
@@ -81,11 +82,7 @@ export default function AdminRegisterPage()
         <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
             <div className="sm:mx-auto sm:w-full sm:max-w-md">
                 <div className="text-center">
-                    <div className="w-16 h-16 bg-gradient-to-br from-purple-600 to-purple-700 rounded-2xl flex items-center justify-center mx-auto shadow-lg">
-                        <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                    </div>
+                    <BrandLogo className="mx-auto h-20 w-32 rounded-lg bg-white p-2 shadow-lg" />
                     <h2 className="mt-6 text-3xl font-bold text-gray-900">
                         Admin Registration
                     </h2>

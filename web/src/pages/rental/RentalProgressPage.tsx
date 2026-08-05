@@ -291,9 +291,15 @@ export default function RentalProgressPage() {
                         </div>
 
                         <div className="mt-6 grid gap-4">
+                            <div className="grid grid-cols-[minmax(0,1fr)_88px_88px] items-center gap-3 px-4 text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">
+                                <span>Step</span>
+                                <span className="text-center">{isLandlord ? 'Landlord' : 'Tenant'}</span>
+                                <span className="text-center">{isLandlord ? 'Tenant' : 'Landlord'}</span>
+                            </div>
                             {steps.map((step, index) => {
                                 const selected = selectedStepKeys.includes(step.key)
                                 const completed = Boolean(step.completed)
+                                const counterpartCompleted = Boolean(step.counterpart_completed)
                                 const selectedResponse = selectedStepResponses[step.key] || ''
                                 const unlocked = stepPrerequisitesSatisfied(index, steps)
                                 const isChoiceStep = step.kind === 'choice' && Array.isArray(step.options) && step.options.length > 0
@@ -301,46 +307,16 @@ export default function RentalProgressPage() {
                                 return (
                                     <div
                                         key={step.key}
-                                        className={`flex items-start gap-4 rounded-2xl border p-4 transition ${completed
+                                        className={`grid grid-cols-[minmax(0,1fr)_88px_88px] items-start gap-3 rounded-2xl border p-4 transition ${completed
                                             ? 'border-gray-200 bg-gray-100 text-gray-500'
-                                            : selected || selectedResponse
-                                                ? 'border-blue-400 bg-blue-50'
+                                                : selected || selectedResponse
+                                                    ? 'border-blue-400 bg-blue-50'
                                                 : unlocked
                                                     ? 'border-gray-200 bg-white hover:border-blue-300'
                                                     : 'border-gray-200 bg-gray-50 text-gray-400'
                                             }`}
                                     >
-                                        {isChoiceStep ? (
-                                            <div className="mt-1 flex flex-col gap-2">
-                                                {step.options?.map((option) => {
-                                                    const isChecked = completed
-                                                        ? step.selected_value === option.value
-                                                        : selectedResponse === option.value
-                                                    return (
-                                                        <label key={option.value} className="flex items-center gap-2 text-sm font-medium">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={isChecked}
-                                                                onChange={() => selectStepResponse(step.key, option.value, completed, unlocked)}
-                                                                disabled={completed || saveProgress.isPending || !unlocked}
-                                                                className="h-4 w-4 rounded border-gray-300 text-blue-600 disabled:cursor-not-allowed"
-                                                            />
-                                                            <span>{option.label}</span>
-                                                        </label>
-                                                    )
-                                                })}
-                                            </div>
-                                        ) : (
-                                            <input
-                                                type="checkbox"
-                                                checked={completed || selected}
-                                                onChange={() => toggleStep(step.key, completed, unlocked)}
-                                                disabled={completed || saveProgress.isPending || !unlocked}
-                                                className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 disabled:cursor-not-allowed"
-                                            />
-                                        )}
-
-                                        <div className="flex-1">
+                                        <div className="min-w-0">
                                             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                                                 <div>
                                                     <p className={`text-base font-semibold ${completed ? 'text-gray-500' : 'text-gray-900'}`}>
@@ -373,9 +349,57 @@ export default function RentalProgressPage() {
                                                             : 'Saved'
                                                         : selected || selectedResponse
                                                             ? 'Ready to save'
-                                                            : 'Pending'}
+                                                        : 'Pending'}
                                                 </span>
                                             </div>
+                                        </div>
+
+                                        <div className="flex flex-col items-center gap-2 pt-1">
+                                            {isChoiceStep ? (
+                                                <div className="flex flex-col gap-2">
+                                                    {step.options?.map((option) => {
+                                                        const isChecked = completed
+                                                            ? step.selected_value === option.value
+                                                            : selectedResponse === option.value
+                                                        return (
+                                                            <label key={option.value} className="flex items-center gap-1 text-xs font-medium">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={isChecked}
+                                                                    onChange={() => selectStepResponse(step.key, option.value, completed, unlocked)}
+                                                                    disabled={completed || saveProgress.isPending || !unlocked}
+                                                                    className="h-4 w-4 rounded border-gray-300 text-blue-600 disabled:cursor-not-allowed"
+                                                                />
+                                                                <span>{option.label}</span>
+                                                            </label>
+                                                        )
+                                                    })}
+                                                </div>
+                                            ) : (
+                                                <input
+                                                    type="checkbox"
+                                                    checked={completed || selected}
+                                                    onChange={() => toggleStep(step.key, completed, unlocked)}
+                                                    disabled={completed || saveProgress.isPending || !unlocked}
+                                                    className="h-4 w-4 rounded border-gray-300 text-blue-600 disabled:cursor-not-allowed"
+                                                />
+                                            )}
+                                            <span className="text-center text-[10px] font-semibold uppercase tracking-wide text-gray-500 md:hidden">
+                                                {isLandlord ? 'Landlord' : 'Tenant'}
+                                            </span>
+                                        </div>
+
+                                        <div className="flex flex-col items-center gap-2 pt-1">
+                                            <input
+                                                type="checkbox"
+                                                checked={counterpartCompleted}
+                                                disabled
+                                                aria-label={`${isLandlord ? 'Tenant' : 'Landlord'} completion for ${step.label}`}
+                                                className="h-4 w-4 rounded border-gray-300 accent-gray-400 text-gray-500 disabled:cursor-not-allowed disabled:opacity-100"
+                                            />
+                                            <span className="text-center text-[10px] font-semibold uppercase tracking-wide text-gray-500 md:hidden">
+                                                {isLandlord ? 'Tenant' : 'Landlord'}
+                                            </span>
                                         </div>
                                     </div>
                                 )

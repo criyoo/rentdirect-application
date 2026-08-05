@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
-import { HiEye, HiEyeOff, HiMail, HiLockClosed, HiHome } from 'react-icons/hi'
+import BrandLogo from '@/components/BrandLogo'
+import { HiEye, HiEyeOff, HiMail, HiLockClosed } from 'react-icons/hi'
 
-export default function LoginPage()
-{
+export default function LoginPage() {
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [showPassword, setShowPassword] = useState(false)
@@ -12,16 +12,13 @@ export default function LoginPage()
     const { login } = useAuth()
     const navigate = useNavigate()
 
-    const handleSubmit = async (e: React.FormEvent) =>
-    {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
         setError('')
 
-        try
-        {
+        try {
             await login({ email, password })
-        } catch (err: any)
-        {
+        } catch (err: any) {
             setError(err.message || 'Login failed')
         }
     }
@@ -31,12 +28,10 @@ export default function LoginPage()
             <div className="max-w-md w-full space-y-8">
                 {/* Header */}
                 <div className="text-center">
-                    <div className="flex justify-center mb-6">
-                        <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl flex items-center justify-center shadow-lg">
-                            <HiHome className="w-8 h-8 text-white" />
-                        </div>
+                    <div className="flex justify-center -mb-14">
+                        <BrandLogo className="h-80 w-80 mix-blend-multiply" />
                     </div>
-                    <h2 className="text-3xl font-bold text-gray-900 mb-2">
+                    <h2 className="text-3xl font-bold text-gray-900">
                         Welcome back
                     </h2>
                     <p className="text-gray-600">

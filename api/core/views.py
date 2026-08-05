@@ -35,6 +35,7 @@ from .models import (
     build_booking_progress_data,
     booking_progress_step_completed,
     booking_progress_step_selected_value,
+    complete_booking_progress_step,
     Booking,
     CommunityChatMessage,
     deposit_secured_booking_queryset,
@@ -145,6 +146,7 @@ REFUND_REQUESTED_PAYMENT_STATUS = "refund_requested"
 PAYMENT_CANCELLATION_ADMIN_FEE_RATE = Decimal("0.01")
 SETTINGS_OTP_PURPOSE_PROFILE = "profile"
 SETTINGS_OTP_PURPOSE_PASSWORD = "password"
+SETTINGS_OTP_PURPOSE_ACCOUNT = "account"
 SETTINGS_PROFILE_MUTABLE_FIELDS = {
     "email",
     "mobile",
@@ -335,8 +337,15 @@ def send_registration_email(user, otp_code: str) -> None:
 def send_settings_otp_email(target_email: str, otp_code: str, purpose: str) -> None:
     from django.core.mail import send_mail
 
-    purpose_label = "account settings update" if purpose == SETTINGS_OTP_PURPOSE_PROFILE else "password change"
-    headline = "Confirm your settings update" if purpose == SETTINGS_OTP_PURPOSE_PROFILE else "Confirm your password change"
+    if purpose == SETTINGS_OTP_PURPOSE_PROFILE:
+        purpose_label = "account settings update"
+        headline = "Confirm your settings update"
+    elif purpose == SETTINGS_OTP_PURPOSE_ACCOUNT:
+        purpose_label = "account security change"
+        headline = "Confirm your account change"
+    else:
+        purpose_label = "password change"
+        headline = "Confirm your password change"
     intro = f"Use this code to confirm your {purpose_label}."
     action_url = build_otp_email_action_url("/dashboard/settings")
     body = build_otp_email_plain_body(
@@ -555,6 +564,18 @@ def _profile_has_nested_fields(profile: dict | None, fields: tuple[str, ...]) ->
     return _profile_has_fields(profile, fields)
 
 
+def _profile_has_any_nested_field(profile: dict | None, fields: tuple[str, ...]) -> bool:
+    if not isinstance(profile, dict):
+        return False
+    return any(_has_submitted_value(profile.get(field_name)) for field_name in fields)
+
+
+def _profile_has_nested_field_or_alias(profile: dict | None, field_name: str, *aliases: str) -> bool:
+    if not isinstance(profile, dict):
+        return False
+    return any(_has_submitted_value(profile.get(candidate)) for candidate in (field_name, *aliases))
+
+
 TENANT_PROFILE_REQUIRED_FIELDS = (
     "first_name",
     "middle_name",
@@ -574,7 +595,7 @@ TENANT_PROFILE_REQUIRED_FIELDS = (
     "housing_status",
 )
 TENANT_PROFILE_REQUIRED_CURRENT_RESIDENCE_FINANCIAL_FIELDS = (
-    "current_rent_amount",
+    "current_annual_rent",
     "current_move_in_date",
     "expected_move_out_date",
     "reason_for_wanting_to_leave",
@@ -600,10 +621,17 @@ TENANT_PROFILE_REQUIRED_FINANCIAL_VERIFICATION_FIELDS = (
     "business_name",
     "business_address",
     "business_type",
+)
+TENANT_PROFILE_FINANCIAL_INCOME_FIELDS = (
+    "average_monthly_income",
+    "average_annual_income",
+    "savings",
     "monthly_income_amount",
+)
+TENANT_PROFILE_FINANCIAL_OUTGOING_FIELDS = (
+    "outgoing_expenses",
+    "annual_outgoing_expenses",
     "monthly_expenses",
-    "credit_commitment",
-    "outstanding_loans",
 )
 TENANT_PROFILE_REQUIRED_GUARANTOR_FIELDS = (
     "full_name",
@@ -736,7 +764,10 @@ def tenant_profile_has_mandatory_fields(profile: TenantProfile) -> bool:
     if not all(_has_submitted_value(getattr(profile, field_name, None)) for field_name in TENANT_PROFILE_REQUIRED_FIELDS):
         return False
 
-    if not _profile_has_nested_fields(profile.financial_info, TENANT_PROFILE_REQUIRED_CURRENT_RESIDENCE_FINANCIAL_FIELDS):
+    financial_info = profile.financial_info if isinstance(profile.financial_info, dict) else {}
+    if not _profile_has_nested_field_or_alias(financial_info, "current_annual_rent", "current_rent_amount"):
+        return False
+    if not _profile_has_nested_fields(financial_info, TENANT_PROFILE_REQUIRED_CURRENT_RESIDENCE_FINANCIAL_FIELDS[1:]):
         return False
 
     if str(profile.employment_status or "").strip().lower() == "employed":
@@ -744,7 +775,11 @@ def tenant_profile_has_mandatory_fields(profile: TenantProfile) -> bool:
             return False
         if _tenant_profile_employment_document_type_count(profile) < 2:
             return False
-    elif not _profile_has_nested_fields(profile.financial_info, TENANT_PROFILE_REQUIRED_FINANCIAL_VERIFICATION_FIELDS):
+    elif (
+        not _profile_has_nested_fields(financial_info, TENANT_PROFILE_REQUIRED_FINANCIAL_VERIFICATION_FIELDS)
+        or not _profile_has_any_nested_field(financial_info, TENANT_PROFILE_FINANCIAL_INCOME_FIELDS)
+        or not _profile_has_any_nested_field(financial_info, TENANT_PROFILE_FINANCIAL_OUTGOING_FIELDS)
+    ):
         return False
 
     if not _profile_has_nested_fields(profile.guarantor_details, TENANT_PROFILE_REQUIRED_GUARANTOR_FIELDS):
@@ -945,6 +980,8 @@ def build_landlord_public_profile_payload(landlord: AppUser, viewer=None) -> dic
     latest_verification = VerificationRequest.objects.filter(user=landlord).order_by("-submitted_at").first()
     average_response_seconds = calculate_landlord_average_response_seconds(landlord)
     years_on_platform = round(max((timezone.now().date() - landlord.created_at.date()).days / 365.25, 0), 1)
+    total_properties = listings.count()
+    properties_rented = listings.filter(status=Listing.Status.RENTED).count()
 
     identity_verified = bool(
         latest_verification
@@ -985,7 +1022,9 @@ def build_landlord_public_profile_payload(landlord: AppUser, viewer=None) -> dic
         "verification_badges": verification_badges,
         "verification_score": verification_score,
         "metrics": {
-            "properties_listed": listings.count(),
+            "total_properties": total_properties,
+            "properties_rented": properties_rented,
+            "properties_listed": total_properties - properties_rented,
             "active_tenancies": active_tenancies,
             "completed_tenancies": completed_tenancies,
             "average_rating": round(average_rating, 1) if review_count else 0.0,
@@ -2155,7 +2194,10 @@ def trigger_payment_settlements(payment: Payment) -> None:
             landlord = listing.landlord
             tenant = booking.tenant
 
-            if settlement.purpose == PaymentSettlement.Purpose.LANDLORD_RENT:
+            if (
+                settlement.purpose == PaymentSettlement.Purpose.LANDLORD_RENT
+                and settlement.status != PaymentSettlement.Status.FAILED
+            ):
                 # Email #2: Notify landlord of payout, CC tenant and RentDirect
                 send_landlord_payout_notification(
                     landlord_email=landlord.email,
@@ -2163,11 +2205,16 @@ def trigger_payment_settlements(payment: Payment) -> None:
                     tenant_name=tenant.name,
                     tenant_email=tenant.email,
                     listing_title=listing.title,
-                    amount=settlement.amount,
+                    rental_amount=listing.price_per_year,
                     bank_name=settlement.bank_name,
                     account_name=settlement.account_name,
                     account_number=settlement.account_number,
                     settlement_id=str(settlement.id),
+                )
+                complete_booking_progress_step(
+                    booking,
+                    AppUser.Role.TENANT,
+                    "final_rent_payment_email_received",
                 )
             elif settlement.purpose in (PaymentSettlement.Purpose.OPERATIONS, PaymentSettlement.Purpose.CAUTION_FEE):
                 # Email #3: Notify only RentDirect for internal transfers
@@ -2258,7 +2305,7 @@ def update_booking_after_completed_payment(payment: Payment) -> Payment:
                 tenant_name=payment.booking.tenant.name,
                 tenant_email=payment.booking.tenant.email,
                 listing_title=payment.booking.listing.title,
-                amount=payment.amount,
+                rental_amount=payment.booking.listing.price_per_year,
                 transaction_id=payment.transaction_id,
                 payment_date=payment.payment_date.strftime("%Y-%m-%d %H:%M:%S"),
                 booking_id=str(payment.booking_id),
@@ -2623,8 +2670,18 @@ class UserViewSet(viewsets.GenericViewSet):
     permission_classes = [IsAuthenticated]
     parser_classes = [JSONParser, MultiPartParser, FormParser]
 
-    @action(detail=False, methods=["get", "patch"], url_path="me")
+    @action(detail=False, methods=["get", "patch", "delete"], url_path="me")
     def me(self, request):
+        if request.method == "DELETE":
+            ensure_valid_settings_otp(
+                request.user,
+                purpose=SETTINGS_OTP_PURPOSE_ACCOUNT,
+                target_email=request.user.email.strip().lower(),
+                code=str(request.data.get("otp_code", "")),
+            )
+            request.user.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
         if request.method == "PATCH":
             serializer = self.get_serializer(request.user, data=request.data, partial=True)
             serializer.is_valid(raise_exception=True)
@@ -2665,7 +2722,7 @@ class UserViewSet(viewsets.GenericViewSet):
         current_email = request.user.email.strip().lower()
         target_email = serializer.validated_data.get("target_email", "").strip().lower()
 
-        if purpose == SETTINGS_OTP_PURPOSE_PASSWORD:
+        if purpose in {SETTINGS_OTP_PURPOSE_PASSWORD, SETTINGS_OTP_PURPOSE_ACCOUNT}:
             target_email = current_email
         else:
             target_email = target_email or current_email
@@ -2689,13 +2746,52 @@ class UserViewSet(viewsets.GenericViewSet):
             for field in SETTINGS_PROFILE_MUTABLE_FIELDS
             if field in request.data
         }
-        if not payload:
+        tenant_profile_payload = {}
+        guarantor_details = request.data.get("guarantor_details", None)
+        has_guarantor_update = "guarantor_details" in request.data
+
+        if has_guarantor_update:
+            if request.user.role != AppUser.Role.TENANT:
+                raise ValidationError({"guarantor_details": "Guarantor details are only available for tenant accounts."})
+            if guarantor_details is not None and not isinstance(guarantor_details, dict):
+                raise ValidationError({"guarantor_details": "Guarantor details must be a JSON object."})
+            tenant_profile_payload["guarantor_details"] = guarantor_details
+
+        residence = request.data.get("residence")
+        if request.user.role == AppUser.Role.TENANT and isinstance(residence, dict):
+            tenant_profile_payload.update(
+                {
+                    "residence_state": str(residence.get("state") or "").strip(),
+                    "residence_city": str(residence.get("city") or "").strip(),
+                    "residence_address": str(residence.get("address") or "").strip(),
+                }
+            )
+
+        if not payload and not tenant_profile_payload:
             raise ValidationError({"detail": "No settings changes were provided."})
 
-        serializer = self.get_serializer(request.user, data=payload, partial=True)
-        serializer.is_valid(raise_exception=True)
+        serializer = None
+        if payload:
+            serializer = self.get_serializer(request.user, data=payload, partial=True)
+            serializer.is_valid(raise_exception=True)
 
-        target_email = serializer.validated_data.get("email", request.user.email).strip().lower()
+        tenant_profile = None
+        tenant_profile_serializer = None
+        if tenant_profile_payload and request.user.role == AppUser.Role.TENANT:
+            tenant_profile = TenantProfile.objects.filter(user=request.user).first()
+            if tenant_profile:
+                tenant_profile_serializer = TenantProfileSerializer(
+                    tenant_profile,
+                    data=tenant_profile_payload,
+                    partial=True,
+                )
+                tenant_profile_serializer.is_valid(raise_exception=True)
+
+        target_email = (
+            serializer.validated_data.get("email", request.user.email)
+            if serializer
+            else request.user.email
+        ).strip().lower()
         ensure_valid_settings_otp(
             request.user,
             purpose=SETTINGS_OTP_PURPOSE_PROFILE,
@@ -2703,7 +2799,24 @@ class UserViewSet(viewsets.GenericViewSet):
             code=str(request.data.get("otp_code", "")),
         )
 
-        updated_user = serializer.save()
+        with transaction.atomic():
+            updated_user = serializer.save() if serializer else request.user
+            if tenant_profile_serializer:
+                tenant_profile_serializer.save()
+
+            if has_guarantor_update:
+                verification_profile = dict(updated_user.tenant_verification_profile or {})
+                verification_profile["guarantor_details"] = guarantor_details
+                updated_user.tenant_verification_profile = verification_profile
+
+            update_fields = ["updated_at"]
+            if has_guarantor_update:
+                update_fields.append("tenant_verification_profile")
+            if not updated_user.email_verified:
+                updated_user.email_verified = True
+                update_fields.append("email_verified")
+            updated_user.save(update_fields=update_fields)
+
         if not updated_user.email_verified:
             updated_user.email_verified = True
             updated_user.save(update_fields=["email_verified", "updated_at"])
@@ -2755,9 +2868,27 @@ class UserViewSet(viewsets.GenericViewSet):
             raise PermissionDenied("Only landlord accounts can be frozen.")
 
         if request.method == "DELETE":
+            ensure_valid_settings_otp(
+                request.user,
+                purpose=SETTINGS_OTP_PURPOSE_ACCOUNT,
+                target_email=request.user.email.strip().lower(),
+                code=str(request.data.get("otp_code", "")),
+            )
             request.user.account_frozen = False
             request.user.account_frozen_until = None
-            request.user.save(update_fields=["account_frozen", "account_frozen_until", "updated_at"])
+            clear_settings_otp(request.user, save=False)
+            request.user.save(
+                update_fields=[
+                    "account_frozen",
+                    "account_frozen_until",
+                    "settings_otp_hash",
+                    "settings_otp_expires_at",
+                    "settings_otp_attempts",
+                    "settings_otp_purpose",
+                    "settings_otp_target_email",
+                    "updated_at",
+                ]
+            )
             return Response(self.get_serializer(request.user).data)
 
         try:
@@ -2767,16 +2898,29 @@ class UserViewSet(viewsets.GenericViewSet):
         if duration_months not in {3, 6, 12}:
             raise ValidationError({"duration_months": "Choose a freeze duration of 3, 6, or 12 months."})
 
+        ensure_valid_settings_otp(
+            request.user,
+            purpose=SETTINGS_OTP_PURPOSE_ACCOUNT,
+            target_email=request.user.email.strip().lower(),
+            code=str(request.data.get("otp_code", "")),
+        )
+
         request.user.account_frozen = True
         request.user.account_frozen_at = timezone.now()
         request.user.account_frozen_until = timezone.now() + timedelta(days=30 * duration_months)
         request.user.account_freeze_fee_percentage = Decimal("20")
+        clear_settings_otp(request.user, save=False)
         request.user.save(
             update_fields=[
                 "account_frozen",
                 "account_frozen_at",
                 "account_frozen_until",
                 "account_freeze_fee_percentage",
+                "settings_otp_hash",
+                "settings_otp_expires_at",
+                "settings_otp_attempts",
+                "settings_otp_purpose",
+                "settings_otp_target_email",
                 "updated_at",
             ]
         )

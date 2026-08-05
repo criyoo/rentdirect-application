@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
-import { HiLockClosed, HiEye, HiEyeOff, HiHome } from 'react-icons/hi'
+import BrandLogo from '@/components/BrandLogo'
+import { HiLockClosed, HiEye, HiEyeOff } from 'react-icons/hi'
 
 export default function ResetPasswordPage()
 {
@@ -113,9 +114,7 @@ export default function ResetPasswordPage()
                 {/* Header */}
                 <div className="text-center">
                     <div className="flex justify-center mb-6">
-                        <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl flex items-center justify-center shadow-lg">
-                            <HiHome className="w-8 h-8 text-white" />
-                        </div>
+                        <BrandLogo className="h-24 w-40 rounded-xl bg-white p-2 shadow-lg" />
                     </div>
                     <h2 className="text-3xl font-bold text-gray-900 mb-2">
                         Reset your password

@@ -828,7 +828,12 @@ class Command(BaseCommand):
         personal = self.get_seed_dict(profile, "personal_information")
         current_residence = self.get_seed_dict(profile, "current_residence")
         employment_info = self.get_seed_dict(profile, "employment_info", "employment_information")
-        financial_info = self.get_seed_dict(profile, "financial_info", "financial_verification")
+        financial_info = self.get_seed_dict(
+            profile,
+            "financial_info",
+            "financial_information",
+            "financial_verification",
+        )
         guarantor_details = self.get_seed_dict(profile, "guarantor_details")
         landlord_info = self.normalize_tenant_landlord_info(
             self.get_seed_dict(profile, "landlord_info", "current_landlord_information")
@@ -841,7 +846,8 @@ class Command(BaseCommand):
         rental_history = self.build_tenant_rental_history(profile, current_residence)
 
         current_financial_defaults = {
-            "current_rent_amount": self.first_seed_value(
+            "current_annual_rent": self.first_seed_value(
+                current_residence.get("current_annual_rent"),
                 current_residence.get("current_rent_amount"),
                 current_residence.get("annual_rent"),
             ),
@@ -866,6 +872,12 @@ class Command(BaseCommand):
         for field_name, value in current_financial_defaults.items():
             if self.has_seed_value(value) and not self.has_seed_value(financial_info.get(field_name)):
                 financial_info[field_name] = value
+
+        if not self.has_seed_value(financial_info.get("current_annual_rent")):
+            financial_info["current_annual_rent"] = self.first_seed_value(
+                financial_info.get("current_rent_amount")
+            )
+        financial_info.pop("current_rent_amount", None)
 
         payload = {
             "first_name": self.seed_text(personal.get("first_name"), profile.get("first_name"), verification.get("first_name")),
@@ -1048,6 +1060,7 @@ class Command(BaseCommand):
                 current_residence.get("address"),
             ),
             "annual_rent": self.seed_text(
+                current_residence.get("current_annual_rent"),
                 current_residence.get("annual_rent"),
                 current_residence.get("current_rent_amount"),
             ),

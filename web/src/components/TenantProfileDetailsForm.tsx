@@ -150,13 +150,18 @@ const schema = z.object({
         business_type: z.string().optional(),
         monthly_income_amount: z.string().optional(),
         monthly_expenses: z.string().optional(),
-        current_rent_amount: z.string().min(1, 'Annual rent is required'),
+        current_annual_rent: z.string().min(1, 'Annual rent is required'),
         current_service_charge: z.string().optional(),
         current_move_in_date: z.string().min(1, 'Move in date is required'),
         expected_move_out_date: z.string().min(1, 'Expected move out date is required'),
         reason_for_wanting_to_leave: z.string().min(1, 'Reason for wanting to leave is required'),
         credit_commitment: z.string().optional(),
         outstanding_loans: z.string().optional(),
+        average_monthly_income: z.string().optional(),
+        average_annual_income: z.string().optional(),
+        savings: z.string().optional(),
+        outgoing_expenses: z.string().optional(),
+        annual_outgoing_expenses: z.string().optional(),
     }).optional(),
     guarantor_details: z.object({
         full_name: z.string().optional(),
@@ -236,11 +241,23 @@ const schema = z.object({
             'business_name',
             'business_address',
             'business_type',
-            'monthly_income_amount',
-            'monthly_expenses',
-            'credit_commitment',
-            'outstanding_loans',
         ])
+
+        const hasIncomeOrSavings = [
+            data.financial_info?.average_monthly_income,
+            data.financial_info?.average_annual_income,
+            data.financial_info?.savings,
+            data.financial_info?.monthly_income_amount,
+        ].some(hasSubmittedValue)
+        if (!hasIncomeOrSavings) {
+            addRequiredIssue(ctx, ['financial_info', 'average_monthly_income'], 'Provide average income or savings.')
+        }
+
+        if (!hasSubmittedValue(data.financial_info?.outgoing_expenses)
+            && !hasSubmittedValue(data.financial_info?.monthly_expenses)
+            && !hasSubmittedValue(data.financial_info?.annual_outgoing_expenses)) {
+            addRequiredIssue(ctx, ['financial_info', 'outgoing_expenses'])
+        }
     }
 
     requireNestedFields(ctx, data.guarantor_details, 'guarantor_details', [
@@ -587,13 +604,18 @@ const defaultFormValues: Partial<FormValues> = {
         business_type: '',
         monthly_income_amount: '',
         monthly_expenses: '',
-        current_rent_amount: '',
+        current_annual_rent: '',
         current_service_charge: '',
         current_move_in_date: '',
         expected_move_out_date: '',
         reason_for_wanting_to_leave: '',
         credit_commitment: '',
         outstanding_loans: '',
+        average_monthly_income: '',
+        average_annual_income: '',
+        savings: '',
+        outgoing_expenses: '',
+        annual_outgoing_expenses: '',
     },
     guarantor_details: {},
     landlord_info: {},
@@ -837,7 +859,7 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
     const residenceLga = watch('residence_lga')
     const residenceAddress = watch('residence_address')
     const residenceCity = watch('residence_city')
-    const residenceAnnualRent = watch('financial_info.current_rent_amount')
+    const residenceAnnualRent = watch('financial_info.current_annual_rent')
     const residenceServiceCharge = watch('financial_info.current_service_charge')
     const residenceMoveInDate = watch('financial_info.current_move_in_date')
     const residenceExpectedMoveOutDate = watch('financial_info.expected_move_out_date')
@@ -904,7 +926,13 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
             ...verificationProfileDefaults,
             ...existingProfile,
             employment_info: existingProfile.employment_info || {},
-            financial_info: existingProfile.financial_info || {},
+            financial_info: {
+                ...defaultFormValues.financial_info,
+                ...(existingProfile.financial_info || {}),
+                current_annual_rent: existingProfile.financial_info?.current_annual_rent
+                    || (existingProfile.financial_info as Record<string, any>)?.current_rent_amount
+                    || '',
+            },
             guarantor_details: existingProfile.guarantor_details || {},
             landlord_info: existingProfile.landlord_info || {},
             rental_history_same_as_current_residence: false,
@@ -999,7 +1027,7 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
 
     const buildCurrentResidenceRentalHistoryEntry = useCallback((data: FormValues) => ({
         property_address: [data.residence_address, data.residence_city, data.residence_state].filter(Boolean).join(', '),
-        annual_rent: data.financial_info?.current_rent_amount || '',
+        annual_rent: data.financial_info?.current_annual_rent || '',
         service_charge: data.financial_info?.current_service_charge || '',
         move_in_date: data.financial_info?.current_move_in_date || '',
         move_out_date: data.financial_info?.expected_move_out_date || '',
@@ -1254,8 +1282,8 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                             </InputRow>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                            <InputRow label="Annual Rent" error={errors.financial_info?.current_rent_amount?.message}>
-                                <TextInput register={register} name="financial_info.current_rent_amount" placeholder="e.g. 1200000" error={errors.financial_info?.current_rent_amount?.message} />
+                            <InputRow label="Current Annual Rent" error={errors.financial_info?.current_annual_rent?.message}>
+                                <TextInput register={register} name="financial_info.current_annual_rent" placeholder="e.g. 1200000" error={errors.financial_info?.current_annual_rent?.message} />
                             </InputRow>
                             <InputRow label="Service Charge (Optional)" error={errors.financial_info?.current_service_charge?.message}>
                                 <TextInput register={register} name="financial_info.current_service_charge" placeholder="e.g. 150000" error={errors.financial_info?.current_service_charge?.message} />
@@ -1332,6 +1360,25 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                                     <TextInput register={register} name="employment_info.hr_contact_phone" placeholder={MOBILE_INPUT_PLACEHOLDER} error={errors.employment_info?.hr_contact_phone?.message} {...mobileInputProps} />
                                 </InputRow>
                             </div>
+                            <div className="mt-5 border-t border-gray-200 pt-5">
+                                <p className="text-sm font-semibold text-gray-700">Payment Capacity Information</p>
+                                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <InputRow label="Monthly Income Amount" error={errors.financial_info?.monthly_income_amount?.message}>
+                                        <TextInput register={register} name="financial_info.monthly_income_amount" placeholder="e.g. 500000" error={errors.financial_info?.monthly_income_amount?.message} />
+                                    </InputRow>
+                                    <InputRow label="Monthly Expenses" error={errors.financial_info?.monthly_expenses?.message}>
+                                        <TextInput register={register} name="financial_info.monthly_expenses" placeholder="e.g. 200000" error={errors.financial_info?.monthly_expenses?.message} />
+                                    </InputRow>
+                                </div>
+                                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <InputRow label="Credit Commitment" error={errors.financial_info?.credit_commitment?.message}>
+                                        <TextInput register={register} name="financial_info.credit_commitment" placeholder="e.g. 50000/month" error={errors.financial_info?.credit_commitment?.message} />
+                                    </InputRow>
+                                    <InputRow label="Outstanding Loans" error={errors.financial_info?.outstanding_loans?.message}>
+                                        <TextInput register={register} name="financial_info.outstanding_loans" placeholder="e.g. 2000000" error={errors.financial_info?.outstanding_loans?.message} />
+                                    </InputRow>
+                                </div>
+                            </div>
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <FileUploadBox label="Employment Letter" files={fileMap['employment_letter'] || []} onChange={setFilesForKey('employment_letter')} />
                                 <FileUploadBox label="Staff ID Card" files={fileMap['staff_id'] || []} onChange={setFilesForKey('staff_id')} />
@@ -1374,16 +1421,24 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                                 </InputRow>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                                <InputRow label="Monthly Income Amount" error={errors.financial_info?.monthly_income_amount?.message}>
-                                    <TextInput register={register} name="financial_info.monthly_income_amount" placeholder="e.g. 500000" error={errors.financial_info?.monthly_income_amount?.message} />
-                                </InputRow>
-                                <InputRow label="Monthly Expenses" error={errors.financial_info?.monthly_expenses?.message}>
-                                    <TextInput register={register} name="financial_info.monthly_expenses" placeholder="e.g. 200000" error={errors.financial_info?.monthly_expenses?.message} />
-                                </InputRow>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                                <InputRow label="Current Rent Amount" error={errors.financial_info?.current_rent_amount?.message}>
-                                    <TextInput register={register} name="financial_info.current_rent_amount" placeholder="e.g. 1500000/year" error={errors.financial_info?.current_rent_amount?.message} />
+                            <InputRow label="Average Monthly Income (Optional)" error={errors.financial_info?.average_monthly_income?.message}>
+                                <TextInput register={register} name="financial_info.average_monthly_income" placeholder="e.g. 500000" error={errors.financial_info?.average_monthly_income?.message} />
+                            </InputRow>
+                            <InputRow label="Average Annual Income (Optional)" error={errors.financial_info?.average_annual_income?.message}>
+                                <TextInput register={register} name="financial_info.average_annual_income" placeholder="e.g. 6000000" error={errors.financial_info?.average_annual_income?.message} />
+                            </InputRow>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                            <InputRow label="Savings (Optional)" error={errors.financial_info?.savings?.message}>
+                                <TextInput register={register} name="financial_info.savings" placeholder="e.g. 2500000" error={errors.financial_info?.savings?.message} />
+                            </InputRow>
+                            <InputRow label="Outgoing Expenses (Monthly)" error={errors.financial_info?.outgoing_expenses?.message}>
+                                <TextInput register={register} name="financial_info.outgoing_expenses" placeholder="e.g. 200000" error={errors.financial_info?.outgoing_expenses?.message} />
+                            </InputRow>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                            <InputRow label="Current Annual Rent" error={errors.financial_info?.current_annual_rent?.message}>
+                                <TextInput register={register} name="financial_info.current_annual_rent" placeholder="e.g. 1500000/year" error={errors.financial_info?.current_annual_rent?.message} />
                                 </InputRow>
                                 <InputRow label="Current Service Charge (Optional)" error={errors.financial_info?.current_service_charge?.message}>
                                     <TextInput register={register} name="financial_info.current_service_charge" placeholder="e.g. 100000/year" error={errors.financial_info?.current_service_charge?.message} />

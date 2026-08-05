@@ -29,6 +29,15 @@ const schema = z.object({
     deposit_amount: requiredPositiveNumber('Deposit amount is required'),
     utilities_included: z.boolean(),
     pet_friendly: z.boolean(),
+    parking: z.boolean(),
+    garage: z.boolean(),
+    garden: z.boolean(),
+    lift: z.boolean(),
+    balcony: z.boolean(),
+    smart_lock: z.boolean(),
+    pop_ceiling: z.boolean(),
+    electric_fence: z.boolean(),
+    fitted_kitchen: z.boolean(),
     furnished: z.boolean(),
     ownership_types: z.array(z.string()).min(1, 'Select at least one ownership type'),
     property_ownership_documents: z.array(z.string()),
@@ -167,6 +176,15 @@ export default function ListingFormPage() {
             toilets: 1,
             utilities_included: false,
             pet_friendly: false,
+            parking: false,
+            garage: false,
+            garden: false,
+            lift: false,
+            balcony: false,
+            smart_lock: false,
+            pop_ceiling: false,
+            electric_fence: false,
+            fitted_kitchen: false,
             furnished: false,
             ownership_types: [],
             property_ownership_documents: [],
@@ -271,6 +289,15 @@ export default function ListingFormPage() {
             deposit_amount: listing.deposit_amount,
             utilities_included: listing.utilities_included,
             pet_friendly: listing.pet_friendly,
+            parking: listing.parking,
+            garage: listing.garage,
+            garden: listing.garden,
+            lift: listing.lift,
+            balcony: listing.balcony,
+            smart_lock: listing.smart_lock,
+            pop_ceiling: listing.pop_ceiling,
+            electric_fence: listing.electric_fence,
+            fitted_kitchen: listing.fitted_kitchen,
             furnished: listing.furnished,
             ownership_types: listing.ownership_types || [],
             property_ownership_documents: listing.property_ownership_documents || [],
@@ -314,6 +341,21 @@ export default function ListingFormPage() {
 
         formData.append('utilities_included', data.utilities_included.toString())
         formData.append('pet_friendly', data.pet_friendly.toString())
+
+
+        formData.append('parking', data.parking.toString())
+        formData.append('garage', data.garage.toString())
+        formData.append('garden', data.garden.toString())
+        formData.append('lift', data.lift.toString())
+        formData.append('balcony', data.balcony.toString())
+        formData.append('smart_lock', data.smart_lock.toString())
+        formData.append('pop_ceiling', data.pop_ceiling.toString())
+        formData.append('electric_fence', data.electric_fence.toString())
+        formData.append('fitted_kitchen', data.fitted_kitchen.toString())
+
+
+
+
         formData.append('furnished', data.furnished.toString())
         formData.append('property_verification_method', data.property_verification_method)
         formData.append('minimum_rental_duration', data.minimum_rental_duration)
@@ -845,7 +887,7 @@ export default function ListingFormPage() {
                             {/* <h3 className="text-lg font-semibold text-gray-900">Features</h3> */}
                             <label className={classNameTitles}>Features</label>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
                                 <label className="flex items-center space-x-2">
                                     <input {...register('utilities_included')} type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
                                     <span className="text-sm text-gray-700">Utilities Included</span>
@@ -860,6 +902,51 @@ export default function ListingFormPage() {
                                     <input {...register('furnished')} type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
                                     <span className="text-sm text-gray-700">Furnished</span>
                                 </label>
+
+                                <label className="flex items-center space-x-2">
+                                    <input {...register('parking')} type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                                    <span className="text-sm text-gray-700">Parking</span>
+                                </label>
+
+                                <label className="flex items-center space-x-2">
+                                    <input {...register('garage')} type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                                    <span className="text-sm text-gray-700">Garage</span>
+                                </label>
+
+                                <label className="flex items-center space-x-2">
+                                    <input {...register('garden')} type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                                    <span className="text-sm text-gray-700">Gardens</span>
+                                </label>
+
+                                <label className="flex items-center space-x-2">
+                                    <input {...register('lift')} type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                                    <span className="text-sm text-gray-700">Lift</span>
+                                </label>
+
+                                <label className="flex items-center space-x-2">
+                                    <input {...register('balcony')} type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                                    <span className="text-sm text-gray-700">Balcony</span>
+                                </label>
+
+                                <label className="flex items-center space-x-2">
+                                    <input {...register('smart_lock')} type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                                    <span className="text-sm text-gray-700">Smart Locks</span>
+                                </label>
+
+                                <label className="flex items-center space-x-2">
+                                    <input {...register('pop_ceiling')} type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                                    <span className="text-sm text-gray-700">POP Ceiling</span>
+                                </label>
+
+                                <label className="flex items-center space-x-2">
+                                    <input {...register('electric_fence')} type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                                    <span className="text-sm text-gray-700">Electric fence</span>
+                                </label>
+
+                                <label className="flex items-center space-x-2">
+                                    <input {...register('fitted_kitchen')} type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                                    <span className="text-sm text-gray-700">Fitted kitchen</span>
+                                </label>
                             </div>
 
                             <div>
@@ -873,7 +960,7 @@ export default function ListingFormPage() {
                                                 type="text"
                                                 {...register(`amenities.${index}.value` as const)}
                                                 className="w-full rounded-lg border border-gray-300 px-4 py-1.5 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
-                                                placeholder={index === 0 ? 'e.g., Swimming pool, Gym, Parking' : 'Amenity'}
+                                                placeholder={index === 0 ? 'e.g., Swimming pool, Gym, Children\'s playgorund, Nearby shopping mall etc.' : 'Amenity'}
                                             />
                                             {amenityFields.length > 1 && (
                                                 <button

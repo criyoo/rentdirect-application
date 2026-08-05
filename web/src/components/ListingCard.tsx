@@ -82,7 +82,7 @@ export default function ListingCard({ listing, isFavourite = false }: ListingCar
                         alt={listing.title}
                         loading="lazy"
                         decoding="async"
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        className="w-full h-full object-cover group-hover:scale-150 transition-transform duration-300"
                         onError={(e) => {
                             e.currentTarget.src = '/placeholder.jpg'
                         }}
@@ -124,13 +124,13 @@ export default function ListingCard({ listing, isFavourite = false }: ListingCar
                 </div>
 
                 {/* Content */}
-                <div className="flex flex-1 flex-col p-4">
+                <div className="flex flex-1 flex-col items-center p-4 text-center">
                     {/* Title and Location */}
-                    <div className="mb-3">
+                    <div className="text-center  mb-3">
                         <h3 className="mb-1 text-lg font-semibold text-gray-900 line-clamp-2 group-hover:text-blue-600 transition-colors duration-200">
                             {listing.title}
                         </h3>
-                        <div className="flex items-center text-gray-600 text-sm">
+                        <div className="flex items-center justify-center text-gray-600 text-sm">
                             <HiLocationMarker className="w-4 h-4 mr-1 flex-shrink-0" />
                             <span className="truncate">{locationLabel}</span>
                         </div>
@@ -142,7 +142,7 @@ export default function ListingCard({ listing, isFavourite = false }: ListingCar
                     </div>
 
                     {/* Property Details */}
-                    <div className="mb-1 flex items-center space-x-4 text-sm text-gray-600">
+                    <div className="mb-1 flex items-center justify-center space-x-4 text-sm text-gray-600">
                         <div className="flex items-center space-x-1">
                             <HiHome className="w-4 h-4" />
                             <span className="font-medium">{listing.bedrooms}</span>
@@ -163,8 +163,8 @@ export default function ListingCard({ listing, isFavourite = false }: ListingCar
                     </div>
 
                     {/* Price */}
-                    <div className="mt-auto">
-                        <div className="mb-1 text-xl font-bold text-blue-600">
+                    <div className="text-center mt-auto">
+                        <div className="text-[16px] text-blue-600">
                             {formatCurrencyWithSymbol(listing.price_per_year)} / year
                         </div>
                     </div>

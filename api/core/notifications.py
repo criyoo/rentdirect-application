@@ -18,7 +18,7 @@ def send_payment_confirmation_to_landlord(
     tenant_name: str,
     tenant_email: str,
     listing_title: str,
-    amount: Decimal,
+    rental_amount: Decimal,
     transaction_id: str,
     payment_date: str,
     booking_id: str,
@@ -30,15 +30,15 @@ def send_payment_confirmation_to_landlord(
         "tenant_name": tenant_name,
         "tenant_email": tenant_email,
         "listing_title": listing_title,
-        "amount": f"₦{amount:,.2f}",
+        "rental_amount": f"₦{rental_amount:,.2f}",
         "transaction_id": transaction_id,
         "payment_date": payment_date,
         "booking_id": booking_id,
     }
     text_body = (
         f"Dear {landlord_name},\n\n"
-        f"Your tenant {tenant_name} ({tenant_email}) has made a rental payment "
-        f"of {context['amount']} for {listing_title}.\n\n"
+        f"Your tenant {tenant_name} ({tenant_email}) has made a rental payment for {listing_title}.\n\n"
+        f"Rental Amount: {context['rental_amount']}\n"
         f"Transaction ID: {transaction_id}\n"
         f"Date: {payment_date}\n"
         f"Booking Reference: {booking_id}\n\n"
@@ -54,8 +54,8 @@ def send_payment_confirmation_to_landlord(
             f"<p>Your tenant <strong>{tenant_name}</strong> ({tenant_email}) has made a rental payment for "
             f"<strong>{listing_title}</strong>.</p>"
             f"<table style='width:100%;border-collapse:collapse;margin:16px 0;'>"
-            f"<tr><td style='padding:8px;border-bottom:1px solid #ddd;color:#666;'>Amount</td>"
-            f"<td style='padding:8px;border-bottom:1px solid #ddd;font-weight:bold;'>{context['amount']}</td></tr>"
+            f"<tr><td style='padding:8px;border-bottom:1px solid #ddd;color:#666;'>Rental Amount</td>"
+            f"<td style='padding:8px;border-bottom:1px solid #ddd;font-weight:bold;'>{context['rental_amount']}</td></tr>"
             f"<tr><td style='padding:8px;border-bottom:1px solid #ddd;color:#666;'>Transaction ID</td>"
             f"<td style='padding:8px;border-bottom:1px solid #ddd;'>{transaction_id}</td></tr>"
             f"<tr><td style='padding:8px;border-bottom:1px solid #ddd;color:#666;'>Date</td>"
@@ -87,20 +87,20 @@ def send_landlord_payout_notification(
     tenant_name: str,
     tenant_email: str,
     listing_title: str,
-    amount: Decimal,
+    rental_amount: Decimal,
     bank_name: str,
     account_name: str,
     account_number: str,
     settlement_id: str,
 ) -> None:
-    """Email #2: When a transfer to landlord account is triggered (recipient created)."""
+    """Email #2: When a transfer to the landlord account is initiated."""
     subject = f"Landlord Payout Initiated — {listing_title}"
     context = {
         "landlord_name": landlord_name,
         "tenant_name": tenant_name,
         "tenant_email": tenant_email,
         "listing_title": listing_title,
-        "amount": f"₦{amount:,.2f}",
+        "rental_amount": f"₦{rental_amount:,.2f}",
         "bank_name": bank_name,
         "account_name": account_name,
         "account_number": account_number,
@@ -108,12 +108,12 @@ def send_landlord_payout_notification(
     }
     text_body = (
         f"Dear {landlord_name},\n\n"
-        f"A payout of {context['amount']} for {listing_title} has been initiated to your account.\n\n"
+        f"A payout of {context['rental_amount']} for {listing_title} has been initiated to your account.\n\n"
         f"Bank: {bank_name}\n"
         f"Account Name: {account_name}\n"
         f"Account Number: {account_number}\n"
         f"Reference: {settlement_id}\n\n"
-        f"This amount represents the rent due after RentDirect's service fees have been deducted.\n\n"
+        f"This is the full rental amount shown in the property listing.\n\n"
         f"Thank you for using RentDirect.\n"
         f"RentDirect Team"
     )
@@ -125,8 +125,8 @@ def send_landlord_payout_notification(
             f"<p>A payout for <strong>{listing_title}</strong> (tenant: {tenant_name}) "
             f"has been initiated to your bank account.</p>"
             f"<table style='width:100%;border-collapse:collapse;margin:16px 0;'>"
-            f"<tr><td style='padding:8px;border-bottom:1px solid #ddd;color:#666;'>Amount</td>"
-            f"<td style='padding:8px;border-bottom:1px solid #ddd;font-weight:bold;'>{context['amount']}</td></tr>"
+            f"<tr><td style='padding:8px;border-bottom:1px solid #ddd;color:#666;'>Rental Amount</td>"
+            f"<td style='padding:8px;border-bottom:1px solid #ddd;font-weight:bold;'>{context['rental_amount']}</td></tr>"
             f"<tr><td style='padding:8px;border-bottom:1px solid #ddd;color:#666;'>Bank</td>"
             f"<td style='padding:8px;border-bottom:1px solid #ddd;'>{bank_name}</td></tr>"
             f"<tr><td style='padding:8px;border-bottom:1px solid #ddd;color:#666;'>Account Name</td>"
@@ -134,7 +134,7 @@ def send_landlord_payout_notification(
             f"<tr><td style='padding:8px;border-bottom:1px solid #ddd;color:#666;'>Account Number</td>"
             f"<td style='padding:8px;border-bottom:1px solid #ddd;'>{account_number}</td></tr>"
             f"</table>"
-            f"<p>This is the rent due after RentDirect's service fees have been deducted. "
+            f"<p>This is the full rental amount shown in the property listing. "
             f"Funds should reflect in your account within 1–2 business days.</p>"
             f"<p>Thank you for using RentDirect.</p>"
             f"<p><em>RentDirect Team</em></p>"

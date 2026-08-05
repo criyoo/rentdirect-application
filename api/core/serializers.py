@@ -20,6 +20,7 @@ from .models import (
     booking_progress_step_completed,
     booking_progress_step_selected_value,
     build_booking_progress_data,
+    complete_booking_progress_step,
     Document,
     CommunityChatMessage,
     Feedback,
@@ -237,7 +238,7 @@ class VerifyRegistrationSerializer(serializers.Serializer):
 
 
 class SettingsOtpRequestSerializer(serializers.Serializer):
-    purpose = serializers.ChoiceField(choices=["profile", "password"])
+    purpose = serializers.ChoiceField(choices=["profile", "password", "account"])
     target_email = serializers.EmailField(required=False, allow_blank=True)
 
     def validate_target_email(self, value):
@@ -358,6 +359,15 @@ class ListingSerializer(serializers.ModelSerializer):
             "deposit_amount",
             "utilities_included",
             "pet_friendly",
+            "parking",
+            "garage",
+            "garden",
+            "lift",
+            "balcony",
+            "smart_lock",
+            "pop_ceiling",
+            "electric_fence",
+            "fitted_kitchen",
             "furnished",
             "amenities",
             "ownership_status",
@@ -1002,24 +1012,24 @@ class RentalProgressUpdateSerializer(serializers.Serializer):
     def save(self, **kwargs):
         request = self.context["request"]
         booking = self.context["booking"]
-        progress_field = get_booking_progress_field_name(request.user.role)
-        current_progress = normalize_booking_progress(getattr(booking, progress_field, {})).copy()
         completed_at = timezone.now().isoformat()
 
         for key in self.validated_data.get("step_keys", []):
-            current_progress.setdefault(key, completed_at)
-
-        for key, value in self.validated_data.get("step_responses", {}).items():
-            current_progress.setdefault(
+            complete_booking_progress_step(
+                booking,
+                request.user.role,
                 key,
-                {
-                    "value": value,
-                    "completed_at": completed_at,
-                },
+                completed_at=completed_at,
             )
 
-        setattr(booking, progress_field, current_progress)
-        booking.save(update_fields=[progress_field, "updated_at"])
+        for key, value in self.validated_data.get("step_responses", {}).items():
+            complete_booking_progress_step(
+                booking,
+                request.user.role,
+                key,
+                completed_at=completed_at,
+                selected_value=value,
+            )
         sync_listing_status_from_rental_progress(booking.listing)
         return booking
 
@@ -1334,6 +1344,25 @@ class TenantProfileSerializer(serializers.ModelSerializer):
 
     def get_supporting_document_urls(self, obj):
         return [doc.file_url for doc in obj.supporting_documents.all()]
+
+    def validate_financial_info(self, value):
+        if not isinstance(value, dict):
+            return value
+
+        normalized = dict(value)
+        if not normalized.get("current_annual_rent") and normalized.get("current_rent_amount"):
+            normalized["current_annual_rent"] = normalized["current_rent_amount"]
+        normalized.pop("current_rent_amount", None)
+        return normalized
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        financial_info = dict(representation.get("financial_info") or {})
+        if not financial_info.get("current_annual_rent") and financial_info.get("current_rent_amount"):
+            financial_info["current_annual_rent"] = financial_info["current_rent_amount"]
+        financial_info.pop("current_rent_amount", None)
+        representation["financial_info"] = financial_info
+        return representation
 
     def create(self, validated_data):
         doc_ids = validated_data.pop("document_ids", None)

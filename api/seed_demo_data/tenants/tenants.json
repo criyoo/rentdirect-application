@@ -68,6 +68,14 @@
         "staff_id": "",
         "payslip": ""
       },
+      "financial_information": {
+        "monthly_income_amount": "500000",
+        "monthly_expenses": "200,000",
+        "current_annual_rent": "2500000",
+        "current_service_charge": "500000",
+        "credit_commitment": "0",
+        "outstanding_loans": "0"
+      },
       "guarantor_details": {
         "full_name": "Mrs. Kemi Smith",
         "relationship": "Friend",

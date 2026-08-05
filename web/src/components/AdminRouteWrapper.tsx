@@ -16,7 +16,7 @@ export default function AdminRouteWrapper({ children }: AdminRouteWrapperProps) 
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col">
             {!isAdminRoute && <Navbar />}
-            <main className="flex-1">
+            <main className={`flex-1 ${isAdminRoute ? '' : 'pt-20'}`}>
                 {children}
             </main>
             {!isAdminRoute && <Footer />}

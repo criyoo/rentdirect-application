@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '@/lib/api'
-import { HiMail, HiHome, HiArrowLeft } from 'react-icons/hi'
+import BrandLogo from '@/components/BrandLogo'
+import { HiMail, HiArrowLeft } from 'react-icons/hi'
 
 export default function ForgotPasswordPage()
 {
@@ -98,9 +99,7 @@ export default function ForgotPasswordPage()
                 {/* Header */}
                 <div className="text-center">
                     <div className="flex justify-center mb-6">
-                        <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl flex items-center justify-center shadow-lg">
-                            <HiHome className="w-8 h-8 text-white" />
-                        </div>
+                        <BrandLogo className="h-24 w-40 rounded-xl bg-white p-2 shadow-lg" />
                     </div>
                     <h2 className="text-3xl font-bold text-gray-900 mb-2">
                         Forgot your password?

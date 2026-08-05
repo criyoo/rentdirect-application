@@ -1,3 +1,8 @@
+boto3==1.43.56
+channels==4.3.2
+channels-redis==4.3.0
+daphne==4.2.3
+dj-database-url==3.1.2
 Django==6.0.7
 djangorestframework==3.17.1
 djangorestframework-simplejwt==5.5.1
@@ -6,12 +11,11 @@ django-filter==26.1
 django-ratelimit==4.1.0
 django-redis==7.0.0
 django-storages[s3]==1.14.6
-psycopg[binary]==3.3.4
-dj-database-url==3.1.2
-rq==2.10.0
 gunicorn==26.0.0
+Pillow==12.3.0
+psycopg[binary]==3.3.4
+redis==8.1.0
+requests==2.34.2
+rq==2.10.0
 uvicorn[standard]==0.51.0
 whitenoise==6.12.0
-boto3==1.43.56
-requests==2.34.2
-Pillow==12.3.0

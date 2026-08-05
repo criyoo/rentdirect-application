@@ -377,16 +377,16 @@ export default function TenantDashboardPage() {
                                             </div>
                                         )}
                                     </div>
-                                    <div className="p-6">
+                                    <div className="p-6 text-center">
                                         <h3 className="text-lg font-semibold text-gray-900 mb-2 line-clamp-2 group-hover:text-blue-600 transition-colors duration-200">
                                             {property.title}
                                         </h3>
-                                        <p className="text-gray-600 text-sm mb-3">{property.city}</p>
-                                        <div className="text-2xl font-bold text-blue-600 mb-4">
+                                        <p className="text-gray-600 text-sm mb-3">{property.city}, {property.state}</p>
+                                        <div className="text-[15px] font-semibold text-blue-600 mb-4">
                                             {formatCurrencyWithSymbol(Number(property.price_per_year))}/year
                                         </div>
 
-                                        <div className="flex items-center space-x-4 mb-4 text-sm text-gray-600">
+                                        <div className="flex items-center justify-center space-x-4 mb-4 text-sm text-gray-600">
                                             <div className="flex items-center space-x-1">
                                                 <HiHome className="w-4 h-4" />
                                                 <span className="font-medium">{property.bedrooms}</span>

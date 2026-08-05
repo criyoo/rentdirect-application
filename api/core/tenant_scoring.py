@@ -84,6 +84,15 @@ def _to_decimal(value) -> Decimal | None:
         return None
 
 
+def _first_decimal(financial_info: dict, *field_names: str) -> Decimal | None:
+    """Return the first supplied numeric value from a list of field aliases."""
+    for field_name in field_names:
+        value = _to_decimal(financial_info.get(field_name))
+        if value is not None:
+            return value
+    return None
+
+
 def _get_identity_verification_score(profile) -> int:
     if not profile:
         return 0
@@ -134,17 +143,17 @@ def _get_income_verification_score(profile) -> int:
             "hr_email",
         ],
     )
-    financial_ratio = _completion_ratio(
-        financial_info,
-        [
-            "bank_name",
-            "account_name",
-            "account_number",
-            "monthly_income_amount",
-            "current_rent_amount",
-            "monthly_expenses",
-        ],
-    )
+    financial_fields = [
+        "bank_name",
+        "account_name",
+        "account_number",
+        "monthly_income_amount",
+        "monthly_expenses",
+    ]
+    financial_completed = sum(1 for field_name in financial_fields if _has_value(financial_info.get(field_name)))
+    if _has_value(financial_info.get("current_annual_rent")) or _has_value(financial_info.get("current_rent_amount")):
+        financial_completed += 1
+    financial_ratio = financial_completed / (len(financial_fields) + 1)
     combined_ratio = (employment_ratio + financial_ratio) / 2
 
     if combined_ratio >= 0.85:
@@ -300,16 +309,63 @@ def _get_payment_capacity_score(profile, listing) -> int:
     if not profile or not listing:
         return 0
 
-    income = _to_decimal(_as_dict(profile.financial_info).get("monthly_income_amount"))
+    financial_info = _as_dict(profile.financial_info)
     yearly_rent = _to_decimal(getattr(listing, "price_per_year", None))
-    if income is None or income <= 0 or yearly_rent is None or yearly_rent <= 0:
+    if yearly_rent is None or yearly_rent <= 0:
         return 0
 
-    monthly_rent = yearly_rent / Decimal("12")
-    if monthly_rent <= 0:
-        return 0
+    employment_status = str(getattr(profile, "employment_status", "") or "").strip().lower()
+    if employment_status == "employed":
+        monthly_income = _first_decimal(financial_info, "monthly_income_amount")
+        if monthly_income is None or monthly_income <= 0:
+            return 0
 
-    capacity_ratio = income / monthly_rent
+        monthly_outgoings = sum(
+            (
+                _first_decimal(financial_info, field_name) or Decimal("0")
+                for field_name in ("monthly_expenses", "credit_commitment", "outstanding_loans")
+            ),
+            Decimal("0"),
+        )
+        available_monthly_income = monthly_income - monthly_outgoings
+        if available_monthly_income <= 0:
+            return 0
+
+        monthly_rent = yearly_rent / Decimal("12")
+        if monthly_rent <= 0:
+            return 0
+        capacity_ratio = available_monthly_income / monthly_rent
+    else:
+        average_monthly_income = _first_decimal(
+            financial_info,
+            "average_monthly_income",
+            "monthly_income_amount",
+        )
+        average_annual_income = _first_decimal(financial_info, "average_annual_income")
+        savings = _first_decimal(financial_info, "savings")
+
+        if average_monthly_income is not None and average_monthly_income > 0:
+            annual_resources = average_monthly_income * Decimal("12")
+        elif average_annual_income is not None and average_annual_income > 0:
+            annual_resources = average_annual_income
+        elif savings is not None and savings > 0:
+            annual_resources = savings
+        else:
+            return 0
+
+        annual_outgoings = _first_decimal(financial_info, "annual_outgoing_expenses")
+        if annual_outgoings is None:
+            monthly_outgoings = _first_decimal(
+                financial_info,
+                "outgoing_expenses",
+                "monthly_expenses",
+            ) or Decimal("0")
+            annual_outgoings = monthly_outgoings * Decimal("12")
+
+        available_annual_resources = annual_resources - annual_outgoings
+        if available_annual_resources <= 0:
+            return 0
+        capacity_ratio = available_annual_resources / yearly_rent
 
     if capacity_ratio >= Decimal("4"):
         return BENCHMARK_SCORE_CAP

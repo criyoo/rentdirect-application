@@ -392,13 +392,16 @@ export default function SearchPage() {
     }, [locationAccessReady, canUseLocationFeatures])
 
     return (
-        <div className="bg-gray-50 min-h-screen py-8">
-            <div className="container-modern">
-                <h1 className="text-3xl font-bold text-gray-900 mb-8">Search Properties</h1>
+        <div className="min-h-screen bg-gray-50">
+            <section className="relative overflow-hidden rounded-bl-[3rem] rounded-br-[3rem] bg-[linear-gradient(112deg,#12296f_0%,#29249b_42%,#5222d1_72%,#6b1ff2_100%)] py-8 md:py-10">
+                <div className="pointer-events-none absolute inset-y-0 right-0 w-3/5 bg-[radial-gradient(ellipse_at_right,rgba(139,92,246,0.62),transparent_67%)]" />
+                <div className="pointer-events-none absolute -left-32 top-0 h-full w-2/5 bg-[radial-gradient(ellipse_at_left,rgba(37,99,235,0.32),transparent_70%)]" />
+                <div className="container-modern relative z-10">
+                    <h1 className="mb-8 text-3xl font-bold text-white">Search Properties</h1>
 
-                {/* Search Form */}
-                <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-md p-6 mb-3">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {/* Search Form */}
+                    <form onSubmit={handleSubmit} className="mb-0 rounded-2xl border border-white/30 bg-white/95 p-6 shadow-2xl shadow-indigo-950/25 backdrop-blur sm:p-8">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {/* Search Query */}
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Search</label>
@@ -406,7 +409,7 @@ export default function SearchPage() {
                                 type="text"
                                 value={filters.query}
                                 onChange={(e) => handleFilterChange('query', e.target.value)}
-                                placeholder="Search properties..."
+                                placeholder="Search by title, location, or city..."
                                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                             />
                         </div>
@@ -454,7 +457,10 @@ export default function SearchPage() {
                                 ) : null}
                             </div>
                         </div>
+                    </div>
+                    <br />
 
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-3">
                         {/* Property Type */}
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Property Type</label>
@@ -469,9 +475,7 @@ export default function SearchPage() {
                                 ))}
                             </select>
                         </div>
-                    </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
                         {/* Bedrooms */}
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Bedrooms</label>
@@ -516,27 +520,34 @@ export default function SearchPage() {
                                 ))}
                             </select>
                         </div>
-                        {/* Price Range */}
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Price Range (₦/year)</label>
-                            <div className="flex space-x-2">
-                                <input
-                                    type="number"
-                                    value={filters.min_price || ''}
-                                    onChange={(e) => handleFilterChange('min_price', e.target.value ? Number(e.target.value) : undefined)}
-                                    placeholder="Min"
-                                    className="w-1/2 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                />
-                                <input
-                                    type="number"
-                                    value={filters.max_price || ''}
-                                    onChange={(e) => handleFilterChange('max_price', e.target.value ? Number(e.target.value) : undefined)}
-                                    placeholder="Max"
-                                    className="w-1/2 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                />
+                    </div>
+
+                    <div className="flex justify-end mt-6">
+                        <div className="w-full md:w-96">
+                            {/* Price Range */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1 text-right">
+                                    Price Range (₦/year)
+                                </label>
+
+                                <div className="flex space-x-3">
+                                    <input
+                                        type="number"
+                                        placeholder="Min"
+                                        className="w-1/2 px-3 py-2 border rounded-md"
+                                    />
+
+                                    <input
+                                        type="number"
+                                        placeholder="Max"
+                                        className="w-1/2 px-3 py-2 border rounded-md"
+                                    />
+                                </div>
                             </div>
                         </div>
+                    </div>
 
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
                         {/* Amenities */}
                         <div className="flex items-center space-x-4 lg:col-span-2">
                             <label className="flex items-center">
@@ -617,10 +628,11 @@ export default function SearchPage() {
                                     ? 'Checking property location access...'
                                     : (
                                         <>
-                                            Precise location, radius search, maps, and location analytics are available from the Silver plan.{' '}
+
                                             <Link to={user ? '/billing' : '/login'} className="font-semibold underline">
                                                 {user ? 'View plans' : 'Sign in'}
                                             </Link>
+                                            {' '}to use the location analytics for radius search, maps and precise location.
                                         </>
                                     )}
                             </div>
@@ -642,8 +654,11 @@ export default function SearchPage() {
                             Search
                         </button>
                     </div>
-                </form>
+                    </form>
+                </div>
+            </section>
 
+            <div className="container-modern py-8">
                 {/* Results */}
                 <div className="mb-0">
                     <div className="flex justify-between items-center">

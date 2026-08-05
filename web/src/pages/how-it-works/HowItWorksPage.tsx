@@ -1,6 +1,7 @@
 import { Fragment, ReactNode, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
+import BrandLogo from '@/components/BrandLogo'
 import howItWorksContent from './how-it-works.md?raw'
 import landlordContent from './landlords.md?raw'
 import tenantContent from './tenants.md?raw'
@@ -9,6 +10,8 @@ type MarkdownBlock =
     | { type: 'h1' | 'h2' | 'h3' | 'h4'; text: string }
     | { type: 'paragraph'; text: string }
     | { type: 'list'; items: string[] }
+    | { type: 'step'; title: string; items: string[] }
+    | { type: 'faq'; question: string; answer: string }
 
 function renderInlineMarkdown(text: string): ReactNode[] {
     return text.split(/(\*\*[^*]+\*\*)/g).filter(Boolean).map((part, index) => {
@@ -76,109 +79,235 @@ function parseMarkdown(markdown: string): MarkdownBlock[] {
     return blocks
 }
 
+function groupStepBlocks(blocks: MarkdownBlock[]): MarkdownBlock[] {
+    const grouped: MarkdownBlock[] = []
+
+    for (let index = 0; index < blocks.length; index += 1) {
+        const block = blocks[index]
+        const nextBlock = blocks[index + 1]
+        if (block.type === 'h3' && nextBlock?.type === 'list') {
+            grouped.push({ type: 'step', title: block.text, items: nextBlock.items })
+            index += 1
+            continue
+        }
+        grouped.push(block)
+    }
+
+    return grouped
+}
+
+function groupFaqBlocks(blocks: MarkdownBlock[]): MarkdownBlock[] {
+    const grouped: MarkdownBlock[] = []
+    let inFaqSection = false
+
+    for (let index = 0; index < blocks.length; index += 1) {
+        const block = blocks[index]
+
+        if (block.type === 'h2') {
+            inFaqSection = block.text.trim().toLowerCase() === 'frequently asked questions'
+            grouped.push(block)
+            continue
+        }
+
+        const nextBlock = blocks[index + 1]
+        if (inFaqSection && (block.type === 'h3' || block.type === 'h4') && nextBlock?.type === 'paragraph') {
+            grouped.push({ type: 'faq', question: block.text, answer: nextBlock.text })
+            index += 1
+            continue
+        }
+
+        grouped.push(block)
+    }
+
+    return grouped
+}
+
+const journeyHighlights = {
+    tenant: ['Verified homes', 'Direct landlord contact', 'Secure payment tracking'],
+    landlord: ['Verified applicants', 'Simple property management', 'Clear rental records'],
+    general: ['Verified people and properties', 'Direct communication', 'A clearer move-in journey'],
+}
+
 export default function HowItWorksPage() {
     const { user } = useAuth()
-    const markdownContent = user?.role === 'landlord'
+    const role = user?.role === 'landlord' ? 'landlord' : user?.role === 'tenant' ? 'tenant' : 'general'
+    const markdownContent = role === 'landlord'
         ? landlordContent
-        : user?.role === 'tenant'
+        : role === 'tenant'
             ? tenantContent
             : howItWorksContent
-    const blocks = useMemo(() => parseMarkdown(markdownContent), [markdownContent])
+    const blocks = useMemo(() => groupFaqBlocks(groupStepBlocks(parseMarkdown(markdownContent))), [markdownContent])
+    const visibleBlocks = blocks.filter((block) => block.type !== 'h1')
+    const isRoleGuide = role === 'tenant' || role === 'landlord'
+    const roleLabel = role === 'landlord' ? 'For landlords' : role === 'tenant' ? 'For tenants' : 'The RentDirect way'
+    const heroTitle = role === 'landlord'
+        ? 'Turn your property into a better rental experience.'
+        : role === 'tenant'
+            ? 'Find a home with more clarity and confidence.'
+            : 'A more considered way to rent.'
+    const heroDescription = role === 'landlord'
+        ? 'From your first listing to a completed tenancy, RentDirect keeps every important step visible and in your control.'
+        : role === 'tenant'
+            ? 'Discover verified properties, connect directly with landlords, and move in with a clear record of what happens next.'
+            : 'RentDirect brings verified homes, people, payments, and rental progress into one calm, connected journey.'
 
     return (
-        <div className="min-h-screen bg-[linear-gradient(180deg,#f8fbff_0%,#eef5ff_45%,#ffffff_100%)]">
-            <section className="border-b border-blue-100 bg-[radial-gradient(circle_at_top_left,_rgba(37,99,235,0.14),_transparent_40%),linear-gradient(135deg,#f9fbff_0%,#eef4ff_45%,#ffffff_100%)]">
-                <div className="container-modern py-14 md:py-20">
-                    <div className="max-w-4xl">
-                        <div className="inline-flex items-center rounded-full border border-blue-200 bg-white/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-blue-700">
-                            How RentDirect Works
+        <div className="relative min-h-screen overflow-hidden bg-[#f8fafc] text-[#001e36]">
+            <div className="pointer-events-none absolute right-[-18rem] top-[-10rem] h-[38rem] w-[38rem] rounded-full bg-orange-300/25 blur-[100px]" />
+            <div className="pointer-events-none absolute bottom-[-20rem] left-[30%] h-[38rem] w-[38rem] rounded-full bg-yellow-200/35 blur-[120px]" />
+
+            <section className="relative border-b border-slate-200/70">
+                <div className="mx-auto max-w-7xl px-5 pb-16 pt-8 sm:px-8 md:pb-24 md:pt-10 lg:px-12">
+                    {/* <div className="flex items-center justify-between">
+                        <Link to="/" aria-label="RentDirect home">
+                            <BrandLogo className="h-12 w-24 rounded-md bg-white p-1" />
+                        </Link>
+                        <span className="rounded-full border border-slate-300/80 bg-white/60 px-4 py-2 text-xs font-medium tracking-[0.12em] text-slate-600 backdrop-blur">
+                            {roleLabel}
+                        </span>
+                    </div> */}
+
+                    <div className="mt-20 grid items-end gap-12 lg:grid-cols-[1.15fr_0.85fr] lg:gap-20">
+                        <div>
+                            <p className="text-sm font-medium uppercase tracking-[0.28em] text-orange-600">How RentDirect works</p>
+                            <h1 className="mt-6 font-semibold leading-[1.0] tracking-[-0.040em] lg:text-[2.8rem]">
+                                {heroTitle}
+                            </h1>
+                            <p className="mt-8 max-w-2xl text-lg font-light leading-8 text-slate-600 md:text-xl">
+                                {heroDescription}
+                            </p>
+                            <div className="mt-9 flex flex-wrap gap-3">
+                                <Link to={role === 'landlord' && user?.id ? `/dashboard/landlord/${user.id}` : '/search'} className="inline-flex items-center rounded-full bg-[#001e36] px-6 py-3 text-sm font-medium text-white shadow-lg shadow-slate-900/10 transition hover:bg-slate-800">
+                                    {role === 'landlord' ? 'Open dashboard' : 'Explore properties'}
+                                </Link>
+                                <Link to="/register" className="inline-flex items-center rounded-full border border-slate-300 bg-white/60 px-6 py-3 text-sm font-medium text-[#001e36] transition hover:border-slate-500 hover:bg-white">
+                                    Create an account
+                                </Link>
+                            </div>
                         </div>
-                        <h1 className="mt-6 text-4xl font-bold tracking-tight text-slate-950 md:text-5xl">
-                            Your Complete Rental Guide
-                        </h1>
-                        <p className="mt-5 max-w-3xl text-lg leading-8 text-slate-600">
-                            Learn how to find your perfect home or list your property in five simple steps.
-                        </p>
-                        <div className="mt-8 flex flex-wrap gap-3">
-                            <Link to="/search" className="btn btn-primary">
-                                Search Properties
-                            </Link>
-                            <Link to="/register" className="btn btn-outline">
-                                Create Account
-                            </Link>
+
+                        <div className="relative rounded-[2rem] border border-white/80 bg-white/75 p-6 shadow-[0_24px_80px_rgba(0,30,54,0.10)] backdrop-blur-md md:p-8">
+                            <div className="flex items-center justify-between border-b border-slate-200 pb-5">
+                                <span className="text-sm font-medium text-slate-500">Your journey, at a glance</span>
+                                <span className="h-2.5 w-2.5 rounded-full bg-orange-500 shadow-[0_0_0_6px_rgba(249,115,22,0.12)]" />
+                            </div>
+                            <div className="space-y-3 pt-4">
+                                {journeyHighlights[role].map((highlight, index) => (
+                                    <div key={highlight} className="flex items-center gap-4">
+                                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#001e36] text-xs font-medium text-white">
+                                            {String(index + 1).padStart(2, '0')}
+                                        </span>
+                                        <span className="text-base font-medium text-slate-700">{highlight}</span>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="mt-8 rounded-2xl bg-orange-50 px-4 py-3 text-sm leading-6 text-orange-900">
+                                One connected record from first conversation to move-in.
+                            </div>
                         </div>
                     </div>
                 </div>
             </section>
 
-            <section className="py-12 md:py-16">
-                <div className="container-modern">
-                    <div className="mx-auto w-full max-w-4xl rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm md:p-10">
-                        <div className="space-y-8">
-                            {blocks.map((block, index) => {
-                                if (block.type === 'h1') {
-                                    return (
-                                        <div key={index} className="border-b border-slate-200 pb-6">
-                                            <h2 className="text-3xl font-bold tracking-tight text-slate-950 md:text-4xl">
-                                                {renderInlineMarkdown(block.text)}
-                                            </h2>
-                                        </div>
-                                    )
-                                }
+            <main className="relative mx-auto grid max-w-7xl gap-10 px-5 py-14 sm:px-8 md:py-20 lg:grid-cols-[220px_1fr] lg:px-12">
+                <aside className="hidden lg:block">
+                    <div className="sticky top-8 border-l border-slate-300 pl-5">
+                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Inside this guide</p>
+                        <p className="mt-4 text-sm leading-6 text-slate-600">A practical walkthrough of the RentDirect experience.</p>
+                    </div>
+                </aside>
 
-                                if (block.type === 'h2') {
-                                    return (
-                                        <div key={index} className="pt-2">
-                                            <h3 className="text-2xl font-bold tracking-tight text-slate-950 md:text-3xl">
-                                                {renderInlineMarkdown(block.text)}
-                                            </h3>
-                                        </div>
-                                    )
-                                }
-
-                                if (block.type === 'h3') {
-                                    return (
-                                        <div key={index}>
-                                            <h4 className="text-xl font-semibold text-blue-700">
-                                                {renderInlineMarkdown(block.text)}
-                                            </h4>
-                                        </div>
-                                    )
-                                }
-
-                                if (block.type === 'h4') {
-                                    return (
-                                        <div key={index} className="mt-0 mb-0">
-                                            <h5 className="text-lg font-semibold text-slate-800">
-                                                {renderInlineMarkdown(block.text)}
-                                            </h5>
-                                        </div>
-                                    )
-                                }
-
-                                if (block.type === 'list') {
-                                    return (
-                                        <ul key={index} className="space-y-3 rounded-2xl bg-slate-50 p-5 text-base leading-7 text-slate-700">
-                                            {block.items.map((item, itemIndex) => (
-                                                <li key={`${index}-${itemIndex}`} className="flex gap-3">
-                                                    <span className="mt-2 h-2.5 w-2.5 rounded-full bg-blue-600" />
-                                                    <span>{renderInlineMarkdown(item)}</span>
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    )
-                                }
-
+                <article className="min-w-0">
+                    <div className={`flex flex-col ${isRoleGuide ? 'gap-6' : 'gap-12'}`}>
+                        {visibleBlocks.map((block, index) => {
+                            if (block.type === 'h2') {
                                 return (
-                                    <p key={index} className="text-base leading-8 text-slate-700 md:text-lg mb-2">
-                                        {renderInlineMarkdown(block.text)}
-                                    </p>
+                                    <div key={index} className="border-t border-slate-300 pt-8 first:border-t-0 first:pt-0">
+                                        <h2 className="max-w-3xl text-3xl font-semibold tracking-[-0.035em] text-[#001e36] md:text-4xl">
+                                            {renderInlineMarkdown(block.text)}
+                                        </h2>
+                                    </div>
                                 )
-                            })}
-                        </div>
+                            }
+
+                            if (block.type === 'step') {
+                                const stepNumber = visibleBlocks
+                                    .slice(0, index + 1)
+                                    .filter((candidate) => candidate.type === 'step')
+                                    .length
+                                return (
+                                    <section key={index} className="rounded-[1.75rem] border border-slate-200/90 bg-white/80 shadow-[0_16px_50px_rgba(0,30,54,0.06)] backdrop-blur-sm md:p-4">
+                                        <div className="flex gap-2">
+                                            <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-orange-100 text-xl font-semibold text-orange-700">
+                                                {String(stepNumber).padStart(2, '0')}
+                                            </span>
+                                            <div className="min-w-0 flex-1">
+                                                <h3 className="text-2xl font-semibold tracking-[-0.02em] text-[#001e36] md:text-2xl px-6">
+                                                    {renderInlineMarkdown(block.title)}
+                                                </h3>
+                                                <ul className="grid gap-2 md:grid-cols-1">
+                                                    {block.items.map((item, itemIndex) => (
+                                                        <li key={`${index}-${itemIndex}`} className="rounded-2xl bg-slate-50 px-6 py-1 leading-6 text-slate-600">
+                                                            {renderInlineMarkdown(item)}
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </section>
+                                )
+                            }
+
+                            if (block.type === 'h3') {
+                                return (
+                                    <h3 key={index} className="text-2xl font-medium tracking-[-0.02em] text-[#001e36] md:text-3xl">
+                                        {renderInlineMarkdown(block.text)}
+                                    </h3>
+                                )
+                            }
+
+                            if (block.type === 'h4') {
+                                return (
+                                    <h4 key={index} className="text-lg font-medium text-slate-700">
+                                        {renderInlineMarkdown(block.text)}
+                                    </h4>
+                                )
+                            }
+
+                            if (block.type === 'faq') {
+                                return (
+                                    <div key={index} className="space-y-0">
+                                        <h3 className="text-lg font-semibold leading-7 text-[#001e36]">
+                                            {renderInlineMarkdown(block.question)}
+                                        </h3>
+                                        <p className="mt-0 text-lg font-light leading-8 text-slate-600">
+                                            {renderInlineMarkdown(block.answer)}
+                                        </p>
+                                    </div>
+                                )
+                            }
+
+                            if (block.type === 'list') {
+                                return (
+                                    <ul key={index} className="grid gap-3 md:grid-cols-2">
+                                        {block.items.map((item, itemIndex) => (
+                                            <li key={`${index}-${itemIndex}`} className="rounded-2xl border border-slate-200 bg-white/70 px-4 py-3 text-base leading-7 text-slate-600">
+                                                {renderInlineMarkdown(item)}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )
+                            }
+
+                            return (
+                                <p key={index} className="max-w-5xl text-lg font-light leading-8 text-slate-600">
+                                    {renderInlineMarkdown(block.text)}
+                                </p>
+                            )
+                        })}
                     </div>
-                </div>
-            </section>
+                </article>
+            </main>
         </div>
     )
 }

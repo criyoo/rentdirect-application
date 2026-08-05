@@ -184,7 +184,7 @@ BOOKING_PROGRESS_STEP_DEFINITIONS = {
         ("check_in_inventory_completed", "Check-in house inventory completed?"),
         ("tenant_collected_house_key", "Tenant collected House Key?"),
         ("rentdirect_transfer_to_landlord", "Can RentDirect transfer rent amount to Landlord?"),
-        ("final_rent_payment_email_received", "Email of final rent payment to landlord received?"),
+        ("final_rent_payment_email_received", "Email of rent payment to landlord received?"),
     ),
 }
 
@@ -197,6 +197,37 @@ BOOKING_PROGRESS_CHOICE_OPTIONS = {
 
 BOOKING_PROGRESS_LEGACY_KEY_ALIASES = {
     "rentdirect_transfer_to_landlord": "landlord_payment_notification_received",
+}
+
+# Each progress item is displayed alongside its counterpart. Some items use
+# different keys because the tenant and landlord see the milestone from a
+# different perspective, so keep the relationship explicit instead of
+# relying on list ordering.
+BOOKING_PROGRESS_COUNTERPART_STEP_KEYS = {
+    AppUser.Role.LANDLORD: {
+        "viewing_appointment_booked": ("viewing_appointment_booked",),
+        "house_viewed": ("house_viewed",),
+        "tenancy_agreement_signed": ("tenancy_agreement_signed",),
+        "deposit_payment_notification_received": ("tenant_paid_deposit",),
+        "rental_payment_notification_received": ("tenant_paid_rent_in_full",),
+        "check_in_inventory_completed": ("check_in_inventory_completed",),
+        "tenant_collected_house_key": ("tenant_collected_house_key",),
+        "net_payment_notification_received": (
+            "final_rent_payment_email_received",
+            "rentdirect_transfer_to_landlord",
+        ),
+    },
+    AppUser.Role.TENANT: {
+        "viewing_appointment_booked": ("viewing_appointment_booked",),
+        "house_viewed": ("house_viewed",),
+        "tenancy_agreement_signed": ("tenancy_agreement_signed",),
+        "tenant_paid_deposit": ("deposit_payment_notification_received",),
+        "tenant_paid_rent_in_full": ("rental_payment_notification_received",),
+        "check_in_inventory_completed": ("check_in_inventory_completed",),
+        "tenant_collected_house_key": ("tenant_collected_house_key",),
+        "rentdirect_transfer_to_landlord": ("net_payment_notification_received",),
+        "final_rent_payment_email_received": ("net_payment_notification_received",),
+    },
 }
 
 TENANT_DEPOSIT_PROGRESS_KEY = "tenant_paid_deposit"
@@ -224,6 +255,10 @@ def get_booking_progress_steps(role: str):
 
 def get_booking_progress_choice_options(step_key: str):
     return BOOKING_PROGRESS_CHOICE_OPTIONS.get(step_key, ())
+
+
+def get_booking_progress_counterpart_step_keys(role: str, step_key: str):
+    return BOOKING_PROGRESS_COUNTERPART_STEP_KEYS.get(role, {}).get(step_key, ())
 
 
 def get_booking_progress_value(progress, step_key: str):
@@ -332,10 +367,45 @@ def get_booking_progress_field_name(role: str) -> str:
     return BOOKING_PROGRESS_FIELD_BY_ROLE.get(role, "")
 
 
+def complete_booking_progress_step(
+    booking,
+    role: str,
+    step_key: str,
+    *,
+    completed_at: str | None = None,
+    selected_value: str | None = None,
+) -> None:
+    """Persist a progress milestone for the actor only."""
+    timestamp = completed_at or timezone.now().isoformat()
+    current_field = get_booking_progress_field_name(role)
+    current_progress = normalize_booking_progress(getattr(booking, current_field, {})).copy()
+
+    if step_key not in current_progress:
+        if get_booking_progress_choice_options(step_key):
+            current_progress[step_key] = {
+                "value": selected_value or "yes",
+                "completed_at": timestamp,
+            }
+        else:
+            current_progress[step_key] = timestamp
+
+    setattr(booking, current_field, current_progress)
+    booking.save(update_fields=[current_field, "updated_at"])
+
+
 def build_booking_progress_data(booking, role: str) -> dict:
     steps = get_booking_progress_steps(role)
     field_name = get_booking_progress_field_name(role)
     progress = normalize_booking_progress(getattr(booking, field_name, {})) if field_name else {}
+    counterpart_role = (
+        AppUser.Role.LANDLORD
+        if role == AppUser.Role.TENANT
+        else AppUser.Role.TENANT
+    )
+    counterpart_field_name = get_booking_progress_field_name(counterpart_role)
+    counterpart_progress = normalize_booking_progress(
+        getattr(booking, counterpart_field_name, {})
+    ) if counterpart_field_name else {}
     completed_count = 0
     step_items = []
 
@@ -343,6 +413,28 @@ def build_booking_progress_data(booking, role: str) -> dict:
         completed = booking_progress_step_completed(progress, key)
         completed_at = booking_progress_step_completed_at(progress, key)
         selected_value = booking_progress_step_selected_value(progress, key)
+        counterpart_keys = get_booking_progress_counterpart_step_keys(role, key)
+        counterpart_key = counterpart_keys[0] if counterpart_keys else None
+        counterpart_completed = any(
+            booking_progress_step_completed(counterpart_progress, counterpart_key)
+            for counterpart_key in counterpart_keys
+        )
+        counterpart_completed_at = next(
+            (
+                booking_progress_step_completed_at(counterpart_progress, counterpart_key)
+                for counterpart_key in counterpart_keys
+                if booking_progress_step_completed_at(counterpart_progress, counterpart_key)
+            ),
+            None,
+        )
+        counterpart_selected_value = next(
+            (
+                booking_progress_step_selected_value(counterpart_progress, counterpart_key)
+                for counterpart_key in counterpart_keys
+                if booking_progress_step_selected_value(counterpart_progress, counterpart_key)
+            ),
+            None,
+        )
         options = get_booking_progress_choice_options(key)
         if completed:
             completed_count += 1
@@ -353,10 +445,15 @@ def build_booking_progress_data(booking, role: str) -> dict:
             "kind": "choice" if options else "boolean",
             "completed": completed,
             "completed_at": completed_at,
+            "counterpart_completed": counterpart_completed,
+            "counterpart_completed_at": counterpart_completed_at,
+            "counterpart_step_key": counterpart_key,
         }
         if options:
             item["options"] = list(options)
             item["selected_value"] = selected_value
+        if counterpart_selected_value:
+            item["counterpart_selected_value"] = counterpart_selected_value
 
         step_items.append(item)
 
@@ -399,6 +496,15 @@ class Listing(models.Model):
     deposit_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     utilities_included = models.BooleanField(default=False)
     pet_friendly = models.BooleanField(default=False)
+    parking = models.BooleanField(default=False)
+    garage = models.BooleanField(default=False)
+    garden = models.BooleanField(default=False)
+    lift = models.BooleanField(default=False)
+    balcony = models.BooleanField(default=False)
+    smart_lock = models.BooleanField(default=False)
+    pop_ceiling = models.BooleanField(default=False)
+    electric_fence = models.BooleanField(default=False)
+    fitted_kitchen = models.BooleanField(default=False)
     furnished = models.BooleanField(default=False)
     amenities = models.JSONField(default=list, blank=True)
     ownership_status = models.CharField(max_length=80, blank=True, default="")

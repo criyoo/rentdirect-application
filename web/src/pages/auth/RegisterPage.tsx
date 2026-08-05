@@ -1,26 +1,24 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
-import { HiEye, HiEyeOff, HiMail, HiLockClosed, HiUser, HiHome, HiUserGroup } from 'react-icons/hi'
+import BrandLogo from '@/components/BrandLogo'
+import { HiEye, HiEyeOff, HiMail, HiLockClosed, HiUser, HiUserGroup } from 'react-icons/hi'
 
-function getRegistrationErrorMessage(err: any): string
-{
+function getRegistrationErrorMessage(err: any): string {
     const message = String(err?.message || 'Registration failed').trim()
     const normalizedMessage = message.toLowerCase()
 
     if (
         normalizedMessage.includes('email already registered') ||
         (normalizedMessage.includes('email') && normalizedMessage.includes('already'))
-    )
-    {
+    ) {
         return 'Email already registered, try sign in'
     }
 
     return message || 'Registration failed'
 }
 
-export default function RegisterPage()
-{
+export default function RegisterPage() {
     const [formData, setFormData] = useState({
         name: '',
         email: '',
@@ -36,50 +34,41 @@ export default function RegisterPage()
     const [error, setError] = useState('')
     const { register, verifyRegistration } = useAuth()
 
-    const handleSubmit = async (e: React.FormEvent) =>
-    {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
         setError('')
         setIsSubmitting(true)
 
-        try
-        {
+        try {
             const result = await register(formData)
             setPendingEmail(result.email)
             setOtpExpiresIn(result.expires_in_seconds)
             setIsOtpStep(true)
-        } catch (err: any)
-        {
+        } catch (err: any) {
             setError(getRegistrationErrorMessage(err))
-        } finally
-        {
+        } finally {
             setIsSubmitting(false)
         }
     }
 
-    const handleVerifyOtp = async (e: React.FormEvent) =>
-    {
+    const handleVerifyOtp = async (e: React.FormEvent) => {
         e.preventDefault()
         setError('')
         setIsSubmitting(true)
 
-        try
-        {
+        try {
             await verifyRegistration({
                 email: pendingEmail || formData.email,
                 otp_code: otpCode
             })
-        } catch (err: any)
-        {
+        } catch (err: any) {
             setError(err.message || 'Verification failed')
-        } finally
-        {
+        } finally {
             setIsSubmitting(false)
         }
     }
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
-    {
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         setFormData(prev => ({
             ...prev,
             [e.target.name]: e.target.value
@@ -91,12 +80,10 @@ export default function RegisterPage()
             <div className="max-w-md w-full space-y-8">
                 {/* Header */}
                 <div className="text-center">
-                    <div className="flex justify-center mb-6">
-                        <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl flex items-center justify-center shadow-lg">
-                            <HiHome className="w-8 h-8 text-white" />
-                        </div>
+                    <div className="flex justify-center -mb-14">
+                        <BrandLogo className="h-80 w-80 mix-blend-multiply" />
                     </div>
-                    <h2 className="text-3xl font-bold text-gray-900 mb-2">
+                    <h2 className="text-3xl font-bold text-gray-900">
                         {isOtpStep ? 'Verify your email' : 'Create your account'}
                     </h2>
                     <p className="text-gray-600">
@@ -174,147 +161,147 @@ export default function RegisterPage()
                             </>
                         ) : (
                             <>
-                        {/* Name Field */}
-                        <div>
-                            <label htmlFor="name" className="form-label">
-                                Full name
-                            </label>
-                            <div className="relative">
-                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                    <HiUser className="h-5 w-5 text-gray-400" />
+                                {/* Name Field */}
+                                <div>
+                                    <label htmlFor="name" className="form-label">
+                                        Full name
+                                    </label>
+                                    <div className="relative">
+                                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                            <HiUser className="h-5 w-5 text-gray-400" />
+                                        </div>
+                                        <input
+                                            id="name"
+                                            name="name"
+                                            type="text"
+                                            autoComplete="name"
+                                            required
+                                            value={formData.name}
+                                            onChange={handleChange}
+                                            className="form-input pl-10"
+                                            placeholder="Enter your full name"
+                                        />
+                                    </div>
                                 </div>
-                                <input
-                                    id="name"
-                                    name="name"
-                                    type="text"
-                                    autoComplete="name"
-                                    required
-                                    value={formData.name}
-                                    onChange={handleChange}
-                                    className="form-input pl-10"
-                                    placeholder="Enter your full name"
-                                />
-                            </div>
-                        </div>
 
-                        {/* Email Field */}
-                        <div>
-                            <label htmlFor="email" className="form-label">
-                                Email address
-                            </label>
-                            <div className="relative">
-                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                    <HiMail className="h-5 w-5 text-gray-400" />
+                                {/* Email Field */}
+                                <div>
+                                    <label htmlFor="email" className="form-label">
+                                        Email address
+                                    </label>
+                                    <div className="relative">
+                                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                            <HiMail className="h-5 w-5 text-gray-400" />
+                                        </div>
+                                        <input
+                                            id="email"
+                                            name="email"
+                                            type="email"
+                                            autoComplete="email"
+                                            required
+                                            value={formData.email}
+                                            onChange={handleChange}
+                                            className="form-input pl-10"
+                                            placeholder="Enter your email"
+                                        />
+                                    </div>
                                 </div>
-                                <input
-                                    id="email"
-                                    name="email"
-                                    type="email"
-                                    autoComplete="email"
-                                    required
-                                    value={formData.email}
-                                    onChange={handleChange}
-                                    className="form-input pl-10"
-                                    placeholder="Enter your email"
-                                />
-                            </div>
-                        </div>
 
-                        {/* Password Field */}
-                        <div>
-                            <label htmlFor="password" className="form-label">
-                                Password
-                            </label>
-                            <div className="relative">
-                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                    <HiLockClosed className="h-5 w-5 text-gray-400" />
+                                {/* Password Field */}
+                                <div>
+                                    <label htmlFor="password" className="form-label">
+                                        Password
+                                    </label>
+                                    <div className="relative">
+                                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                            <HiLockClosed className="h-5 w-5 text-gray-400" />
+                                        </div>
+                                        <input
+                                            id="password"
+                                            name="password"
+                                            type={showPassword ? 'text' : 'password'}
+                                            autoComplete="new-password"
+                                            required
+                                            value={formData.password}
+                                            onChange={handleChange}
+                                            className="form-input pl-10 pr-10"
+                                            placeholder="Create a password"
+                                        />
+                                        <button
+                                            type="button"
+                                            className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                                            onClick={() => setShowPassword(!showPassword)}
+                                        >
+                                            {showPassword ? (
+                                                <HiEyeOff className="h-5 w-5 text-gray-400 hover:text-gray-600" />
+                                            ) : (
+                                                <HiEye className="h-5 w-5 text-gray-400 hover:text-gray-600" />
+                                            )}
+                                        </button>
+                                    </div>
                                 </div>
-                                <input
-                                    id="password"
-                                    name="password"
-                                    type={showPassword ? 'text' : 'password'}
-                                    autoComplete="new-password"
-                                    required
-                                    value={formData.password}
-                                    onChange={handleChange}
-                                    className="form-input pl-10 pr-10"
-                                    placeholder="Create a password"
-                                />
+
+                                {/* Role Selection */}
+                                <div>
+                                    <label htmlFor="role" className="form-label">
+                                        I am a
+                                    </label>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <label className="relative">
+                                            <input
+                                                type="radio"
+                                                name="role"
+                                                value="tenant"
+                                                checked={formData.role === 'tenant'}
+                                                onChange={handleChange}
+                                                className="sr-only"
+                                            />
+                                            <div className={`p-4 border-2 rounded-lg cursor-pointer transition-all duration-200 ${formData.role === 'tenant'
+                                                ? 'border-blue-500 bg-blue-50'
+                                                : 'border-gray-200 hover:border-gray-300'
+                                                }`}>
+                                                <div className="flex items-center space-x-3">
+                                                    <HiUser className="w-5 h-5 text-gray-600" />
+                                                    <div>
+                                                        <div className="font-medium text-gray-900">Tenant</div>
+                                                        <div className="text-sm text-gray-500">Looking for a home</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </label>
+                                        <label className="relative">
+                                            <input
+                                                type="radio"
+                                                name="role"
+                                                value="landlord"
+                                                checked={formData.role === 'landlord'}
+                                                onChange={handleChange}
+                                                className="sr-only"
+                                            />
+                                            <div className={`p-4 border-2 rounded-lg cursor-pointer transition-all duration-200 ${formData.role === 'landlord'
+                                                ? 'border-blue-500 bg-blue-50'
+                                                : 'border-gray-200 hover:border-gray-300'
+                                                }`}>
+                                                <div className="flex items-center space-x-3">
+                                                    <HiUserGroup className="w-5 h-5 text-gray-600" />
+                                                    <div>
+                                                        <div className="font-medium text-gray-900">Landlord</div>
+                                                        <div className="text-sm text-gray-500">Renting out property</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                {/* Submit Button */}
                                 <button
-                                    type="button"
-                                    className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                                    onClick={() => setShowPassword(!showPassword)}
+                                    type="submit"
+                                    disabled={isSubmitting}
+                                    className="w-full btn btn-primary py-3 text-base font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
-                                    {showPassword ? (
-                                        <HiEyeOff className="h-5 w-5 text-gray-400 hover:text-gray-600" />
-                                    ) : (
-                                        <HiEye className="h-5 w-5 text-gray-400 hover:text-gray-600" />
-                                    )}
+                                    {isSubmitting ? 'Sending code...' : 'Create account'}
                                 </button>
-                            </div>
-                        </div>
-
-                        {/* Role Selection */}
-                        <div>
-                            <label htmlFor="role" className="form-label">
-                                I am a
-                            </label>
-                            <div className="grid grid-cols-2 gap-3">
-                                <label className="relative">
-                                    <input
-                                        type="radio"
-                                        name="role"
-                                        value="tenant"
-                                        checked={formData.role === 'tenant'}
-                                        onChange={handleChange}
-                                        className="sr-only"
-                                    />
-                                    <div className={`p-4 border-2 rounded-lg cursor-pointer transition-all duration-200 ${formData.role === 'tenant'
-                                        ? 'border-blue-500 bg-blue-50'
-                                        : 'border-gray-200 hover:border-gray-300'
-                                        }`}>
-                                        <div className="flex items-center space-x-3">
-                                            <HiUser className="w-5 h-5 text-gray-600" />
-                                            <div>
-                                                <div className="font-medium text-gray-900">Tenant</div>
-                                                <div className="text-sm text-gray-500">Looking for a home</div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </label>
-                                <label className="relative">
-                                    <input
-                                        type="radio"
-                                        name="role"
-                                        value="landlord"
-                                        checked={formData.role === 'landlord'}
-                                        onChange={handleChange}
-                                        className="sr-only"
-                                    />
-                                    <div className={`p-4 border-2 rounded-lg cursor-pointer transition-all duration-200 ${formData.role === 'landlord'
-                                        ? 'border-blue-500 bg-blue-50'
-                                        : 'border-gray-200 hover:border-gray-300'
-                                        }`}>
-                                        <div className="flex items-center space-x-3">
-                                            <HiUserGroup className="w-5 h-5 text-gray-600" />
-                                            <div>
-                                                <div className="font-medium text-gray-900">Landlord</div>
-                                                <div className="text-sm text-gray-500">Renting out property</div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </label>
-                            </div>
-                        </div>
-
-                        {/* Submit Button */}
-                        <button
-                            type="submit"
-                            disabled={isSubmitting}
-                            className="w-full btn btn-primary py-3 text-base font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            {isSubmitting ? 'Sending code...' : 'Create account'}
-                        </button>
                             </>
                         )}
                     </form>

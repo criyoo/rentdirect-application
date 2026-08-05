@@ -35,6 +35,7 @@ from core.pricing import calculate_booking_total, calculate_deposit_amount
 from core.security import hash_otp
 from core.serializers import UserSerializer
 from core.subscription_pricing import get_subscription_pricing
+from core.tenant_scoring import build_tenant_screening_summary
 
 
 TEST_FILE_STORAGES = {
@@ -859,6 +860,15 @@ class ListingTests(TestCase):
                 "toilets": 2,
                 "price_per_year": "2500000",
                 "amenities": ["gym", "parking"],
+                "parking": "true",
+                "garage": "true",
+                "garden": "true",
+                "lift": "true",
+                "balcony": "true",
+                "smart_lock": "true",
+                "pop_ceiling": "true",
+                "electric_fence": "true",
+                "fitted_kitchen": "true",
                 "ownership_types": ["Sole Owner"],
                 "property_ownership_documents": property_ownership_documents,
                 "property_verification_method": "documents",
@@ -880,6 +890,15 @@ class ListingTests(TestCase):
         self.assertEqual(response.status_code, 201, response.json())
         listing = Listing.objects.get(title="Ikoyi Apartment")
         self.assertEqual(listing.amenities, ["gym", "parking"])
+        self.assertTrue(listing.parking)
+        self.assertTrue(listing.garage)
+        self.assertTrue(listing.garden)
+        self.assertTrue(listing.lift)
+        self.assertTrue(listing.balcony)
+        self.assertTrue(listing.smart_lock)
+        self.assertTrue(listing.pop_ceiling)
+        self.assertTrue(listing.electric_fence)
+        self.assertTrue(listing.fitted_kitchen)
         self.assertEqual(listing.ownership_types, ["Sole Owner"])
         self.assertEqual(listing.property_ownership_documents, property_ownership_documents)
         self.assertEqual(str(listing.deposit_amount), "500000.00")
@@ -1395,7 +1414,8 @@ class UserViewSetTests(TestCase):
         self.assertEqual(user.name, "Settings User")
         self.assertEqual(user.settings_otp_hash, "")
 
-    def test_landlord_can_freeze_and_unfreeze_account(self):
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_landlord_can_freeze_and_unfreeze_account_after_otp_verification(self):
         user = AppUser.objects.create_user(
             email="freeze-landlord@example.com",
             password="password-123",
@@ -1406,7 +1426,13 @@ class UserViewSetTests(TestCase):
         client = APIClient()
         client.force_authenticate(user=user)
 
-        response = client.post("/api/v1/users/me/freeze", {"duration_months": 3}, format="json")
+        client.post("/api/v1/users/me/settings/request-otp", {"purpose": "account"}, format="json")
+        freeze_otp = re.search(r"\b([A-Z0-9]{6})\b", mail.outbox[-1].body).group(1)
+        response = client.post(
+            "/api/v1/users/me/freeze",
+            {"duration_months": 3, "otp_code": freeze_otp},
+            format="json",
+        )
 
         self.assertEqual(response.status_code, 200, response.json())
         user.refresh_from_db()
@@ -1414,12 +1440,73 @@ class UserViewSetTests(TestCase):
         self.assertEqual(user.account_freeze_fee_percentage, Decimal("20.00"))
         self.assertTrue(user.account_frozen_until)
 
-        response = client.delete("/api/v1/users/me/freeze")
+        client.post("/api/v1/users/me/settings/request-otp", {"purpose": "account"}, format="json")
+        unfreeze_otp = re.search(r"\b([A-Z0-9]{6})\b", mail.outbox[-1].body).group(1)
+        response = client.delete("/api/v1/users/me/freeze", {"otp_code": unfreeze_otp}, format="json")
 
         self.assertEqual(response.status_code, 200, response.json())
         user.refresh_from_db()
         self.assertFalse(user.account_frozen)
         self.assertIsNone(user.account_frozen_until)
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_tenant_can_update_residence_and_guarantor_after_otp_verification(self):
+        user = AppUser.objects.create_user(
+            email="settings-tenant@example.com",
+            password="password-123",
+            name="Settings Tenant",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        TenantProfile.objects.create(
+            user=user,
+            first_name="Settings",
+            middle_name="Test",
+            last_name="Tenant",
+            date_of_birth=date(1992, 3, 14),
+            gender="Female",
+            nationality="Nigerian",
+            state_of_origin="Lagos",
+            lga="Eti-Osa",
+            employment_status="Employed",
+            residence_country="Nigeria",
+            residence_state="Lagos",
+            residence_city="Lekki",
+            residence_lga="Eti-Osa",
+            residence_address="Old Address",
+            length_of_stay="3 years",
+            housing_status="Rented",
+        )
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        client.post("/api/v1/users/me/settings/request-otp", {"purpose": "profile"}, format="json")
+        otp_code = re.search(r"\b([A-Z0-9]{6})\b", mail.outbox[-1].body).group(1)
+        response = client.post(
+            "/api/v1/users/me/settings",
+            {
+                "mobile": "08012345678",
+                "residence": {"state": "Lagos", "city": "Ikoyi", "address": "New Address"},
+                "guarantor_details": {
+                    "full_name": "Guarantor Tenant",
+                    "relationship": "Parent",
+                    "email": "guarantor@example.com",
+                    "mobile_number": "08087654321",
+                    "occupation": "Engineer",
+                    "employer": "Example Ltd",
+                    "residential_address": "Guarantor Address",
+                },
+                "otp_code": otp_code,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        user.refresh_from_db()
+        profile = TenantProfile.objects.get(user=user)
+        self.assertEqual(profile.residence_city, "Ikoyi")
+        self.assertEqual(profile.guarantor_details["full_name"], "Guarantor Tenant")
+        self.assertEqual(user.tenant_verification_profile["guarantor_details"]["relationship"], "Parent")
 
     def test_landlord_can_save_identity_verification_details(self):
         user = AppUser.objects.create_user(
@@ -3453,6 +3540,8 @@ class BookingPaymentTests(TestCase):
         self.assertEqual(payment_email.to, [self.landlord.email])
         self.assertEqual(set(payment_email.cc), {self.tenant.email, "info@rentdirect.homes"})
         self.assertIn("Rental Payment Received", payment_email.subject)
+        self.assertIn("₦1,200,000.00", payment_email.body)
+        self.assertNotIn("₦240,000.00", payment_email.body)
         booking.refresh_from_db()
         self.assertEqual(booking.paid_amount, deposit_amount)
         self.assertEqual(booking.status, Booking.Status.PENDING)
@@ -3553,10 +3642,15 @@ class BookingPaymentTests(TestCase):
         self.assertEqual(len(landlord_transfer_emails), 1)
         self.assertEqual(landlord_transfer_emails[0].to, [self.landlord.email])
         self.assertEqual(set(landlord_transfer_emails[0].cc), {self.tenant.email, "info@rentdirect.homes"})
+        self.assertIn("₦1,200,000.00", landlord_transfer_emails[0].body)
+        self.assertNotIn("₦1,440,000.00", landlord_transfer_emails[0].body)
         self.assertEqual(len(internal_transfer_emails), 2)
         for internal_email in internal_transfer_emails:
             self.assertEqual(internal_email.to, ["info@rentdirect.homes"])
             self.assertEqual(internal_email.cc, [])
+        booking.refresh_from_db()
+        self.assertIn("final_rent_payment_email_received", booking.tenant_rental_progress)
+        self.assertNotIn("net_payment_notification_received", booking.landlord_rental_progress)
         settlements = PaymentSettlement.objects.filter(payment__transaction_id=final_payment_payload["payment"]["transaction_id"])
         self.assertEqual(
             str(settlements.get(purpose=PaymentSettlement.Purpose.OPERATIONS).amount),
@@ -4289,7 +4383,7 @@ class BookingRentalProgressTests(TestCase):
         self.assertEqual(response.status_code, 400, response.json())
         self.assertIn("Save one checklist step before moving to the next.", str(response.json()))
 
-    def test_landlord_has_separate_rental_progress_track(self):
+    def test_rental_progress_keeps_each_party_step_independent(self):
         client = APIClient()
         client.force_authenticate(user=self.landlord)
 
@@ -4316,6 +4410,32 @@ class BookingRentalProgressTests(TestCase):
             set(self.booking.landlord_rental_progress.keys()),
             {"viewing_appointment_booked", "house_viewed", "tenancy_agreement_signed", "deposit_payment_notification_received"},
         )
+
+        tenant_client = APIClient()
+        tenant_client.force_authenticate(user=self.tenant)
+        save_rental_progress_steps(
+            self,
+            tenant_client,
+            self.booking.id,
+            step_keys=[
+                "viewing_appointment_booked",
+                "house_viewed",
+                "tenancy_agreement_signed",
+                "tenant_paid_deposit",
+            ],
+        )
+        self.booking.refresh_from_db()
+        self.assertSetEqual(
+            set(self.booking.landlord_rental_progress.keys()),
+            {"viewing_appointment_booked", "house_viewed", "tenancy_agreement_signed", "deposit_payment_notification_received"},
+        )
+        tenant_response = tenant_client.get(f"/api/v1/bookings/{self.booking.id}/rental-progress")
+        tenant_steps = {
+            step["key"]: step
+            for step in tenant_response.json()["rental_progress"]["steps"]
+        }
+        self.assertTrue(tenant_steps["tenant_paid_deposit"]["completed"])
+        self.assertTrue(tenant_steps["tenant_paid_deposit"]["counterpart_completed"])
 
     def test_listing_is_hidden_from_public_search_and_featured_after_deposit_payment(self):
         self.listing.featured = True
@@ -4471,6 +4591,39 @@ class TenantScreeningSummaryTests(TestCase):
             },
             status=TenantProfile.Status.APPROVED,
         )
+
+    def test_payment_capacity_uses_employed_net_monthly_income(self):
+        profile = TenantProfile.objects.get(user=self.tenant)
+
+        summary = build_tenant_screening_summary(profile, self.listing)
+        payment_capacity = next(category for category in summary["categories"] if category["key"] == "payment_capacity")
+        self.assertEqual(payment_capacity["score"], 80)
+
+        profile.financial_info = {
+            **profile.financial_info,
+            "credit_commitment": "200000",
+            "outstanding_loans": "650000",
+        }
+        profile.save(update_fields=["financial_info"])
+        summary = build_tenant_screening_summary(profile, self.listing)
+        payment_capacity = next(category for category in summary["categories"] if category["key"] == "payment_capacity")
+        self.assertEqual(payment_capacity["score"], 38)
+
+    def test_payment_capacity_uses_non_employed_annual_resources_and_outgoings(self):
+        profile = TenantProfile.objects.get(user=self.tenant)
+        profile.employment_status = "Student"
+        profile.financial_info = {
+            **profile.financial_info,
+            "monthly_income_amount": "",
+            "monthly_expenses": "",
+            "average_annual_income": "7200000",
+            "outgoing_expenses": "200000",
+        }
+        profile.save(update_fields=["employment_status", "financial_info"])
+
+        summary = build_tenant_screening_summary(profile, self.listing)
+        payment_capacity = next(category for category in summary["categories"] if category["key"] == "payment_capacity")
+        self.assertEqual(payment_capacity["score"], 38)
 
     def test_landlord_booking_response_includes_screening_summary_only(self):
         client = APIClient()
@@ -4674,6 +4827,14 @@ class SeedDemoTests(TestCase):
         self.assertEqual(VerificationRequest.objects.filter(user__in=seed_users).count(), 5)
         self.assertEqual(SubscriptionPayment.objects.filter(user__in=seed_users).count(), 5)
         self.assertEqual(TenantProfile.objects.filter(user__in=tenants).count(), 1)
+
+        seeded_tenant_profile = TenantProfile.objects.get(user__email="criyo.career+jade@gmail.com")
+        self.assertEqual(seeded_tenant_profile.financial_info["monthly_income_amount"], "500000")
+        self.assertEqual(seeded_tenant_profile.financial_info["monthly_expenses"], "200,000")
+        self.assertEqual(seeded_tenant_profile.financial_info["current_annual_rent"], "2500000")
+        self.assertEqual(seeded_tenant_profile.financial_info["credit_commitment"], "0")
+        self.assertEqual(seeded_tenant_profile.financial_info["outstanding_loans"], "0")
+        self.assertNotIn("current_rent_amount", seeded_tenant_profile.financial_info)
 
         for user in seed_users:
             self.assert_seed_subscription(SubscriptionPayment.objects.get(user=user), user)
@@ -6616,6 +6777,18 @@ class LandlordPublicProfileTests(TestCase):
             bathrooms=4,
             price_per_year=4500000,
         )
+        Listing.objects.create(
+            landlord=landlord,
+            title="Public Listing Three",
+            description="Three",
+            address="3 Market Road",
+            city="Lagos",
+            property_type="Bungalow",
+            bedrooms=3,
+            bathrooms=2,
+            price_per_year=3500000,
+            status=Listing.Status.RENTED,
+        )
         tenant = AppUser.objects.create_user(
             email="profile-tenant@example.com",
             password="password-123",
@@ -6676,6 +6849,8 @@ class LandlordPublicProfileTests(TestCase):
 
         self.assertEqual(response.status_code, 200, response.json())
         payload = response.json()
+        self.assertEqual(payload["metrics"]["total_properties"], 3)
+        self.assertEqual(payload["metrics"]["properties_rented"], 1)
         self.assertEqual(payload["metrics"]["properties_listed"], 2)
         self.assertEqual(payload["metrics"]["active_tenancies"], 1)
         self.assertEqual(payload["metrics"]["completed_tenancies"], 1)

@@ -69,7 +69,7 @@ const emptyProfileDetails = {
     housing_status: '',
     employment_info: {},
     financial_info: {
-        current_rent_amount: '',
+        current_annual_rent: '',
         current_service_charge: '',
         current_move_in_date: '',
         expected_move_out_date: '',

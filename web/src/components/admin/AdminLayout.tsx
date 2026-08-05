@@ -1,6 +1,7 @@
 import { ReactNode } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
+import BrandLogo from '@/components/BrandLogo'
 
 interface AdminLayoutProps
 {
@@ -48,19 +49,15 @@ export default function AdminLayout({ children }: AdminLayoutProps)
     return (
         <div className="min-h-screen bg-gray-50">
             {/* Admin Header */}
-            <header className="bg-white shadow-sm border-b border-gray-200">
+            <header className="fixed inset-x-0 top-0 z-[100] bg-white/95 shadow-sm border-b border-gray-200 backdrop-blur-md">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex justify-between items-center h-16">
                         {/* Admin Logo */}
                         <div className="flex items-center space-x-4">
-                            <Link to="/admin/dashboard" className="flex items-center space-x-2">
-                                <div className="w-8 h-8 bg-gradient-to-br from-purple-600 to-purple-700 rounded-lg flex items-center justify-center shadow-lg">
-                                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                    </svg>
-                                </div>
-                                <span className="text-xl font-bold text-gray-900">
-                                    RentDirect Admin
+                            <Link to="/admin/dashboard" aria-label="RentDirect admin dashboard" className="flex items-center space-x-3">
+                                <BrandLogo alt="RentDirect Admin" className="h-12 w-24 rounded-md bg-white p-1" />
+                                <span className="text-sm font-semibold uppercase tracking-[0.18em] text-gray-600">
+                                    Admin
                                 </span>
                             </Link>
                         </div>
@@ -132,7 +129,7 @@ export default function AdminLayout({ children }: AdminLayoutProps)
             </header>
 
             {/* Admin Content */}
-            <main className="flex-1">
+            <main className="flex-1 pt-16">
                 {children}
             </main>
 

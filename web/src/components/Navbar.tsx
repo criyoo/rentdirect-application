@@ -4,7 +4,8 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { User } from '@/types'
-import { HiMenu, HiX, HiHome, HiSearch, HiPlus, HiUser, HiLogout } from 'react-icons/hi'
+import BrandLogo from '@/components/BrandLogo'
+import { HiMenu, HiX, HiSearch, HiPlus, HiUser, HiLogout } from 'react-icons/hi'
 
 export default function Navbar() {
     const { user, logout } = useAuth()
@@ -34,17 +35,12 @@ export default function Navbar() {
     }
 
     return (
-        <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-200/50 shadow-sm">
+        <header className="fixed inset-x-0 top-0 z-[100] bg-white/90 backdrop-blur-md border-b border-gray-200/50 shadow-sm">
             <div className="container-modern">
-                <div className="flex items-center justify-between h-16">
+                <div className="flex items-center justify-between h-20">
                     {/* Logo */}
-                    <Link to="/" className="flex items-center space-x-2 group">
-                        <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg flex items-center justify-center shadow-lg">
-                            <HiHome className="w-5 h-5 text-white" />
-                        </div>
-                        <span className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                            RentDirect
-                        </span>
+                    <Link to="/" aria-label="RentDirect home" className="flex shrink-0 items-center group">
+                        <BrandLogo className="h-40 w-40" />
                     </Link>
 
                     {/* Desktop Navigation */}

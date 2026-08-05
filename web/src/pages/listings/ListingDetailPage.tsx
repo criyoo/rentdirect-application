@@ -597,7 +597,7 @@ export default function ListingDetailPage() {
                                                     onClick={handleArrangeViewing}
                                                     className="text-sm w-full rounded-lg bg-blue-500 px-3 py-1.5 font-medium text-white hover:bg-blue-800 transition"
                                                 >
-                                                    Arrange viewing
+                                                    Chat with Landlord
                                                 </button>
 
                                                 <button
@@ -647,8 +647,8 @@ export default function ListingDetailPage() {
                                 {listing.deposit_amount && (
                                     <div className="pt-2 border-t border-gray-100">
                                         <div className="flex items-center justify-between">
-                                            <span className="text-gray-600">Deposit:</span>
-                                            <span className="font-medium">{formatCurrencyWithSymbol(listing.deposit_amount)}</span>
+                                            <span className="text-[14px] text-blue-600">20% Deposit:</span>
+                                            <span className="font-medium text-[14px] text-blue-600">{formatCurrencyWithSymbol(listing.deposit_amount)}</span>
                                         </div>
                                     </div>
                                 )}
@@ -657,7 +657,7 @@ export default function ListingDetailPage() {
 
                         {canSeePropertyVerification && listing.property_document_verification_status === 'verified' && (
                             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 shadow-lg">
-                                <p className="text-[16px] font-bold text-emerald-900">Property verification</p>
+                                <p className="text-[16px] font-bold text-emerald-900">Verification Status</p>
                                 <p className="mt-3 text-sm font-medium text-emerald-800">
                                     ✓ This property has passed RentDirect property verification.
                                 </p>
@@ -688,6 +688,51 @@ export default function ListingDetailPage() {
                                         </span>
                                     )}
                                     </li>
+                                    <li>{listing.parking && (
+                                        <span className="px-2 py-1 bg-slate-100 text-slate-800 rounded-full">
+                                            Parking
+                                        </span>
+                                    )}</li>
+                                    <li>{listing.garage && (
+                                        <span className="px-2 py-1 bg-slate-100 text-slate-800 rounded-full">
+                                            Garage
+                                        </span>
+                                    )}</li>
+                                    <li>{listing.garden && (
+                                        <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full">
+                                            Gardens
+                                        </span>
+                                    )}</li>
+                                    <li>{listing.lift && (
+                                        <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full">
+                                            Lift
+                                        </span>
+                                    )}</li>
+                                    <li>{listing.balcony && (
+                                        <span className="px-2 py-1 bg-amber-100 text-amber-800 rounded-full">
+                                            Balcony
+                                        </span>
+                                    )}</li>
+                                    <li>{listing.smart_lock && (
+                                        <span className="px-2 py-1 bg-indigo-100 text-indigo-800 rounded-full">
+                                            Smart Locks
+                                        </span>
+                                    )}</li>
+                                    <li>{listing.pop_ceiling && (
+                                        <span className="px-2 py-1 bg-violet-100 text-violet-800 rounded-full">
+                                            POP Ceiling
+                                        </span>
+                                    )}</li>
+                                    <li>{listing.electric_fence && (
+                                        <span className="px-2 py-1 bg-red-100 text-red-800 rounded-full">
+                                            Electric fence
+                                        </span>
+                                    )}</li>
+                                    <li>{listing.fitted_kitchen && (
+                                        <span className="px-2 py-1 bg-orange-100 text-orange-800 rounded-full">
+                                            Fitted kitchen
+                                        </span>
+                                    )}</li>
                                 </ul>
                             </div>
                         </div>
@@ -724,7 +769,7 @@ export default function ListingDetailPage() {
                                             </div>
                                         )}
                                         <a
-                                            className="inline-block mt-1 font-semibold text-[14px] text-blue-800 hover:text-blue-800"
+                                            className="inline-block text-[14px] text-blue-600 hover:text-blue-600"
                                             href={googleMapsUrl}
                                             target="_blank"
                                             rel="noreferrer"
@@ -750,10 +795,12 @@ export default function ListingDetailPage() {
                                         className="h-20 w-20 rounded-2xl object-cover ring-4 ring-slate-100"
                                     />
                                     <div>
-                                        <p className="text-[20px] font-bold text-gray-900 mb-3">Landlord</p>
-                                        <p className="mt-2 text-base font-semibold text-gray-900">{landlordProfile.display_name}</p>
-                                        <p className="mt-1 text-sm text-gray-600">
-                                            {landlordProfile.metrics.properties_listed} properties listed
+                                        <p className="text-[12px] text-blue-600 uppercase tracking-[0.1em]">Landlord</p>
+                                        <p className="text-[14px] font-semibold text-gray-900">{landlordProfile.display_name}</p>
+                                        <p className="mt-1 text-[12px] leading-4 text-gray-600">
+                                            <span className="block">Properties: {landlordProfile.metrics.total_properties}</span>
+                                            <span className="block">Rented: {landlordProfile.metrics.properties_rented}</span>
+                                            <span className="block">Listed: {landlordProfile.metrics.properties_listed}</span>
                                         </p>
                                     </div>
                                 </div>
