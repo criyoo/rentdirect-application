@@ -20,8 +20,7 @@ const rentalHistoryItemSchema = z.object({
 })
 
 const requiredBooleanField = z.boolean({
-    required_error: 'Please select Yes or No.',
-    invalid_type_error: 'Please select Yes or No.',
+    error: 'Please select Yes or No.',
 })
 
 const requiredFieldMessage = 'This field is required.'

@@ -1,6 +1,10 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@theme {
+    --font-sans: "Buenos Aires", "OpenSans", "Open Sans", sans-serif;
+    --color-brand: #2563eb;
+    --color-brand-dark: #1e40af;
+}
 
 /* Modern Design System */
 @layer base {

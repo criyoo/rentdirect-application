@@ -11,7 +11,7 @@ import { useAuth } from '@/hooks/useAuth'
 const optionalPositiveNumber = z.number().min(1, 'Value must be positive').optional()
 
 const requiredPositiveNumber = (message: string) =>
-    z.number({ required_error: message, invalid_type_error: message }).min(1, message)
+    z.number({ error: message }).min(1, message)
 
 const schema = z.object({
     title: z.string().min(1, 'Title is required'),
