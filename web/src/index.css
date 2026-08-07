@@ -49,23 +49,23 @@
     }
 
     :root {
-        --color-primary: 59 130 246;
-        --color-primary-dark: 37 99 235;
-        --color-secondary: 139 92 246;
-        --color-accent: 16 185 129;
-        --color-warning: 245 158 11;
-        --color-error: 239 68 68;
-        --color-success: 34 197 94;
-        --color-gray-50: 249 250 251;
-        --color-gray-100: 243 244 246;
-        --color-gray-200: 229 231 235;
-        --color-gray-300: 209 213 219;
-        --color-gray-400: 156 163 175;
-        --color-gray-500: 107 114 128;
-        --color-gray-600: 75 85 99;
-        --color-gray-700: 55 65 81;
-        --color-gray-800: 31 41 55;
-        --color-gray-900: 17 24 39;
+        --color-primary: rgb(59 130 246);
+        --color-primary-dark: rgb(37 99 235);
+        --color-secondary: rgb(139 92 246);
+        --color-accent: rgb(16 185 129);
+        --color-warning: rgb(245 158 11);
+        --color-error: rgb(239 68 68);
+        --color-success: rgb(34 197 94);
+        --color-gray-50: rgb(249 250 251);
+        --color-gray-100: rgb(243 244 246);
+        --color-gray-200: rgb(229 231 235);
+        --color-gray-300: rgb(209 213 219);
+        --color-gray-400: rgb(156 163 175);
+        --color-gray-500: rgb(107 114 128);
+        --color-gray-600: rgb(75 85 99);
+        --color-gray-700: rgb(55 65 81);
+        --color-gray-800: rgb(31 41 55);
+        --color-gray-900: rgb(17 24 39);
         --font-sans: "Buenos Aires", "OpenSans", "Open Sans", sans-serif;
     }
 
