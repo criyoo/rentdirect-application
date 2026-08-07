@@ -15,7 +15,7 @@ ENFORCE_FLUTTERWAVE_WEBHOOK_SIGNATURE = env_bool(  # noqa: F405
 
 ALLOWED_HOSTS = env_list(  # noqa: F405
     "DJANGO_ALLOWED_HOSTS",
-    "localhost,127.0.0.1,api.development.rentdirect.homes",
+    "localhost,127.0.0.1,api.development.rentdirect.homes,development.rentdirect.homes",
 )
 CORS_ALLOWED_ORIGINS = env_list(  # noqa: F405
     "CORS_ALLOWED_ORIGINS",

@@ -73,7 +73,7 @@ if not DEBUG and SECRET_KEY == "dev-secret-key":
 
 DJANGO_ALLOWED_HOSTS = env_list(
     "DJANGO_ALLOWED_HOSTS",
-    "localhost,127.0.0.1,api.rentdirect.homes,api.development.rentdirect.homes",
+    "localhost,127.0.0.1,api.development.rentdirect.homes,api.rentdirect.homes,development.rentdirect.homes,rentdirect.homes",
 )
 ALLOWED_HOSTS = DJANGO_ALLOWED_HOSTS
 

@@ -30,7 +30,7 @@ if SECRET_KEY == "dev-secret-key":  # noqa: F405
 
 ALLOWED_HOSTS = env_list(  # noqa: F405
     "DJANGO_ALLOWED_HOSTS",
-    "api.rentdirect.homes,rentdirect.homes,www.rentdirect.homes",
+    "localhost,127.0.0.1,api.rentdirect.homes,rentdirect.homes",
 )
 CORS_ALLOWED_ORIGINS = env_list(  # noqa: F405
     "CORS_ALLOWED_ORIGINS",

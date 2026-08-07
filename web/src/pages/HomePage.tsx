@@ -258,9 +258,9 @@ export default function HomePage() {
                             Why Choose RentDirect?
                         </h2>
                         <p className="text-4xl text-gray-900 max-w-2xl mx-auto">
-                            A smarter way to rent in Nigeria
+                            We bring a smarter way to secure your dream home
                         </p>
-                        <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+                        <p className="text-sm text-gray-600 max-w-2xl mx-auto">
                             We've built a platform that cuts out agent fees, makes payments transparent, and puts tenants and landlords in direct contact.
                         </p>
                     </div>

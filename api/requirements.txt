@@ -14,6 +14,7 @@ django-storages[s3]==1.14.6
 gunicorn==26.0.0
 Pillow==12.3.0
 psycopg[binary]==3.3.4
+pytest==9.1.1
 redis==8.1.0
 requests==2.34.2
 rq==2.10.0
