@@ -72,7 +72,19 @@ try {
     throw error;
   }
 
-  const rollupVersion = workspaceRequire("rollup/package.json").version;
+  let rollupVersion;
+  try {
+    rollupVersion = workspaceRequire("rollup/package.json").version;
+  } catch (bundlerError) {
+    if (bundlerError?.code !== "MODULE_NOT_FOUND") {
+      throw bundlerError;
+    }
+
+    // Vite 8 uses Rolldown instead of Rollup. Its platform-specific binding
+    // is installed by npm from the lockfile, so no Rollup fallback is needed.
+    workspaceRequire("rolldown/package.json");
+    process.exit(0);
+  }
 
   execFileSync(
     "npm",
