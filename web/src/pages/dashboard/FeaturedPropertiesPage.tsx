@@ -458,12 +458,10 @@ export default function FeaturedPropertiesPage()
 
 
             <div className="mt-6 flex justify-center">
-                <Link
+                <DashboardBackButton
                     to={currentUserId ? `/dashboard/landlord/${currentUserId}` : '/dashboard/landlord'}
-                    className="px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
-                >
-                    Back to Dashboard
-                </Link>
+                    label="Back to Dashboard"
+                />
             </div>
         </div>
     )

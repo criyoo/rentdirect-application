@@ -1,8 +1,10 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 
 import { useAuth } from '@/hooks/useAuth'
+import DashboardBackButton from '@/components/DashboardBackButton'
+import SupportFaqAccordion from '@/components/SupportFaqAccordion'
 import { api } from '@/lib/api'
 import { landlordIssueTopics, landlordSupportFaqs, tenantIssueTopics, tenantSupportFaqs } from '@/lib/tenantSupport'
 import {
@@ -62,21 +64,14 @@ export default function TenantIssuesPage() {
                         <p className="text-sm font-medium uppercase tracking-[0.2em] text-amber-600">Issues</p>
                         <h1 className="text-3xl font-bold text-gray-900">Account and platform issues</h1>
                     </div>
-                    <Link to={dashboardPath} className="btn btn-outline">
-                        Back to Dashboard
-                    </Link>
+                    <DashboardBackButton to={dashboardPath} label="Back to Dashboard" />
                 </div>
 
                 <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_1.1fr]">
                     <div className="card p-6">
                         <h2 className="text-xl font-semibold text-gray-900">FAQ</h2>
                         <div className="mt-5 space-y-4">
-                            {faqs.map((item) => (
-                                <div key={item.question} className="rounded-lg border border-gray-200 p-4">
-                                    <h3 className="text-sm font-semibold text-gray-900">{item.question}</h3>
-                                    <p className="mt-2 text-sm text-gray-600">{item.answer}</p>
-                                </div>
-                            ))}
+                            <SupportFaqAccordion items={faqs} idPrefix={`${role}-issues-faq`} />
                         </div>
                     </div>
 

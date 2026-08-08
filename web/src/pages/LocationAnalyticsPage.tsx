@@ -5,6 +5,7 @@ import { api } from '@/lib/api'
 import { formatCurrencyWithSymbol } from '@/utils/currency'
 import { useAuth } from '@/hooks/useAuth'
 import { hasSilverAccess, SubscriptionPaymentRecord } from '@/lib/subscriptions'
+import DashboardBackButton from '@/components/DashboardBackButton'
 
 function hasLocationSearch(searchParams: URLSearchParams) {
     const hasRadius = Boolean(searchParams.get('radius_km'))
@@ -116,7 +117,7 @@ export default function LocationAnalyticsPage() {
                         <Link to={user ? '/billing' : '/login'} className="btn btn-primary">
                             {user ? 'View Plans' : 'Sign In'}
                         </Link>
-                        <Link to="/search" className="btn btn-outline">Back to Search</Link>
+                        <DashboardBackButton to="/search" label="Back to Search" />
                     </div>
                 </div>
             </div>
@@ -133,12 +134,7 @@ export default function LocationAnalyticsPage() {
                             {isLoading ? 'Loading analytics...' : `${locationAnalytics?.total_listings || 0} available listing${locationAnalytics?.total_listings === 1 ? '' : 's'} analysed`}
                         </p>
                     </div>
-                    <Link
-                        to={analyticsSearchPath(searchParams)}
-                        className="inline-flex items-center justify-center rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-white"
-                    >
-                        Back to Search
-                    </Link>
+                    <DashboardBackButton to={analyticsSearchPath(searchParams)} label="Back to Search" />
                 </div>
 
                 {isLoading ? (

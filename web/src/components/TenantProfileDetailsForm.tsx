@@ -1138,7 +1138,7 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
             <div className="rounded-xl border bg-white p-6 text-gray-600">
                 Complete tenant verification before adding the rest of your tenant profile.
                 <div className="mt-4">
-                    <Link to="/verify" className="btn btn-primary">Go to Verification</Link>
+                    <Link to="/verify" replace className="btn btn-primary">Go to Verification</Link>
                 </div>
             </div>
         )

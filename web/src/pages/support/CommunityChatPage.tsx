@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { HiLockClosed, HiPaperAirplane, HiUserGroup } from 'react-icons/hi'
 
 import { useAuth } from '@/hooks/useAuth'
+import DashboardBackButton from '@/components/DashboardBackButton'
 import { api, getWebSocketUrl, resolveMediaUrl } from '@/lib/api'
 import { hasCommunityChatAccess, SubscriptionPaymentRecord } from '@/lib/subscriptions'
 
@@ -123,9 +124,7 @@ export default function CommunityChatPage() {
                         <p className="text-sm font-medium uppercase tracking-[0.2em] text-purple-600">Community Chat</p>
                         <h1 className="text-3xl font-bold text-gray-900">{roomLabel}</h1>
                     </div>
-                    <Link to={dashboardPath} className="btn btn-outline">
-                        Back to Dashboard
-                    </Link>
+                    <DashboardBackButton to={dashboardPath} label="Back to Dashboard" />
                 </div>
 
                 {isSubscriptionsLoading ? (

@@ -1,6 +1,7 @@
 import { ChangeEvent, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
+import LegalDocumentsConsent from '@/components/LegalDocumentsConsent'
 import { api } from '@/lib/api'
 import { isNigeriaSelection, nigeriaStateLgaMap, nigerianStates, worldCountryOptions } from '@/lib/locations'
 import {
@@ -415,6 +416,7 @@ export default function LandlordVerificationPage() {
     const [activeVerificationType, setActiveVerificationType] = useState<LandlordVerificationType | ''>('')
     const [submitStatusMessage, setSubmitStatusMessage] = useState('')
     const [submitErrorMessage, setSubmitErrorMessage] = useState('')
+    const [hasAcceptedLegalConsent, setHasAcceptedLegalConsent] = useState(false)
 
     const { data: me, isLoading } = useQuery({
         queryKey: ['users', 'me'],
@@ -678,6 +680,9 @@ export default function LandlordVerificationPage() {
             if (!verificationType) {
                 throw new Error('Choose an identification type first.')
             }
+            if (!hasAcceptedLegalConsent) {
+                throw new Error('Review the legal document and tick the consent box before submitting your verification.')
+            }
             if (!validateForm()) {
                 throw new Error('Please complete the required identity verification fields.')
             }
@@ -863,6 +868,7 @@ export default function LandlordVerificationPage() {
                                 }
                                 setSubmitStatusMessage('')
                                 setSubmitErrorMessage('')
+                                setHasAcceptedLegalConsent(false)
                                 setActiveVerificationType(selectedVerificationType)
                             }}
                             disabled={!selectedVerificationType || isVerificationLocked}
@@ -1321,14 +1327,30 @@ export default function LandlordVerificationPage() {
                                         )}
                                     </div>
 
+                                    <div className="mt-6">
+                                        <LegalDocumentsConsent
+                                            id="landlord-verification-legal-consent"
+                                            audience="landlord"
+                                            consented={hasAcceptedLegalConsent}
+                                            disabled={isVerificationLocked}
+                                            onConsentChange={setHasAcceptedLegalConsent}
+                                        />
+                                    </div>
+
                                     <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
                                         <p className="text-sm text-gray-500">
                                             Identification submission is saved for review on this page.
                                         </p>
                                         <button
                                             type="button"
-                                            onClick={() => submitIdentity.mutate()}
-                                            disabled={isVerificationLocked || submitIdentity.isPending}
+                                            onClick={() => {
+                                                if (!hasAcceptedLegalConsent) {
+                                                    setSubmitErrorMessage('Review all legal documents and click “I have read & consent” before submitting your verification.')
+                                                    return
+                                                }
+                                                submitIdentity.mutate()
+                                            }}
+                                            disabled={isVerificationLocked || submitIdentity.isPending || !hasAcceptedLegalConsent}
                                             className="btn btn-primary px-6 py-3 disabled:cursor-not-allowed disabled:opacity-50"
                                         >
                                             {isVerificationLocked ? 'Identification Verified' : submitIdentity.isPending ? 'Submitting...' : 'Submit Verification'}

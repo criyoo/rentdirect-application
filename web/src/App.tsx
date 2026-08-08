@@ -36,6 +36,7 @@ import FeaturedPropertyPaymentPage from './pages/dashboard/FeaturedPropertyPayme
 import SettingsPage from './pages/settings/SettingsPage'
 import FeedbackPage from './pages/feedback/FeedbackPage'
 import HowItWorksPage from './pages/how-it-works/HowItWorksPage'
+import LegalDocumentPage from './pages/legal/LegalDocumentPage'
 import TenantComplaintPage from './pages/support/TenantComplaintPage'
 import TenantIssuesPage from './pages/support/TenantIssuesPage'
 import TenantSupportPage from './pages/support/TenantSupportPage'
@@ -63,6 +64,7 @@ function App()
 <Route path="/" element={<HomePage />} />
                             <Route path="/about" element={<AboutPage />} />
                             <Route path="/how-it-works" element={<HowItWorksPage />} />
+                            <Route path="/legal/:slug" element={<LegalDocumentPage />} />
                             <Route path="/login" element={<LoginPage />} />
                             <Route path="/register" element={<RegisterPage />} />
                             <Route path="/forgot-password" element={<ForgotPasswordPage />} />

@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
 import { api } from '@/lib/api'
 import BrandLogo from '@/components/BrandLogo'
-import { HiMail, HiArrowLeft } from 'react-icons/hi'
+import { HiMail } from 'react-icons/hi'
+import DashboardBackButton from '@/components/DashboardBackButton'
 
 export default function ForgotPasswordPage()
 {
@@ -69,12 +69,7 @@ export default function ForgotPasswordPage()
                                 </p>
                             </div>
                             <div className="space-y-3">
-                                <Link
-                                    to="/login"
-                                    className="w-full btn btn-primary py-3 text-base font-medium"
-                                >
-                                    Back to Login
-                                </Link>
+                                <DashboardBackButton to="/login" label="Back to Login" className="w-full justify-center" />
                                 <button
                                     onClick={() =>
                                     {
@@ -162,13 +157,7 @@ export default function ForgotPasswordPage()
 
                     {/* Back to Login */}
                     <div className="mt-6 text-center">
-                        <Link
-                            to="/login"
-                            className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900"
-                        >
-                            <HiArrowLeft className="w-4 h-4 mr-1" />
-                            Back to login
-                        </Link>
+                        <DashboardBackButton to="/login" label="Back to login" />
                     </div>
                 </div>
             </div>

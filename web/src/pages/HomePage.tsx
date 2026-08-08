@@ -1,8 +1,9 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api, getApiUrl } from '@/lib/api'
 import { Listing } from '@/types'
 import ListingCard from '@/components/ListingCard'
+import RegistrationOptionsModal from '@/components/RegistrationOptionsModal'
 import { Link } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import { HiSearch, HiHome, HiLocationMarker, HiBadgeCheck, HiArrowRight, HiShieldCheck, HiCurrencyDollar, HiCheck } from 'react-icons/hi'
@@ -59,6 +60,7 @@ const subscriptionPlans = [
 
 export default function HomePage() {
     const { user } = useAuth()
+    const [showRegistrationOptions, setShowRegistrationOptions] = useState(false)
     const heroVideoRef = useRef<HTMLVideoElement | null>(null)
     const { data: featured } = useQuery({
         queryKey: ['listings', 'featured'],
@@ -138,12 +140,13 @@ export default function HomePage() {
                                         >
                                             Sign In
                                         </Link>
-                                        <Link
-                                            to="/register"
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowRegistrationOptions(true)}
                                             className="inline-flex items-center px-6 py-3 bg-white text-blue-600 hover:bg-blue-50 rounded-lg font-medium transition-all duration-200 shadow-lg hover:shadow-xl"
                                         >
                                             Create Account
-                                        </Link>
+                                        </button>
                                     </div>
                                 )}
 
@@ -257,8 +260,8 @@ export default function HomePage() {
                         <h2 className="text-2xl md:text-4xl font-bold text-blue-700 mb-4">
                             Why Choose RentDirect?
                         </h2>
-                        <p className="text-4xl text-gray-900 max-w-2xl mx-auto">
-                            We bring a smarter way to secure your dream home
+                        <p className="text-3xl text-gray-900 max-w-3xl mx-auto">
+                            A smarter way to secure your dream home
                         </p>
                         <p className="text-sm text-gray-600 max-w-2xl mx-auto">
                             We've built a platform that cuts out agent fees, makes payments transparent, and puts tenants and landlords in direct contact.
@@ -389,16 +392,30 @@ export default function HomePage() {
                                     ))}
                                 </ul>
 
-                                <Link
-                                    to={user ? '/billing' : '/register'}
-                                    className={`mt-10 inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-bold transition-colors ${plan.highlight
-                                        ? 'bg-white text-slate-950 hover:bg-orange-50'
-                                        : 'bg-slate-950 text-white hover:bg-blue-700'
-                                        }`}
-                                >
-                                    {user ? 'View your options' : 'Get started'}
-                                    <HiArrowRight className="h-4 w-4" />
-                                </Link>
+                                {user ? (
+                                    <Link
+                                        to="/billing"
+                                        className={`mt-10 inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-bold transition-colors ${plan.highlight
+                                            ? 'bg-white text-slate-950 hover:bg-orange-50'
+                                            : 'bg-slate-950 text-white hover:bg-blue-700'
+                                            }`}
+                                    >
+                                        View your options
+                                        <HiArrowRight className="h-4 w-4" />
+                                    </Link>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowRegistrationOptions(true)}
+                                        className={`mt-10 inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-bold transition-colors ${plan.highlight
+                                            ? 'bg-white text-slate-950 hover:bg-orange-50'
+                                            : 'bg-slate-950 text-white hover:bg-blue-700'
+                                            }`}
+                                    >
+                                        Get started
+                                        <HiArrowRight className="h-4 w-4" />
+                                    </button>
+                                )}
                             </article>
                         ))}
                     </div>
@@ -422,16 +439,22 @@ export default function HomePage() {
                             Start Searching
                         </Link>
                         {!user && (
-                            <Link
-                                to="/register"
+                            <button
+                                type="button"
+                                onClick={() => setShowRegistrationOptions(true)}
                                 className="btn btn-outline text-lg px-8 py-4 border-white text-white hover:bg-white hover:text-blue-600"
                             >
                                 Create Account
-                            </Link>
+                            </button>
                         )}
                     </div>
                 </div>
             </section>
+
+            <RegistrationOptionsModal
+                isOpen={showRegistrationOptions}
+                onClose={() => setShowRegistrationOptions(false)}
+            />
         </div>
     )
 }

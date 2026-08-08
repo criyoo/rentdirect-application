@@ -7,6 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 
 import { useAuth } from '@/hooks/useAuth'
 import { useAppPopup } from '@/contexts/AppPopupContext'
+import LegalDocumentsConsent from '@/components/LegalDocumentsConsent'
 import { api } from '@/lib/api'
 import { isNigeriaSelection, nigeriaStateLgaMap, nigerianStates, worldCountryOptions } from '@/lib/locations'
 import {
@@ -216,6 +217,7 @@ export default function VerifyMePage() {
     const navigate = useNavigate()
     const queryClient = useQueryClient()
     const [submitError, setSubmitError] = useState('')
+    const [hasAcceptedLegalConsent, setHasAcceptedLegalConsent] = useState(false)
 
     const { data: me } = useQuery({
         queryKey: ['users', 'me'],
@@ -374,7 +376,14 @@ export default function VerifyMePage() {
                 )}
 
                 <form
-                    onSubmit={handleSubmit((data) => (isVerificationLocked ? undefined : saveVerification.mutateAsync(data)))}
+                    onSubmit={handleSubmit((data) => {
+                        if (isVerificationLocked) return
+                        if (!hasAcceptedLegalConsent) {
+                            setSubmitError('Review all legal documents and click “I have read & consent” before submitting your verification.')
+                            return
+                        }
+                        saveVerification.mutate(data)
+                    })}
                     className={`rounded-xl border bg-white p-6 shadow-sm ${lockedFormClassName}`}
                 >
                     <fieldset disabled={isVerificationLocked}>
@@ -443,16 +452,27 @@ export default function VerifyMePage() {
                             </InputRow>
                         </div>
 
-                        <div className="mt-8 flex justify-end">
-                            <button
-                                type="submit"
-                                disabled={isVerificationLocked || isSubmitting || saveVerification.isPending}
-                                className="rounded-lg bg-blue-600 px-8 py-3 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 transition"
-                            >
-                                {isVerificationLocked ? 'Verified' : isSubmitting || saveVerification.isPending ? 'Saving...' : 'Submit Verification'}
-                            </button>
-                        </div>
                     </fieldset>
+
+                    <div className="mt-8">
+                        <LegalDocumentsConsent
+                            id="tenant-verification-legal-consent"
+                            audience="tenant"
+                            consented={hasAcceptedLegalConsent}
+                            disabled={isVerificationLocked}
+                            onConsentChange={setHasAcceptedLegalConsent}
+                        />
+                    </div>
+
+                    <div className="mt-8 flex justify-end">
+                        <button
+                            type="submit"
+                            disabled={isVerificationLocked || isSubmitting || saveVerification.isPending || !hasAcceptedLegalConsent}
+                            className="rounded-lg bg-blue-600 px-8 py-3 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            {isVerificationLocked ? 'Verified' : isSubmitting || saveVerification.isPending ? 'Saving...' : 'Submit Verification'}
+                        </button>
+                    </div>
                 </form>
             </div>
         </div>

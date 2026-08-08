@@ -6,9 +6,11 @@ interface BrandLogoProps {
 export default function BrandLogo({ alt = 'RentDirect', className = '' }: BrandLogoProps) {
     return (
         <img
-            src="/logo.png"
+            src="/logo_v1.png"
             alt={alt}
-            className={`object-contain ${className}`}
+            draggable={false}
+            onDragStart={(event) => event.preventDefault()}
+            className={`object-contain select-none ${className}`}
         />
     )
 }

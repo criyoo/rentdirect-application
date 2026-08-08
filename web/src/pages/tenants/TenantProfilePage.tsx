@@ -1,8 +1,7 @@
 import { ReactNode } from 'react'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-    HiArrowLeft,
     HiBadgeCheck,
     HiBriefcase,
     HiCurrencyDollar,
@@ -17,6 +16,7 @@ import {
 } from 'react-icons/hi'
 
 import TenantProfileDetailsForm from '@/components/TenantProfileDetailsForm'
+import DashboardBackButton from '@/components/DashboardBackButton'
 import { useAuth } from '@/hooks/useAuth'
 import { api, resolveMediaUrl } from '@/lib/api'
 import { TenantProfileSummary } from '@/types'
@@ -364,6 +364,11 @@ export default function TenantProfilePage() {
     const [searchParams] = useSearchParams()
     const { user } = useAuth()
     const isOwnTenantProfile = user?.role === 'tenant' && String(user.id) === String(tenantId)
+    const profileBackPath = isOwnTenantProfile
+        ? `/dashboard/tenant/${user?.id}`
+        : user?.role === 'landlord'
+            ? '/landlord/enquiries'
+            : '/'
     const requestedEditMode = ['1', 'true'].includes(String(searchParams.get('edit') || '').toLowerCase())
     const { data, isLoading, isError, error } = useQuery({
         queryKey: ['tenant-profile', tenantId],
@@ -385,14 +390,7 @@ export default function TenantProfilePage() {
         return (
             <div className="container-modern py-8">
                 <div className="mb-6">
-                    <button
-                        type="button"
-                        onClick={() => navigate(-1)}
-                        className="inline-flex items-center text-sm font-medium text-blue-700 hover:text-blue-800"
-                    >
-                        <HiArrowLeft className="mr-2 h-5 w-5" />
-                        Back
-                    </button>
+                    <DashboardBackButton to={profileBackPath} />
                 </div>
                 <TenantProfileDetailsForm
                     onSaved={() => {
@@ -419,10 +417,7 @@ export default function TenantProfilePage() {
                 <div className="rounded-xl border bg-white p-6">
                     <h1 className="text-xl font-semibold text-gray-900">Tenant profile unavailable</h1>
                     <p className="mt-2 text-gray-600">{message}</p>
-                    <Link to="/landlord/enquiries" className="btn btn-outline mt-5">
-                        <HiArrowLeft className="mr-2 h-5 w-5" />
-                        Back
-                    </Link>
+                    <DashboardBackButton to={profileBackPath} className="mt-5" />
                 </div>
             </div>
         )
@@ -438,14 +433,7 @@ export default function TenantProfilePage() {
     return (
         <div className={`container-modern py-8 ${profileIsApproved ? '[&_p[data-detail-value]]:text-gray-500' : ''}`}>
             <div className="mb-6">
-                <button
-                    type="button"
-                    onClick={() => navigate(-1)}
-                    className="inline-flex items-center text-sm font-medium text-blue-700 hover:text-blue-800"
-                >
-                    <HiArrowLeft className="mr-2 h-5 w-5" />
-                    Back
-                </button>
+                <DashboardBackButton to={profileBackPath} />
             </div>
 
             <div className="rounded-xl border border-gray-200 bg-white p-6">

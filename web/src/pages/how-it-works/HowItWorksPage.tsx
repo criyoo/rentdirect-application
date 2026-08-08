@@ -169,7 +169,7 @@ export default function HowItWorksPage() {
 
                     <div className="mt-20 grid items-end gap-12 lg:grid-cols-[1.15fr_0.85fr] lg:gap-20">
                         <div>
-                            <p className="text-sm font-medium uppercase tracking-[0.28em] text-orange-600">How RentDirect works</p>
+                            <p className="text-sm font-medium uppercase tracking-[0.28em] text-purple-800">How RentDirect works</p>
                             <h1 className="mt-6 font-semibold leading-[1.0] tracking-[-0.040em] lg:text-[2.8rem]">
                                 {heroTitle}
                             </h1>
@@ -186,7 +186,7 @@ export default function HowItWorksPage() {
                             </div>
                         </div>
 
-                        <div className="relative rounded-[2rem] border border-white/80 bg-white/75 p-6 shadow-[0_24px_80px_rgba(0,30,54,0.10)] backdrop-blur-md md:p-8">
+                        <div className="relative rounded-[2rem] border border-white/80 bg-white/75 p-6 shadow-[0_24px_80px_rgba(0,30,54,0.10)] backdrop-blur-md md:p-10">
                             <div className="flex items-center justify-between border-b border-slate-200 pb-5">
                                 <span className="text-sm font-medium text-slate-500">Your journey, at a glance</span>
                                 <span className="h-2.5 w-2.5 rounded-full bg-orange-500 shadow-[0_0_0_6px_rgba(249,115,22,0.12)]" />
@@ -194,14 +194,14 @@ export default function HowItWorksPage() {
                             <div className="space-y-3 pt-4">
                                 {journeyHighlights[role].map((highlight, index) => (
                                     <div key={highlight} className="flex items-center gap-4">
-                                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#001e36] text-xs font-medium text-white">
+                                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-600 via-blue-600 to-purple-700 text-xs font-medium text-white shadow-md shadow-indigo-900/20">
                                             {String(index + 1).padStart(2, '0')}
                                         </span>
                                         <span className="text-base font-medium text-slate-700">{highlight}</span>
                                     </div>
                                 ))}
                             </div>
-                            <div className="mt-8 rounded-2xl bg-orange-50 px-4 py-3 text-sm leading-6 text-orange-900">
+                            <div className="mt-8 rounded-2xl bg-purple-100 px-4 py-3 text-sm leading-6 text-blue-900">
                                 One connected record from first conversation to move-in.
                             </div>
                         </div>
@@ -238,7 +238,7 @@ export default function HowItWorksPage() {
                                 return (
                                     <section key={index} className="rounded-[1.75rem] border border-slate-200/90 bg-white/80 shadow-[0_16px_50px_rgba(0,30,54,0.06)] backdrop-blur-sm md:p-4">
                                         <div className="flex gap-2">
-                                            <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-orange-100 text-xl font-semibold text-orange-700">
+                                            <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-600 via-blue-600 to-purple-700 text-xl font-semibold text-white shadow-lg shadow-indigo-900/20">
                                                 {String(stepNumber).padStart(2, '0')}
                                             </span>
                                             <div className="min-w-0 flex-1">

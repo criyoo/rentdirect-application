@@ -440,7 +440,7 @@ export default function SettingsPage() {
                     <p className="mt-2 text-gray-600">Changes are saved only after OTP verification.</p>
                 </div>
                 <div className="flex flex-wrap gap-3">
-                    <Link to={dashboardPath} className="btn btn-outline">Back to Dashboard</Link>
+                    <DashboardBackButton to={dashboardPath} label="Back to Dashboard" />
                     <Link to={`/profile/${me.id}`} className="btn btn-primary">Open Profile Page</Link>
                 </div>
             </div>

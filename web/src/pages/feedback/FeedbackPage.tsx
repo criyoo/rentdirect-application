@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 
 import { useAuth } from '@/hooks/useAuth'
+import DashboardBackButton from '@/components/DashboardBackButton'
 import { api } from '@/lib/api'
 
 function extractErrorMessage(error: any, fallback: string) {
@@ -78,9 +79,7 @@ export default function FeedbackPage() {
                         <h1 className="text-3xl font-bold text-gray-900">Tell us what to improve</h1>
                         <p className="mt-2 text-gray-600">Share platform issues, ideas, or requests with the RentDirect team.</p>
                     </div>
-                    <Link to={dashboardPath} className="btn btn-outline">
-                        Back to Dashboard
-                    </Link>
+                    <DashboardBackButton to={dashboardPath} label="Back to Dashboard" />
                 </div>
 
                 <div className="card mt-6 p-6">
@@ -88,19 +87,23 @@ export default function FeedbackPage() {
                         <div>
                             <label className="form-label">Name</label>
                             <input
-                                className="form-input"
-                                value={name}
-                                onChange={(event) => setName(event.target.value)}
-                                placeholder="Your full name"
+                                className="form-input cursor-not-allowed bg-gray-100 text-gray-500"
+                                value={name || user?.name || ''}
+                                readOnly
+                                disabled
+                                aria-readonly="true"
+                                aria-label="Your name"
                             />
                         </div>
                         <div>
                             <label className="form-label">Role</label>
                             <input
-                                className="form-input capitalize"
+                                className="form-input cursor-not-allowed bg-gray-100 text-gray-500 capitalize"
                                 value={role}
-                                onChange={() => undefined}
                                 readOnly
+                                disabled
+                                aria-readonly="true"
+                                aria-label="Your role"
                             />
                         </div>
                     </div>

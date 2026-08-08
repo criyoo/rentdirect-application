@@ -11,5 +11,9 @@ __pycache__/
 .venv/
 venv/
 uploads/
+!uploads/
+!uploads/seed/
+!uploads/seed/video/
+!uploads/seed/video/rentdirect.mp4
 media/
 *.log

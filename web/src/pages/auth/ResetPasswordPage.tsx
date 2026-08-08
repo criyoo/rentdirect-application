@@ -3,6 +3,7 @@ import { Link, useParams, useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
 import BrandLogo from '@/components/BrandLogo'
 import { HiLockClosed, HiEye, HiEyeOff } from 'react-icons/hi'
+import DashboardBackButton from '@/components/DashboardBackButton'
 
 export default function ResetPasswordPage()
 {
@@ -222,12 +223,7 @@ export default function ResetPasswordPage()
 
                     {/* Back to Login */}
                     <div className="mt-6 text-center">
-                        <Link
-                            to="/login"
-                            className="text-sm text-gray-600 hover:text-gray-900"
-                        >
-                            Back to login
-                        </Link>
+                        <DashboardBackButton to="/login" label="Back to login" />
                     </div>
                 </div>
             </div>

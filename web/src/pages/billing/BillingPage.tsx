@@ -7,6 +7,7 @@ import { useAppPopup } from '@/contexts/AppPopupContext'
 import { User } from '@/types'
 import { formatCurrencyWithSymbol } from '@/utils/currency'
 import { EncryptedFlutterwaveCard, encryptFlutterwaveCard, validateCardDetails } from '@/lib/flutterwaveEncryption'
+import DashboardBackButton from '@/components/DashboardBackButton'
 
 type Payment = {
     id: string
@@ -857,9 +858,7 @@ export default function BillingPage() {
                                     </p>
                                 </div>
                                 <div className="flex flex-wrap gap-3">
-                                    <Link to={profileHref} className="rounded-full bg-white px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-slate-100 border-sky-300">
-                                        Back to profile
-                                    </Link>
+                                    <DashboardBackButton to={profileHref} label="Back to profile" />
                                     <Link to={dashboardHref} className="rounded-full border border-white/20 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10">
                                         Open dashboard
                                     </Link>

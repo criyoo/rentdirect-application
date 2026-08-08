@@ -4,6 +4,8 @@ import { useForm, useFieldArray } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { api, getApiUrl } from '@/lib/api'
+import LegalConsentCheckbox from '@/components/LegalConsentCheckbox'
+import DashboardBackButton from '@/components/DashboardBackButton'
 import { useQuery } from '@tanstack/react-query'
 import { Listing, User } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
@@ -152,6 +154,8 @@ export default function ListingFormPage() {
     const [additionalImages, setAdditionalImages] = useState<File[]>([])
     const [propertyDocumentFiles, setPropertyDocumentFiles] = useState<File[]>([])
     const [isSubmitting, setIsSubmitting] = useState(false)
+    const [hasAcceptedLegalConsent, setHasAcceptedLegalConsent] = useState(false)
+    const [legalConsentError, setLegalConsentError] = useState('')
 
     const {
         register,
@@ -208,6 +212,8 @@ export default function ListingFormPage() {
         if (propertyVerificationMethod === 'in_person') {
             setPropertyDocumentFiles([])
         }
+        setHasAcceptedLegalConsent(false)
+        setLegalConsentError('')
     }, [propertyVerificationMethod])
 
     useEffect(() => {
@@ -397,6 +403,10 @@ export default function ListingFormPage() {
     }
 
     const onSubmit = async (data: ListingFormValues) => {
+        if (!hasAcceptedLegalConsent) {
+            setLegalConsentError('Review the property verification terms and tick the consent box before submitting this verification request.')
+            return
+        }
         if (!isEditMode && !coverImage) {
             alert('Please select a cover image')
             return
@@ -533,12 +543,7 @@ export default function ListingFormPage() {
                     >
                         Go to Verification
                     </button>
-                    <button
-                        onClick={() => navigate('/dashboard/landlord/' + landlordUser?.id)}
-                        className="mt-3 w-full rounded-lg bg-gray-100 px-4 py-3 font-medium text-gray-700 hover:bg-gray-200 transition"
-                    >
-                        Back to Dashboard
-                    </button>
+                    <DashboardBackButton to={`/dashboard/landlord/${landlordUser?.id}`} label="Back to Dashboard" className="mt-3 w-full justify-center" />
                 </div>
             </div>
         )
@@ -1065,6 +1070,17 @@ export default function ListingFormPage() {
                                 </p>
                             </div>
                         </div>
+
+                        <LegalConsentCheckbox
+                            id="property-verification-legal-consent"
+                            documents={[{ slug: 'property-verification-physical-inspection-terms', title: 'Property Verification and Physical Inspection Terms' }]}
+                            checked={hasAcceptedLegalConsent}
+                            error={legalConsentError}
+                            onChange={(checked) => {
+                                setHasAcceptedLegalConsent(checked)
+                                if (checked) setLegalConsentError('')
+                            }}
+                        />
 
                         <div className="flex justify-end space-x-4">
                             <button

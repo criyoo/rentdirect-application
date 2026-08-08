@@ -7,6 +7,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { resolveMediaUrl } from '@/lib/api'
 import { formatCurrencyWithSymbol } from '@/utils/currency'
 import { hasSilverAccess, SubscriptionPaymentRecord } from '@/lib/subscriptions'
+import DashboardBackButton from '@/components/DashboardBackButton'
 
 interface Message {
     id: string
@@ -242,12 +243,7 @@ export default function ContactLandlordPage() {
                     >
                         Go to Dashboard to Verify
                     </button>
-                    <button
-                        onClick={() => navigate(`/listings/${listing.id}`)}
-                        className="mt-3 w-full rounded-lg bg-gray-100 px-4 py-3 font-medium text-gray-700 hover:bg-gray-200 transition"
-                    >
-                        Back to Listing
-                    </button>
+                    <DashboardBackButton to={`/listings/${listing.id}`} label="Back to Listing" className="mt-3 w-full justify-center" />
                 </div>
             </div>
         )
@@ -274,12 +270,7 @@ export default function ContactLandlordPage() {
                     >
                         {user ? 'View Subscription Plans' : 'Sign In'}
                     </button>
-                    <button
-                        onClick={() => navigate(`/listings/${listing.id}`)}
-                        className="mt-3 w-full rounded-lg bg-gray-100 px-4 py-3 font-medium text-gray-700 hover:bg-gray-200 transition"
-                    >
-                        Back to Listing
-                    </button>
+                    <DashboardBackButton to={`/listings/${listing.id}`} label="Back to Listing" className="mt-3 w-full justify-center" />
                 </div>
             </div>
         )

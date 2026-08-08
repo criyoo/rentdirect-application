@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import BrandLogo from '@/components/BrandLogo'
 import { HiEye, HiEyeOff, HiMail, HiLockClosed, HiUser, HiUserGroup } from 'react-icons/hi'
@@ -19,11 +19,15 @@ function getRegistrationErrorMessage(err: any): string {
 }
 
 export default function RegisterPage() {
+    const [searchParams] = useSearchParams()
+    const requestedRole = searchParams.get('role')
+    const isRoleLocked = requestedRole === 'tenant' || requestedRole === 'landlord'
+    const initialRole = requestedRole === 'landlord' ? 'landlord' : 'tenant'
     const [formData, setFormData] = useState({
         name: '',
         email: '',
         password: '',
-        role: 'tenant' as 'tenant' | 'landlord'
+        role: initialRole as 'tenant' | 'landlord'
     })
     const [otpCode, setOtpCode] = useState('')
     const [pendingEmail, setPendingEmail] = useState('')
@@ -33,6 +37,19 @@ export default function RegisterPage() {
     const [showPassword, setShowPassword] = useState(false)
     const [error, setError] = useState('')
     const { register, verifyRegistration } = useAuth()
+
+    // The navbar links can change only the query string while this page is open.
+    // Keep the form role and verification step in sync without requiring a refresh.
+    useEffect(() => {
+        if (!isRoleLocked) return
+
+        setFormData(prev => (prev.role === initialRole ? prev : { ...prev, role: initialRole }))
+        setIsOtpStep(false)
+        setOtpCode('')
+        setPendingEmail('')
+        setOtpExpiresIn(0)
+        setError('')
+    }, [initialRole, isRoleLocked])
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -75,19 +92,34 @@ export default function RegisterPage() {
         }))
     }
 
+    const displayedRole = isRoleLocked ? initialRole : formData.role
+
     return (
         <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
             <div className="max-w-md w-full space-y-8">
                 {/* Header */}
                 <div className="text-center">
-                    <div className="flex justify-center -mb-14">
-                        <BrandLogo className="h-80 w-80 mix-blend-multiply" />
+                    <div
+                        className="flex justify-center mb-6 select-none"
+                        onContextMenu={(event) => event.preventDefault()}
+                    >
+                        <BrandLogo className="h-80 w-80 pointer-events-none mix-blend-multiply outline-none focus:outline-none" />
                     </div>
                     <h2 className="text-3xl font-bold text-gray-900">
-                        {isOtpStep ? 'Verify your email' : 'Create your account'}
+                        {isOtpStep
+                            ? 'Verify your email'
+                            : isRoleLocked
+                                ? `Create your ${displayedRole} account`
+                                : 'Create your account'}
                     </h2>
                     <p className="text-gray-600">
-                        {isOtpStep ? `Enter the code sent to ${pendingEmail}` : 'Join RentDirect and find your perfect home'}
+                        {isOtpStep
+                            ? `Enter the code sent to ${pendingEmail}`
+                            : isRoleLocked
+                                ? displayedRole === 'landlord'
+                                    ? 'List your properties and connect directly with verified tenants'
+                                    : 'Find verified properties and connect directly with landlords'
+                                : 'Join RentDirect and choose how you want to use the platform'}
                     </p>
                 </div>
 
@@ -242,57 +274,59 @@ export default function RegisterPage() {
                                 </div>
 
                                 {/* Role Selection */}
-                                <div>
-                                    <label htmlFor="role" className="form-label">
-                                        I am a
-                                    </label>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <label className="relative">
-                                            <input
-                                                type="radio"
-                                                name="role"
-                                                value="tenant"
-                                                checked={formData.role === 'tenant'}
-                                                onChange={handleChange}
-                                                className="sr-only"
-                                            />
-                                            <div className={`p-4 border-2 rounded-lg cursor-pointer transition-all duration-200 ${formData.role === 'tenant'
-                                                ? 'border-blue-500 bg-blue-50'
-                                                : 'border-gray-200 hover:border-gray-300'
-                                                }`}>
-                                                <div className="flex items-center space-x-3">
-                                                    <HiUser className="w-5 h-5 text-gray-600" />
-                                                    <div>
-                                                        <div className="font-medium text-gray-900">Tenant</div>
-                                                        <div className="text-sm text-gray-500">Looking for a home</div>
+                                {!isRoleLocked && (
+                                    <div>
+                                        <label htmlFor="role" className="form-label">
+                                            I am a
+                                        </label>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <label className="relative">
+                                                <input
+                                                    type="radio"
+                                                    name="role"
+                                                    value="tenant"
+                                                    checked={formData.role === 'tenant'}
+                                                    onChange={handleChange}
+                                                    className="sr-only"
+                                                />
+                                                <div className={`p-4 border-2 rounded-lg cursor-pointer transition-all duration-200 ${formData.role === 'tenant'
+                                                    ? 'border-blue-500 bg-blue-50'
+                                                    : 'border-gray-200 hover:border-gray-300'
+                                                    }`}>
+                                                    <div className="flex items-center space-x-3">
+                                                        <HiUser className="w-5 h-5 text-gray-600" />
+                                                        <div>
+                                                            <div className="font-medium text-gray-900">Tenant</div>
+                                                            <div className="text-sm text-gray-500">Looking for a home</div>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                        </label>
-                                        <label className="relative">
-                                            <input
-                                                type="radio"
-                                                name="role"
-                                                value="landlord"
-                                                checked={formData.role === 'landlord'}
-                                                onChange={handleChange}
-                                                className="sr-only"
-                                            />
-                                            <div className={`p-4 border-2 rounded-lg cursor-pointer transition-all duration-200 ${formData.role === 'landlord'
-                                                ? 'border-blue-500 bg-blue-50'
-                                                : 'border-gray-200 hover:border-gray-300'
-                                                }`}>
-                                                <div className="flex items-center space-x-3">
-                                                    <HiUserGroup className="w-5 h-5 text-gray-600" />
-                                                    <div>
-                                                        <div className="font-medium text-gray-900">Landlord</div>
-                                                        <div className="text-sm text-gray-500">Renting out property</div>
+                                            </label>
+                                            <label className="relative">
+                                                <input
+                                                    type="radio"
+                                                    name="role"
+                                                    value="landlord"
+                                                    checked={formData.role === 'landlord'}
+                                                    onChange={handleChange}
+                                                    className="sr-only"
+                                                />
+                                                <div className={`p-4 border-2 rounded-lg cursor-pointer transition-all duration-200 ${formData.role === 'landlord'
+                                                    ? 'border-blue-500 bg-blue-50'
+                                                    : 'border-gray-200 hover:border-gray-300'
+                                                    }`}>
+                                                    <div className="flex items-center space-x-3">
+                                                        <HiUserGroup className="w-5 h-5 text-gray-600" />
+                                                        <div>
+                                                            <div className="font-medium text-gray-900">Landlord</div>
+                                                            <div className="text-sm text-gray-500">Renting out property</div>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                        </label>
+                                            </label>
+                                        </div>
                                     </div>
-                                </div>
+                                )}
 
                                 {/* Submit Button */}
                                 <button

@@ -10,6 +10,7 @@ import { hasSilverAccess, SubscriptionPaymentRecord } from '@/lib/subscriptions'
 import { Booking, Listing, Payment } from '@/types'
 import { formatCurrencyWithSymbol } from '@/utils/currency'
 import { calculateRentBreakdown } from '@/utils/rent'
+import DashboardBackButton from '@/components/DashboardBackButton'
 
 type PaymentCheckoutResponse = {
     payment: Payment
@@ -524,13 +525,7 @@ export default function RentPage() {
                     >
                         {user?.role === 'tenant' ? 'View Subscription Plans' : 'Sign In'}
                     </button>
-                    <button
-                        type="button"
-                        onClick={() => navigate(`/listings/${listing.id}`)}
-                        className="mt-3 w-full rounded-lg bg-gray-100 px-4 py-3 font-medium text-gray-700 hover:bg-gray-200"
-                    >
-                        Back to Listing
-                    </button>
+                    <DashboardBackButton to={`/listings/${listing.id}`} label="Back to Listing" className="mt-3 w-full justify-center" />
                 </div>
             </div>
         )
@@ -927,12 +922,7 @@ export default function RentPage() {
                                         </button>
                                     )}
 
-                                    <button
-                                        onClick={() => navigate(`/listings/${listing.id}`)}
-                                        className="w-full border border-gray-300 text-gray-700 py-3 px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors"
-                                    >
-                                        Back to Property
-                                    </button>
+                                    <DashboardBackButton to={`/listings/${listing.id}`} label="Back to Property" className="w-full justify-center" />
                                 </div>
                             </div>
                         </div>

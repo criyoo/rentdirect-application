@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 
 import { useAuth } from '@/hooks/useAuth'
+import DashboardBackButton from '@/components/DashboardBackButton'
 import { api } from '@/lib/api'
 import { complaintTopics, landlordComplaintTopics } from '@/lib/tenantSupport'
 
@@ -59,9 +60,7 @@ export default function TenantComplaintPage() {
                         <p className="text-sm font-medium uppercase tracking-[0.2em] text-red-600">Complaint</p>
                         <h1 className="text-3xl font-bold text-gray-900">Submit a {role} complaint</h1>
                     </div>
-                    <Link to={dashboardPath} className="btn btn-outline">
-                        Back to Dashboard
-                    </Link>
+                    <DashboardBackButton to={dashboardPath} label="Back to Dashboard" />
                 </div>
 
                 {error && <div className="mt-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div>}

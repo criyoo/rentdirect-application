@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { getApiUrl } from '@/lib/api'
 import { HostedCheckoutPayload, launchHostedCheckout } from '@/lib/payments'
 import { formatCurrencyWithSymbol } from '@/utils/currency'
@@ -116,7 +116,7 @@ export default function FeaturedPropertyPaymentPage() {
                 <div className="text-red-600 text-6xl mb-4">⚠️</div>
                 <h1 className="text-2xl font-bold text-gray-900 mb-2">Payment Error</h1>
                 <p className="text-gray-600 mb-4">{error}</p>
-                <Link to="/dashboard/featured-properties" className="text-blue-600 hover:underline">Back to Featured Properties</Link>
+                <DashboardBackButton to="/dashboard/featured-properties" label="Back to Featured Properties" />
             </div>
         </div>
     )
@@ -166,12 +166,9 @@ export default function FeaturedPropertyPaymentPage() {
                         </button>
                     )}
 
-                    <Link
-                        to="/dashboard/featured-properties"
-                        className="block text-center mt-4 text-sm text-blue-600 hover:text-blue-800"
-                    >
-                        Back to Featured Properties
-                    </Link>
+                    <div className="mt-4 flex justify-center">
+                        <DashboardBackButton to="/dashboard/featured-properties" label="Back to Featured Properties" />
+                    </div>
                 </div>
             </div>
         </div>

@@ -1,4 +1,4 @@
-import { Link, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ReactNode } from 'react'
 import {
@@ -13,6 +13,7 @@ import {
 } from 'react-icons/hi'
 
 import { api, resolveMediaUrl } from '@/lib/api'
+import DashboardBackButton from '@/components/DashboardBackButton'
 
 type PublicTenantProfile = {
     id: string
@@ -124,9 +125,7 @@ export default function PublicTenantProfilePage() {
                 <div className="rounded-xl border bg-white p-6">
                     <h1 className="text-xl font-semibold text-gray-900">Tenant profile unavailable</h1>
                     <p className="mt-2 text-gray-600">Please refresh the page and try again.</p>
-                    <Link to="/landlord/enquiries" className="btn btn-outline mt-5">
-                        Back to enquiries
-                    </Link>
+                    <DashboardBackButton to="/landlord/enquiries" label="Back to enquiries" className="mt-5" />
                 </div>
             </div>
         )
@@ -163,9 +162,7 @@ export default function PublicTenantProfilePage() {
                             </div>
                         </div>
                     </div>
-                    <Link to="/landlord/enquiries" className="btn btn-outline">
-                        Back to enquiries
-                    </Link>
+                    <DashboardBackButton to="/landlord/enquiries" label="Back to enquiries" />
                 </div>
             </div>
 

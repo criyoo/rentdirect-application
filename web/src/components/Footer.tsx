@@ -10,6 +10,7 @@ import {
     HiShieldCheck,
     HiUserGroup,
 } from 'react-icons/hi'
+import { FaInstagram, FaLinkedinIn, FaXTwitter } from 'react-icons/fa6'
 
 const browseLinks = [
     { label: 'Home', href: '/' },
@@ -34,6 +35,12 @@ const footerHighlights = [
         description: 'Track rental steps and billing in one workflow.',
         icon: HiShieldCheck,
     },
+]
+
+const socialLinks = [
+    { label: 'LinkedIn', href: 'https://www.linkedin.com/company/rentdirectnig', icon: FaLinkedinIn },
+    { label: 'Instagram', href: 'https://www.instagram.com/rentdirectnig/', icon: FaInstagram },
+    { label: 'X', href: 'https://x.com/RentDirectNig', icon: FaXTwitter },
 ]
 
 export default function Footer() {
@@ -217,7 +224,7 @@ export default function Footer() {
                         </div>
                     </div>
 
-                    <div className="flex flex-col gap-3 pt-6 text-sm text-slate-400 md:flex-row md:items-center md:justify-between">
+                    <div className="flex flex-col gap-4 pt-6 text-sm text-slate-400 md:flex-row md:items-center md:justify-between">
                         <p>Copyright {new Date().getFullYear()} RentDirect. All rights reserved.</p>
                         <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
                             <span className="inline-flex items-center gap-2">
@@ -233,6 +240,27 @@ export default function Footer() {
                                 Secure rent workflow
                             </span>
                         </div>
+                        <nav aria-label="Social media" className="flex items-center gap-3">
+                            <span className="font-semibold text-slate-300">Follow us</span>
+                            <div className="flex items-center gap-2">
+                                {socialLinks.map((socialLink) => {
+                                    const Icon = socialLink.icon
+
+                                    return (
+                                        <a
+                                            key={socialLink.label}
+                                            href={socialLink.href}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            aria-label={`RentDirect on ${socialLink.label}`}
+                                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-slate-300 transition hover:border-blue-300/50 hover:bg-blue-500/15 hover:text-white"
+                                        >
+                                            <Icon className="h-4 w-4" aria-hidden="true" />
+                                        </a>
+                                    )
+                                })}
+                            </div>
+                        </nav>
                     </div>
                 </div>
             </div>

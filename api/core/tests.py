@@ -14,6 +14,7 @@ from django.conf import settings
 from django.core import mail
 from django.core.cache import cache
 from django.core.management import call_command
+from django.core.files.storage import FileSystemStorage
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.test.utils import override_settings
@@ -173,8 +174,14 @@ class HealthTests(TestCase):
             media_root = base_dir / "media-root"
             video_dir.mkdir(parents=True)
             (video_dir / "rentdirect.mp4").write_bytes(b"fake video")
+            test_storage = FileSystemStorage(location=media_root)
 
-            with override_settings(BASE_DIR=base_dir, MEDIA_ROOT=media_root, STORAGES=TEST_FILE_STORAGES):
+            with override_settings(
+                BASE_DIR=base_dir,
+                MEDIA_ROOT=media_root,
+                STORAGES=TEST_FILE_STORAGES,
+                HOMEPAGE_VIDEO_SOURCE_PATH="uploads/seed/video/rentdirect.mp4",
+            ), patch("core.views.default_storage", test_storage):
                 response = self.client.get("/api/v1/homepage-video")
 
                 self.assertEqual(response.status_code, 200)
@@ -188,8 +195,14 @@ class HealthTests(TestCase):
             media_root = base_dir / "media-root"
             video_dir.mkdir(parents=True)
             (video_dir / "rentdirect.mp4").write_bytes(b"0123456789")
+            test_storage = FileSystemStorage(location=media_root)
 
-            with override_settings(BASE_DIR=base_dir, MEDIA_ROOT=media_root, STORAGES=TEST_FILE_STORAGES):
+            with override_settings(
+                BASE_DIR=base_dir,
+                MEDIA_ROOT=media_root,
+                STORAGES=TEST_FILE_STORAGES,
+                HOMEPAGE_VIDEO_SOURCE_PATH="uploads/seed/video/rentdirect.mp4",
+            ), patch("core.views.default_storage", test_storage):
                 response = self.client.get("/api/v1/homepage-video", HTTP_RANGE="bytes=2-5")
 
                 self.assertEqual(response.status_code, 206)

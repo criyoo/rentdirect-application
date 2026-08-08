@@ -401,259 +401,259 @@ export default function SearchPage() {
 
                     {/* Search Form */}
                     <form onSubmit={handleSubmit} className="mb-0 rounded-2xl border border-white/30 bg-white/95 p-6 shadow-2xl shadow-indigo-950/25 backdrop-blur sm:p-8">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {/* Search Query */}
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Search</label>
-                            <input
-                                type="text"
-                                value={filters.query}
-                                onChange={(e) => handleFilterChange('query', e.target.value)}
-                                placeholder="Search by title, location, or city..."
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
-                        </div>
-
-                        {/* State */}
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
-                            <select
-                                value={filters.state || ''}
-                                onChange={(e) => handleStateChange(e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            >
-                                <option value="">All States</option>
-                                {nigerianStates.map((state) => (
-                                    <option key={state} value={state}>{state}</option>
-                                ))}
-                            </select>
-                        </div>
-
-                        {/* City */}
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
-                            <div className="space-y-2">
-                                <select
-                                    value={selectedCityOption}
-                                    onChange={(e) => handleCityOptionChange(e.target.value)}
-                                    disabled={!filters.state}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
-                                >
-                                    <option value="">{filters.state ? 'All Cities' : 'Select state first'}</option>
-                                    {availableCities.map((city) => (
-                                        <option key={city} value={city}>{city}</option>
-                                    ))}
-                                    {filters.state ? <option value={OTHER_CITY_OPTION}>Other</option> : null}
-                                </select>
-
-                                {selectedCityOption === OTHER_CITY_OPTION ? (
-                                    <input
-                                        type="text"
-                                        value={otherCity}
-                                        onChange={(e) => handleOtherCityChange(e.target.value)}
-                                        placeholder="Enter city"
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    />
-                                ) : null}
-                            </div>
-                        </div>
-                    </div>
-                    <br />
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-3">
-                        {/* Property Type */}
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Property Type</label>
-                            <select
-                                value={filters.property_type}
-                                onChange={(e) => handleFilterChange('property_type', e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            >
-                                <option value="">All Types</option>
-                                {propertyTypes.map((type) => (
-                                    <option key={type} value={type}>{type.charAt(0).toUpperCase() + type.slice(1)}</option>
-                                ))}
-                            </select>
-                        </div>
-
-                        {/* Bedrooms */}
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Bedrooms</label>
-                            <select
-                                value={filters.bedrooms || ''}
-                                onChange={(e) => handleFilterChange('bedrooms', e.target.value ? Number(e.target.value) : undefined)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            >
-                                <option value="">Any</option>
-                                {bedroomOptions.map((num) => (
-                                    <option key={num} value={num}>{num}</option>
-                                ))}
-                            </select>
-                        </div>
-
-                        {/* Bathrooms */}
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Bathrooms</label>
-                            <select
-                                value={filters.bathrooms || ''}
-                                onChange={(e) => handleFilterChange('bathrooms', e.target.value ? Number(e.target.value) : undefined)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            >
-                                <option value="">Any</option>
-                                {bathroomOptions.map((num) => (
-                                    <option key={num} value={num}>{num}</option>
-                                ))}
-                            </select>
-                        </div>
-
-                        {/* Toilets */}
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Toilets</label>
-                            <select
-                                value={filters.toilets || ''}
-                                onChange={(e) => handleFilterChange('toilets', e.target.value ? Number(e.target.value) : undefined)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            >
-                                <option value="">Any</option>
-                                {toiletOptions.map((num) => (
-                                    <option key={num} value={num}>{num}</option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
-
-                    <div className="flex justify-end mt-6">
-                        <div className="w-full md:w-96">
-                            {/* Price Range */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {/* Search Query */}
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1 text-right">
-                                    Price Range (₦/year)
-                                </label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Search</label>
+                                <input
+                                    type="text"
+                                    value={filters.query}
+                                    onChange={(e) => handleFilterChange('query', e.target.value)}
+                                    placeholder="Search by title, location, or city..."
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                            </div>
 
-                                <div className="flex space-x-3">
-                                    <input
-                                        type="number"
-                                        placeholder="Min"
-                                        className="w-1/2 px-3 py-2 border rounded-md"
-                                    />
+                            {/* State */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
+                                <select
+                                    value={filters.state || ''}
+                                    onChange={(e) => handleStateChange(e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                                    <option value="">All States</option>
+                                    {nigerianStates.map((state) => (
+                                        <option key={state} value={state}>{state}</option>
+                                    ))}
+                                </select>
+                            </div>
 
-                                    <input
-                                        type="number"
-                                        placeholder="Max"
-                                        className="w-1/2 px-3 py-2 border rounded-md"
-                                    />
+                            {/* City */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
+                                <div className="space-y-2">
+                                    <select
+                                        value={selectedCityOption}
+                                        onChange={(e) => handleCityOptionChange(e.target.value)}
+                                        disabled={!filters.state}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
+                                    >
+                                        <option value="">{filters.state ? 'All Cities' : 'Select state first'}</option>
+                                        {availableCities.map((city) => (
+                                            <option key={city} value={city}>{city}</option>
+                                        ))}
+                                        {filters.state ? <option value={OTHER_CITY_OPTION}>Other</option> : null}
+                                    </select>
+
+                                    {selectedCityOption === OTHER_CITY_OPTION ? (
+                                        <input
+                                            type="text"
+                                            value={otherCity}
+                                            onChange={(e) => handleOtherCityChange(e.target.value)}
+                                            placeholder="Enter city"
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        />
+                                    ) : null}
                                 </div>
                             </div>
                         </div>
-                    </div>
+                        <br />
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
-                        {/* Amenities */}
-                        <div className="flex items-center space-x-4 lg:col-span-2">
-                            <label className="flex items-center">
-                                <input
-                                    type="checkbox"
-                                    checked={filters.pet_friendly || false}
-                                    onChange={(e) => handleFilterChange('pet_friendly', e.target.checked)}
-                                    className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                                />
-                                <span className="text-sm text-gray-700">Pet Friendly</span>
-                            </label>
-                            <label className="flex items-center">
-                                <input
-                                    type="checkbox"
-                                    checked={filters.furnished || false}
-                                    onChange={(e) => handleFilterChange('furnished', e.target.checked)}
-                                    className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                                />
-                                <span className="text-sm text-gray-700">Furnished</span>
-                            </label>
-                            <label className="flex items-center">
-                                <input
-                                    type="checkbox"
-                                    checked={filters.utilities_included || false}
-                                    onChange={(e) => handleFilterChange('utilities_included', e.target.checked)}
-                                    className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                                />
-                                <span className="text-sm text-gray-700">Utilities Included</span>
-                            </label>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-3">
+                            {/* Property Type */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Property Type</label>
+                                <select
+                                    value={filters.property_type}
+                                    onChange={(e) => handleFilterChange('property_type', e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                                    <option value="">All Types</option>
+                                    {propertyTypes.map((type) => (
+                                        <option key={type} value={type}>{type.charAt(0).toUpperCase() + type.slice(1)}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Bedrooms */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Bedrooms</label>
+                                <select
+                                    value={filters.bedrooms || ''}
+                                    onChange={(e) => handleFilterChange('bedrooms', e.target.value ? Number(e.target.value) : undefined)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                                    <option value="">Any</option>
+                                    {bedroomOptions.map((num) => (
+                                        <option key={num} value={num}>{num}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Bathrooms */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Bathrooms</label>
+                                <select
+                                    value={filters.bathrooms || ''}
+                                    onChange={(e) => handleFilterChange('bathrooms', e.target.value ? Number(e.target.value) : undefined)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                                    <option value="">Any</option>
+                                    {bathroomOptions.map((num) => (
+                                        <option key={num} value={num}>{num}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Toilets */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Toilets</label>
+                                <select
+                                    value={filters.toilets || ''}
+                                    onChange={(e) => handleFilterChange('toilets', e.target.value ? Number(e.target.value) : undefined)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                                    <option value="">Any</option>
+                                    {toiletOptions.map((num) => (
+                                        <option key={num} value={num}>{num}</option>
+                                    ))}
+                                </select>
+                            </div>
                         </div>
 
-                        {canUseLocationFeatures ? (
-                            <>
+                        <div className="flex justify-end mt-6">
+                            <div className="w-full md:w-96">
+                                {/* Price Range */}
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Radius</label>
-                                    <select
-                                        value={filters.radius_km || ''}
-                                        onChange={(e) => handleFilterChange('radius_km', e.target.value ? Number(e.target.value) : undefined)}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    >
-                                        <option value="">Any distance</option>
-                                        {radiusOptions.map((radius) => (
-                                            <option key={radius} value={radius}>{radius} km</option>
-                                        ))}
-                                    </select>
-                                </div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1 text-right">
+                                        Price Range (₦/year)
+                                    </label>
 
-                                <div className="flex min-h-[76px] flex-col justify-start gap-2 lg:pt-6">
-                                    <div className="flex gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={handleUseCurrentLocation}
-                                            className={`flex-1 px-3 py-2 text-sm font-medium border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${locationButtonActive
-                                                ? 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700'
-                                                : 'border-blue-200 text-blue-700 hover:bg-blue-50'
-                                                }`}
+                                    <div className="flex space-x-3">
+                                        <input
+                                            type="number"
+                                            placeholder="Min"
+                                            className="w-1/2 px-3 py-2 border rounded-md"
+                                        />
+
+                                        <input
+                                            type="number"
+                                            placeholder="Max"
+                                            className="w-1/2 px-3 py-2 border rounded-md"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+                            {/* Amenities */}
+                            <div className="flex items-center space-x-4 lg:col-span-2">
+                                <label className="flex items-center">
+                                    <input
+                                        type="checkbox"
+                                        checked={filters.pet_friendly || false}
+                                        onChange={(e) => handleFilterChange('pet_friendly', e.target.checked)}
+                                        className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                    />
+                                    <span className="text-sm text-gray-700">Pet Friendly</span>
+                                </label>
+                                <label className="flex items-center">
+                                    <input
+                                        type="checkbox"
+                                        checked={filters.furnished || false}
+                                        onChange={(e) => handleFilterChange('furnished', e.target.checked)}
+                                        className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                    />
+                                    <span className="text-sm text-gray-700">Furnished</span>
+                                </label>
+                                <label className="flex items-center">
+                                    <input
+                                        type="checkbox"
+                                        checked={filters.utilities_included || false}
+                                        onChange={(e) => handleFilterChange('utilities_included', e.target.checked)}
+                                        className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                    />
+                                    <span className="text-sm text-gray-700">Utilities Included</span>
+                                </label>
+                            </div>
+
+                            {canUseLocationFeatures ? (
+                                <>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Radius</label>
+                                        <select
+                                            value={filters.radius_km || ''}
+                                            onChange={(e) => handleFilterChange('radius_km', e.target.value ? Number(e.target.value) : undefined)}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                                         >
-                                            Use my location
-                                        </button>
-                                        {filters.latitude !== undefined && filters.longitude !== undefined ? (
+                                            <option value="">Any distance</option>
+                                            {radiusOptions.map((radius) => (
+                                                <option key={radius} value={radius}>{radius} km</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div className="flex min-h-[76px] flex-col justify-start gap-2 lg:pt-6">
+                                        <div className="flex gap-2">
                                             <button
                                                 type="button"
-                                                onClick={handleClearLocation}
-                                                className="px-3 py-2 text-sm font-medium text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                onClick={handleUseCurrentLocation}
+                                                className={`flex-1 px-3 py-2 text-sm font-medium border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${locationButtonActive
+                                                    ? 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700'
+                                                    : 'border-blue-200 text-blue-700 hover:bg-blue-50'
+                                                    }`}
                                             >
-                                                Clear
+                                                Use my location
                                             </button>
-                                        ) : null}
+                                            {filters.latitude !== undefined && filters.longitude !== undefined ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={handleClearLocation}
+                                                    className="px-3 py-2 text-sm font-medium text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                >
+                                                    Clear
+                                                </button>
+                                            ) : null}
+                                        </div>
+                                        <p className={`min-h-4 text-xs ${locationStatus ? 'text-gray-600' : 'text-transparent'}`}>
+                                            {locationStatus || 'Location status'}
+                                        </p>
                                     </div>
-                                    <p className={`min-h-4 text-xs ${locationStatus ? 'text-gray-600' : 'text-transparent'}`}>
-                                        {locationStatus || 'Location status'}
-                                    </p>
+                                </>
+                            ) : (
+                                <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 lg:col-span-2">
+                                    {isSubscriptionLoading
+                                        ? 'Checking property location access...'
+                                        : (
+                                            <>
+
+                                                <Link to={user ? '/billing' : '/login'} className="font-semibold underline">
+                                                    {user ? 'View plans' : 'Sign in'}
+                                                </Link>
+                                                {' '}to use location analytics for radius, maps and precise area search.
+                                            </>
+                                        )}
                                 </div>
-                            </>
-                        ) : (
-                            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 lg:col-span-2">
-                                {isSubscriptionLoading
-                                    ? 'Checking property location access...'
-                                    : (
-                                        <>
+                            )}
+                        </div>
 
-                                            <Link to={user ? '/billing' : '/login'} className="font-semibold underline">
-                                                {user ? 'View plans' : 'Sign in'}
-                                            </Link>
-                                            {' '}to use the location analytics for radius search, maps and precise location.
-                                        </>
-                                    )}
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="flex justify-between items-center mt-8">
-                        <button
-                            type="button"
-                            onClick={clearFilters}
-                            className="px-4 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                            Clear Filters
-                        </button>
-                        <button
-                            type="submit"
-                            className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                            Search
-                        </button>
-                    </div>
+                        <div className="flex justify-between items-center mt-8">
+                            <button
+                                type="button"
+                                onClick={clearFilters}
+                                className="px-4 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                                Clear Filters
+                            </button>
+                            <button
+                                type="submit"
+                                className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                                Search
+                            </button>
+                        </div>
                     </form>
                 </div>
             </section>

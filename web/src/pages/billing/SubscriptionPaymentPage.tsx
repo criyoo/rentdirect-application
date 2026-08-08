@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { getApiUrl } from '@/lib/api'
 import { HostedCheckoutPayload, launchHostedCheckout } from '@/lib/payments'
 import { useAppPopup } from '@/contexts/AppPopupContext'
 import { formatCurrencyWithSymbol } from '@/utils/currency'
+import DashboardBackButton from '@/components/DashboardBackButton'
 
 type SubscriptionPayment = {
     id: string
@@ -211,7 +212,7 @@ export default function SubscriptionPaymentPage() {
                     <div className="text-red-600 text-6xl mb-4">!</div>
                     <h1 className="text-2xl font-bold text-gray-900 mb-2">Payment Error</h1>
                     <p className="text-gray-600 mb-4">{error}</p>
-                    <Link to="/billing" className="text-blue-600 hover:underline">Back to Billing</Link>
+                    <DashboardBackButton to="/billing" label="Back to Billing" />
                 </div>
             </div>
         )
@@ -302,12 +303,9 @@ export default function SubscriptionPaymentPage() {
                         </button>
                     )}
 
-                    <Link
-                        to="/billing"
-                        className="block text-center mt-4 text-sm text-blue-600 hover:text-blue-800"
-                    >
-                        Back to Billing
-                    </Link>
+                    <div className="mt-4 flex justify-center">
+                        <DashboardBackButton to="/billing" label="Back to Billing" />
+                    </div>
                 </div>
             </div>
         </div>

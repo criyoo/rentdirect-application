@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { api, resolveMediaUrl } from '@/lib/api'
 import { Link, useParams } from 'react-router-dom'
+import DashboardBackButton from '@/components/DashboardBackButton'
 
 type Conversation = {
     counterpart_id: string
@@ -50,7 +51,7 @@ export default function EnquiriesPage() {
                 </div>
             )}
             <div className="mt-6">
-                <Link to={`/dashboard/tenant/${userId}`} className="text-brand">Back to dashboard</Link>
+                <DashboardBackButton to={`/dashboard/tenant/${userId}`} label="Back to dashboard" />
             </div>
         </div>
     )

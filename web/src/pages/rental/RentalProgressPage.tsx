@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { HiArrowLeft, HiCheckCircle, HiClock } from 'react-icons/hi'
+import { HiCheckCircle, HiClock } from 'react-icons/hi'
 import { Link, useParams } from 'react-router-dom'
 
 import { useAuth } from '@/hooks/useAuth'
@@ -8,6 +8,7 @@ import { api, resolveMediaUrl } from '@/lib/api'
 import { hasPlatinumAccess, hasSilverAccess, SubscriptionPaymentRecord } from '@/lib/subscriptions'
 import { Booking, RentalProgressStep } from '@/types'
 import { formatCurrencyWithSymbol } from '@/utils/currency'
+import DashboardBackButton from '@/components/DashboardBackButton'
 
 function parseErrorMessage(error: any, fallback: string): string {
     if (typeof error?.response?.data === 'string') {
@@ -134,7 +135,7 @@ export default function RentalProgressPage() {
                     </p>
                     <div className="mt-6 flex flex-wrap gap-3">
                         <Link to="/billing" className="btn btn-primary">Upgrade Plan</Link>
-                        <Link to={`/dashboard/tenant/${user?.id}`} className="btn btn-outline">Back to dashboard</Link>
+                        <DashboardBackButton to={`/dashboard/tenant/${user?.id}`} label="Back to dashboard" />
                     </div>
                 </div>
             </div>
@@ -157,12 +158,11 @@ export default function RentalProgressPage() {
                     <p className="mt-3 text-gray-600">
                         {parseErrorMessage(error, 'Rental progress details could not be loaded.')}
                     </p>
-                    <Link
+                    <DashboardBackButton
                         to={user?.role === 'landlord' ? `/dashboard/landlord/${user.id}` : `/dashboard/tenant/${user?.id}`}
-                        className="btn btn-outline mt-6"
-                    >
-                        Back to dashboard
-                    </Link>
+                        label="Back to dashboard"
+                        className="mt-6"
+                    />
                 </div>
             </div>
         )
@@ -178,10 +178,7 @@ export default function RentalProgressPage() {
         <div className="min-h-screen bg-gray-50">
             <div className="container-modern py-8">
                 <div className="mx-auto max-w-6xl">
-                    <Link to={dashboardPath} className="inline-flex items-center gap-2 text-sm font-medium text-blue-600">
-                        <HiArrowLeft className="h-4 w-4" />
-                        Back to dashboard
-                    </Link>
+                    <DashboardBackButton to={dashboardPath} label="Back to dashboard" />
 
                     <div className="mt-4 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
                         <div className="overflow-hidden rounded-3xl border bg-white shadow-sm">

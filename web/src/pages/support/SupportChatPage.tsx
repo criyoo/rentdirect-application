@@ -1,9 +1,9 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { HiPaperAirplane, HiSupport } from 'react-icons/hi'
 
 import { useAuth } from '@/hooks/useAuth'
+import DashboardBackButton from '@/components/DashboardBackButton'
 import { api, getWebSocketUrl, resolveMediaUrl } from '@/lib/api'
 
 type PaginatedResponse<T> = { results?: T[] }
@@ -102,9 +102,7 @@ export default function SupportChatPage() {
                         <p className="text-sm font-medium uppercase tracking-[0.2em] text-blue-600">Support Chat</p>
                         <h1 className="text-3xl font-bold text-gray-900">RentDirect support team</h1>
                     </div>
-                    <Link to={dashboardPath} className="btn btn-outline">
-                        Back to Dashboard
-                    </Link>
+                    <DashboardBackButton to={dashboardPath} label="Back to Dashboard" />
                 </div>
 
                 <div className="card mt-6 overflow-hidden">
