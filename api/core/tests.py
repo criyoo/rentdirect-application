@@ -2600,7 +2600,7 @@ class VerificationRequestViewSetTests(TestCase):
         self.assertEqual(request.identity_verification_status, VerificationRequest.VerificationProgressStatus.VERIFIED)
 
     @patch("core.dikript_verification.dikript_lookup")
-    def test_landlord_identification_rejects_phone_that_matches_neither_nin_nor_bvn(self, dikript_lookup_mock):
+    def test_landlord_identification_warns_when_phone_matches_neither_nin_nor_bvn(self, dikript_lookup_mock):
         dikript_lookup_mock.side_effect = [
             self._nin_payload(phone="08011111111"),
             self._bvn_payload(phone="08022222222"),
@@ -2636,11 +2636,14 @@ class VerificationRequestViewSetTests(TestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, 400, response.json())
-        self.assertEqual(response.json()["mobile"], "Mobile number does not match the NIN or BVN records.")
+        self.assertEqual(response.status_code, 201, response.json())
+        self.assertEqual(
+            response.json()["mobile_warning"],
+            "Warning: Mobile number does not match number register in NIN or BVN. Do you want to register this number?",
+        )
 
     @patch("core.dikript_verification.dikript_lookup")
-    def test_landlord_identification_requires_phone_for_nin(self, dikript_lookup_mock):
+    def test_landlord_identification_warns_when_phone_is_missing(self, dikript_lookup_mock):
         dikript_lookup_mock.side_effect = [self._nin_payload(), self._bvn_payload()]
         user = AppUser.objects.create_user(
             email="landlord-phone-required@example.com",
@@ -2673,9 +2676,12 @@ class VerificationRequestViewSetTests(TestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, 400, response.json())
-        self.assertEqual(response.json()["mobile"], "Contact number is required for NIN verification.")
-        self.assertEqual(dikript_lookup_mock.call_count, 1)
+        self.assertEqual(response.status_code, 201, response.json())
+        self.assertEqual(
+            response.json()["mobile_warning"],
+            "Warning: You did not provide a contact number, please ensure you add a contact number in your profile",
+        )
+        self.assertEqual(dikript_lookup_mock.call_count, 2)
 
     @patch("core.dikript_verification.dikript_lookup")
     def test_landlord_corporate_identification_verifies_cac(self, dikript_lookup_mock):

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { Controller, FieldErrors, useFieldArray, useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -36,16 +36,16 @@ function parseDateInput(value?: string | null): Date | null {
     return Number.isNaN(parsedDate.getTime()) ? null : parsedDate
 }
 
-function currentResidenceMoveInDateIsAtLeastFiveYears(value?: string | null): boolean {
-    const moveInDate = parseDateInput(value)
-    if (!moveInDate) {
+function currentResidencePeriodIsAtLeastFiveYears(moveInValue?: string | null, moveOutValue?: string | null): boolean {
+    const moveInDate = parseDateInput(moveInValue)
+    const moveOutDate = parseDateInput(moveOutValue)
+    if (!moveInDate || !moveOutDate) {
         return false
     }
 
-    const threshold = new Date()
-    threshold.setHours(0, 0, 0, 0)
-    threshold.setFullYear(threshold.getFullYear() - 5)
-    return moveInDate <= threshold
+    const fiveYearAnniversary = new Date(moveInDate)
+    fiveYearAnniversary.setFullYear(fiveYearAnniversary.getFullYear() + 5)
+    return moveOutDate >= fiveYearAnniversary
 }
 
 function yearsSinceMoveInDate(value?: string | null): number {
@@ -300,20 +300,23 @@ const schema = z.object({
 
     const filledRentalHistory = (data.rental_history || []).filter((item) => rentalHistoryItemHasAnyValue(item))
 
-    ;(data.rental_history || []).forEach((item, index) => {
-        if (!rentalHistoryItemHasAnyValue(item)) {
-            return
-        }
-        rentalHistoryItemMissingFields(item).forEach((fieldName) => {
-            ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                path: ['rental_history', index, fieldName],
-                message: 'This field is required.',
+        ; (data.rental_history || []).forEach((item, index) => {
+            if (!rentalHistoryItemHasAnyValue(item)) {
+                return
+            }
+            rentalHistoryItemMissingFields(item).forEach((fieldName) => {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: ['rental_history', index, fieldName],
+                    message: 'This field is required.',
+                })
             })
         })
-    })
 
-    const currentResidenceIsFiveYearsOrMore = currentResidenceMoveInDateIsAtLeastFiveYears(data.financial_info?.current_move_in_date)
+    const currentResidenceIsFiveYearsOrMore = currentResidencePeriodIsAtLeastFiveYears(
+        data.financial_info?.current_move_in_date,
+        data.financial_info?.expected_move_out_date,
+    )
     if (currentResidenceIsFiveYearsOrMore) {
         return
     }
@@ -339,6 +342,86 @@ const schema = z.object({
 })
 
 type FormValues = z.infer<typeof schema>
+
+const tenantProfileDraftKeyPrefix = 'rentdirect:tenant-profile-draft:'
+
+function isRecord(value: unknown): value is Record<string, any> {
+    return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function readTenantProfileDraft(storageKey: string | null): Record<string, any> | null {
+    if (!storageKey || typeof window === 'undefined') {
+        return null
+    }
+
+    try {
+        const storedDraft = window.localStorage.getItem(storageKey)
+        if (!storedDraft) {
+            return null
+        }
+
+        const parsedDraft = JSON.parse(storedDraft)
+        return isRecord(parsedDraft) ? parsedDraft : null
+    } catch {
+        return null
+    }
+}
+
+function mergeTenantProfileValues(
+    baseValues: Record<string, any>,
+    draftValues: Record<string, any> | null,
+): Record<string, any> {
+    if (!draftValues) {
+        return baseValues
+    }
+
+    const mergedValues = { ...baseValues }
+    Object.entries(draftValues).forEach(([key, value]) => {
+        if (Array.isArray(value)) {
+            mergedValues[key] = value
+            return
+        }
+
+        if (isRecord(value) && isRecord(mergedValues[key])) {
+            mergedValues[key] = mergeTenantProfileValues(mergedValues[key], value)
+            return
+        }
+
+        if (value !== undefined) {
+            mergedValues[key] = value
+        }
+    })
+
+    return mergedValues
+}
+
+function extractDirtyFormValues(dirtyFields: unknown, formValues: unknown): Record<string, any> {
+    if (!isRecord(dirtyFields) || !isRecord(formValues)) {
+        return {}
+    }
+
+    const dirtyValues: Record<string, any> = {}
+    Object.entries(dirtyFields).forEach(([key, dirtyValue]) => {
+        if (!dirtyValue) {
+            return
+        }
+
+        const currentValue = formValues[key]
+        if (dirtyValue === true || Array.isArray(dirtyValue)) {
+            dirtyValues[key] = currentValue
+            return
+        }
+
+        if (isRecord(dirtyValue) && isRecord(currentValue)) {
+            dirtyValues[key] = extractDirtyFormValues(dirtyValue, currentValue)
+            return
+        }
+
+        dirtyValues[key] = currentValue
+    })
+
+    return dirtyValues
+}
 
 const employmentOptions = ['Employed', 'Self Employed', 'Business Owner', 'Freelancer', 'Retired', 'Unemployed', 'Student']
 const genderOptions = ['Male', 'Female']
@@ -781,14 +864,20 @@ type TenantProfileDetailsFormProps = {
 export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetailsFormProps = {}) {
     const { user } = useAuth()
     const qc = useQueryClient()
+    const tenantProfileDraftStorageKey = useMemo(() => {
+        const identity = user?.id || user?.email
+        return identity ? `${tenantProfileDraftKeyPrefix}${encodeURIComponent(String(identity))}` : null
+    }, [user?.email, user?.id])
     const [activeStep, setActiveStep] = useState(1)
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [submitError, setSubmitError] = useState('')
     const [fileMap, setFileMap] = useState<FileMap>({})
     const [profilePhoto, setProfilePhoto] = useState<File | null>(null)
     const [profilePhotoPreview, setProfilePhotoPreview] = useState('/placeholder.jpg')
+    const [hydratedDraftStorageKey, setHydratedDraftStorageKey] = useState<string | null>(null)
+    const [draftPersistenceEnabled, setDraftPersistenceEnabled] = useState(true)
 
-    const { data: existingProfile } = useQuery({
+    const { data: existingProfile, isFetched: hasFetchedExistingProfile } = useQuery({
         queryKey: ['users', 'me', 'tenant-profile'],
         queryFn: async () => {
             try {
@@ -801,7 +890,7 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
         enabled: !!user,
     })
 
-    const { data: me } = useQuery({
+    const { data: me, isFetched: hasFetchedUserProfile } = useQuery({
         queryKey: ['users', 'me'],
         queryFn: async () => (await api.get<User>('/users/me')).data,
         enabled: !!user,
@@ -822,10 +911,11 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
 
     const {
         register,
+        getValues,
         handleSubmit,
         watch,
         control,
-        formState: { errors },
+        formState: { errors, dirtyFields },
         reset,
         setValue,
         clearErrors,
@@ -833,6 +923,10 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
         resolver: zodResolver(schema),
         defaultValues: defaultFormValues,
     })
+
+    const watchedFormValues = watch()
+    const dirtyFieldsRef = useRef(dirtyFields)
+    dirtyFieldsRef.current = dirtyFields
 
     const { fields: rentalFields, append: appendRental, remove: removeRental } = useFieldArray({
         control,
@@ -876,8 +970,12 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
         () => yearsSinceMoveInDate(residenceMoveInDate),
         [residenceMoveInDate],
     )
-    const currentResidenceMeetsMinimumHistory = currentResidenceMoveInDateIsAtLeastFiveYears(residenceMoveInDate)
+    const currentResidenceMeetsMinimumHistory = currentResidencePeriodIsAtLeastFiveYears(
+        residenceMoveInDate,
+        residenceExpectedMoveOutDate,
+    )
     const requiresAdditionalRentalHistory = Boolean(rentalHistorySameAsCurrent && !currentResidenceMeetsMinimumHistory)
+    const rentalHistoryFieldsDisabled = Boolean(rentalHistorySameAsCurrent && currentResidenceMeetsMinimumHistory)
     const existingSupportingDocumentCount = existingProfile?.supporting_document_urls?.filter(Boolean).length || 0
     const employmentDocumentTypeCount = Math.min(existingSupportingDocumentCount, 2) + selectedEmploymentDocumentTypeCount(fileMap)
     const hasRequiredEmploymentDocuments = employmentStatus !== 'Employed' || employmentDocumentTypeCount >= 2
@@ -912,38 +1010,62 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
     }, [me?.profile_photo_url, profilePhoto])
 
     useEffect(() => {
-        if (!existingProfile) {
-            reset({
-                ...defaultFormValues,
-                ...verificationProfileDefaults,
-            })
+        if (!hasFetchedExistingProfile || !hasFetchedUserProfile) {
             return
         }
 
-        reset({
-            ...defaultFormValues,
-            ...verificationProfileDefaults,
-            ...existingProfile,
-            employment_info: existingProfile.employment_info || {},
-            financial_info: {
-                ...defaultFormValues.financial_info,
-                ...(existingProfile.financial_info || {}),
-                current_annual_rent: existingProfile.financial_info?.current_annual_rent
-                    || (existingProfile.financial_info as Record<string, any>)?.current_rent_amount
-                    || '',
-            },
-            guarantor_details: existingProfile.guarantor_details || {},
-            landlord_info: existingProfile.landlord_info || {},
-            rental_history_same_as_current_residence: false,
-            rental_history: existingProfile.rental_history?.length ? existingProfile.rental_history : [{ property_address: '' }],
-            household_info: {
-                ...defaultFormValues.household_info,
-                ...(existingProfile.household_info || {}),
-            },
-            social_presence: existingProfile.social_presence || {},
-            criminal_declaration: existingProfile.criminal_declaration || {},
-        })
-    }, [existingProfile, reset, verificationProfileDefaults])
+        const baseValues = !existingProfile
+            ? {
+                ...defaultFormValues,
+                ...verificationProfileDefaults,
+            }
+            : {
+                ...defaultFormValues,
+                ...verificationProfileDefaults,
+                ...existingProfile,
+                employment_info: existingProfile.employment_info || {},
+                financial_info: {
+                    ...defaultFormValues.financial_info,
+                    ...(existingProfile.financial_info || {}),
+                    current_annual_rent: existingProfile.financial_info?.current_annual_rent
+                        || (existingProfile.financial_info as Record<string, any>)?.current_rent_amount
+                        || '',
+                },
+                guarantor_details: existingProfile.guarantor_details || {},
+                landlord_info: existingProfile.landlord_info || {},
+                rental_history_same_as_current_residence: false,
+                rental_history: existingProfile.rental_history?.length ? existingProfile.rental_history : [{ property_address: '' }],
+                household_info: {
+                    ...defaultFormValues.household_info,
+                    ...(existingProfile.household_info || {}),
+                },
+                social_presence: existingProfile.social_presence || {},
+                criminal_declaration: existingProfile.criminal_declaration || {},
+            }
+
+        const storedDraft = readTenantProfileDraft(tenantProfileDraftStorageKey)
+        const inMemoryDraft = extractDirtyFormValues(dirtyFieldsRef.current, getValues())
+        const draftValues = mergeTenantProfileValues(storedDraft || {}, inMemoryDraft)
+        reset(mergeTenantProfileValues(baseValues, draftValues))
+        setHydratedDraftStorageKey(tenantProfileDraftStorageKey)
+    }, [existingProfile, getValues, hasFetchedExistingProfile, hasFetchedUserProfile, reset, tenantProfileDraftStorageKey, verificationProfileDefaults])
+
+    useEffect(() => {
+        if (
+            !tenantProfileDraftStorageKey
+            || !draftPersistenceEnabled
+            || hydratedDraftStorageKey !== tenantProfileDraftStorageKey
+            || typeof window === 'undefined'
+        ) {
+            return
+        }
+
+        try {
+            window.localStorage.setItem(tenantProfileDraftStorageKey, JSON.stringify(watchedFormValues))
+        } catch {
+            // Ignore storage quota and privacy-mode errors; form input should remain usable.
+        }
+    }, [draftPersistenceEnabled, hydratedDraftStorageKey, tenantProfileDraftStorageKey, watchedFormValues])
 
     useEffect(() => {
         if (!nationalityIsNigeria) {
@@ -979,6 +1101,13 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
         }
         setValue('landlord_info.address', residenceAddress || '')
     }, [residenceAddress, sameAsCurrent, setValue])
+
+    useEffect(() => {
+        if (!currentResidenceMeetsMinimumHistory || rentalHistorySameAsCurrent) {
+            return
+        }
+        setValue('rental_history_same_as_current_residence', true)
+    }, [currentResidenceMeetsMinimumHistory, rentalHistorySameAsCurrent, setValue])
 
     useEffect(() => {
         if (!propertyManagerSameAsLandlordName) {
@@ -1038,7 +1167,10 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
         const currentResidenceHistory = buildCurrentResidenceRentalHistoryEntry(data)
 
         if (data.rental_history_same_as_current_residence) {
-            if (currentResidenceMoveInDateIsAtLeastFiveYears(data.financial_info?.current_move_in_date)) {
+            if (currentResidencePeriodIsAtLeastFiveYears(
+                data.financial_info?.current_move_in_date,
+                data.financial_info?.expected_move_out_date,
+            )) {
                 return [currentResidenceHistory]
             }
             return [currentResidenceHistory, ...manualHistory]
@@ -1089,6 +1221,15 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
             return res.data
         },
         onSuccess: (profile) => {
+            setDraftPersistenceEnabled(false)
+            setHydratedDraftStorageKey(null)
+            if (tenantProfileDraftStorageKey && typeof window !== 'undefined') {
+                try {
+                    window.localStorage.removeItem(tenantProfileDraftStorageKey)
+                } catch {
+                    // Ignore storage privacy-mode errors after a successful submission.
+                }
+            }
             qc.setQueryData(['users', 'me', 'tenant-profile'], profile)
             qc.invalidateQueries({ queryKey: ['tenant-profile'] })
             qc.invalidateQueries({ queryKey: ['users', 'me'] })
@@ -1149,7 +1290,7 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
             <div>
                 <div className="mb-6">
                     <h2 className="text-xl font-semibold text-gray-900">Tenant Profile</h2>
-                    <p className="text-gray-600 mt-2">Keep your residence, employment, financial, guarantor, and rental information up to date.</p>
+                    <p className="text-gray-600 mt-2">Keep your profile and rental information up to date.</p>
                 </div>
 
                 {submitError && (
@@ -1159,7 +1300,8 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                 )}
 
                 <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="space-y-6">
-                    <SectionCard title="Profile Photo" step={1} activeStep={activeStep} setActiveStep={setActiveStep}>
+                    {/* 1. Personal Information */}
+                    <SectionCard title="Personal Information" step={1} activeStep={activeStep} setActiveStep={setActiveStep}>
                         <div className="flex flex-col gap-5 md:flex-row md:items-center">
                             <div className="h-28 w-28 overflow-hidden rounded-full border border-gray-200 bg-gray-50">
                                 <img
@@ -1183,10 +1325,8 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                                     <p className="mt-2 text-sm font-medium text-red-600">Profile photo is required.</p>
                                 )}
                             </div>
-                        </div>
-                    </SectionCard>
+                        </div><br />
 
-                    <SectionCard title="Personal Information" step={1} activeStep={activeStep} setActiveStep={setActiveStep}>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <InputRow label="First Name" error={errors.first_name?.message}>
                                 <TextInput register={register} name="first_name" placeholder="First name" error={errors.first_name?.message} />
@@ -1230,87 +1370,9 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                         </div>
                     </SectionCard>
 
-                    {/* 2. Current Residence */}
-                    <SectionCard title="Current Residence" step={2} activeStep={activeStep} setActiveStep={setActiveStep}>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <InputRow label="Country" error={errors.residence_country?.message}>
-                                <SelectInput register={register} name="residence_country" options={[...worldCountryOptions]} placeholder="Select country" error={errors.residence_country?.message} />
-                            </InputRow>
-                            <InputRow label="State" error={errors.residence_state?.message}>
-                                {residenceCountryIsNigeria ? (
-                                    <SelectInput register={register} name="residence_state" options={nigerianStates} placeholder="Select state" error={errors.residence_state?.message} />
-                                ) : (
-                                    <TextInput register={register} name="residence_state" placeholder="State" error={errors.residence_state?.message} />
-                                )}
-                            </InputRow>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                            <InputRow label="City" error={errors.residence_city?.message}>
-                                <TextInput register={register} name="residence_city" placeholder="City" error={errors.residence_city?.message} />
-                            </InputRow>
-                            <InputRow label="LGA" error={errors.residence_lga?.message}>
-                                {residenceCountryIsNigeria ? (
-                                    <SelectInput
-                                        register={register}
-                                        name="residence_lga"
-                                        options={residenceLgaOptions}
-                                        placeholder={residenceState ? 'Select local government area' : 'Select state first'}
-                                        error={errors.residence_lga?.message}
-                                    />
-                                ) : (
-                                    <TextInput register={register} name="residence_lga" placeholder="Local Government Area" error={errors.residence_lga?.message} />
-                                )}
-                            </InputRow>
-                        </div>
-                        <div className="mt-4">
-                            <InputRow label="Address" error={errors.residence_address?.message}>
-                                <textarea
-                                    {...register('residence_address')}
-                                    placeholder="Current residential address"
-                                    rows={3}
-                                    className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.residence_address ? 'border-red-300' : 'border-gray-300'}`}
-                                />
-                            </InputRow>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                            <InputRow label="Length of Stay" error={errors.length_of_stay?.message}>
-                                <TextInput register={register} name="length_of_stay" type="number" min="0" step="0.1" placeholder="Length of stay in years" error={errors.length_of_stay?.message} />
-                            </InputRow>
-                            <InputRow label="Housing Status" error={errors.housing_status?.message}>
-                                <SelectInput register={register} name="housing_status" options={housingStatusOptions} placeholder="Select housing status" error={errors.housing_status?.message} />
-                            </InputRow>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                            <InputRow label="Current Annual Rent" error={errors.financial_info?.current_annual_rent?.message}>
-                                <TextInput register={register} name="financial_info.current_annual_rent" placeholder="e.g. 1200000" error={errors.financial_info?.current_annual_rent?.message} />
-                            </InputRow>
-                            <InputRow label="Service Charge (Optional)" error={errors.financial_info?.current_service_charge?.message}>
-                                <TextInput register={register} name="financial_info.current_service_charge" placeholder="e.g. 150000" error={errors.financial_info?.current_service_charge?.message} />
-                            </InputRow>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                            <InputRow label="Move In Date" error={errors.financial_info?.current_move_in_date?.message}>
-                                <TextInput register={register} name="financial_info.current_move_in_date" type="date" error={errors.financial_info?.current_move_in_date?.message} />
-                            </InputRow>
-                            <InputRow label="Expected Move Out Date" error={errors.financial_info?.expected_move_out_date?.message}>
-                                <TextInput register={register} name="financial_info.expected_move_out_date" type="date" error={errors.financial_info?.expected_move_out_date?.message} />
-                            </InputRow>
-                        </div>
-                        <div className="mt-4">
-                            <InputRow label="Reason for Wanting to Leave" error={errors.financial_info?.reason_for_wanting_to_leave?.message}>
-                                <textarea
-                                    {...register('financial_info.reason_for_wanting_to_leave')}
-                                    placeholder="Explain why you intend to leave the current residence"
-                                    rows={3}
-                                    className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.financial_info?.reason_for_wanting_to_leave ? 'border-red-300' : 'border-gray-300'}`}
-                                />
-                            </InputRow>
-                        </div>
-                    </SectionCard>
-
-                    {/* 3. Employment Information (conditional) */}
+                    {/* 2. Employment Information (conditional) */}
                     {employmentStatus === 'Employed' && (
-                        <SectionCard title="Employment Information" step={3} activeStep={activeStep} setActiveStep={setActiveStep}>
+                        <SectionCard title="Employment Information" step={2} activeStep={activeStep} setActiveStep={setActiveStep}>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <InputRow label="Company Name" error={errors.employment_info?.company_name?.message}>
                                     <TextInput register={register} name="employment_info.company_name" placeholder="Company name" error={errors.employment_info?.company_name?.message} />
@@ -1389,9 +1451,253 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                         </SectionCard>
                     )}
 
-                    {/* 4. Financial Verification (conditional) */}
+                    {/* 3. Current Residence Information*/}
+                    <SectionCard title="Current Residence" step={3} activeStep={activeStep} setActiveStep={setActiveStep}>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <InputRow label="Country" error={errors.residence_country?.message}>
+                                <SelectInput register={register} name="residence_country" options={[...worldCountryOptions]} placeholder="Select country" error={errors.residence_country?.message} />
+                            </InputRow>
+                            <InputRow label="State" error={errors.residence_state?.message}>
+                                {residenceCountryIsNigeria ? (
+                                    <SelectInput register={register} name="residence_state" options={nigerianStates} placeholder="Select state" error={errors.residence_state?.message} />
+                                ) : (
+                                    <TextInput register={register} name="residence_state" placeholder="State" error={errors.residence_state?.message} />
+                                )}
+                            </InputRow>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                            <InputRow label="City" error={errors.residence_city?.message}>
+                                <TextInput register={register} name="residence_city" placeholder="City" error={errors.residence_city?.message} />
+                            </InputRow>
+                            <InputRow label="LGA" error={errors.residence_lga?.message}>
+                                {residenceCountryIsNigeria ? (
+                                    <SelectInput
+                                        register={register}
+                                        name="residence_lga"
+                                        options={residenceLgaOptions}
+                                        placeholder={residenceState ? 'Select local government area' : 'Select state first'}
+                                        error={errors.residence_lga?.message}
+                                    />
+                                ) : (
+                                    <TextInput register={register} name="residence_lga" placeholder="Local Government Area" error={errors.residence_lga?.message} />
+                                )}
+                            </InputRow>
+                        </div>
+                        <div className="mt-4">
+                            <InputRow label="Address" error={errors.residence_address?.message}>
+                                <textarea
+                                    {...register('residence_address')}
+                                    placeholder="Current residential address"
+                                    rows={3}
+                                    className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.residence_address ? 'border-red-300' : 'border-gray-300'}`}
+                                />
+                            </InputRow>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                            <InputRow label="Length of Stay" error={errors.length_of_stay?.message}>
+                                <TextInput register={register} name="length_of_stay" type="number" min="0" step="0.1" placeholder="Length of stay in years" error={errors.length_of_stay?.message} />
+                            </InputRow>
+                            <InputRow label="Housing Status" error={errors.housing_status?.message}>
+                                <SelectInput register={register} name="housing_status" options={housingStatusOptions} placeholder="Select housing status" error={errors.housing_status?.message} />
+                            </InputRow>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                            <InputRow label="Current Annual Rent" error={errors.financial_info?.current_annual_rent?.message}>
+                                <TextInput register={register} name="financial_info.current_annual_rent" placeholder="e.g. 1200000" error={errors.financial_info?.current_annual_rent?.message} />
+                            </InputRow>
+                            <InputRow label="Service Charge (Optional)" error={errors.financial_info?.current_service_charge?.message}>
+                                <TextInput register={register} name="financial_info.current_service_charge" placeholder="e.g. 150000" error={errors.financial_info?.current_service_charge?.message} />
+                            </InputRow>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                            <InputRow label="Move In Date" error={errors.financial_info?.current_move_in_date?.message}>
+                                <TextInput register={register} name="financial_info.current_move_in_date" type="date" error={errors.financial_info?.current_move_in_date?.message} />
+                            </InputRow>
+                            <InputRow label="Expected Move Out Date" error={errors.financial_info?.expected_move_out_date?.message}>
+                                <TextInput register={register} name="financial_info.expected_move_out_date" type="date" error={errors.financial_info?.expected_move_out_date?.message} />
+                            </InputRow>
+                        </div>
+                        <div className="mt-4">
+                            <InputRow label="Reason for Wanting to Leave" error={errors.financial_info?.reason_for_wanting_to_leave?.message}>
+                                <textarea
+                                    {...register('financial_info.reason_for_wanting_to_leave')}
+                                    placeholder="Explain why you intend to leave the current residence"
+                                    rows={3}
+                                    className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.financial_info?.reason_for_wanting_to_leave ? 'border-red-300' : 'border-gray-300'}`}
+                                />
+                            </InputRow>
+                        </div><br />
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <InputRow label="Marital Status" error={errors.household_info?.marital_status?.message}>
+                                <SelectInput register={register} name="household_info.marital_status" options={maritalStatusOptions} placeholder="Select marital status" error={errors.household_info?.marital_status?.message} />
+                            </InputRow>
+                            <InputRow label="Number of Adults" error={errors.household_info?.number_of_adults?.message}>
+                                <TextInput register={register} name="household_info.number_of_adults" placeholder="e.g. 2" error={errors.household_info?.number_of_adults?.message} />
+                            </InputRow>
+                            <InputRow label="Number of Children" error={errors.household_info?.number_of_children?.message}>
+                                <TextInput register={register} name="household_info.number_of_children" placeholder="e.g. 1" error={errors.household_info?.number_of_children?.message} />
+                            </InputRow>
+                        </div>
+                        <div className="mt-4 space-y-4">
+                            <BooleanChoiceField
+                                control={control}
+                                name="household_info.has_pets"
+                                label="Any Pets?"
+                                error={errors.household_info?.has_pets?.message}
+                            />
+                            {hasPets && (
+                                <InputRow label="Number of Pets" error={errors.household_info?.number_of_pets?.message}>
+                                    <TextInput register={register} name="household_info.number_of_pets" placeholder="Number of pets" error={errors.household_info?.number_of_pets?.message} />
+                                </InputRow>
+                            )}
+                            <BooleanChoiceField
+                                control={control}
+                                name="household_info.work_from_home"
+                                label="Work from Home?"
+                                error={errors.household_info?.work_from_home?.message}
+                            />
+                            <BooleanChoiceField
+                                control={control}
+                                name="household_info.commercial_activities_at_home"
+                                label="Commercial Activities at Home?"
+                                error={errors.household_info?.commercial_activities_at_home?.message}
+                            />
+                            <BooleanChoiceField
+                                control={control}
+                                name="household_info.has_smokers"
+                                label="Any Smokers?"
+                                error={errors.household_info?.has_smokers?.message}
+                            />
+                        </div>
+                    </SectionCard>
+
+                    {/* 4. Rental History */}
+                    <SectionCard title="Rental History (not less than 5 years)" step={4} activeStep={activeStep} setActiveStep={setActiveStep}>
+                        <p className="text-sm text-gray-500 mb-4">
+                            {currentResidenceMeetsMinimumHistory
+                                ? 'Current residence is 5 years or more, no further rental history is required'
+                                : 'Current residence is less than 5 years. Please, provide more rental history.'}
+                        </p>
+                        <div className="mb-4 flex items-center gap-2">
+                            <input
+                                type="checkbox"
+                                {...register('rental_history_same_as_current_residence')}
+                                disabled={currentResidenceMeetsMinimumHistory}
+                                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            <label className="text-sm text-gray-700">Same as current residence?</label>
+                        </div>
+
+                        {rentalHistorySameAsCurrent && (
+                            <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
+                                <div className="flex items-center justify-between gap-3">
+                                    <div>
+                                        <h4 className="text-sm font-semibold text-blue-900">Current Residence Rental History</h4>
+                                        <p className="mt-1 text-sm text-blue-800">
+                                            Your current residence details below will be used as part of your rental history.
+                                        </p>
+                                    </div>
+                                    {/* <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-blue-700">
+                                        {currentResidenceYears.toFixed(1)} years
+                                    </span> */}
+                                </div>
+
+                                <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                                    <div className="rounded-lg bg-white px-4 py-3">
+                                        <p className="text-xs uppercase tracking-[0.2em] text-gray-500">Property Address</p>
+                                        <p className="mt-2 text-sm text-gray-900">{currentResidenceRentalHistoryPreview.property_address || 'Complete your current residence address above.'}</p>
+                                    </div>
+                                    <div className="rounded-lg bg-white px-4 py-3">
+                                        <p className="text-xs uppercase tracking-[0.2em] text-gray-500">Annual Rent</p>
+                                        <p className="mt-2 text-sm text-gray-900">{currentResidenceRentalHistoryPreview.annual_rent || 'Enter annual rent above.'}</p>
+                                    </div>
+                                    <div className="rounded-lg bg-white px-4 py-3">
+                                        <p className="text-xs uppercase tracking-[0.2em] text-gray-500">Service Charge</p>
+                                        <p className="mt-2 text-sm text-gray-900">{currentResidenceRentalHistoryPreview.service_charge || 'Enter service charge above.'}</p>
+                                    </div>
+                                    <div className="rounded-lg bg-white px-4 py-3">
+                                        <p className="text-xs uppercase tracking-[0.2em] text-gray-500">Move In / Expected Move Out</p>
+                                        <p className="mt-2 text-sm text-gray-900">
+                                            {[currentResidenceRentalHistoryPreview.move_in_date, currentResidenceRentalHistoryPreview.move_out_date].filter(Boolean).join(' to ') || 'Enter move in and move out dates above.'}
+                                        </p>
+                                    </div>
+                                    <div className="rounded-lg bg-white px-4 py-3 md:col-span-2">
+                                        <p className="text-xs uppercase tracking-[0.2em] text-gray-500">Reason for Wanting to Leave</p>
+                                        <p className="mt-2 text-sm text-gray-900">{currentResidenceRentalHistoryPreview.reason_for_leave || 'Enter your reason for wanting to leave above.'}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {rentalHistorySameAsCurrent && !currentResidenceMeetsMinimumHistory && (
+                            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                                Your current residence covers less than 5 years. Add at least one previous rental property below.
+                            </div>
+                        )}
+
+                        {rentalHistoryFieldsDisabled && (
+                            <div className="mb-4 rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">
+                                Your current residence covers 5 years or more, further rental history is not required.
+                            </div>
+                        )}
+
+                        {rentalFields.map((field, index) => (
+                            <div key={field.id} className="border border-gray-200 rounded-lg p-4 mb-4">
+                                <div className="flex items-center justify-between mb-3">
+                                    <h4 className="text-sm font-semibold text-gray-700">
+                                        {rentalHistorySameAsCurrent ? `Previous Property ${index + 1}` : `Property ${index + 1}`}
+                                    </h4>
+                                    {!rentalHistoryFieldsDisabled && rentalFields.length > 1 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => removeRental(index)}
+                                            className="text-red-500 hover:text-red-700 text-sm"
+                                        >
+                                            Remove
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="grid grid-cols-1 gap-4">
+                                    <InputRow label="Property Address" error={errors.rental_history?.[index]?.property_address?.message}>
+                                        <TextInput register={register} name={`rental_history.${index}.property_address`} placeholder="Full address" error={errors.rental_history?.[index]?.property_address?.message} disabled={rentalHistoryFieldsDisabled} />
+                                    </InputRow>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <InputRow label="Annual Rent" error={errors.rental_history?.[index]?.annual_rent?.message}>
+                                            <TextInput register={register} name={`rental_history.${index}.annual_rent`} placeholder="e.g. 1200000" error={errors.rental_history?.[index]?.annual_rent?.message} disabled={rentalHistoryFieldsDisabled} />
+                                        </InputRow>
+                                        <InputRow label="Service Charge" error={errors.rental_history?.[index]?.service_charge?.message}>
+                                            <TextInput register={register} name={`rental_history.${index}.service_charge`} placeholder="e.g. 100000" error={errors.rental_history?.[index]?.service_charge?.message} disabled={rentalHistoryFieldsDisabled} />
+                                        </InputRow>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <InputRow label="Move-In Date" error={errors.rental_history?.[index]?.move_in_date?.message}>
+                                            <TextInput register={register} name={`rental_history.${index}.move_in_date`} type="date" error={errors.rental_history?.[index]?.move_in_date?.message} disabled={rentalHistoryFieldsDisabled} />
+                                        </InputRow>
+                                        <InputRow label="Move-Out Date" error={errors.rental_history?.[index]?.move_out_date?.message}>
+                                            <TextInput register={register} name={`rental_history.${index}.move_out_date`} type="date" error={errors.rental_history?.[index]?.move_out_date?.message} disabled={rentalHistoryFieldsDisabled} />
+                                        </InputRow>
+                                    </div>
+                                    <InputRow label="Reason for Leave" error={errors.rental_history?.[index]?.reason_for_leave?.message}>
+                                        <TextInput register={register} name={`rental_history.${index}.reason_for_leave`} placeholder="e.g. End of lease" error={errors.rental_history?.[index]?.reason_for_leave?.message} disabled={rentalHistoryFieldsDisabled} />
+                                    </InputRow>
+                                </div>
+                            </div>
+                        ))}
+                        {!rentalHistoryFieldsDisabled && (!rentalHistorySameAsCurrent || requiresAdditionalRentalHistory) && rentalFields.length < 5 && (
+                            <button
+                                type="button"
+                                onClick={() => appendRental({ property_address: '' })}
+                                className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                            >
+                                {rentalHistorySameAsCurrent ? '+ Add Another Previous Property' : '+ Add Another Property'}
+                            </button>
+                        )}
+                    </SectionCard>
+
+                    {/* 5. Financial Verification (conditional) */}
                     {employmentStatus && employmentStatus !== 'Employed' && (
-                        <SectionCard title="Financial Verification" step={4} activeStep={activeStep} setActiveStep={setActiveStep}>
+                        <SectionCard title="Financial Verification" step={5} activeStep={activeStep} setActiveStep={setActiveStep}>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <InputRow label="Bank Name" error={errors.financial_info?.bank_name?.message}>
                                     <TextInput register={register} name="financial_info.bank_name" placeholder="Bank name" error={errors.financial_info?.bank_name?.message} />
@@ -1420,24 +1726,24 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                                 </InputRow>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                            <InputRow label="Average Monthly Income (Optional)" error={errors.financial_info?.average_monthly_income?.message}>
-                                <TextInput register={register} name="financial_info.average_monthly_income" placeholder="e.g. 500000" error={errors.financial_info?.average_monthly_income?.message} />
-                            </InputRow>
-                            <InputRow label="Average Annual Income (Optional)" error={errors.financial_info?.average_annual_income?.message}>
-                                <TextInput register={register} name="financial_info.average_annual_income" placeholder="e.g. 6000000" error={errors.financial_info?.average_annual_income?.message} />
-                            </InputRow>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                            <InputRow label="Savings (Optional)" error={errors.financial_info?.savings?.message}>
-                                <TextInput register={register} name="financial_info.savings" placeholder="e.g. 2500000" error={errors.financial_info?.savings?.message} />
-                            </InputRow>
-                            <InputRow label="Outgoing Expenses (Monthly)" error={errors.financial_info?.outgoing_expenses?.message}>
-                                <TextInput register={register} name="financial_info.outgoing_expenses" placeholder="e.g. 200000" error={errors.financial_info?.outgoing_expenses?.message} />
-                            </InputRow>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                            <InputRow label="Current Annual Rent" error={errors.financial_info?.current_annual_rent?.message}>
-                                <TextInput register={register} name="financial_info.current_annual_rent" placeholder="e.g. 1500000/year" error={errors.financial_info?.current_annual_rent?.message} />
+                                <InputRow label="Average Monthly Income (Optional)" error={errors.financial_info?.average_monthly_income?.message}>
+                                    <TextInput register={register} name="financial_info.average_monthly_income" placeholder="e.g. 500000" error={errors.financial_info?.average_monthly_income?.message} />
+                                </InputRow>
+                                <InputRow label="Average Annual Income (Optional)" error={errors.financial_info?.average_annual_income?.message}>
+                                    <TextInput register={register} name="financial_info.average_annual_income" placeholder="e.g. 6000000" error={errors.financial_info?.average_annual_income?.message} />
+                                </InputRow>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                                <InputRow label="Savings (Optional)" error={errors.financial_info?.savings?.message}>
+                                    <TextInput register={register} name="financial_info.savings" placeholder="e.g. 2500000" error={errors.financial_info?.savings?.message} />
+                                </InputRow>
+                                <InputRow label="Outgoing Expenses (Monthly)" error={errors.financial_info?.outgoing_expenses?.message}>
+                                    <TextInput register={register} name="financial_info.outgoing_expenses" placeholder="e.g. 200000" error={errors.financial_info?.outgoing_expenses?.message} />
+                                </InputRow>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                                <InputRow label="Current Annual Rent" error={errors.financial_info?.current_annual_rent?.message}>
+                                    <TextInput register={register} name="financial_info.current_annual_rent" placeholder="e.g. 1500000/year" error={errors.financial_info?.current_annual_rent?.message} />
                                 </InputRow>
                                 <InputRow label="Current Service Charge (Optional)" error={errors.financial_info?.current_service_charge?.message}>
                                     <TextInput register={register} name="financial_info.current_service_charge" placeholder="e.g. 100000/year" error={errors.financial_info?.current_service_charge?.message} />
@@ -1459,8 +1765,8 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                         </SectionCard>
                     )}
 
-                    {/* 5. Guarantor Details */}
-                    <SectionCard title="Guarantor Details" step={5} activeStep={activeStep} setActiveStep={setActiveStep}>
+                    {/* 6. Guarantor Details */}
+                    <SectionCard title="Guarantor Details" step={6} activeStep={activeStep} setActiveStep={setActiveStep}>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <InputRow label="Full Name" error={errors.guarantor_details?.full_name?.message}>
                                 <TextInput register={register} name="guarantor_details.full_name" placeholder="Guarantor full name" error={errors.guarantor_details?.full_name?.message} />
@@ -1502,8 +1808,8 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                         </div>
                     </SectionCard>
 
-                    {/* 6. Landlord Information */}
-                    <SectionCard title="Current Landlord Information" step={6} activeStep={activeStep} setActiveStep={setActiveStep}>
+                    {/* 7. Landlord Information */}
+                    <SectionCard title="Current Landlord Information" step={7} activeStep={activeStep} setActiveStep={setActiveStep}>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <InputRow label="Full Name" error={errors.landlord_info?.name?.message}>
                                 <TextInput register={register} name="landlord_info.name" placeholder="Landlord full name" error={errors.landlord_info?.name?.message} />
@@ -1596,232 +1902,78 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                         </div>
                     </SectionCard>
 
-                    {/* 7. Rental History */}
-                    <SectionCard title="Rental History (Not less than 5 Years)" step={7} activeStep={activeStep} setActiveStep={setActiveStep}>
-                        <p className="text-sm text-gray-500 mb-4">If your current residence move in date is less than five years ago, provide information for previous properties.</p>
-                        <div className="mb-4 flex items-center gap-2">
-                            <input
-                                type="checkbox"
-                                {...register('rental_history_same_as_current_residence')}
-                                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                            />
-                            <label className="text-sm text-gray-700">Same as current residence?</label>
-                        </div>
-
-                        {rentalHistorySameAsCurrent && (
-                            <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
-                                <div className="flex items-center justify-between gap-3">
-                                    <div>
-                                        <h4 className="text-sm font-semibold text-blue-900">Current Residence Rental History</h4>
-                                        <p className="mt-1 text-sm text-blue-800">
-                                            Your current residence details below will be used as part of your rental history.
-                                        </p>
-                                    </div>
-                                    <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-blue-700">
-                                        {currentResidenceYears.toFixed(1)} years
-                                    </span>
-                                </div>
-
-                                <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-                                    <div className="rounded-lg bg-white px-4 py-3">
-                                        <p className="text-xs uppercase tracking-[0.2em] text-gray-500">Property Address</p>
-                                        <p className="mt-2 text-sm text-gray-900">{currentResidenceRentalHistoryPreview.property_address || 'Complete your current residence address above.'}</p>
-                                    </div>
-                                    <div className="rounded-lg bg-white px-4 py-3">
-                                        <p className="text-xs uppercase tracking-[0.2em] text-gray-500">Annual Rent</p>
-                                        <p className="mt-2 text-sm text-gray-900">{currentResidenceRentalHistoryPreview.annual_rent || 'Enter annual rent above.'}</p>
-                                    </div>
-                                    <div className="rounded-lg bg-white px-4 py-3">
-                                        <p className="text-xs uppercase tracking-[0.2em] text-gray-500">Service Charge</p>
-                                        <p className="mt-2 text-sm text-gray-900">{currentResidenceRentalHistoryPreview.service_charge || 'Enter service charge above.'}</p>
-                                    </div>
-                                    <div className="rounded-lg bg-white px-4 py-3">
-                                        <p className="text-xs uppercase tracking-[0.2em] text-gray-500">Move In / Expected Move Out</p>
-                                        <p className="mt-2 text-sm text-gray-900">
-                                            {[currentResidenceRentalHistoryPreview.move_in_date, currentResidenceRentalHistoryPreview.move_out_date].filter(Boolean).join(' to ') || 'Enter move in and move out dates above.'}
-                                        </p>
-                                    </div>
-                                    <div className="rounded-lg bg-white px-4 py-3 md:col-span-2">
-                                        <p className="text-xs uppercase tracking-[0.2em] text-gray-500">Reason for Wanting to Leave</p>
-                                        <p className="mt-2 text-sm text-gray-900">{currentResidenceRentalHistoryPreview.reason_for_leave || 'Enter your reason for wanting to leave above.'}</p>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {rentalHistorySameAsCurrent && !currentResidenceMeetsMinimumHistory && (
-                            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                                Your current residence covers less than 5 years. Add at least one previous rental property below.
-                            </div>
-                        )}
-
-                        {(!rentalHistorySameAsCurrent || requiresAdditionalRentalHistory) && rentalFields.map((field, index) => (
-                            <div key={field.id} className="border border-gray-200 rounded-lg p-4 mb-4">
-                                <div className="flex items-center justify-between mb-3">
-                                    <h4 className="text-sm font-semibold text-gray-700">
-                                        {rentalHistorySameAsCurrent ? `Previous Property ${index + 1}` : `Property ${index + 1}`}
-                                    </h4>
-                                    {rentalFields.length > 1 && (
-                                        <button
-                                            type="button"
-                                            onClick={() => removeRental(index)}
-                                            className="text-red-500 hover:text-red-700 text-sm"
-                                        >
-                                            Remove
-                                        </button>
-                                    )}
-                                </div>
-                                <div className="grid grid-cols-1 gap-4">
-                                    <InputRow label="Property Address" error={errors.rental_history?.[index]?.property_address?.message}>
-                                        <TextInput register={register} name={`rental_history.${index}.property_address`} placeholder="Full address" error={errors.rental_history?.[index]?.property_address?.message} />
-                                    </InputRow>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <InputRow label="Annual Rent" error={errors.rental_history?.[index]?.annual_rent?.message}>
-                                            <TextInput register={register} name={`rental_history.${index}.annual_rent`} placeholder="e.g. 1200000" error={errors.rental_history?.[index]?.annual_rent?.message} />
-                                        </InputRow>
-                                        <InputRow label="Service Charge" error={errors.rental_history?.[index]?.service_charge?.message}>
-                                            <TextInput register={register} name={`rental_history.${index}.service_charge`} placeholder="e.g. 100000" error={errors.rental_history?.[index]?.service_charge?.message} />
-                                        </InputRow>
-                                    </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <InputRow label="Move-In Date" error={errors.rental_history?.[index]?.move_in_date?.message}>
-                                            <TextInput register={register} name={`rental_history.${index}.move_in_date`} type="date" error={errors.rental_history?.[index]?.move_in_date?.message} />
-                                        </InputRow>
-                                        <InputRow label="Move-Out Date" error={errors.rental_history?.[index]?.move_out_date?.message}>
-                                            <TextInput register={register} name={`rental_history.${index}.move_out_date`} type="date" error={errors.rental_history?.[index]?.move_out_date?.message} />
-                                        </InputRow>
-                                    </div>
-                                    <InputRow label="Reason for Leave" error={errors.rental_history?.[index]?.reason_for_leave?.message}>
-                                        <TextInput register={register} name={`rental_history.${index}.reason_for_leave`} placeholder="e.g. End of lease" error={errors.rental_history?.[index]?.reason_for_leave?.message} />
-                                    </InputRow>
-                                </div>
-                            </div>
-                        ))}
-                        {(!rentalHistorySameAsCurrent || requiresAdditionalRentalHistory) && rentalFields.length < 5 && (
-                            <button
-                                type="button"
-                                onClick={() => appendRental({ property_address: '' })}
-                                className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-                            >
-                                {rentalHistorySameAsCurrent ? '+ Add Another Previous Property' : '+ Add Another Property'}
-                            </button>
-                        )}
-                    </SectionCard>
-
-                    {/* 8. Household Information */}
-                    <SectionCard title="Household Information" step={8} activeStep={activeStep} setActiveStep={setActiveStep}>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <InputRow label="Marital Status" error={errors.household_info?.marital_status?.message}>
-                                <SelectInput register={register} name="household_info.marital_status" options={maritalStatusOptions} placeholder="Select marital status" error={errors.household_info?.marital_status?.message} />
-                            </InputRow>
-                            <InputRow label="Number of Adults" error={errors.household_info?.number_of_adults?.message}>
-                                <TextInput register={register} name="household_info.number_of_adults" placeholder="e.g. 2" error={errors.household_info?.number_of_adults?.message} />
-                            </InputRow>
-                            <InputRow label="Number of Children" error={errors.household_info?.number_of_children?.message}>
-                                <TextInput register={register} name="household_info.number_of_children" placeholder="e.g. 1" error={errors.household_info?.number_of_children?.message} />
-                            </InputRow>
-                        </div>
-                        <div className="mt-4 space-y-4">
-                            <BooleanChoiceField
-                                control={control}
-                                name="household_info.has_pets"
-                                label="Any Pets?"
-                                error={errors.household_info?.has_pets?.message}
-                            />
-                            {hasPets && (
-                                <InputRow label="Number of Pets" error={errors.household_info?.number_of_pets?.message}>
-                                    <TextInput register={register} name="household_info.number_of_pets" placeholder="Number of pets" error={errors.household_info?.number_of_pets?.message} />
+                    {/* 8. Online Presence & Legal/Criminal Declaration */}
+                    <SectionCard title="Online Presence & Legal/Criminal Declaration" step={8} activeStep={activeStep} setActiveStep={setActiveStep}>
+                        <p className="font-semibold">Social & Digital Presence (Optional)</p>
+                        <div className="mb-3">
+                            <p className="text-sm text-gray-500 mb-4">Optional, but boosts your chances of finding a property.</p>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <InputRow label="LinkedIn Profile">
+                                    <TextInput register={register} name="social_presence.linkedin_profile" placeholder="https://linkedin.com/in/..." />
                                 </InputRow>
-                            )}
-                            <BooleanChoiceField
-                                control={control}
-                                name="household_info.work_from_home"
-                                label="Work from Home?"
-                                error={errors.household_info?.work_from_home?.message}
-                            />
-                            <BooleanChoiceField
-                                control={control}
-                                name="household_info.commercial_activities_at_home"
-                                label="Commercial Activities at Home?"
-                                error={errors.household_info?.commercial_activities_at_home?.message}
-                            />
-                            <BooleanChoiceField
-                                control={control}
-                                name="household_info.has_smokers"
-                                label="Any Smokers?"
-                                error={errors.household_info?.has_smokers?.message}
-                            />
+                                <InputRow label="Facebook Profile">
+                                    <TextInput register={register} name="social_presence.facebook_profile" placeholder="https://facebook.com/..." />
+                                </InputRow>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                                <InputRow label="Instagram Profile">
+                                    <TextInput register={register} name="social_presence.instagram_profile" placeholder="https://instagram.com/..." />
+                                </InputRow>
+                                <InputRow label="X (Twitter) Profile">
+                                    <TextInput register={register} name="social_presence.x_twitter_profile" placeholder="https://x.com/..." />
+                                </InputRow>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                                <InputRow label="TikTok Profile">
+                                    <TextInput register={register} name="social_presence.tiktok_profile" placeholder="https://tiktok.com/@..." />
+                                </InputRow>
+                                <InputRow label="Threads Profile">
+                                    <TextInput register={register} name="social_presence.threads_profile" placeholder="https://threads.net/@..." />
+                                </InputRow>
+                            </div>
+                        </div><br />
+
+                        <p className="font-semibold">Criminal & Legal Declaration</p>
+                        <div>
+                            <div className="space-y-4">
+                                <BooleanChoiceField
+                                    control={control}
+                                    name="criminal_declaration.convicted_of_crime"
+                                    label="Have you ever been convicted of a crime?"
+                                    error={errors.criminal_declaration?.convicted_of_crime?.message}
+                                />
+                                <BooleanChoiceField
+                                    control={control}
+                                    name="criminal_declaration.evicted_from_property"
+                                    label="Have you ever been evicted from a property?"
+                                    error={errors.criminal_declaration?.evicted_from_property?.message}
+                                />
+                                <BooleanChoiceField
+                                    control={control}
+                                    name="criminal_declaration.ongoing_tenancy_litigation"
+                                    label="Are you involved in on-going tenancy litigation?"
+                                    error={errors.criminal_declaration?.ongoing_tenancy_litigation?.message}
+                                />
+                                <BooleanChoiceField
+                                    control={control}
+                                    name="criminal_declaration.rent_arrears_history"
+                                    label="Any rent arrears history?"
+                                    error={errors.criminal_declaration?.rent_arrears_history?.message}
+                                />
+                                <BooleanChoiceField
+                                    control={control}
+                                    name="criminal_declaration.legal_dispute_with_landlords"
+                                    label="Any legal dispute with landlords?"
+                                    error={errors.criminal_declaration?.legal_dispute_with_landlords?.message}
+                                />
+                            </div>
                         </div>
+
                     </SectionCard>
 
-                    {/* 9. Social & Digital Presence */}
-                    <SectionCard title="Social & Digital Presence (Optional)" step={9} activeStep={activeStep} setActiveStep={setActiveStep}>
-                        <p className="text-sm text-gray-500 mb-4">Optional, but boosts your chances of finding a property.</p>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <InputRow label="LinkedIn Profile">
-                                <TextInput register={register} name="social_presence.linkedin_profile" placeholder="https://linkedin.com/in/..." />
-                            </InputRow>
-                            <InputRow label="Facebook Profile">
-                                <TextInput register={register} name="social_presence.facebook_profile" placeholder="https://facebook.com/..." />
-                            </InputRow>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                            <InputRow label="Instagram Profile">
-                                <TextInput register={register} name="social_presence.instagram_profile" placeholder="https://instagram.com/..." />
-                            </InputRow>
-                            <InputRow label="X (Twitter) Profile">
-                                <TextInput register={register} name="social_presence.x_twitter_profile" placeholder="https://x.com/..." />
-                            </InputRow>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                            <InputRow label="TikTok Profile">
-                                <TextInput register={register} name="social_presence.tiktok_profile" placeholder="https://tiktok.com/@..." />
-                            </InputRow>
-                            <InputRow label="Threads Profile">
-                                <TextInput register={register} name="social_presence.threads_profile" placeholder="https://threads.net/@..." />
-                            </InputRow>
-                        </div>
-                    </SectionCard>
-
-                    {/* 10. Criminal & Legal Declaration */}
-                    <SectionCard title="Criminal & Legal Declaration" step={10} activeStep={activeStep} setActiveStep={setActiveStep}>
-                        <div className="space-y-4">
-                            <BooleanChoiceField
-                                control={control}
-                                name="criminal_declaration.convicted_of_crime"
-                                label="Have you ever been convicted of a crime?"
-                                error={errors.criminal_declaration?.convicted_of_crime?.message}
-                            />
-                            <BooleanChoiceField
-                                control={control}
-                                name="criminal_declaration.evicted_from_property"
-                                label="Have you ever been evicted from a property?"
-                                error={errors.criminal_declaration?.evicted_from_property?.message}
-                            />
-                            <BooleanChoiceField
-                                control={control}
-                                name="criminal_declaration.ongoing_tenancy_litigation"
-                                label="Are you involved in on-going tenancy litigation?"
-                                error={errors.criminal_declaration?.ongoing_tenancy_litigation?.message}
-                            />
-                            <BooleanChoiceField
-                                control={control}
-                                name="criminal_declaration.rent_arrears_history"
-                                label="Any rent arrears history?"
-                                error={errors.criminal_declaration?.rent_arrears_history?.message}
-                            />
-                            <BooleanChoiceField
-                                control={control}
-                                name="criminal_declaration.legal_dispute_with_landlords"
-                                label="Any legal dispute with landlords?"
-                                error={errors.criminal_declaration?.legal_dispute_with_landlords?.message}
-                            />
-                        </div>
-                    </SectionCard>
-
-                    {/* 11. Supporting Documents if employed (conditional) */}
+                    {/* 9. Supporting Documents if employed (conditional) */}
                     {employmentStatus && employmentStatus === 'Employed' && (
-                        <SectionCard title="Supporting Documents" step={11} activeStep={activeStep} setActiveStep={setActiveStep}>
+                        <SectionCard title="Supporting Documents" step={9} activeStep={activeStep} setActiveStep={setActiveStep}>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <FileUploadBox label="Staff ID Card" files={fileMap['staff_id'] || []} onChange={setFilesForKey('staff_id')} />
                                 <FileUploadBox label="Pay Slip" files={fileMap['payslip'] || []} onChange={setFilesForKey('payslip')} />
@@ -1836,9 +1988,9 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                         </SectionCard>
                     )}
 
-                    {/* 11. Supporting Documents if self-employed (conditional) */}
+                    {/* 9. Supporting Documents if self-employed (conditional) */}
                     {employmentStatus && (employmentStatus === 'Self Employed' || employmentStatus === 'Business Owner') && (
-                        <SectionCard title="Supporting Documents" step={11} activeStep={activeStep} setActiveStep={setActiveStep}>
+                        <SectionCard title="Supporting Documents" step={9} activeStep={activeStep} setActiveStep={setActiveStep}>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <FileUploadBox label="CAC Registration" files={fileMap['cac_doc'] || []} onChange={setFilesForKey('cac_doc')} />
                                 <FileUploadBox label="Tax Clearance" files={fileMap['tax_clearance_doc'] || []} onChange={setFilesForKey('tax_clearance_doc')} />
@@ -1850,9 +2002,9 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                         </SectionCard>
                     )}
 
-                    {/* 11. Supporting Documents if student (conditional) */}
+                    {/* 9. Supporting Documents if student (conditional) */}
                     {employmentStatus && (employmentStatus === 'Freelancer' || employmentStatus === 'Retired' || employmentStatus === 'Student') && (
-                        <SectionCard title="Supporting Documents" step={11} activeStep={activeStep} setActiveStep={setActiveStep}>
+                        <SectionCard title="Supporting Documents" step={9} activeStep={activeStep} setActiveStep={setActiveStep}>
                             <div>
                                 <FileUploadBox label="Payment Slip (Freelancer Only)" files={fileMap['payment_slip'] || []} onChange={setFilesForKey('payment_slip')} />
                                 <FileUploadBox label="Student ID Card (Student Only)" files={fileMap['student_id'] || []} onChange={setFilesForKey('student_id')} />

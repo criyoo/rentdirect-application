@@ -20,6 +20,9 @@ from .verification_records import get_verification_record_payload, store_verific
 
 logger = logging.getLogger(__name__)
 
+MOBILE_MISMATCH_WARNING = "Warning: Mobile number does not match number register in NIN or BVN. Do you want to register this number?"
+MOBILE_MISSING_WARNING = "Warning: You did not provide a contact number, please ensure you add a contact number in your profile"
+
 
 class DikriptVerificationUnavailable(APIException):
     status_code = 503
@@ -159,6 +162,18 @@ def _phone_matches(input_value: Any, api_value: Any) -> bool:
     return bool(input_phone) and bool(api_phone) and input_phone == api_phone
 
 
+def _mobile_verification_warning(input_data: dict[str, Any], nin_data: dict[str, Any], bvn_data: dict[str, Any]) -> str:
+    mobile = input_data.get("mobile")
+    if not _normalize_phone(mobile):
+        return MOBILE_MISSING_WARNING
+    if (
+        not _phone_matches(mobile, nin_data.get("telephoneNo"))
+        and not _phone_matches(mobile, bvn_data.get("phoneNumber1"))
+    ):
+        return MOBILE_MISMATCH_WARNING
+    return ""
+
+
 def _parse_date(value: Any):
     raw_value = str(value or "").strip()
     if not raw_value:
@@ -283,7 +298,7 @@ def _validate_bvn_fields(
         mismatches["nationality"] = "Nationality does not match the BVN record."
     if _normalize_region(input_data.get("state_of_origin")) != _normalize_region(data.get("stateOfOrigin")):
         mismatches["state_of_origin"] = "State of origin does not match the BVN record."
-    if require_phone and not _phone_matches(input_data.get("mobile"), data.get("phoneNumber1")):
+    if require_phone and _normalize_phone(input_data.get("mobile")) and not _phone_matches(input_data.get("mobile"), data.get("phoneNumber1")):
         mismatches["mobile"] = "Mobile number does not match the BVN record."
 
     return mismatches
@@ -296,9 +311,7 @@ def validate_nin_payload(input_data: dict[str, Any], data: dict[str, Any], *, de
     mismatches = _validate_nin_fields(input_data, data)
     phone_mismatch = False
 
-    if not _normalize_phone(input_data.get("mobile")):
-        mismatches["mobile"] = "Contact number is required for NIN verification."
-    elif not _phone_matches(input_data.get("mobile"), data.get("telephoneNo")):
+    if _normalize_phone(input_data.get("mobile")) and not _phone_matches(input_data.get("mobile"), data.get("telephoneNo")):
         if defer_phone_mismatch:
             phone_mismatch = True
             mismatches["mobile"] = "Mobile number does not match the NIN record."
@@ -376,21 +389,6 @@ def _merge_field_mismatches(
         if field in bvn_mismatches:
             result[field] = bvn_mismatches[field]
 
-    # Mobile: check NIN first, if mobile is in nin_mismatches, check BVN as fallback.
-    # Error only if both NIN and BVN have mobile in their mismatches.
-    mobile_in_nin = "mobile" in nin_mismatches
-    mobile_in_bvn = "mobile" in bvn_mismatches
-
-    if mobile_in_nin and not mobile_in_bvn:
-        # NIN phone failed but BVN phone matches - no error
-        pass
-    elif not mobile_in_nin:
-        # NIN phone passed - no error regardless of BVN
-        pass
-    elif mobile_in_nin and mobile_in_bvn:
-        # Both failed - error
-        result["mobile"] = "Mobile number does not match the NIN or BVN records."
-
     return result
 
 
@@ -425,9 +423,6 @@ def verify_nin_and_bvn(input_data: dict[str, Any], nin_number: str, bvn_number: 
     nin_mismatches, nin_phone_mismatch = validate_nin_payload(
         input_data, nin_data, defer_phone_mismatch=True,
     )
-    if "mobile" in nin_mismatches and not nin_phone_mismatch:
-        raise ValidationError({"mobile": nin_mismatches["mobile"]})
-
     # Look up BVN
     bvn_payload = dikript_lookup(
         verification_type="bvn",
@@ -462,6 +457,10 @@ def verify_nin_and_bvn(input_data: dict[str, Any], nin_number: str, bvn_number: 
 
     if merged:
         raise ValidationError(merged)
+
+    mobile_warning = _mobile_verification_warning(input_data, nin_data, bvn_data)
+    if mobile_warning:
+        nin_payload = {**nin_payload, "mobile_warning": mobile_warning}
 
     return nin_payload, bvn_payload
 

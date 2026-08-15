@@ -2,6 +2,7 @@ import { ChangeEvent, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import LegalDocumentsConsent from '@/components/LegalDocumentsConsent'
+import { useAppPopup } from '@/contexts/AppPopupContext'
 import { api } from '@/lib/api'
 import { isNigeriaSelection, nigeriaStateLgaMap, nigerianStates, worldCountryOptions } from '@/lib/locations'
 import {
@@ -407,6 +408,7 @@ function buildInitialCorporateForm(me?: User): CorporateForm {
 }
 
 export default function LandlordVerificationPage() {
+    const { alert: popupAlert, confirm } = useAppPopup()
     const queryClient = useQueryClient()
     const [individualForm, setIndividualForm] = useState<IndividualForm>(emptyIndividualForm)
     const [corporateForm, setCorporateForm] = useState<CorporateForm>(emptyCorporateForm)
@@ -592,7 +594,6 @@ export default function LandlordVerificationPage() {
                 'state_of_origin',
                 'lga_of_origin',
                 'gender',
-                'contact_number',
                 'email',
                 'residential_address',
                 'nin',
@@ -622,7 +623,6 @@ export default function LandlordVerificationPage() {
                 'company_name',
                 'business_state',
                 'business_address',
-                'company_phone_number',
                 'company_email',
                 'contact_person_name',
                 'contact_person_position',
@@ -729,12 +729,13 @@ export default function LandlordVerificationPage() {
                 documentIds.push(response.data.id)
             }
 
-            await api.post('/landlord-verification-requests/submit', {
+            const response = await api.post('/landlord-verification-requests/submit', {
                 document_ids: [...new Set(documentIds)],
                 request_type: 'identification',
             })
+            return response.data
         },
-        onSuccess: async () => {
+        onSuccess: async (response) => {
             await Promise.all([
                 queryClient.invalidateQueries({ queryKey: ['users', 'me'] }),
                 queryClient.invalidateQueries({ queryKey: ['verification', 'status'] }),
@@ -743,6 +744,20 @@ export default function LandlordVerificationPage() {
             localStorage.removeItem(LANDLORD_IDENTITY_ONBOARDING_KEY)
             setIdentificationFiles([])
             setSubmitStatusMessage('Landlord verification submitted successfully.')
+
+            const mobileWarning = String(response?.mobile_warning || '').trim()
+            if (mobileWarning) {
+                if (mobileWarning.includes('does not match')) {
+                    await confirm(mobileWarning, {
+                        title: 'Warning',
+                        variant: 'warning',
+                        confirmLabel: 'Yes, register number',
+                        cancelLabel: 'No, continue',
+                    })
+                } else {
+                    await popupAlert(mobileWarning, { title: 'Warning', variant: 'warning' })
+                }
+            }
         },
         onError: (error: any) => {
             setSubmitErrorMessage(parseErrorMessage(error, 'Unable to submit identification details.'))
@@ -1012,7 +1027,7 @@ export default function LandlordVerificationPage() {
                                                 {fieldErrors.gender && <p className="form-error">{fieldErrors.gender}</p>}
                                             </div>
                                             <div>
-                                                <label className={formLabelDefault}>Contact Number (linked to NIN)</label>
+                                                <label className={formLabelDefault}>Contact Number (linked to NIN, optional)</label>
                                                 <input
                                                     className="form-input"
                                                     name="contact_number"
@@ -1164,7 +1179,7 @@ export default function LandlordVerificationPage() {
 
                                     <div className="grid gap-4 md:grid-cols-2">
                                         <div>
-                                            <label className={formLabelDefault}>Company Phone Number</label>
+                                            <label className={formLabelDefault}>Company Phone Number (optional)</label>
                                             <input
                                                 className="form-input"
                                                 name="company_phone_number"

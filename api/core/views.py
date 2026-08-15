@@ -7,6 +7,7 @@ from calendar import monthrange
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from typing import Any
 
 from django.conf import settings
 from django.contrib.auth.password_validation import validate_password
@@ -168,6 +169,23 @@ def is_valid_flutterwave_reference(reference: str) -> bool:
     return 6 <= len(normalized) <= 42 and all(character.isalnum() or character == "-" for character in normalized)
 
 
+def extract_mobile_verification_warning(value: Any) -> str:
+    if isinstance(value, dict):
+        warning = str(value.get("mobile_warning") or "").strip()
+        if warning:
+            return warning
+        for nested_value in value.values():
+            warning = extract_mobile_verification_warning(nested_value)
+            if warning:
+                return warning
+    elif isinstance(value, (list, tuple)):
+        for nested_value in value:
+            warning = extract_mobile_verification_warning(nested_value)
+            if warning:
+                return warning
+    return ""
+
+
 def verify_tenant_identity_or_raise(user, profile_data: dict, nin_number: str, bvn_number: str) -> tuple[dict, dict]:
     identity_data = {
         "first_name": profile_data.get("first_name"),
@@ -247,7 +265,8 @@ def verify_landlord_identity_or_raise(user) -> dict[str, dict]:
             raise ValidationError({"nin": "NIN is required."})
         if not bvn_number:
             raise ValidationError({"bvn": "BVN is required."})
-        nin_payload, bvn_payload = verify_nin_and_bvn(identity_data, nin_number, bvn_number)
+        verification_payloads = verify_nin_and_bvn(identity_data, nin_number, bvn_number)
+        nin_payload, bvn_payload = verification_payloads
         payloads = {
             "nin": nin_payload,
             "bvn": bvn_payload,
@@ -691,7 +710,6 @@ LANDLORD_INDIVIDUAL_REQUIRED_PROFILE_FIELDS = (
     "state_of_origin",
     "lga_of_origin",
     "gender",
-    "contact_number",
     "email",
     "nin",
     "bvn",
@@ -702,7 +720,6 @@ LANDLORD_CORPORATE_REQUIRED_PROFILE_FIELDS = (
     "business_state",
     "business_city",
     "business_address",
-    "company_phone_number",
     "company_email",
     "contact_person_name",
     "contact_person_position",
@@ -2958,8 +2975,10 @@ class UserViewSet(viewsets.GenericViewSet):
                 return Response({"detail": "Tenant profile already exists. Use PUT to update."}, status=400)
             serializer = TenantProfileSerializer(data=data)
             serializer.is_valid(raise_exception=True)
+            mobile_warning = ""
             if not tenant_verified_identity_matches(request.user, serializer.validated_data, nin_number, bvn_number):
-                verify_tenant_identity_or_raise(request.user, serializer.validated_data, nin_number, bvn_number)
+                verification_payloads = verify_tenant_identity_or_raise(request.user, serializer.validated_data, nin_number, bvn_number)
+                mobile_warning = extract_mobile_verification_warning(verification_payloads)
             verification_profile = normalize_tenant_verification_profile(
                 {
                     **request.data,
@@ -2980,7 +2999,10 @@ class UserViewSet(viewsets.GenericViewSet):
             vr = sync_tenant_profile_approval(request.user, new_profile)
             if new_profile.supporting_documents.exists():
                 vr.documents.set(new_profile.supporting_documents.all())
-            return Response(TenantProfileSerializer(new_profile).data, status=201)
+            response_data = TenantProfileSerializer(new_profile).data
+            if mobile_warning:
+                response_data["mobile_warning"] = mobile_warning
+            return Response(response_data, status=201)
 
         # PUT
         if not profile:
@@ -2998,8 +3020,10 @@ class UserViewSet(viewsets.GenericViewSet):
             "lga": profile.lga,
             **serializer.validated_data,
         }
+        mobile_warning = ""
         if not tenant_verified_identity_matches(request.user, merged_profile_data, nin_number, bvn_number):
-            verify_tenant_identity_or_raise(request.user, merged_profile_data, nin_number, bvn_number)
+            verification_payloads = verify_tenant_identity_or_raise(request.user, merged_profile_data, nin_number, bvn_number)
+            mobile_warning = extract_mobile_verification_warning(verification_payloads)
         verification_profile = normalize_tenant_verification_profile(
             {
                 **request.data,
@@ -3020,7 +3044,10 @@ class UserViewSet(viewsets.GenericViewSet):
         vr = sync_tenant_profile_approval(request.user, updated_profile)
         if updated_profile.supporting_documents.exists():
             vr.documents.set(updated_profile.supporting_documents.all())
-        return Response(TenantProfileSerializer(updated_profile).data)
+        response_data = TenantProfileSerializer(updated_profile).data
+        if mobile_warning:
+            response_data["mobile_warning"] = mobile_warning
+        return Response(response_data)
 
     @action(detail=False, methods=["get"], url_path="tenants/(?P<tenant_id>[^/.]+)/profile")
     def tenant_profile_detail(self, request, tenant_id=None):
@@ -3523,13 +3550,13 @@ class VerificationRequestBaseViewSet(viewsets.GenericViewSet):
             verification = VerificationRequest.objects.create(user=user)
         return verification
 
-    def serialize_submission_response(self, verification):
+    def serialize_submission_response(self, verification, mobile_warning: str = ""):
         message = (
             "Verification approved automatically."
             if verification.status == VerificationRequest.Status.APPROVED
             else "Verification submitted for manual review."
         )
-        return {
+        response_data = {
             "id": verification.id,
             "request_type": verification.request_type,
             "status": verification.status,
@@ -3538,6 +3565,9 @@ class VerificationRequestBaseViewSet(viewsets.GenericViewSet):
             "physical_property_status": verification.physical_property_status,
             "message": message,
         }
+        if mobile_warning:
+            response_data["mobile_warning"] = mobile_warning
+        return response_data
 
     @action(detail=False, methods=["get"], url_path="status")
     def status(self, request):
@@ -3565,12 +3595,12 @@ class VerificationRequestBaseViewSet(viewsets.GenericViewSet):
         verification.submitted_at = timezone.now()
         update_fields = ["request_type", "status", "reviewed_at", "submitted_at", "updated_at"] if hasattr(verification, "updated_at") else ["request_type", "status", "reviewed_at", "submitted_at"]
 
-        self.apply_submission(request, verification, request_type, physical_property_status, update_fields)
+        mobile_warning = self.apply_submission(request, verification, request_type, physical_property_status, update_fields) or ""
 
         verification.save(update_fields=update_fields)
         if docs:
             verification.documents.add(*docs)
-        return Response(self.serialize_submission_response(verification), status=201)
+        return Response(self.serialize_submission_response(verification, mobile_warning), status=201)
 
     def apply_submission(self, request, verification, request_type, physical_property_status, update_fields):
         raise NotImplementedError
@@ -3670,7 +3700,7 @@ class LandlordVerificationRequestViewSet(VerificationRequestBaseViewSet):
 
         if request_type == VerificationRequest.RequestType.IDENTIFICATION:
             if request.user.role == AppUser.Role.LANDLORD and request.user.landlord_verification_profile:
-                verify_landlord_identity_or_raise(request.user)
+                mobile_warning = extract_mobile_verification_warning(verify_landlord_identity_or_raise(request.user))
                 verification.identity_verification_status = VerificationRequest.VerificationProgressStatus.VERIFIED
                 verification.verification_method = VerificationRequest.Method.AUTOMATED
                 if landlord_profile_has_mandatory_fields(request.user):
@@ -3678,6 +3708,7 @@ class LandlordVerificationRequestViewSet(VerificationRequestBaseViewSet):
                     verification.reviewed_at = timezone.now()
                     _append_update_fields(update_fields, "status", "reviewed_at")
                 _append_update_fields(update_fields, "identity_verification_status", "verification_method")
+                return mobile_warning
             else:
                 verification.identity_verification_status = VerificationRequest.VerificationProgressStatus.PENDING
                 _append_update_fields(update_fields, "identity_verification_status")
@@ -3720,7 +3751,9 @@ class TenantVerificationRequestViewSet(VerificationRequestBaseViewSet):
                 )
             nin_number = str(profile_data.get("nin_number") or request.user.nin_number or "").strip()
             bvn_number = str(profile_data.get("bvn_number") or request.user.bvn_number or "").strip()
-            verify_tenant_identity_or_raise(request.user, profile_data, nin_number, bvn_number)
+            mobile_warning = extract_mobile_verification_warning(
+                verify_tenant_identity_or_raise(request.user, profile_data, nin_number, bvn_number)
+            )
             request.user.nin_number = nin_number
             request.user.bvn_number = bvn_number
             request.user.tenant_verification_profile = normalize_tenant_verification_profile(
@@ -3740,6 +3773,7 @@ class TenantVerificationRequestViewSet(VerificationRequestBaseViewSet):
             verification.status = VerificationRequest.Status.APPROVED
             verification.reviewed_at = timezone.now()
             _append_update_fields(update_fields, "identity_verification_status", "verification_method", "status", "reviewed_at")
+            return mobile_warning
 
 
 class BookingViewSet(viewsets.ModelViewSet):

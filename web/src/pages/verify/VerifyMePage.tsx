@@ -38,7 +38,7 @@ const schema = z.object({
     state_of_origin: z.string().min(1, 'State of origin is required'),
     lga: z.string().min(1, 'LGA is required'),
     email: z.string().min(1, 'Email is required').email('Enter a valid email address.'),
-    mobile: z.string().min(1, 'Mobile number is required').refine((value) => !validateMobile(value), MOBILE_ERROR_MESSAGE),
+    mobile: z.string().optional().refine((value) => !value || !validateMobile(value), MOBILE_ERROR_MESSAGE),
     employment_status: z.string().min(1, 'Employment status is required'),
     nin_number: z.string().min(1, 'NIN is required').refine((value) => !validateNin(value), NIN_ERROR_MESSAGE),
     bvn_number: z.string().min(1, 'BVN is required').refine((value) => !validateBvn(value), BVN_ERROR_MESSAGE),
@@ -213,7 +213,7 @@ function SelectInput({ register, name, options, placeholder, error }: { register
 
 export default function VerifyMePage() {
     const { user } = useAuth()
-    const { confirm } = useAppPopup()
+    const { alert: popupAlert, confirm } = useAppPopup()
     const navigate = useNavigate()
     const queryClient = useQueryClient()
     const [submitError, setSubmitError] = useState('')
@@ -307,7 +307,7 @@ export default function VerifyMePage() {
             await api.patch('/users/me', {
                 name: [data.first_name, data.middle_name, data.last_name].filter(Boolean).join(' '),
                 email: data.email.trim(),
-                mobile: data.mobile.trim(),
+                mobile: (data.mobile || '').trim(),
                 state_of_origin: data.state_of_origin,
             })
 
@@ -326,7 +326,7 @@ export default function VerifyMePage() {
                 state_of_origin: data.state_of_origin,
                 lga: data.lga,
                 email: data.email.trim(),
-                mobile: data.mobile.trim(),
+                mobile: (data.mobile || '').trim(),
                 employment_status: data.employment_status,
             }
 
@@ -339,6 +339,20 @@ export default function VerifyMePage() {
             queryClient.invalidateQueries({ queryKey: ['tenant-profile'] })
             queryClient.invalidateQueries({ queryKey: ['verification', 'status'] })
             setSubmitError('')
+
+            const mobileWarning = String(profile?.mobile_warning || '').trim()
+            if (mobileWarning) {
+                if (mobileWarning.includes('does not match')) {
+                    await confirm(mobileWarning, {
+                        title: 'Warning',
+                        variant: 'warning',
+                        confirmLabel: 'Yes, register number',
+                        cancelLabel: 'No, continue',
+                    })
+                } else {
+                    await popupAlert(mobileWarning, { title: 'Warning', variant: 'warning' })
+                }
+            }
 
             const profilePath = user?.id ? `/tenants/${user.id}/profile?edit=1` : '/search'
             const shouldGoToProfile = await confirm(
@@ -444,7 +458,7 @@ export default function VerifyMePage() {
                             <InputRow label="Email" error={errors.email?.message}>
                                 <TextInput register={register} name="email" type="email" placeholder="Email address" error={errors.email?.message} />
                             </InputRow>
-                            <InputRow label="Mobile (linked to NIN or BVN)" error={errors.mobile?.message}>
+                            <InputRow label="Mobile (linked to NIN or BVN, optional)" error={errors.mobile?.message}>
                                 <TextInput register={register} name="mobile" placeholder={MOBILE_INPUT_PLACEHOLDER} error={errors.mobile?.message} {...mobileInputProps} />
                             </InputRow>
                             <InputRow label="Employment Status" error={errors.employment_status?.message}>
