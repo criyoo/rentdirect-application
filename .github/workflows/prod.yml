@@ -70,6 +70,7 @@ jobs:
               - "turbo.json"
               - ".github/workflows/$${{ vars.ENVIRONMENT }}.yml"
 
+
   check-web:
     needs: detect-web-changes
     if: needs.detect-web-changes.outputs.web == 'true'
@@ -92,6 +93,7 @@ jobs:
 
       - name: Typecheck frontend
         run: npm --prefix web exec -- tsc -b web/tsconfig.json --pretty false
+
 
   test-web:
     needs:
@@ -117,6 +119,7 @@ jobs:
 
       - name: Test frontend
         run: npm --prefix web run test --if-present
+
 
   build-web:
     needs:
@@ -158,6 +161,7 @@ jobs:
             turbo.json
           retention-days: 1
 
+
   deploy-web:
     needs:
       - detect-web-changes
@@ -183,6 +187,7 @@ jobs:
       - name: Deploy Web
         run: BUILD_WEB=0 INSTALL_DEPS=0 bash scripts/deploy/web.sh $${{ vars.ENVIRONMENT }}
 
+
   detect-api-changes:
     runs-on: ubuntu-latest
     timeout-minutes: 1
@@ -203,6 +208,7 @@ jobs:
               - "scripts/deploy/api.sh"
               - "scripts/deploy/common.sh"
               - "scripts/migrate.sh"
+
 
   check-api:
     needs: detect-api-changes
@@ -233,6 +239,7 @@ jobs:
           python manage.py makemigrations --check --dry-run
           python manage.py check
 
+
   test-api:
     needs:
       - detect-api-changes
@@ -262,6 +269,7 @@ jobs:
           source .venv/bin/activate
           cd api
           python manage.py test
+
 
   deploy-api:
     needs:
