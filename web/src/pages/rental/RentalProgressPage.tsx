@@ -172,6 +172,10 @@ export default function RentalProgressPage() {
     const progressPercent = Number(progress?.progress_percent || 0)
     const steps = progress?.steps || []
     const isLandlord = user?.role === 'landlord'
+    const tenantDepositStepIndex = steps.findIndex((step) => step.key === 'tenant_paid_deposit')
+    const tenantRentStepIndex = steps.findIndex((step) => step.key === 'tenant_paid_rent_in_full')
+    const rentalDepositPaid = Boolean(progress?.rental_deposit_paid)
+    const fullRentalAmountPaid = Boolean(progress?.full_rental_amount_paid)
     const dashboardPath = isLandlord ? `/dashboard/landlord/${user?.id}` : `/dashboard/tenant/${user?.id}`
 
     return (
@@ -298,7 +302,17 @@ export default function RentalProgressPage() {
                                 const completed = Boolean(step.completed)
                                 const counterpartCompleted = Boolean(step.counterpart_completed)
                                 const selectedResponse = selectedStepResponses[step.key] || ''
+                                const blockedByDepositPayment = !isLandlord
+                                    && tenantDepositStepIndex >= 0
+                                    && index >= tenantDepositStepIndex
+                                    && !rentalDepositPaid
+                                const blockedByFullRentalPayment = !isLandlord
+                                    && tenantRentStepIndex >= 0
+                                    && index >= tenantRentStepIndex
+                                    && !fullRentalAmountPaid
                                 const unlocked = stepPrerequisitesSatisfied(index, steps)
+                                    && !blockedByDepositPayment
+                                    && !blockedByFullRentalPayment
                                 const isChoiceStep = step.kind === 'choice' && Array.isArray(step.options) && step.options.length > 0
 
                                 return (
@@ -326,7 +340,13 @@ export default function RentalProgressPage() {
                                                         </p>
                                                     ) : (
                                                         <p className="mt-2 text-sm text-gray-500">
-                                                            {unlocked ? 'Pending confirmation' : 'Complete the previous checklist item first.'}
+                                                            {blockedByDepositPayment
+                                                                ? 'Available after payment of the 20% deposit or the full rental amount, including the 10% refundable caution fee and the 10% administrative fee.'
+                                                                : blockedByFullRentalPayment
+                                                                ? 'Available after full payment of rent, the 10% refundable caution fee, and the 10% administrative fee.'
+                                                                : unlocked
+                                                                    ? 'Pending confirmation'
+                                                                    : 'Complete the previous checklist item first.'}
                                                         </p>
                                                     )}
                                                 </div>

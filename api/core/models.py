@@ -6,6 +6,8 @@ from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, Permis
 from django.db import models
 from django.utils import timezone
 
+from .pricing import calculate_deposit_amount, resolve_booking_total
+
 
 def _file_extension(filename: str) -> str:
     return PurePath(str(filename or "")).suffix.lower()
@@ -367,6 +369,28 @@ def get_booking_progress_field_name(role: str) -> str:
     return BOOKING_PROGRESS_FIELD_BY_ROLE.get(role, "")
 
 
+def booking_has_paid_full_rental_amount(booking) -> bool:
+    listing = getattr(booking, "listing", None)
+    annual_rent = getattr(listing, "price_per_year", None)
+    if annual_rent is None:
+        return False
+
+    total_due = resolve_booking_total(annual_rent, getattr(booking, "total_amount", None))
+    paid_amount = Decimal(getattr(booking, "paid_amount", 0) or 0)
+    return paid_amount >= total_due
+
+
+def booking_has_paid_rental_deposit(booking) -> bool:
+    listing = getattr(booking, "listing", None)
+    annual_rent = getattr(listing, "price_per_year", None)
+    if annual_rent is None:
+        return False
+
+    paid_amount = Decimal(getattr(booking, "paid_amount", 0) or 0)
+    deposit_due = calculate_deposit_amount(annual_rent)
+    return paid_amount >= deposit_due or booking_has_paid_full_rental_amount(booking)
+
+
 def complete_booking_progress_step(
     booking,
     role: str,
@@ -395,6 +419,8 @@ def complete_booking_progress_step(
 
 def build_booking_progress_data(booking, role: str) -> dict:
     steps = get_booking_progress_steps(role)
+    rental_deposit_paid = booking_has_paid_rental_deposit(booking)
+    full_rental_amount_paid = booking_has_paid_full_rental_amount(booking)
     field_name = get_booking_progress_field_name(role)
     progress = normalize_booking_progress(getattr(booking, field_name, {})) if field_name else {}
     counterpart_role = (
@@ -462,6 +488,8 @@ def build_booking_progress_data(booking, role: str) -> dict:
 
     return {
         "role": role,
+        "rental_deposit_paid": rental_deposit_paid,
+        "full_rental_amount_paid": full_rental_amount_paid,
         "progress_percent": progress_percent,
         "completed_count": completed_count,
         "total_count": total_steps,

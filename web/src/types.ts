@@ -260,6 +260,8 @@ export interface RentalProgressStep {
 
 export interface RentalProgress {
     role: 'tenant' | 'landlord'
+    rental_deposit_paid: boolean
+    full_rental_amount_paid: boolean
     progress_percent: number
     completed_count: number
     total_count: number
