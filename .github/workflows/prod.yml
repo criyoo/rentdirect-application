@@ -68,6 +68,7 @@ jobs:
               - "package.json"
               - "package-lock.json"
               - "turbo.json"
+              - ".github/workflows/$${{ vars.ENVIRONMENT }}.yml"
 
   check-web:
     needs: detect-web-changes
