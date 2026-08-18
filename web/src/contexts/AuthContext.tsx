@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@/lib/api'
+import { clearFormDrafts } from '@/lib/formDrafts'
 import { User } from '@/types'
 
 type RegistrationStarted = {
@@ -31,7 +32,7 @@ type AuthContextValue = {
     isRestoring: boolean
     login: (data: LoginForm) => Promise<void>
     register: (data: RegisterForm) => Promise<RegistrationStarted>
-    verifyRegistration: (data: { email: string; otp_code: string }) => Promise<User>
+    verifyRegistration: (data: { email: string; otp_code: string }, options?: { navigate?: boolean }) => Promise<User>
     logout: () => Promise<void>
 }
 
@@ -156,7 +157,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
     }
 
-    async function verifyRegistration(data: { email: string; otp_code: string }): Promise<User> {
+    async function verifyRegistration(data: { email: string; otp_code: string }, options: { navigate?: boolean } = {}): Promise<User> {
         try {
             const response = await api.post<User>('/auth/register/verify', data)
             const nextUser = normalizeUser(response.data, data.email)
@@ -165,13 +166,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             localStorage.setItem('user', JSON.stringify(nextUser))
             queryClient.setQueryData(['users', 'me'], response.data)
 
-            if (nextUser.role === 'landlord') {
-                localStorage.setItem(LANDLORD_IDENTITY_ONBOARDING_KEY, '1')
-                navigate('/landlord/verification')
-            } else if (nextUser.role === 'tenant') {
-                navigate('/verify')
-            } else if (nextUser.role === 'admin') {
-                navigate('/admin/dashboard')
+            if (options.navigate !== false) {
+                if (nextUser.role === 'landlord') {
+                    localStorage.setItem(LANDLORD_IDENTITY_ONBOARDING_KEY, '1')
+                    navigate('/landlord/verification')
+                } else if (nextUser.role === 'tenant') {
+                    navigate('/verify')
+                } else if (nextUser.role === 'admin') {
+                    navigate('/admin/dashboard')
+                }
             }
 
             return nextUser
@@ -211,6 +214,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(null)
         setIsRestoring(false)
         localStorage.removeItem('user')
+        clearFormDrafts()
         queryClient.removeQueries({ queryKey: ['users', 'me'] })
         navigate('/login')
     }

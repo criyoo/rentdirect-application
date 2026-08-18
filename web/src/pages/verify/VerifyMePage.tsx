@@ -9,6 +9,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useAppPopup } from '@/contexts/AppPopupContext'
 import LegalDocumentsConsent from '@/components/LegalDocumentsConsent'
 import { api } from '@/lib/api'
+import { buildFormDraftKey, readFormDraft, removeFormDraft, writeFormDraft } from '@/lib/formDrafts'
 import { isNigeriaSelection, nigeriaStateLgaMap, nigerianStates, worldCountryOptions } from '@/lib/locations'
 import {
     BVN_ERROR_MESSAGE,
@@ -218,6 +219,12 @@ export default function VerifyMePage() {
     const queryClient = useQueryClient()
     const [submitError, setSubmitError] = useState('')
     const [hasAcceptedLegalConsent, setHasAcceptedLegalConsent] = useState(false)
+    const verificationDraftStorageKey = useMemo(
+        () => buildFormDraftKey('tenant-verification', user?.id || user?.email),
+        [user?.email, user?.id],
+    )
+    const [hydratedDraftStorageKey, setHydratedDraftStorageKey] = useState<string | null>(null)
+    const [draftPersistenceEnabled, setDraftPersistenceEnabled] = useState(true)
 
     const { data: me } = useQuery({
         queryKey: ['users', 'me'],
@@ -268,9 +275,36 @@ export default function VerifyMePage() {
         defaultValues,
     })
 
+    const watchedFormValues = watch()
+    const signerName = useMemo(
+        () => [watchedFormValues.first_name, watchedFormValues.middle_name, watchedFormValues.last_name]
+            .filter(Boolean)
+            .join(' ')
+            || me?.name
+            || user?.name
+            || '',
+        [me?.name, user?.name, watchedFormValues.first_name, watchedFormValues.last_name, watchedFormValues.middle_name],
+    )
+
     useEffect(() => {
-        reset(defaultValues)
-    }, [defaultValues, reset])
+        if (!verificationDraftStorageKey) return
+
+        const storedDraft = readFormDraft<Partial<VerificationFormValues>>(verificationDraftStorageKey)
+        reset({ ...defaultValues, ...(storedDraft || {}) })
+        setHydratedDraftStorageKey(verificationDraftStorageKey)
+    }, [defaultValues, reset, verificationDraftStorageKey])
+
+    useEffect(() => {
+        if (
+            !draftPersistenceEnabled
+            || !verificationDraftStorageKey
+            || hydratedDraftStorageKey !== verificationDraftStorageKey
+        ) {
+            return
+        }
+
+        writeFormDraft(verificationDraftStorageKey, watchedFormValues)
+    }, [draftPersistenceEnabled, hydratedDraftStorageKey, verificationDraftStorageKey, watchedFormValues])
 
     const nationality = watch('nationality')
     const stateOfOrigin = watch('state_of_origin')
@@ -334,6 +368,9 @@ export default function VerifyMePage() {
             return (await api[method]('/users/me/tenant-profile', payload)).data
         },
         onSuccess: async (profile) => {
+            setDraftPersistenceEnabled(false)
+            setHydratedDraftStorageKey(null)
+            removeFormDraft(verificationDraftStorageKey)
             queryClient.invalidateQueries({ queryKey: ['users', 'me'] })
             queryClient.setQueryData(['users', 'me', 'tenant-profile'], profile)
             queryClient.invalidateQueries({ queryKey: ['tenant-profile'] })
@@ -472,6 +509,7 @@ export default function VerifyMePage() {
                         <LegalDocumentsConsent
                             id="tenant-verification-legal-consent"
                             audience="tenant"
+                            signerName={signerName}
                             consented={hasAcceptedLegalConsent}
                             disabled={isVerificationLocked}
                             onConsentChange={setHasAcceptedLegalConsent}

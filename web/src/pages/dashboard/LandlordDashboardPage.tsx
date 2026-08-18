@@ -119,7 +119,7 @@ export default function LandlordDashboardPage() {
     const landlordProfileId = userId || user?.id
     const landlordProfilePath = landlordProfileId ? `/landlords/${landlordProfileId}` : '#'
     const dashboardActions = [
-        { to: '/landlord/enquiries', label: 'Enquiries', Icon: HiChat, colorClass: 'text-green-600' },
+        { to: '/landlord/enquiries', label: 'Chat (Enquiries)', Icon: HiChat, colorClass: 'text-green-600' },
         { to: '/landlord/verification', label: 'Verification', Icon: HiShieldCheck, colorClass: 'text-purple-600' },
         { to: landlordProfilePath, label: 'Profile', Icon: HiUser, colorClass: 'text-orange-600' },
         { to: '/billing', label: 'Billing', Icon: HiCash, colorClass: 'text-emerald-600' },
@@ -164,11 +164,6 @@ export default function LandlordDashboardPage() {
                             <p className="text-lg text-gray-600">
                                 Manage your properties and track your rental business
                             </p>
-                        </div>
-                        <div className="hidden md:block">
-                            <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl flex items-center justify-center shadow-lg">
-                                <HiHome className="w-8 h-8 text-white" />
-                            </div>
                         </div>
                     </div>
 

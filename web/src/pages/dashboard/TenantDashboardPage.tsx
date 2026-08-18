@@ -171,15 +171,15 @@ export default function TenantDashboardPage() {
                                 Find your perfect home and manage your rental journey
                             </p>
                         </div>
-                        <div className="hidden items-center gap-3 md:flex">
-                            {/* <Link to="/enquiries" className="btn btn-primary">
+                        {/* <div className="hidden items-center gap-3 md:flex">
+                            <Link to="/enquiries" className="btn btn-primary">
                                 <HiChat className="w-10 h-10 mr-1" />
                                 Enquiries
-                            </Link> */}
+                            </Link>
                             <div className="w-24 h-20 bg-gradient-to-br from-blue-600 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg">
                                 <HiHome className="w-12 h-8 text-white" />
                             </div>
-                        </div>
+                        </div> */}
                     </div>
 
                     <div className="grid grid-cols-2 gap-4 mb-8 md:grid-cols-3 lg:grid-cols-6">

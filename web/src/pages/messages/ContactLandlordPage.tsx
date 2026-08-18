@@ -43,7 +43,7 @@ export default function ContactLandlordPage() {
     const [liveMessages, setLiveMessages] = useState<Message[]>([])
     const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'closed'>('connecting')
     const socketRef = useRef<WebSocket | null>(null)
-    const bottomRef = useRef<HTMLDivElement | null>(null)
+    const messagesContainerRef = useRef<HTMLDivElement | null>(null)
     const tenantId = searchParams.get('tenantId') || ''
     const isLandlordChat = user?.role === 'landlord' && Boolean(tenantId)
 
@@ -128,7 +128,13 @@ export default function ContactLandlordPage() {
     }, [id, user, isLandlordChat, tenantId, canUseTenantMessaging])
 
     useEffect(() => {
-        bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+        const messagesContainer = messagesContainerRef.current
+        if (!messagesContainer) return
+
+        messagesContainer.scrollTo({
+            top: messagesContainer.scrollHeight,
+            behavior: 'smooth',
+        })
     }, [liveMessages.length])
 
     const containsContactInfo = (text: string) => {
@@ -437,7 +443,7 @@ export default function ContactLandlordPage() {
                             )}
 
                             {/* Messages List */}
-                            <div className="flex-1 overflow-y-auto p-4 space-y-4 flex flex-col justify-end">
+                            <div ref={messagesContainerRef} className="min-h-0 flex-1 overflow-y-auto p-4 space-y-4 flex flex-col justify-end">
                                 {messagesLoading ? (
                                     <div className="flex items-center justify-center h-full">
                                         <div className="animate-pulse text-gray-500">Loading messages...</div>
@@ -490,7 +496,6 @@ export default function ContactLandlordPage() {
                                             )}
                                         </div>
                                     ))}
-                                    <div ref={bottomRef} />
                                     </>
                                 ) : (
                                     <div className="text-center py-20">
@@ -521,6 +526,7 @@ export default function ContactLandlordPage() {
                                         />
                                     </div>
                                     <button
+                                        type="button"
                                         onClick={handleSendMessage}
                                         disabled={sendMessage.isPending || !message.trim()}
                                         className="px-6 py-4 bg-blue-600 text-white rounded-2xl hover:bg-blue-700 disabled:opacity-90 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"

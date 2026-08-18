@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { useAuth } from '@/hooks/useAuth'
 import DashboardBackButton from '@/components/DashboardBackButton'
 import { api } from '@/lib/api'
+import { buildFormDraftKey, readFormDraft, removeFormDraft, writeFormDraft } from '@/lib/formDrafts'
 import {
     MOBILE_ERROR_MESSAGE,
     MOBILE_INPUT_PATTERN,
@@ -49,6 +50,14 @@ type SettingsOtpRequestResponse = {
     target_email: string
     expires_in_seconds: number
     message: string
+}
+
+type SettingsProfileDraft = {
+    email?: string
+    mobile?: string
+    biodata?: Partial<{ first_name: string; middle_name: string; last_name: string }>
+    residence?: Partial<UserResidence>
+    guarantorDetails?: Partial<GuarantorDetailsForm>
 }
 
 function asRecord(value: unknown): Record<string, any> {
@@ -147,6 +156,12 @@ export default function SettingsPage() {
     const [residence, setResidence] = useState<UserResidence>(normalizeResidence())
     const [guarantorDetails, setGuarantorDetails] = useState<GuarantorDetailsForm>(emptyGuarantorDetails)
     const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+    const settingsProfileDraftStorageKey = useMemo(
+        () => buildFormDraftKey('settings-profile', user?.id || user?.email),
+        [user?.email, user?.id],
+    )
+    const [hydratedDraftStorageKey, setHydratedDraftStorageKey] = useState<string | null>(null)
+    const [draftPersistenceEnabled, setDraftPersistenceEnabled] = useState(true)
 
     const [newPassword, setNewPassword] = useState('')
     const [confirmPassword, setConfirmPassword] = useState('')
@@ -162,9 +177,13 @@ export default function SettingsPage() {
     useEffect(() => {
         if (!me) return
 
-        setEmail(me.email || '')
-        setMobile(me.mobile || '')
-        setResidence(normalizeResidence(me.residence))
+        const storedDraft = readFormDraft<SettingsProfileDraft>(settingsProfileDraftStorageKey)
+        setEmail(storedDraft?.email ?? me.email ?? '')
+        setMobile(storedDraft?.mobile ?? me.mobile ?? '')
+        setResidence({
+            ...normalizeResidence(me.residence),
+            ...(storedDraft?.residence || {}),
+        })
 
         const profile = me.role === 'landlord'
             ? asRecord(me.landlord_verification_profile)
@@ -174,10 +193,42 @@ export default function SettingsPage() {
             first_name: String(profile.first_name || nameParts.first_name),
             middle_name: String(profile.middle_name || nameParts.middle_name),
             last_name: String(profile.last_name || nameParts.last_name),
+            ...(storedDraft?.biodata || {}),
         })
-        setGuarantorDetails(normalizeGuarantorDetails(profile))
+        setGuarantorDetails({
+            ...normalizeGuarantorDetails(profile),
+            ...(storedDraft?.guarantorDetails || {}),
+        })
+        setHydratedDraftStorageKey(settingsProfileDraftStorageKey)
         setAccountFrozen(Boolean(me.account_frozen))
-    }, [me])
+    }, [me, settingsProfileDraftStorageKey])
+
+    useEffect(() => {
+        if (
+            !draftPersistenceEnabled
+            || !settingsProfileDraftStorageKey
+            || hydratedDraftStorageKey !== settingsProfileDraftStorageKey
+        ) {
+            return
+        }
+
+        writeFormDraft(settingsProfileDraftStorageKey, {
+            email,
+            mobile,
+            biodata,
+            residence,
+            guarantorDetails,
+        })
+    }, [
+        biodata,
+        draftPersistenceEnabled,
+        email,
+        guarantorDetails,
+        hydratedDraftStorageKey,
+        mobile,
+        residence,
+        settingsProfileDraftStorageKey,
+    ])
 
     const validateProfile = () => {
         const nextErrors: Record<string, string> = {}
@@ -251,6 +302,9 @@ export default function SettingsPage() {
             })).data
         },
         onSuccess: (nextUser) => {
+            setDraftPersistenceEnabled(false)
+            setHydratedDraftStorageKey(null)
+            removeFormDraft(settingsProfileDraftStorageKey)
             qc.setQueryData(['users', 'me'], nextUser)
             localStorage.setItem('user', JSON.stringify(nextUser))
             closeOtpChallenge()

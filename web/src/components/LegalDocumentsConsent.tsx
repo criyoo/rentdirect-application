@@ -7,6 +7,7 @@ import { getLegalDocumentsForAudience, LegalDocumentAudience } from '@/lib/legal
 type LegalDocumentsConsentProps = {
     id: string
     audience: Extract<LegalDocumentAudience, 'tenant' | 'landlord'>
+    signerName?: string
     consented: boolean
     onConsentChange: (consented: boolean) => void
     disabled?: boolean
@@ -18,12 +19,18 @@ function addToSet(current: Set<string>, value: string): Set<string> {
     return next
 }
 
-export default function LegalDocumentsConsent({ id, audience, consented, onConsentChange, disabled = false }: LegalDocumentsConsentProps) {
+export default function LegalDocumentsConsent({ id, audience, signerName = '', consented, onConsentChange, disabled = false }: LegalDocumentsConsentProps) {
     const documents = useMemo(() => getLegalDocumentsForAudience(audience), [audience])
     const [openSlug, setOpenSlug] = useState<string | null>(null)
     const [openedSlugs, setOpenedSlugs] = useState<Set<string>>(new Set())
+    const [checkableSlugs, setCheckableSlugs] = useState<Set<string>>(new Set())
     const [readSlugs, setReadSlugs] = useState<Set<string>>(new Set())
     const [consentError, setConsentError] = useState('')
+    const [consentDate] = useState(() => new Date().toLocaleDateString(undefined, {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+    }))
 
     const allDocumentsOpened = documents.every((document) => openedSlugs.has(document.slug))
     const allDocumentsRead = documents.every((document) => readSlugs.has(document.slug))
@@ -32,6 +39,7 @@ export default function LegalDocumentsConsent({ id, audience, consented, onConse
     useEffect(() => {
         setOpenSlug(null)
         setOpenedSlugs(new Set())
+        setCheckableSlugs(new Set())
         setReadSlugs(new Set())
         setConsentError('')
         onConsentChange(false)
@@ -42,7 +50,7 @@ export default function LegalDocumentsConsent({ id, audience, consented, onConse
 
         const contentElement = document.getElementById(`${id}-${openSlug}-content`)
         if (contentElement && contentElement.scrollHeight <= contentElement.clientHeight + 8) {
-            setReadSlugs((current) => addToSet(current, openSlug))
+            setCheckableSlugs((current) => addToSet(current, openSlug))
         }
     }, [id, openSlug])
 
@@ -54,13 +62,26 @@ export default function LegalDocumentsConsent({ id, audience, consented, onConse
 
     const handleDocumentScroll = (slug: string, scrollTop: number, clientHeight: number, scrollHeight: number) => {
         if (scrollTop + clientHeight >= scrollHeight - 8) {
-            setReadSlugs((current) => addToSet(current, slug))
+            setCheckableSlugs((current) => addToSet(current, slug))
         }
+    }
+
+    const handleDocumentCheck = (slug: string, checked: boolean) => {
+        setReadSlugs((current) => {
+            const next = new Set(current)
+            if (checked) {
+                next.add(slug)
+            } else {
+                next.delete(slug)
+            }
+            return next
+        })
+        setConsentError('')
     }
 
     const handleConsent = () => {
         if (!canConsent) {
-            setConsentError('Review all legal document before giving consent.')
+            setConsentError('Scroll through every legal document and tick each document checkbox before giving consent.')
             return
         }
         setConsentError('')
@@ -86,6 +107,8 @@ export default function LegalDocumentsConsent({ id, audience, consented, onConse
                     const isOpen = openSlug === document.slug
                     const isRead = readSlugs.has(document.slug)
                     const isOpened = openedSlugs.has(document.slug)
+                    const canCheckDocument = checkableSlugs.has(document.slug)
+                    const checkboxId = `${id}-${document.slug}-checkbox`
 
                     return (
                         <div key={document.slug} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -126,9 +149,32 @@ export default function LegalDocumentsConsent({ id, audience, consented, onConse
                                     className="max-h-[28rem] overflow-y-auto border-t border-slate-100 px-4 py-5 sm:px-6"
                                 >
                                     <LegalDocumentRenderer content={document.content} />
-                                    <div className="mt-7 rounded-xl bg-blue-50 px-4 py-3 text-center text-sm font-medium text-blue-800">
-                                        Thanks for reviewing, document is now marked as read.
-                                    </div>
+                                    {canCheckDocument ? (
+                                        <div className="mt-7 rounded-xl border border-blue-100 bg-blue-50/70 px-4 py-4">
+                                            <div className="grid gap-2 text-sm text-slate-700 sm:grid-cols-2">
+                                                <p><span className="font-semibold text-slate-900">Name:</span> {signerName || 'Not provided'}</p>
+                                                <p><span className="font-semibold text-slate-900">Date:</span> {consentDate}</p>
+                                            </div>
+                                            <label htmlFor={checkboxId} className="mt-4 flex cursor-pointer items-start gap-3 text-sm leading-6 text-slate-700">
+                                                <input
+                                                    id={checkboxId}
+                                                    type="checkbox"
+                                                    checked={isRead}
+                                                    disabled={disabled}
+                                                    onChange={(event) => handleDocumentCheck(document.slug, event.target.checked)}
+                                                    className="mt-1 h-5 w-5 shrink-0 rounded border-slate-300 text-blue-600 accent-blue-600 focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                                />
+                                                <span className="flex items-start gap-2">
+                                                    <span>Ticking this checkbox serves as concent and electronic signature/acceptance of this document.</span>
+                                                    {isRead && <HiCheckCircle className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" aria-label="Document read" />}
+                                                </span>
+                                            </label>
+                                        </div>
+                                    ) : (
+                                        <div className="mt-7 rounded-xl bg-blue-50 px-4 py-3 text-center text-sm font-medium text-blue-800">
+                                            Scroll to the bottom of this document to review and sign it.
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>

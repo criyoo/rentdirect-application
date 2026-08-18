@@ -57,7 +57,7 @@ export default function EnquiriesPage() {
     }
 
     return (
-        <div className="container-modern py-8 h-[calc(100vh-200px)]">
+        <div className="container-modern py-8 min-h-[calc(100vh-200px)]">
             <div className="mb-6">
                 <h1 className="text-3xl font-bold text-gray-900">My Enquiries</h1>
                 <p className="text-gray-600 mt-2">Properties you've enquired about and conversations with landlords</p>

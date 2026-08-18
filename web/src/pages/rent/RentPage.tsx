@@ -11,6 +11,7 @@ import { Booking, Listing, Payment } from '@/types'
 import { formatCurrencyWithSymbol } from '@/utils/currency'
 import { calculateRentBreakdown } from '@/utils/rent'
 import DashboardBackButton from '@/components/DashboardBackButton'
+import LegalConsentCheckbox from '@/components/LegalConsentCheckbox'
 
 type PaymentCheckoutResponse = {
     payment: Payment
@@ -115,7 +116,8 @@ export default function RentPage() {
     const [searchParams, setSearchParams] = useSearchParams()
     const qc = useQueryClient()
     const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'card' | 'bank'>('bank')
-    const [agreeToTerms, setAgreeToTerms] = useState(false)
+    const [hasAcceptedRentalTerms, setHasAcceptedRentalTerms] = useState(false)
+    const [rentalTermsError, setRentalTermsError] = useState('')
     const [showPaymentForm, setShowPaymentForm] = useState(false)
     const [paymentAmount, setPaymentAmount] = useState(0)
     const [virtualAccountCheckout, setVirtualAccountCheckout] = useState<HostedCheckoutPayload>(null)
@@ -406,6 +408,10 @@ export default function RentPage() {
 
     const handlePayment = () => {
         if (!booking) return
+        if (!hasAcceptedRentalTerms) {
+            setRentalTermsError('Review the Tenant Rental and Booking Terms and tick the consent box before making a payment.')
+            return
+        }
         if (paymentAmount <= 0) {
             alert('Enter a valid payment amount.')
             return
@@ -420,6 +426,24 @@ export default function RentPage() {
             return
         }
         processPayment.mutate(paymentAmount)
+    }
+
+    const handleOpenPaymentForm = () => {
+        if (!hasAcceptedRentalTerms) {
+            setRentalTermsError('Review the Tenant Rental and Booking Terms and tick the consent box before making a payment.')
+            return
+        }
+        setRentalTermsError('')
+        setShowPaymentForm(true)
+    }
+
+    const handleContinuePayment = (paymentId: string) => {
+        if (!hasAcceptedRentalTerms) {
+            setRentalTermsError('Review the Tenant Rental and Booking Terms and tick the consent box before continuing payment.')
+            return
+        }
+        setRentalTermsError('')
+        continuePendingPayment.mutate(paymentId)
     }
 
     const handlePaymentMethodChange = (method: 'card' | 'bank') => {
@@ -621,7 +645,7 @@ export default function RentPage() {
                                                 <div key={payment.id} className="flex gap-2">
                                                     <button
                                                         type="button"
-                                                        onClick={() => continuePendingPayment.mutate(payment.id)}
+                                                        onClick={() => handleContinuePayment(payment.id)}
                                                         disabled={continuePendingPayment.isPending || cancelPayment.isPending}
                                                         className="rounded-lg bg-blue-600 px-2 py-3 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
                                                     >
@@ -741,7 +765,7 @@ export default function RentPage() {
                                         </button>
                                         <button
                                             onClick={handlePayment}
-                                            disabled={processPayment.isPending}
+                                            disabled={processPayment.isPending || !hasAcceptedRentalTerms}
                                             className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
                                         >
                                             {processPayment.isPending ? 'Processing...' : `Pay ${formatCurrencyWithSymbol(paymentAmount)}`}
@@ -874,27 +898,13 @@ export default function RentPage() {
                                             Sign In to Continue
                                         </button>
                                     ) : !booking ? (
-                                        <>
-                                            <label className="flex items-start space-x-3 cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={agreeToTerms}
-                                                    onChange={(event) => setAgreeToTerms(event.target.checked)}
-                                                    className="mt-1 text-blue-600"
-                                                />
-                                                <span className="text-sm text-gray-600">
-                                                    I agree to the rental terms and conditions, and authorize payment toward the total amount.
-                                                </span>
-                                            </label>
-
-                                            <button
-                                                onClick={() => createBooking.mutate()}
-                                                disabled={createBooking.isPending || !agreeToTerms}
-                                                className="w-full bg-green-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                                            >
-                                                {createBooking.isPending ? 'Processing...' : 'Confirm Rental Application'}
-                                            </button>
-                                        </>
+                                        <button
+                                            onClick={() => createBooking.mutate()}
+                                            disabled={createBooking.isPending}
+                                            className="w-full bg-green-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                        >
+                                            {createBooking.isPending ? 'Processing...' : 'Confirm Rental Application'}
+                                        </button>
                                     ) : showCancelledPaymentState ? (
                                         <div className="rounded-xl border border-red-100 bg-red-50 p-4 text-center">
                                             <h3 className="text-lg font-semibold text-red-700">Payment Cancelled</h3>
@@ -915,11 +925,25 @@ export default function RentPage() {
                                         </div>
                                     ) : (
                                         <button
-                                            onClick={() => setShowPaymentForm(true)}
+                                            onClick={handleOpenPaymentForm}
                                             className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors"
                                         >
                                             Pay Remaining Balance
                                         </button>
+                                    )}
+
+                                    {booking && !showCancelledPaymentState && !isFullyPaid && (
+                                        <LegalConsentCheckbox
+                                            id="tenant-rental-legal-consent"
+                                            documents={[{ slug: 'tenant-rental-and-booking-terms', title: 'Tenant Rental and Booking Terms' }]}
+                                            checked={hasAcceptedRentalTerms}
+                                            error={rentalTermsError}
+                                            consentContext="renting this property and making a payment"
+                                            onChange={(checked) => {
+                                                setHasAcceptedRentalTerms(checked)
+                                                if (checked) setRentalTermsError('')
+                                            }}
+                                        />
                                     )}
 
                                     <DashboardBackButton to={`/listings/${listing.id}`} label="Back to Property" className="w-full justify-center" />

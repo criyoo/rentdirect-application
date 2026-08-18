@@ -8,6 +8,7 @@ import { api, resolveMediaUrl } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
 import { isNigeriaSelection, nigeriaStateLgaMap, nigerianStates, worldCountryOptions } from '@/lib/locations'
 import { MOBILE_ERROR_MESSAGE, MOBILE_INPUT_PATTERN, MOBILE_INPUT_PLACEHOLDER, validateMobile } from '@/lib/profile'
+import { buildFormDraftKey, readFormDraft, removeFormDraft, writeFormDraft } from '@/lib/formDrafts'
 import { User } from '@/types'
 
 const rentalHistoryItemSchema = z.object({
@@ -343,8 +344,6 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>
 
-const tenantProfileDraftKeyPrefix = 'rentdirect:tenant-profile-draft:'
-
 function isRecord(value: unknown): value is Record<string, any> {
     return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
@@ -354,17 +353,8 @@ function readTenantProfileDraft(storageKey: string | null): Record<string, any> 
         return null
     }
 
-    try {
-        const storedDraft = window.localStorage.getItem(storageKey)
-        if (!storedDraft) {
-            return null
-        }
-
-        const parsedDraft = JSON.parse(storedDraft)
-        return isRecord(parsedDraft) ? parsedDraft : null
-    } catch {
-        return null
-    }
+    const parsedDraft = readFormDraft<unknown>(storageKey)
+    return isRecord(parsedDraft) ? parsedDraft : null
 }
 
 function mergeTenantProfileValues(
@@ -866,7 +856,7 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
     const qc = useQueryClient()
     const tenantProfileDraftStorageKey = useMemo(() => {
         const identity = user?.id || user?.email
-        return identity ? `${tenantProfileDraftKeyPrefix}${encodeURIComponent(String(identity))}` : null
+        return buildFormDraftKey('tenant-profile', identity)
     }, [user?.email, user?.id])
     const [activeStep, setActiveStep] = useState(1)
     const [isSubmitting, setIsSubmitting] = useState(false)
@@ -1061,9 +1051,9 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
         }
 
         try {
-            window.localStorage.setItem(tenantProfileDraftStorageKey, JSON.stringify(watchedFormValues))
+            writeFormDraft(tenantProfileDraftStorageKey, watchedFormValues)
         } catch {
-            // Ignore storage quota and privacy-mode errors; form input should remain usable.
+            // Ignore unexpected storage errors; form input should remain usable.
         }
     }, [draftPersistenceEnabled, hydratedDraftStorageKey, tenantProfileDraftStorageKey, watchedFormValues])
 
@@ -1224,11 +1214,7 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
             setDraftPersistenceEnabled(false)
             setHydratedDraftStorageKey(null)
             if (tenantProfileDraftStorageKey && typeof window !== 'undefined') {
-                try {
-                    window.localStorage.removeItem(tenantProfileDraftStorageKey)
-                } catch {
-                    // Ignore storage privacy-mode errors after a successful submission.
-                }
+                removeFormDraft(tenantProfileDraftStorageKey)
             }
             qc.setQueryData(['users', 'me', 'tenant-profile'], profile)
             qc.invalidateQueries({ queryKey: ['tenant-profile'] })

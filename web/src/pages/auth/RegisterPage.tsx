@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import BrandLogo from '@/components/BrandLogo'
+import RegistrationLegalConsentModal from '@/components/RegistrationLegalConsentModal'
 import { HiEye, HiEyeOff, HiMail, HiLockClosed, HiUser, HiUserGroup } from 'react-icons/hi'
 
 function getRegistrationErrorMessage(err: any): string {
@@ -19,6 +20,7 @@ function getRegistrationErrorMessage(err: any): string {
 }
 
 export default function RegisterPage() {
+    const navigate = useNavigate()
     const [searchParams] = useSearchParams()
     const requestedRole = searchParams.get('role')
     const isRoleLocked = requestedRole === 'tenant' || requestedRole === 'landlord'
@@ -36,7 +38,9 @@ export default function RegisterPage() {
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [showPassword, setShowPassword] = useState(false)
     const [error, setError] = useState('')
-    const { register, verifyRegistration } = useAuth()
+    const [isRegistrationConsentOpen, setIsRegistrationConsentOpen] = useState(false)
+    const [verifiedRole, setVerifiedRole] = useState<'tenant' | 'landlord' | null>(null)
+    const { register, verifyRegistration, logout } = useAuth()
 
     // The navbar links can change only the query string while this page is open.
     // Keep the form role and verification step in sync without requiring a refresh.
@@ -74,10 +78,15 @@ export default function RegisterPage() {
         setIsSubmitting(true)
 
         try {
-            await verifyRegistration({
+            const verifiedUser = await verifyRegistration({
                 email: pendingEmail || formData.email,
                 otp_code: otpCode
-            })
+            }, { navigate: false })
+            if (verifiedUser.role !== 'tenant' && verifiedUser.role !== 'landlord') {
+                throw new Error('This account type cannot complete registration here.')
+            }
+            setVerifiedRole(verifiedUser.role)
+            setIsRegistrationConsentOpen(true)
         } catch (err: any) {
             setError(err.message || 'Verification failed')
         } finally {
@@ -93,6 +102,17 @@ export default function RegisterPage() {
     }
 
     const displayedRole = isRoleLocked ? initialRole : formData.role
+
+    const handleRegistrationConsent = () => {
+        if (!verifiedRole) return
+
+        if (verifiedRole === 'landlord') {
+            localStorage.setItem('landlord_onboarding_pending_identity', '1')
+            navigate('/landlord/verification')
+        } else {
+            navigate('/verify')
+        }
+    }
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
@@ -367,15 +387,25 @@ export default function RegisterPage() {
                 <div className="text-center">
                     <p className="text-sm text-gray-600">
                         By creating an account, you agree to our{' '}
-                        <Link to="/terms" className="text-blue-600 hover:text-blue-500 font-medium">
+                        <Link to="/legal/terms-of-service" className="text-blue-600 hover:text-blue-500 font-medium">
                             Terms of Service
                         </Link>{' '}
                         and{' '}
-                        <Link to="/privacy" className="text-blue-600 hover:text-blue-500 font-medium">
+                        <Link to="/legal/privacy-policy" className="text-blue-600 hover:text-blue-500 font-medium">
                             Privacy Policy
                         </Link>
                     </p>
                 </div>
+
+                <RegistrationLegalConsentModal
+                    isOpen={isRegistrationConsentOpen}
+                    role={verifiedRole || displayedRole}
+                    onAccept={handleRegistrationConsent}
+                    onCancel={() => {
+                        setIsRegistrationConsentOpen(false)
+                        void logout()
+                    }}
+                />
             </div>
         </div>
     )

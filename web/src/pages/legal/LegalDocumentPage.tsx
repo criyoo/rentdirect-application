@@ -7,6 +7,7 @@ import { getLegalDocumentBySlug } from '@/lib/legalDocuments'
 
 const audienceLabels = {
     shared: 'For all RentDirect users',
+    registration: 'Account creation',
     tenant: 'Tenant document',
     landlord: 'Landlord document',
     agents: 'Agent and lawyer document',

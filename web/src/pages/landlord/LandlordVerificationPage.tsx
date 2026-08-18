@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import LegalDocumentsConsent from '@/components/LegalDocumentsConsent'
 import { useAppPopup } from '@/contexts/AppPopupContext'
 import { api } from '@/lib/api'
+import { buildFormDraftKey, readFormDraft, removeFormDraft, writeFormDraft } from '@/lib/formDrafts'
 import { isNigeriaSelection, nigeriaStateLgaMap, nigerianStates, worldCountryOptions } from '@/lib/locations'
 import {
     BVN_ERROR_MESSAGE,
@@ -146,6 +147,13 @@ type CorporateForm = {
     bank_name: string
     account_name: string
     account_number: string
+}
+
+type LandlordVerificationDraft = {
+    individualForm?: Partial<IndividualForm>
+    corporateForm?: Partial<CorporateForm>
+    selectedVerificationType?: LandlordVerificationType | ''
+    activeVerificationType?: LandlordVerificationType | ''
 }
 
 const emptyIndividualForm: IndividualForm = {
@@ -419,11 +427,18 @@ export default function LandlordVerificationPage() {
     const [submitStatusMessage, setSubmitStatusMessage] = useState('')
     const [submitErrorMessage, setSubmitErrorMessage] = useState('')
     const [hasAcceptedLegalConsent, setHasAcceptedLegalConsent] = useState(false)
+    const [hydratedDraftStorageKey, setHydratedDraftStorageKey] = useState<string | null>(null)
+    const [draftPersistenceEnabled, setDraftPersistenceEnabled] = useState(true)
 
     const { data: me, isLoading } = useQuery({
         queryKey: ['users', 'me'],
         queryFn: async () => (await api.get<User>('/users/me')).data,
     })
+
+    const landlordVerificationDraftStorageKey = useMemo(
+        () => buildFormDraftKey('landlord-verification', me?.id || me?.email),
+        [me?.email, me?.id],
+    )
 
     const { data: documentResponse } = useQuery({
         queryKey: ['documents', 'me'],
@@ -443,6 +458,13 @@ export default function LandlordVerificationPage() {
 
     const savedType = normalizeVerificationType(me?.landlord_verification_type)
     const verificationType = activeVerificationType
+    const signerName = useMemo(() => {
+        const individualName = [individualForm.first_name, individualForm.middle_name, individualForm.last_name]
+            .filter(Boolean)
+            .join(' ')
+        const corporateName = corporateForm.contact_person_name || corporateForm.company_name
+        return (verificationType === 'corporate' ? corporateName : individualName) || me?.name || ''
+    }, [corporateForm.company_name, corporateForm.contact_person_name, individualForm.first_name, individualForm.last_name, individualForm.middle_name, me?.name, verificationType])
     const isVerificationLocked = Boolean(
         me?.is_verified
         || verificationStatus?.identification?.status === 'verified'
@@ -463,13 +485,43 @@ export default function LandlordVerificationPage() {
         if (!me) {
             return
         }
-        setIndividualForm(buildInitialIndividualForm(me))
-        setCorporateForm(buildInitialCorporateForm(me))
-        if (savedType) {
-            setSelectedVerificationType(savedType)
-            setActiveVerificationType(savedType)
+        const individualDefaults = buildInitialIndividualForm(me)
+        const corporateDefaults = buildInitialCorporateForm(me)
+        const storedDraft = readFormDraft<LandlordVerificationDraft>(landlordVerificationDraftStorageKey)
+        const storedSelectedType = normalizeVerificationType(storedDraft?.selectedVerificationType)
+        const storedActiveType = normalizeVerificationType(storedDraft?.activeVerificationType)
+
+        setIndividualForm({ ...individualDefaults, ...(storedDraft?.individualForm || {}) })
+        setCorporateForm({ ...corporateDefaults, ...(storedDraft?.corporateForm || {}) })
+        setSelectedVerificationType(storedSelectedType || savedType)
+        setActiveVerificationType(storedActiveType || storedSelectedType || savedType)
+        setHydratedDraftStorageKey(landlordVerificationDraftStorageKey)
+    }, [landlordVerificationDraftStorageKey, me, savedType])
+
+    useEffect(() => {
+        if (
+            !draftPersistenceEnabled
+            || !landlordVerificationDraftStorageKey
+            || hydratedDraftStorageKey !== landlordVerificationDraftStorageKey
+        ) {
+            return
         }
-    }, [me, savedType])
+
+        writeFormDraft(landlordVerificationDraftStorageKey, {
+            individualForm,
+            corporateForm,
+            selectedVerificationType,
+            activeVerificationType,
+        })
+    }, [
+        activeVerificationType,
+        corporateForm,
+        draftPersistenceEnabled,
+        hydratedDraftStorageKey,
+        individualForm,
+        landlordVerificationDraftStorageKey,
+        selectedVerificationType,
+    ])
 
     useEffect(() => {
         if (!countryOfBirthIsNigeria) {
@@ -736,6 +788,9 @@ export default function LandlordVerificationPage() {
             return response.data
         },
         onSuccess: async (response) => {
+            setDraftPersistenceEnabled(false)
+            setHydratedDraftStorageKey(null)
+            removeFormDraft(landlordVerificationDraftStorageKey)
             await Promise.all([
                 queryClient.invalidateQueries({ queryKey: ['users', 'me'] }),
                 queryClient.invalidateQueries({ queryKey: ['verification', 'status'] }),
@@ -1346,6 +1401,7 @@ export default function LandlordVerificationPage() {
                                         <LegalDocumentsConsent
                                             id="landlord-verification-legal-consent"
                                             audience="landlord"
+                                            signerName={signerName}
                                             consented={hasAcceptedLegalConsent}
                                             disabled={isVerificationLocked}
                                             onConsentChange={setHasAcceptedLegalConsent}

@@ -13,9 +13,10 @@ type LegalConsentCheckboxProps = {
     onChange: (checked: boolean) => void
     error?: string
     disabled?: boolean
+    consentContext?: string
 }
 
-export default function LegalConsentCheckbox({ id, documents, checked, onChange, error, disabled = false }: LegalConsentCheckboxProps) {
+export default function LegalConsentCheckbox({ id, documents, checked, onChange, error, disabled = false, consentContext = 'this submission' }: LegalConsentCheckboxProps) {
     return (
         <div className={`rounded-2xl border p-5 ${error ? 'border-red-300 bg-red-50/60' : 'border-blue-100 bg-blue-50/60'}`}>
             <div className="flex gap-3">
@@ -33,7 +34,7 @@ export default function LegalConsentCheckbox({ id, documents, checked, onChange,
                             className="mt-1 h-5 w-5 shrink-0 rounded border-slate-300 text-blue-600 accent-blue-600 focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
                         />
                         <label htmlFor={id} className="cursor-pointer text-sm leading-6 text-slate-700">
-                            I confirm that I have reviewed the applicable legal document(s) below and agree to them. I understand that ticking this box is my electronic confirmation of consent and signature for this verification submission.
+                            I confirm that I have reviewed the applicable legal document(s) below and agree to them. I understand that ticking this box is my electronic confirmation of consent and signature for {consentContext}.
                         </label>
                     </div>
 

@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { clearFormDrafts } from '@/lib/formDrafts'
 
 export function getApiUrl(): string {
   const configured = import.meta.env.VITE_API_URL
@@ -83,6 +84,7 @@ api.interceptors.response.use(
         return api(error.config)
       } catch {
         localStorage.removeItem('user')
+        clearFormDrafts()
       }
     }
     return Promise.reject(error)

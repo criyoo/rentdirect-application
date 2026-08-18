@@ -4,6 +4,7 @@ import { useForm, useFieldArray } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { api, getApiUrl } from '@/lib/api'
+import { buildFormDraftKey, readFormDraft, removeFormDraft, writeFormDraft } from '@/lib/formDrafts'
 import LegalConsentCheckbox from '@/components/LegalConsentCheckbox'
 import DashboardBackButton from '@/components/DashboardBackButton'
 import { useQuery } from '@tanstack/react-query'
@@ -156,6 +157,12 @@ export default function ListingFormPage() {
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [hasAcceptedLegalConsent, setHasAcceptedLegalConsent] = useState(false)
     const [legalConsentError, setLegalConsentError] = useState('')
+    const listingDraftStorageKey = useMemo(
+        () => buildFormDraftKey(`listing-${isEditMode ? `edit:${id}` : 'new'}`, user?.id || user?.email),
+        [id, isEditMode, user?.email, user?.id],
+    )
+    const [hydratedDraftStorageKey, setHydratedDraftStorageKey] = useState<string | null>(null)
+    const [draftPersistenceEnabled, setDraftPersistenceEnabled] = useState(true)
 
     const {
         register,
@@ -207,6 +214,7 @@ export default function ListingFormPage() {
     })
     const propertyVerificationMethod = watch('property_verification_method')
     const pricePerYear = watch('price_per_year')
+    const watchedFormValues = watch()
 
     useEffect(() => {
         if (propertyVerificationMethod === 'in_person') {
@@ -279,7 +287,7 @@ export default function ListingFormPage() {
             return
         }
 
-        reset({
+        const listingDefaults = {
             title: listing.title,
             description: listing.description,
             address: listing.address,
@@ -307,7 +315,7 @@ export default function ListingFormPage() {
             furnished: listing.furnished,
             ownership_types: listing.ownership_types || [],
             property_ownership_documents: listing.property_ownership_documents || [],
-            property_verification_method: listing.property_document_submission?.in_person_verification_requested ? 'in_person' : 'documents',
+            property_verification_method: listing.property_document_submission?.in_person_verification_requested ? 'in_person' as const : 'documents' as const,
             minimum_rental_duration: listing.minimum_rental_duration || '',
             maximum_occupancy: listing.maximum_occupancy ? String(listing.maximum_occupancy) : '',
             smoking_allowed: Boolean(listing.smoking_allowed),
@@ -321,8 +329,33 @@ export default function ListingFormPage() {
             amenities: listing.amenities && listing.amenities.length > 0
                 ? listing.amenities.map((value) => ({ value }))
                 : [{ value: '' }],
-        })
-    }, [listing, reset])
+        }
+        const storedDraft = readFormDraft<Partial<ListingFormValues>>(listingDraftStorageKey)
+        reset({ ...listingDefaults, ...(storedDraft || {}) })
+        setHydratedDraftStorageKey(listingDraftStorageKey)
+    }, [isEditMode, listing, listingDraftStorageKey, reset])
+
+    useEffect(() => {
+        if (isEditMode || !listingDraftStorageKey) return
+
+        const storedDraft = readFormDraft<Partial<ListingFormValues>>(listingDraftStorageKey)
+        if (storedDraft) {
+            reset(storedDraft)
+        }
+        setHydratedDraftStorageKey(listingDraftStorageKey)
+    }, [isEditMode, listingDraftStorageKey, reset])
+
+    useEffect(() => {
+        if (
+            !draftPersistenceEnabled
+            || !listingDraftStorageKey
+            || hydratedDraftStorageKey !== listingDraftStorageKey
+        ) {
+            return
+        }
+
+        writeFormDraft(listingDraftStorageKey, watchedFormValues)
+    }, [draftPersistenceEnabled, hydratedDraftStorageKey, listingDraftStorageKey, watchedFormValues])
 
     const buildFormData = (data: ListingFormValues) => {
         const formData = new FormData()
@@ -467,6 +500,9 @@ export default function ListingFormPage() {
 
                 if (featuredRes.ok) {
                     const featuredPayment = await featuredRes.json()
+                    setDraftPersistenceEnabled(false)
+                    setHydratedDraftStorageKey(null)
+                    removeFormDraft(listingDraftStorageKey)
                     navigate(`/dashboard/featured-properties/pay/${featuredPayment.id}`)
                     return
                 }
@@ -475,6 +511,9 @@ export default function ListingFormPage() {
                 alert((featuredErr as { detail?: string }).detail || 'Listing created, but failed to start featured payment.')
             }
 
+            setDraftPersistenceEnabled(false)
+            setHydratedDraftStorageKey(null)
+            removeFormDraft(listingDraftStorageKey)
             navigate(`/listings/${result.id}`)
         } catch (error) {
             console.error(`Error ${isEditMode ? 'updating' : 'creating'} listing:`, error)
@@ -1073,9 +1112,14 @@ export default function ListingFormPage() {
 
                         <LegalConsentCheckbox
                             id="property-verification-legal-consent"
-                            documents={[{ slug: 'property-verification-physical-inspection-terms', title: 'Property Verification and Physical Inspection Terms' }]}
+                            documents={[
+                                { slug: 'property-ownership-and-listing-terms', title: 'Property Ownership and Listing Terms' },
+                                { slug: 'property-verification-and-inspection-terms', title: 'Property Verification and Inspection Terms' },
+                                { slug: 'tenant-data-use-terms', title: 'Tenant Data Use Terms' },
+                            ]}
                             checked={hasAcceptedLegalConsent}
                             error={legalConsentError}
+                            consentContext="listing this property"
                             onChange={(checked) => {
                                 setHasAcceptedLegalConsent(checked)
                                 if (checked) setLegalConsentError('')
