@@ -16,7 +16,9 @@ export default function ListingCard({ listing, isFavourite = false }: ListingCar
     const { user } = useAuth()
     const queryClient = useQueryClient()
     const canManageFavourites = user?.role === 'tenant'
-    const locationLabel = [listing.city, listing.state].filter(Boolean).join(', ') || listing.state || 'State not provided'
+    const locationLabel = listing.address?.trim()
+        ? [listing.address, listing.city, listing.state].filter(Boolean).join(', ')
+        : [listing.city, listing.state].filter(Boolean).join(', ') || listing.state || 'State not provided'
     const distanceKm = typeof listing.distance_km === 'number'
         ? listing.distance_km
         : listing.distance_km == null

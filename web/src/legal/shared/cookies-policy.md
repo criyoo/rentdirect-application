@@ -1,6 +1,6 @@
 # RENTDIRECT COOKIES AND BROWSER STORAGE POLICY
 
-**Effective Date:** ____________________  
+**Effective Date:** __________________
 **Last Updated:** ____________________
 
 ## 1. PURPOSE
@@ -91,7 +91,7 @@ We may update this Policy when our technology, providers, or legal obligations c
 
 ## 11. CONTACT
 
-Questions about cookies or browser storage may be sent to **info@rentdirect.homes**. For broader data rights, use the process in the Privacy Policy.
+Questions about cookies or browser storage may be sent to **<info@rentdirect.homes>**. For broader data rights, use the process in the Privacy Policy.
 
 ## USER ACKNOWLEDGEMENT
 

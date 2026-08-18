@@ -158,14 +158,11 @@ export default function HowItWorksPage() {
 
             <section className="relative border-b border-slate-200/70">
                 <div className="mx-auto max-w-7xl px-5 pb-16 pt-8 sm:px-8 md:pb-24 md:pt-10 lg:px-12">
-                    {/* <div className="flex items-center justify-between">
-                        <Link to="/" aria-label="RentDirect home">
-                            <BrandLogo className="h-12 w-24 rounded-md bg-white p-1" />
-                        </Link>
-                        <span className="rounded-full border border-slate-300/80 bg-white/60 px-4 py-2 text-xs font-medium tracking-[0.12em] text-slate-600 backdrop-blur">
+                    <div className="flex items-center justify-between">
+                        <span className="rounded-full border border-slate-300/80 bg-white/60 px-6 py-2 text-xs font-semibold tracking-[0.12em] text-slate-600 backdrop-blur">
                             {roleLabel}
                         </span>
-                    </div> */}
+                    </div>
 
                     <div className="mt-20 grid items-end gap-12 lg:grid-cols-[1.15fr_0.85fr] lg:gap-20">
                         <div>
@@ -179,9 +176,6 @@ export default function HowItWorksPage() {
                             <div className="mt-9 flex flex-wrap gap-3">
                                 <Link to={role === 'landlord' && user?.id ? `/dashboard/landlord/${user.id}` : '/search'} className="inline-flex items-center rounded-full bg-[#001e36] px-6 py-3 text-sm font-medium text-white shadow-lg shadow-slate-900/10 transition hover:bg-slate-800">
                                     {role === 'landlord' ? 'Open dashboard' : 'Explore properties'}
-                                </Link>
-                                <Link to="/register" className="inline-flex items-center rounded-full border border-slate-300 bg-white/60 px-6 py-3 text-sm font-medium text-[#001e36] transition hover:border-slate-500 hover:bg-white">
-                                    Create an account
                                 </Link>
                             </div>
                         </div>

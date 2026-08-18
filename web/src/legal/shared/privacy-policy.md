@@ -13,8 +13,8 @@ The entity that operates RentDirect (“RentDirect”, “we”, “us”, or �
 
 RentDirect is a Nigerian rental marketplace connecting Tenants and Landlords. We process information to help Users search, verify, communicate, apply, pay, and manage rental progress.
 
-**Privacy contact:** info@rentdirect.homes  
-**Website:** https://rentdirect.homes  
+**Privacy contact:** <info@rentdirect.homes>  
+**Website:** <https://rentdirect.homes>  
 **Data Controller legal name and address:** ____________________  
 **Data protection contact/DPO:** ____________________
 
@@ -205,7 +205,7 @@ Subject to applicable law and lawful exceptions, you may have rights to:
 * ask about automated processing or the logic of a materially significant decision; and
 * complain to RentDirect and, where appropriate, the Nigeria Data Protection Commission.
 
-To exercise a right, email **info@rentdirect.homes** from the account email and describe the request. We may need to verify identity, protect other persons’ rights, and apply lawful exceptions. We aim to respond within the period required by applicable law.
+To exercise a right, email **<info@rentdirect.homes>** from the account email and describe the request. We may need to verify identity, protect other persons’ rights, and apply lawful exceptions. We aim to respond within the period required by applicable law.
 
 ## 15. CHILDREN
 
@@ -221,7 +221,7 @@ Listings, messages, payment pages, social links, maps, and other Platform areas 
 
 ## 18. DATA BREACHES AND INCIDENTS
 
-We maintain procedures to investigate suspected Personal Data incidents, contain risk, preserve evidence, notify regulators or affected persons where required, and take corrective action. Users should report suspected exposure, fraud, or unauthorised access promptly at info@rentdirect.homes.
+We maintain procedures to investigate suspected Personal Data incidents, contain risk, preserve evidence, notify regulators or affected persons where required, and take corrective action. Users should report suspected exposure, fraud, or unauthorised access promptly at <info@rentdirect.homes>.
 
 ## 19. CHANGES TO THIS POLICY
 
@@ -229,8 +229,8 @@ We may update this Policy to reflect legal, technical, or product changes. The l
 
 ## 20. CONTACT
 
-**RentDirect privacy contact:** info@rentdirect.homes  
-**Website:** https://rentdirect.homes  
+**RentDirect privacy contact:** <info@rentdirect.homes>  
+**Website:** <https://rentdirect.homes>  
 **Data Controller legal name:** ____________________  
 **Data Controller address:** ____________________  
 **DPO or designated privacy contact:** ____________________

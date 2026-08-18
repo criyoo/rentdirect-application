@@ -1,4 +1,5 @@
 import uuid
+from datetime import timedelta
 from decimal import Decimal
 from pathlib import PurePath
 
@@ -7,6 +8,8 @@ from django.db import models
 from django.utils import timezone
 
 from .pricing import calculate_deposit_amount, resolve_booking_total
+
+DEPOSIT_LISTING_HOLD_DAYS = 3
 
 
 def _file_extension(filename: str) -> str:
@@ -88,7 +91,7 @@ class AppUser(AbstractBaseUser, PermissionsMixin):
     account_frozen = models.BooleanField(default=False)
     account_frozen_at = models.DateTimeField(null=True, blank=True)
     account_frozen_until = models.DateTimeField(null=True, blank=True)
-    account_freeze_fee_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=20)
+    account_freeze_fee_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=10)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -307,6 +310,7 @@ def booking_progress_step_selected_value(progress, step_key: str) -> str | None:
 
 
 def deposit_secured_booking_queryset():
+    now = timezone.now()
     deposit_due = models.ExpressionWrapper(
         models.F("listing__price_per_year")
         * models.Value(
@@ -315,11 +319,38 @@ def deposit_secured_booking_queryset():
         ),
         output_field=models.DecimalField(max_digits=12, decimal_places=2),
     )
-    return (
+    calculated_total = models.ExpressionWrapper(
+        models.F("listing__price_per_year")
+        * models.Value(
+            Decimal("1.20"),
+            output_field=models.DecimalField(max_digits=4, decimal_places=2),
+        ),
+        output_field=models.DecimalField(max_digits=12, decimal_places=2),
+    )
+    queryset = (
         Booking.objects
         .exclude(status=Booking.Status.CANCELLED)
-        .annotate(deposit_due=deposit_due)
-        .filter(paid_amount__gte=models.F("deposit_due"))
+        .annotate(deposit_due=deposit_due, calculated_total=calculated_total)
+    )
+    full_rental_paid = (
+        models.Q(total_amount__isnull=False, paid_amount__gte=models.F("total_amount"))
+        | models.Q(total_amount__isnull=True, paid_amount__gte=models.F("calculated_total"))
+    )
+    active_full_rental = full_rental_paid & models.Q(end_date__gte=now.date())
+    recent_deposit = (
+        models.Q(paid_amount__gte=models.F("deposit_due"))
+        & ~full_rental_paid
+        & (
+            models.Q(deposit_paid_at__gt=now - timedelta(days=DEPOSIT_LISTING_HOLD_DAYS))
+            | models.Q(
+                deposit_paid_at__isnull=True,
+                updated_at__gt=now - timedelta(days=DEPOSIT_LISTING_HOLD_DAYS),
+            )
+        )
+    )
+    return (
+        queryset
+        .filter(active_full_rental | recent_deposit)
     )
 
 
@@ -846,6 +877,8 @@ class Booking(models.Model):
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
     total_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     paid_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    deposit_paid_at = models.DateTimeField(null=True, blank=True)
+    full_rent_paid_at = models.DateTimeField(null=True, blank=True)
     tenant_rental_progress = models.JSONField(default=dict, blank=True)
     landlord_rental_progress = models.JSONField(default=dict, blank=True)
     renewal_reminder_sent_at = models.DateTimeField(null=True, blank=True)

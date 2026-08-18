@@ -49,22 +49,22 @@ export default function RegistrationLegalConsentModal({ isOpen, role, onAccept, 
                     </button>
                 </div>
 
-                <div className="min-h-0 overflow-y-auto px-6 py-5 sm:px-8">
-                    <div className="space-y-4">
+                <div className="min-h-0 overflow-y-auto px-6 py-6 sm:px-8">
+                    <div className="mt-8 space-y-8">
                         {documents.map((document) => (
                             <article key={document.slug} className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
                                 <div className="flex items-center gap-2 border-b border-slate-200 bg-white px-4 py-3">
                                     <HiDocumentText className="h-5 w-5 text-blue-600" aria-hidden="true" />
-                                    <h3 className="font-semibold text-slate-950">{document.title}</h3>
+                                    <h4 className="font-semibold text-slate-950">{document.title}</h4>
                                 </div>
-                                <div className="max-h-72 overflow-y-auto px-4 py-5 sm:px-6">
+                                <div className="max-h-72 overflow-y-auto px-6 py-6 sm:px-6">
                                     <LegalDocumentRenderer content={document.content} />
                                 </div>
                             </article>
                         ))}
                     </div>
 
-                    <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-xl border border-blue-100 bg-blue-50/70 p-4">
+                    <label className="mt-8 flex cursor-pointer items-start gap-3 rounded-xl border border-blue-100 bg-blue-50/70 p-4">
                         <input
                             type="checkbox"
                             checked={accepted}

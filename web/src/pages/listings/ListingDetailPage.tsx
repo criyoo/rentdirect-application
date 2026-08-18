@@ -7,7 +7,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { resolveMediaUrl } from '@/lib/api'
 import { formatCurrencyWithSymbol } from '@/utils/currency'
 import ReviewModal from '@/components/ReviewModal'
-import { hasBronzeAccess, hasGoldAccess, hasSilverAccess, SubscriptionPaymentRecord } from '@/lib/subscriptions'
+import { hasBronzeAccess, hasGoldAccess, SubscriptionPaymentRecord } from '@/lib/subscriptions'
 
 // Icons for property features
 const Icons = {
@@ -161,13 +161,12 @@ export default function ListingDetailPage() {
     const existingReview = myReviews[0]
     const landlordProfileHref = listing ? `/landlords/${listing.landlord_id}?listingId=${listing.id}` : '#'
     const isBronzeTenant = user?.role === 'tenant' && subscriptionPaymentResponse !== undefined && hasBronzeAccess(subscriptionPaymentResponse)
-    const canSeePreciseLocation = isListingLandlord
+    const canSeePreciseLocation = Boolean(listing?.address?.trim()) && (
+        isListingLandlord
         || user?.role === 'admin'
-        || (
-            user?.role === 'tenant'
-            && subscriptionPaymentResponse !== undefined
-            && hasSilverAccess(subscriptionPaymentResponse)
-        )
+        || user?.role === 'tenant'
+    )
+    const canSeeCityState = Boolean(user)
     const canReviewAsTenant = user?.role === 'tenant' && subscriptionPaymentResponse !== undefined && hasGoldAccess(subscriptionPaymentResponse)
     const canSeePropertyVerification = isListingLandlord
         || user?.role === 'admin'
@@ -349,13 +348,20 @@ export default function ListingDetailPage() {
     }
 
     const listingLocationSummary = listing
-        ? !canSeePreciseLocation
+        ? !canSeeCityState
             ? listing.state || 'State not provided'
-            : `${listing.city}, ${listing.state || ''} ${listing.postal_code}`.trim()
+            : canSeePreciseLocation
+                ? [listing.address, listing.city, listing.state, listing.postal_code].filter(Boolean).join(', ')
+                : [listing.city, listing.state].filter(Boolean).join(', ') || listing.state || 'State not provided'
         : ''
     const mapLocationQuery = listing
-        ? [listing.city, listing.state, 'Nigeria'].filter(Boolean).join(', ')
+        ? [listing.address, listing.city, listing.state, 'Nigeria'].filter(Boolean).join(', ')
         : ''
+    const locationAccessMessage = !user
+        ? 'Sign in to view the city and state. The full address is available after the required rental payment.'
+        : user.role === 'tenant'
+            ? 'Full address and map available for rented properties.'
+            : 'Full address available to the listing landlord and tenants renting the property.'
     const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapLocationQuery)}`
     const googleMapEmbedSrc = `https://www.google.com/maps?q=${encodeURIComponent(mapLocationQuery)}&output=embed`
 
@@ -623,7 +629,7 @@ export default function ListingDetailPage() {
 
                                 {/* Rooms and Location */}
                                 <div className="text-sm text-gray-600">
-                                    {listing.bedrooms} Bed {listing.property_type}, {!canSeePreciseLocation ? listing.state || 'State not provided' : `${listing.city}${listing.state ? `, ${listing.state}` : ''}`}
+                                    {listing.bedrooms} Bed {listing.property_type}, {!canSeeCityState ? listing.state || 'State not provided' : `${listing.city}${listing.state ? `, ${listing.state}` : ''}`}
                                 </div>
 
                                 {/* Bedroom and Bathroom Icons */}
@@ -755,7 +761,7 @@ export default function ListingDetailPage() {
                                 {listingLocationSummary}
                                 {!canSeePreciseLocation ? (
                                     <span className="rounded-lg bg-amber-50 px-3 py-2 text-amber-800">
-                                        Sign in with a Silver or higher tenant plan to see the full address and map.
+                                        {locationAccessMessage}
                                     </span>
                                 ) : (
                                     <>

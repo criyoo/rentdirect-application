@@ -141,7 +141,7 @@ export type TenantProfileDetails = {
 export type TenantProfileSummary = {
     id: string
     name: string
-    email: string
+    email?: string
     mobile?: string
     profile_photo_url?: string | null
     state_of_origin?: string

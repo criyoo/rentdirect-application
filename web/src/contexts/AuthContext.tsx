@@ -73,6 +73,10 @@ function normalizeUser(payload: any, fallbackEmail?: string): User {
         email: payload.email || fallbackEmail || '',
         profile_photo_url: payload.profile_photo_url ?? null,
         is_verified: payload.is_verified ?? false,
+        account_frozen: payload.account_frozen ?? false,
+        account_frozen_at: payload.account_frozen_at ?? null,
+        account_frozen_until: payload.account_frozen_until ?? null,
+        account_freeze_fee_percentage: payload.account_freeze_fee_percentage ?? 10,
     }
 }
 
@@ -147,6 +151,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             active = false
         }
     }, [user])
+
+    useEffect(() => {
+        const syncStoredUser = () => {
+            setUser(getStoredUser())
+        }
+
+        window.addEventListener('rentdirect-user-updated', syncStoredUser)
+        return () => window.removeEventListener('rentdirect-user-updated', syncStoredUser)
+    }, [])
 
     async function register(data: RegisterForm): Promise<RegistrationStarted> {
         try {

@@ -172,7 +172,13 @@ export default function SettingsPage() {
     const [selectedFreezeDuration, setSelectedFreezeDuration] = useState<number | null>(null)
     const [accountFrozen, setAccountFrozen] = useState(false)
 
-    const isLandlord = me?.role === 'landlord'
+    const canFreezeAccount = me?.role === 'tenant' || me?.role === 'landlord'
+
+    const persistUser = (nextUser: User) => {
+        qc.setQueryData(['users', 'me'], nextUser)
+        localStorage.setItem('user', JSON.stringify(nextUser))
+        window.dispatchEvent(new Event('rentdirect-user-updated'))
+    }
 
     useEffect(() => {
         if (!me) return
@@ -305,8 +311,7 @@ export default function SettingsPage() {
             setDraftPersistenceEnabled(false)
             setHydratedDraftStorageKey(null)
             removeFormDraft(settingsProfileDraftStorageKey)
-            qc.setQueryData(['users', 'me'], nextUser)
-            localStorage.setItem('user', JSON.stringify(nextUser))
+            persistUser(nextUser)
             closeOtpChallenge()
             alert('Settings updated successfully.')
         },
@@ -345,8 +350,7 @@ export default function SettingsPage() {
             await api.post<User>('/users/me/freeze', { duration_months: duration, otp_code: code })
         ).data,
         onSuccess: (nextUser) => {
-            qc.setQueryData(['users', 'me'], nextUser)
-            localStorage.setItem('user', JSON.stringify(nextUser))
+            persistUser(nextUser)
             setAccountFrozen(true)
             setSelectedFreezeDuration(null)
             closeOtpChallenge()
@@ -362,8 +366,7 @@ export default function SettingsPage() {
             await api.delete<User>('/users/me/freeze', { data: { otp_code: code } })
         ).data,
         onSuccess: (nextUser) => {
-            qc.setQueryData(['users', 'me'], nextUser)
-            localStorage.setItem('user', JSON.stringify(nextUser))
+            persistUser(nextUser)
             setAccountFrozen(false)
             closeOtpChallenge()
             alert('Account unfrozen successfully.')
@@ -649,15 +652,17 @@ export default function SettingsPage() {
                     <div className="mb-6">
                         <h2 className="text-2xl font-bold text-gray-900">Freeze Account</h2>
                         <p className="mt-2 text-sm text-gray-600">
-                            {isLandlord
-                                ? 'Freeze your account after confirming an OTP. Frozen landlord accounts cannot list properties.'
-                                : 'Account freezing is currently available to landlord accounts.'}
+                            {canFreezeAccount
+                                ? 'Freeze your account after confirming an OTP. Your data will remain intact, but listings, profiles, messaging and other RentDirect services will be unavailable until you unfreeze. Subscription renewals during the freeze are 10% of the normal monthly amount.'
+                                : 'Account freezing is available to tenant and landlord accounts.'}
                         </p>
                     </div>
-                    {isLandlord && (
+                    {canFreezeAccount && (
                         accountFrozen ? (
                             <>
-                                <p className="flex-1 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-700">Your account is currently frozen.</p>
+                                <p className="flex-1 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-700">
+                                    Your account is currently frozen. Subscription renewals are charged at 10% of the normal monthly amount until you unfreeze.
+                                </p>
                                 <button
                                     className="btn btn-outline mt-6 w-full py-3"
                                     onClick={() => beginAccountVerification('unfreeze')}
@@ -677,7 +682,10 @@ export default function SettingsPage() {
                 <section className="card flex h-full flex-col p-6">
                     <div className="mb-6">
                         <h2 className="text-2xl font-bold text-gray-900">Delete Account</h2>
-                        <p className="mt-2 text-sm text-gray-600">Permanently remove your account after confirming an OTP.</p>
+                        <p className="mt-2 text-sm text-gray-600">
+                            Permanently remove your account after confirming an OTP.
+                            All your data will be removed and you will be required to create a new account to list or search for properties
+                        </p>
                     </div>
                     <button className="btn btn-danger mt-auto w-full py-3" onClick={() => setShowAccountActionModal(true)} disabled={accountActionPending}>
                         {deleteAccount.isPending ? 'Deleting...' : 'Delete Account'}
@@ -733,11 +741,11 @@ export default function SettingsPage() {
                         <h3 className="text-xl font-bold text-gray-900">Account actions</h3>
                         <p className="mt-2 text-sm text-gray-600">Choose an action. An OTP will be required before it is persisted.</p>
 
-                        {isLandlord && !accountFrozen && (
+                        {canFreezeAccount && !accountFrozen && (
                             <div className="mt-6">
                                 <h4 className="mb-3 text-sm font-semibold text-gray-900">Freeze duration</h4>
                                 <div className="space-y-2">
-                                    {[3, 6, 12].map(duration => (
+                                    {[1, 3, 6, 12].map(duration => (
                                         <label key={duration} className="flex cursor-pointer items-center rounded-lg border p-3 hover:bg-gray-50">
                                             <input type="radio" name="freezeDuration" value={duration} checked={selectedFreezeDuration === duration} onChange={() => setSelectedFreezeDuration(duration)} className="h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500" />
                                             <span className="ml-3 text-sm font-medium text-gray-900">{duration} months</span>
@@ -749,7 +757,7 @@ export default function SettingsPage() {
 
                         <div className="mt-6 flex flex-wrap gap-3">
                             <button className="btn btn-outline flex-1" onClick={() => { setShowAccountActionModal(false); setSelectedFreezeDuration(null) }}>Cancel</button>
-                            {isLandlord && !accountFrozen && (
+                            {canFreezeAccount && !accountFrozen && (
                                 <button className="btn btn-outline flex-1" onClick={() => selectedFreezeDuration && beginAccountVerification('freeze', selectedFreezeDuration)} disabled={!selectedFreezeDuration || accountActionPending}>
                                     Freeze Instead
                                 </button>

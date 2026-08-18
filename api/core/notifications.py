@@ -6,9 +6,67 @@ from typing import Any
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
+from django.utils.html import escape
 from django.utils import timezone
 
 RENTDIRECT_INFO_EMAIL = "info@rentdirect.homes"
+
+
+def send_feedback_acknowledgement(
+    *,
+    recipient_email: str,
+    recipient_name: str,
+    request_type: str,
+    topic: str,
+    message: str,
+    plan_code: str,
+    response_time: str,
+    feedback_id: str,
+) -> None:
+    """Confirm support submissions and state the response target for the user's plan."""
+    plan_label = str(plan_code or "bronze").replace("_", " ").title()
+    safe_name = escape(recipient_name or "there")
+    safe_request_type = escape(request_type)
+    safe_topic = escape(topic)
+    safe_message = escape(message).replace("\n", "<br>")
+    subject = f"RentDirect {request_type.title()} received"
+    text_body = (
+        f"Hello {recipient_name or 'there'},\n\n"
+        f"We received your {request_type} and our support team has recorded it.\n\n"
+        f"Topic: {topic}\n"
+        f"Reference: {feedback_id}\n"
+        f"Subscription plan: {plan_label}\n"
+        f"Target response time: {response_time}\n\n"
+        "A member of the RentDirect team will follow up within the target response time. "
+        "Please keep this email for your records.\n\n"
+        "RentDirect Team"
+    )
+    html_body = _render_email_template(
+        title=f"{request_type.title()} received",
+        heading="Support request received",
+        body_html=(
+            f"<p>Hello <strong>{safe_name}</strong>,</p>"
+            f"<p>We received your <strong>{safe_request_type}</strong> and our support team has recorded it.</p>"
+            "<table style='width:100%;border-collapse:collapse;margin:16px 0;'>"
+            f"<tr><td style='padding:8px;border-bottom:1px solid #ddd;color:#666;'>Topic</td><td style='padding:8px;border-bottom:1px solid #ddd;'>{safe_topic}</td></tr>"
+            f"<tr><td style='padding:8px;border-bottom:1px solid #ddd;color:#666;'>Reference</td><td style='padding:8px;border-bottom:1px solid #ddd;'>{escape(feedback_id)}</td></tr>"
+            f"<tr><td style='padding:8px;border-bottom:1px solid #ddd;color:#666;'>Subscription plan</td><td style='padding:8px;border-bottom:1px solid #ddd;'>{escape(plan_label)}</td></tr>"
+            f"<tr><td style='padding:8px;color:#666;'>Target response time</td><td style='padding:8px;font-weight:bold;'>{escape(response_time)}</td></tr>"
+            "</table>"
+            f"<p style='margin:16px 0 4px;color:#666;'>Your message</p><p style='margin:0;padding:12px;background:#f8fafc;border-radius:6px;'>{safe_message}</p>"
+            "<p>A member of the RentDirect team will follow up within the target response time.</p>"
+            "<p><em>RentDirect Team</em></p>"
+        ),
+    )
+    email = EmailMultiAlternatives(
+        subject=subject,
+        body=text_body,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=[recipient_email],
+        reply_to=[RENTDIRECT_INFO_EMAIL],
+    )
+    email.attach_alternative(html_body, "text/html")
+    email.send(fail_silently=False)
 
 
 def send_payment_confirmation_to_landlord(

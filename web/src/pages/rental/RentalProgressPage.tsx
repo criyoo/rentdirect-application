@@ -276,8 +276,9 @@ export default function RentalProgressPage() {
                             <div>
                                 <h2 className="text-2xl font-semibold text-gray-900">Checklist</h2>
                                 <p className="mt-2 text-gray-600 text-[14px]">
-                                    Tick each completed stage and save once the step has been confirmed. Great for dispute resolution.<br />
-                                    Saved items are locked and shown with the date and time they were completed.
+                                    Tick each completed stage and save once the step has been confirmed.<br />
+                                    Payments made are only transfered after both parties certify each steps.<br />
+                                    This is neccessary for dispute resolution.
                                 </p>
                             </div>
 

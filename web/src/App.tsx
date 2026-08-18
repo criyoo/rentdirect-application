@@ -1,7 +1,8 @@
 // src/App.tsx
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider } from './contexts/AuthContext'
+import { useAuth } from './hooks/useAuth'
 import { AppPopupProvider } from './contexts/AppPopupContext'
 import HomePage from './pages/HomePage'
 import AboutPage from './pages/about/AboutPage'
@@ -51,6 +52,39 @@ import ProtectedRoute from './components/ProtectedRoute'
 
 const queryClient = new QueryClient()
 
+function AccountFreezeGate({ children }: { children: React.ReactNode }) {
+    const { user, isRestoring, logout } = useAuth()
+    const location = useLocation()
+
+    const isAccountManagementRoute = (
+        location.pathname === '/dashboard/settings'
+        || location.pathname === '/login'
+        || location.pathname === '/register'
+        || location.pathname === '/forgot-password'
+        || location.pathname.startsWith('/reset-password/')
+    )
+
+    if (!isRestoring && user?.account_frozen && !isAccountManagementRoute) {
+        return (
+            <div className="flex min-h-screen items-center justify-center bg-gray-50 px-6 py-12">
+                <div className="card w-full max-w-lg p-8 text-center">
+                    <p className="text-sm font-semibold uppercase tracking-[0.2em] text-blue-600">Account frozen</p>
+                    <h1 className="mt-3 text-3xl font-bold text-gray-900">Your account is currently frozen</h1>
+                    <p className="mt-4 text-gray-600">
+                        Your data is safe, but listings, profiles and other RentDirect services are unavailable until you unfreeze your account.
+                    </p>
+                    <div className="mt-8 flex flex-wrap justify-center gap-3">
+                        <Link to="/dashboard/settings" className="btn btn-primary">Open Account Settings</Link>
+                        <button type="button" className="btn btn-outline" onClick={() => void logout()}>Log out</button>
+                    </div>
+                </div>
+            </div>
+        )
+    }
+
+    return <>{children}</>
+}
+
 function App()
 {
     return (
@@ -58,8 +92,9 @@ function App()
             <Router>
                 <AuthProvider>
                     <AppPopupProvider>
-                        <AdminRouteWrapper>
-                            <Routes>
+                        <AccountFreezeGate>
+                            <AdminRouteWrapper>
+                                <Routes>
                             {/* Public Routes */}
 <Route path="/" element={<HomePage />} />
                             <Route path="/about" element={<AboutPage />} />
@@ -167,8 +202,9 @@ function App()
                             <Route path="/admin/register" element={<AdminRegisterPage />} />
                             <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
                             <Route path="/admin/verification" element={<AdminVerificationPage />} />
-                            </Routes>
-                        </AdminRouteWrapper>
+                                </Routes>
+                            </AdminRouteWrapper>
+                        </AccountFreezeGate>
                     </AppPopupProvider>
                 </AuthProvider>
             </Router>

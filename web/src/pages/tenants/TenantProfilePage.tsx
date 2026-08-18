@@ -8,8 +8,6 @@ import {
     HiHome,
     HiIdentification,
     HiLocationMarker,
-    HiMail,
-    HiPhone,
     HiShieldCheck,
     HiUser,
     HiUsers,
@@ -455,16 +453,12 @@ export default function TenantProfilePage() {
                         </span>
                         {profile?.status && <span className="badge badge-primary">{humanizeKey(profile.status)}</span>}
                     </div>
-                    <div className="mt-5 grid gap-3 text-sm text-gray-700 sm:grid-cols-2">
-                        <span className="inline-flex items-center gap-2">
-                            <HiMail className="h-5 w-5 text-gray-400" />
-                            {data.email}
-                        </span>
-                        <span className="inline-flex items-center gap-2">
-                            <HiPhone className="h-5 w-5 text-gray-400" />
-                            {formatValue(data.mobile)}
-                        </span>
-                    </div>
+                    {user?.role !== 'landlord' && (
+                        <div className="mt-5 grid gap-3 text-sm text-gray-700 sm:grid-cols-2">
+                            <span>{data.email || 'Email not provided'}</span>
+                            <span>{formatValue(data.mobile)}</span>
+                        </div>
+                    )}
                 </div>
             </div>
 

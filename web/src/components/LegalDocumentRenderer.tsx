@@ -2,7 +2,7 @@ import { Fragment, ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 
 type MarkdownBlock =
-    | { type: 'heading'; level: 1 | 2 | 3; text: string }
+    | { type: 'heading'; level: 1 | 2 | 3 | 4; text: string }
     | { type: 'paragraph'; text: string }
     | { type: 'list'; ordered: boolean; items: string[] }
     | { type: 'quote'; text: string }
@@ -83,13 +83,13 @@ function parseMarkdown(markdown: string): MarkdownBlock[] {
             continue
         }
 
-        const headingMatch = line.match(/^(#{1,3})\s+(.*)$/)
+        const headingMatch = line.match(/^(#{1,4})\s+(.*)$/)
         if (headingMatch) {
             flushParagraph()
             flushList()
             flushQuote()
             flushTable()
-            blocks.push({ type: 'heading', level: headingMatch[1].length as 1 | 2 | 3, text: headingMatch[2].trim() })
+            blocks.push({ type: 'heading', level: headingMatch[1].length as 1 | 2 | 3 | 4, text: headingMatch[2].trim() })
             continue
         }
 
@@ -140,15 +140,17 @@ export default function LegalDocumentRenderer({ content }: { content: string }) 
     const blocks = parseMarkdown(content)
 
     return (
-        <div className="space-y-7">
+        <div className="space-y-3">
             {blocks.map((block, index) => {
                 if (block.type === 'heading') {
                     const className = block.level === 1
-                        ? 'border-b border-slate-200 pb-5 text-3xl font-bold tracking-tight text-slate-950 md:text-4xl'
+                        ? 'border-b border-slate-200 pb-2 text-xl font-semibold leading-7 tracking-tight text-slate-950 md:text-2xl'
                         : block.level === 2
-                            ? 'pt-3 text-2xl font-bold tracking-tight text-slate-950 md:text-3xl'
-                            : 'text-xl font-semibold text-blue-800 md:text-2xl'
-                    const Heading = block.level === 1 ? 'h1' : block.level === 2 ? 'h2' : 'h3'
+                            ? 'text-lg font-semibold leading-6 tracking-tight text-slate-950 md:text-xl'
+                            : block.level === 3
+                                ? 'text-base font-semibold leading-6 text-blue-800 md:text-lg'
+                                : 'text-sm font-semibold leading-5 text-blue-800 md:text-base'
+                    const Heading = block.level === 1 ? 'h1' : block.level === 2 ? 'h2' : block.level === 3 ? 'h3' : 'h4'
                     return <Heading key={index} className={className}>{renderInlineMarkdown(block.text)}</Heading>
                 }
 

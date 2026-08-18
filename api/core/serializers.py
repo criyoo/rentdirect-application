@@ -16,6 +16,7 @@ from .profile_validation import (
 from .models import (
     AppUser,
     Booking,
+    booking_has_paid_rental_deposit,
     build_listing_property_document_title,
     booking_progress_step_completed,
     booking_progress_step_selected_value,
@@ -524,6 +525,22 @@ class ListingSerializer(serializers.ModelSerializer):
     def get_location_source(self, obj):
         return getattr(obj, "_location_source", None)
 
+    def _tenant_has_paid_for_listing(self, user, listing):
+        cache_key = "_request_user_paid_listing_ids"
+        if cache_key not in self.context:
+            paid_listing_ids = set()
+            bookings = (
+                Booking.objects
+                .filter(tenant=user)
+                .exclude(status=Booking.Status.CANCELLED)
+                .select_related("listing")
+            )
+            for booking in bookings:
+                if booking_has_paid_rental_deposit(booking):
+                    paid_listing_ids.add(booking.listing_id)
+            self.context[cache_key] = paid_listing_ids
+        return listing.id in self.context[cache_key]
+
     def _apply_property_document_submission(self, listing, verification_method: str):
         request = self.context["request"]
         uploaded_documents = []
@@ -582,27 +599,31 @@ class ListingSerializer(serializers.ModelSerializer):
         is_admin = is_authenticated and user.role == AppUser.Role.ADMIN
         is_tenant = is_authenticated and user.role == AppUser.Role.TENANT
 
-        can_view_precise_location = is_admin or is_listing_owner
+        tenant_has_paid_for_listing = is_tenant and self._tenant_has_paid_for_listing(user, instance)
+        can_view_precise_location = is_admin or is_listing_owner or tenant_has_paid_for_listing
+        can_view_city_state = is_authenticated and user.role in {
+            AppUser.Role.TENANT,
+            AppUser.Role.LANDLORD,
+            AppUser.Role.ADMIN,
+        }
         can_view_property_verification = is_admin or is_listing_owner
         if is_tenant:
-            silver_cache_key = "_request_user_has_silver_access"
-            if silver_cache_key not in self.context:
-                self.context[silver_cache_key] = user_has_silver_access(user)
-            can_view_precise_location = self.context[silver_cache_key]
-
             gold_cache_key = "_request_user_has_gold_access"
             if gold_cache_key not in self.context:
                 self.context[gold_cache_key] = user_has_gold_access(user)
             can_view_property_verification = self.context[gold_cache_key]
 
-        if not can_view_precise_location:
+        if not can_view_city_state:
             data["address"] = ""
             data["city"] = ""
             data["postal_code"] = ""
             data["latitude"] = None
             data["longitude"] = None
-            data["distance_km"] = None
-            data["location_source"] = None
+        elif not can_view_precise_location:
+            data["address"] = ""
+            data["postal_code"] = ""
+            data["latitude"] = None
+            data["longitude"] = None
         if not can_view_property_verification:
             data["property_document_verification_status"] = None
             data["physical_property_status"] = None
@@ -612,6 +633,7 @@ class ListingSerializer(serializers.ModelSerializer):
             data["property_ownership_documents"] = []
             data["property_documents"] = []
             data["property_document_submission"] = None
+            data.pop("landlord_email", None)
         return data
 
     @transaction.atomic

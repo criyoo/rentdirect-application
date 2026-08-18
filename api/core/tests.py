@@ -712,24 +712,29 @@ class ListingTests(TestCase):
         public_payload = self.client.get(f"/api/v1/listings/{listing.id}").json()
         self.assertEqual(public_payload["address"], "")
         self.assertEqual(public_payload["city"], "")
+        self.assertEqual(public_payload["state"], "Lagos")
         self.assertIsNone(public_payload["latitude"])
         self.assertIsNone(public_payload["property_document_verification_status"])
+        self.assertNotIn("landlord_email", public_payload)
 
         bronze_client = self.tenant_client_with_plan(SubscriptionPayment.PlanCode.BRONZE, "bronze-visibility")
         bronze_payload = bronze_client.get(f"/api/v1/listings/{listing.id}").json()
         self.assertEqual(bronze_payload["address"], "")
-        self.assertEqual(bronze_payload["city"], "")
+        self.assertEqual(bronze_payload["city"], listing.city)
+        self.assertEqual(bronze_payload["state"], listing.state)
         self.assertIsNone(bronze_payload["property_document_verification_status"])
 
         silver_client = self.tenant_client_with_plan(SubscriptionPayment.PlanCode.SILVER, "silver-visibility")
         silver_payload = silver_client.get(f"/api/v1/listings/{listing.id}").json()
-        self.assertEqual(silver_payload["address"], listing.address)
+        self.assertEqual(silver_payload["address"], "")
         self.assertEqual(silver_payload["city"], listing.city)
+        self.assertEqual(silver_payload["state"], listing.state)
         self.assertIsNone(silver_payload["property_document_verification_status"])
 
         gold_client = self.tenant_client_with_plan(SubscriptionPayment.PlanCode.GOLD, "gold-visibility")
         gold_payload = gold_client.get(f"/api/v1/listings/{listing.id}").json()
-        self.assertEqual(gold_payload["address"], listing.address)
+        self.assertEqual(gold_payload["address"], "")
+        self.assertEqual(gold_payload["city"], listing.city)
         self.assertEqual(
             gold_payload["property_document_verification_status"],
             VerificationRequest.VerificationProgressStatus.VERIFIED,
@@ -740,11 +745,48 @@ class ListingTests(TestCase):
             "platinum-visibility",
         )
         platinum_payload = platinum_client.get(f"/api/v1/listings/{listing.id}").json()
-        self.assertEqual(platinum_payload["address"], listing.address)
+        self.assertEqual(platinum_payload["address"], "")
+        self.assertEqual(platinum_payload["city"], listing.city)
         self.assertEqual(
             platinum_payload["property_document_verification_status"],
             VerificationRequest.VerificationProgressStatus.VERIFIED,
         )
+
+        paid_tenant = AppUser.objects.get(email="listing-silver-visibility@example.com")
+        Booking.objects.create(
+            tenant=paid_tenant,
+            listing=listing,
+            start_date=date.today(),
+            end_date=date.today() + timedelta(days=365),
+            total_amount=calculate_booking_total(listing.price_per_year),
+            paid_amount=calculate_deposit_amount(listing.price_per_year),
+            deposit_paid_at=timezone.now(),
+        )
+        paid_payload = silver_client.get(f"/api/v1/listings/{listing.id}").json()
+        self.assertEqual(paid_payload["address"], listing.address)
+        self.assertEqual(paid_payload["city"], listing.city)
+        self.assertEqual(paid_payload["state"], listing.state)
+
+        full_paid_tenant = AppUser.objects.create_user(
+            email="listing-full-paid@example.com",
+            password="password-123",
+            name="Full Paid Tenant",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        Booking.objects.create(
+            tenant=full_paid_tenant,
+            listing=listing,
+            start_date=date.today(),
+            end_date=date.today() + timedelta(days=365),
+            total_amount=calculate_booking_total(listing.price_per_year),
+            paid_amount=calculate_booking_total(listing.price_per_year),
+            full_rent_paid_at=timezone.now(),
+        )
+        full_paid_client = APIClient()
+        full_paid_client.force_authenticate(user=full_paid_tenant)
+        full_paid_payload = full_paid_client.get(f"/api/v1/listings/{listing.id}").json()
+        self.assertEqual(full_paid_payload["address"], listing.address)
 
     def test_bronze_tenant_cannot_use_paid_location_endpoints(self):
         landlord = AppUser.objects.create_user(
@@ -783,7 +825,7 @@ class ListingTests(TestCase):
         self.assertEqual(cities_response.status_code, 200)
         self.assertEqual(cities_response.json(), [])
 
-    def test_landlord_cannot_retrieve_another_landlords_listing_detail(self):
+    def test_landlord_can_retrieve_another_landlords_public_listing_detail(self):
         owner = AppUser.objects.create_user(
             email="owner@example.com",
             password="password-123",
@@ -801,7 +843,7 @@ class ListingTests(TestCase):
         listing = Listing.objects.create(
             landlord=owner,
             title="Restricted Listing",
-            description="Should not be visible to other landlords",
+            description="Public property details are visible to other landlords",
             address="1 Private Road",
             city="Ikoyi",
             state="Lagos",
@@ -816,7 +858,11 @@ class ListingTests(TestCase):
         client.force_authenticate(user=outsider)
         response = client.get(f"/api/v1/listings/{listing.id}")
 
-        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertEqual(response.json()["title"], listing.title)
+        self.assertEqual(response.json()["city"], listing.city)
+        self.assertEqual(response.json()["state"], listing.state)
+        self.assertEqual(response.json()["address"], "")
 
     def test_landlord_can_create_listing_with_multipart_amenities(self):
         landlord = AppUser.objects.create_user(
@@ -1188,7 +1234,7 @@ class ListingTests(TestCase):
         payload = response.json()
         self.assertEqual(payload["state"], "Lagos")
         self.assertEqual(payload["address"], "")
-        self.assertEqual(payload["city"], "")
+        self.assertEqual(payload["city"], "Ikoyi")
         self.assertEqual(payload["postal_code"], "")
         self.assertIsNone(payload["latitude"])
         self.assertIsNone(payload["longitude"])
@@ -1450,7 +1496,7 @@ class UserViewSetTests(TestCase):
         self.assertEqual(response.status_code, 200, response.json())
         user.refresh_from_db()
         self.assertTrue(user.account_frozen)
-        self.assertEqual(user.account_freeze_fee_percentage, Decimal("20.00"))
+        self.assertEqual(user.account_freeze_fee_percentage, Decimal("10.00"))
         self.assertTrue(user.account_frozen_until)
 
         client.post("/api/v1/users/me/settings/request-otp", {"purpose": "account"}, format="json")
@@ -1461,6 +1507,41 @@ class UserViewSetTests(TestCase):
         user.refresh_from_db()
         self.assertFalse(user.account_frozen)
         self.assertIsNone(user.account_frozen_until)
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_tenant_can_freeze_account_and_only_manage_it_until_unfrozen(self):
+        user = AppUser.objects.create_user(
+            email="freeze-tenant@example.com",
+            password="password-123",
+            name="Freeze Tenant",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        client.post("/api/v1/users/me/settings/request-otp", {"purpose": "account"}, format="json")
+        freeze_otp = re.search(r"\b([A-Z0-9]{6})\b", mail.outbox[-1].body).group(1)
+        response = client.post(
+            "/api/v1/users/me/freeze",
+            {"duration_months": 6, "otp_code": freeze_otp},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        user.refresh_from_db()
+        self.assertTrue(user.is_account_frozen)
+        self.assertEqual(user.account_freeze_fee_percentage, Decimal("10.00"))
+        self.assertEqual(client.get("/api/v1/users/me").status_code, 200)
+        self.assertEqual(client.get("/api/v1/users/subscription-pricing").status_code, 403)
+
+        client.post("/api/v1/users/me/settings/request-otp", {"purpose": "account"}, format="json")
+        unfreeze_otp = re.search(r"\b([A-Z0-9]{6})\b", mail.outbox[-1].body).group(1)
+        response = client.delete("/api/v1/users/me/freeze", {"otp_code": unfreeze_otp}, format="json")
+
+        self.assertEqual(response.status_code, 200, response.json())
+        user.refresh_from_db()
+        self.assertFalse(user.is_account_frozen)
 
     @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
     def test_tenant_can_update_residence_and_guarantor_after_otp_verification(self):
@@ -3564,6 +3645,8 @@ class BookingPaymentTests(TestCase):
         booking.refresh_from_db()
         self.assertEqual(booking.paid_amount, deposit_amount)
         self.assertEqual(booking.status, Booking.Status.PENDING)
+        self.assertIsNotNone(booking.deposit_paid_at)
+        self.assertIsNone(booking.full_rent_paid_at)
         settlements = PaymentSettlement.objects.filter(payment__transaction_id=payment_payload["payment"]["transaction_id"])
         self.assertEqual(settlements.count(), 0)
         self.assertFalse(create_transfer_recipient_mock.called)
@@ -3641,6 +3724,7 @@ class BookingPaymentTests(TestCase):
         booking.refresh_from_db()
         self.assertEqual(booking.paid_amount, total_amount)
         self.assertEqual(booking.status, Booking.Status.CONFIRMED)
+        self.assertIsNotNone(booking.full_rent_paid_at)
         self.assertEqual(PaymentSettlement.objects.filter(payment__booking=booking).count(), 0)
         self.assertFalse(create_transfer_recipient_mock.called)
         self.assertFalse(create_bank_transfer_mock.called)
@@ -4484,6 +4568,58 @@ class BookingRentalProgressTests(TestCase):
         self.assertEqual(featured_response.status_code, 200)
         self.assertEqual(featured_response.json(), [])
 
+        self.booking.deposit_paid_at = timezone.now() - timedelta(days=3, seconds=1)
+        self.booking.save(update_fields=["deposit_paid_at", "updated_at"])
+
+        expired_hold_search_response = self.client.get("/api/v1/listings/search?city=Abuja")
+        self.assertEqual(expired_hold_search_response.status_code, 200)
+        expired_hold_search_payload = expired_hold_search_response.json()
+        expired_hold_search_results = (
+            expired_hold_search_payload["results"]
+            if isinstance(expired_hold_search_payload, dict) and "results" in expired_hold_search_payload
+            else expired_hold_search_payload
+        )
+        self.assertEqual(len(expired_hold_search_results), 1)
+        public_landlord_listings_response = self.client.get(f"/api/v1/listings?landlord_id={self.landlord.id}")
+        self.assertEqual(public_landlord_listings_response.status_code, 200)
+        public_landlord_listings_payload = public_landlord_listings_response.json()
+        public_landlord_listings = (
+            public_landlord_listings_payload["results"]
+            if isinstance(public_landlord_listings_payload, dict) and "results" in public_landlord_listings_payload
+            else public_landlord_listings_payload
+        )
+        self.assertEqual(len(public_landlord_listings), 1)
+
+        self.booking.paid_amount = calculate_booking_total(self.listing.price_per_year)
+        self.booking.full_rent_paid_at = timezone.now()
+        self.booking.end_date = timezone.localdate() + timedelta(days=30)
+        self.booking.save(update_fields=["paid_amount", "full_rent_paid_at", "end_date", "updated_at"])
+
+        full_payment_search_response = self.client.get("/api/v1/listings/search?city=Abuja")
+        self.assertEqual(full_payment_search_response.status_code, 200)
+        full_payment_search_payload = full_payment_search_response.json()
+        full_payment_search_results = (
+            full_payment_search_payload["results"]
+            if isinstance(full_payment_search_payload, dict) and "results" in full_payment_search_payload
+            else full_payment_search_payload
+        )
+        self.assertEqual(full_payment_search_results, [])
+        self.assertEqual(self.client.get("/api/v1/featured/listings").json(), [])
+
+        self.booking.end_date = timezone.localdate() - timedelta(days=1)
+        self.booking.save(update_fields=["end_date", "updated_at"])
+
+        rent_completed_search_response = self.client.get("/api/v1/listings/search?city=Abuja")
+        self.assertEqual(rent_completed_search_response.status_code, 200)
+        rent_completed_search_payload = rent_completed_search_response.json()
+        rent_completed_search_results = (
+            rent_completed_search_payload["results"]
+            if isinstance(rent_completed_search_payload, dict) and "results" in rent_completed_search_payload
+            else rent_completed_search_payload
+        )
+        self.assertEqual(len(rent_completed_search_results), 1)
+        self.assertEqual(len(self.client.get("/api/v1/featured/listings").json()), 1)
+
         self.booking.status = Booking.Status.CANCELLED
         self.booking.save(update_fields=["status", "updated_at"])
 
@@ -4684,6 +4820,8 @@ class TenantScreeningSummaryTests(TestCase):
         self.assertEqual(response.status_code, 200, response.json())
         payload = response.json()
         self.assertEqual(payload["id"], str(self.tenant.id))
+        self.assertNotIn("email", payload)
+        self.assertNotIn("mobile", payload)
         self.assertEqual(payload["tenant_profile"]["first_name"], "Rated")
         self.assertEqual(payload["tenant_profile"]["employment_info"]["company_name"], "Acme Limited")
         self.assertNotIn("supporting_document_urls", payload["tenant_profile"])
@@ -6086,6 +6224,52 @@ class ReviewTests(TestCase):
 
 
 class FeedbackTests(TestCase):
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_feedback_submission_sends_plan_based_acknowledgement_email(self):
+        response_times = {
+            AppUser.Role.TENANT: {
+                SubscriptionPayment.PlanCode.BRONZE: "up to 7 days",
+                SubscriptionPayment.PlanCode.SILVER: "up to 3 days",
+                SubscriptionPayment.PlanCode.GOLD: "up to 24 hours",
+                SubscriptionPayment.PlanCode.PLATINUM: "up to 4 hours",
+            },
+            AppUser.Role.LANDLORD: {
+                SubscriptionPayment.PlanCode.BRONZE: "up to 7 days",
+                SubscriptionPayment.PlanCode.SILVER: "up to 5 days",
+                SubscriptionPayment.PlanCode.GOLD: "up to 3 days",
+                SubscriptionPayment.PlanCode.PLATINUM: "up to 24 hours",
+            },
+        }
+        client = APIClient()
+
+        for role, plan_response_times in response_times.items():
+            for plan_code, response_time in plan_response_times.items():
+                user = AppUser.objects.create_user(
+                    email=f"feedback-{role}-{plan_code}@example.com",
+                    password="password-123",
+                    name=f"{plan_code.title()} Support User",
+                    role=role,
+                    email_verified=True,
+                )
+                create_active_subscription(user, plan_code)
+                client.force_authenticate(user=user)
+
+                response = client.post(
+                    "/api/v1/feedback",
+                    {
+                        "name": user.name,
+                        "topic": "Complaint: Response time",
+                        "message": "Please confirm that my support request was received.",
+                    },
+                    format="json",
+                )
+
+                self.assertEqual(response.status_code, 201, response.json())
+                email = mail.outbox[-1]
+                self.assertEqual(email.to, [user.email])
+                self.assertIn(response_time, email.body)
+                self.assertIn("complaint", email.body.lower())
+
     def test_feedback_submission_uses_authenticated_user_role(self):
         tenant = AppUser.objects.create_user(
             email="feedback-tenant@example.com",
@@ -6565,6 +6749,11 @@ class TenantPublicProfileTests(TestCase):
             length_of_stay="2 years",
             housing_status="Renting",
             household_info={"has_pets": False, "work_from_home": True},
+            social_presence={
+                "email": "hidden@example.com",
+                "mobile": "08000000000",
+                "linkedin_profile": "https://linkedin.com/in/jade",
+            },
             criminal_declaration={"convicted_of_crime": False},
         )
 
@@ -6576,6 +6765,8 @@ class TenantPublicProfileTests(TestCase):
         self.assertTrue(payload["is_verified"])
         self.assertNotIn("email", payload)
         self.assertNotIn("mobile", payload)
+        self.assertNotIn("email", payload["tenant_profile"]["social_presence"])
+        self.assertNotIn("mobile", payload["tenant_profile"]["social_presence"])
         self.assertEqual(payload["tenant_profile"]["first_name"], "Jade")
         self.assertIn("age", payload["tenant_profile"])
         self.assertNotIn("date_of_birth", payload["tenant_profile"])
@@ -6868,6 +7059,8 @@ class LandlordPublicProfileTests(TestCase):
 
         self.assertEqual(response.status_code, 200, response.json())
         payload = response.json()
+        self.assertNotIn("email", payload)
+        self.assertNotIn("mobile", payload)
         self.assertEqual(payload["metrics"]["total_properties"], 3)
         self.assertEqual(payload["metrics"]["properties_rented"], 1)
         self.assertEqual(payload["metrics"]["properties_listed"], 2)

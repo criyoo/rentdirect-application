@@ -27,7 +27,7 @@ from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import IsAuthenticated as DRFIsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -86,11 +86,20 @@ from .flutterwave import (
 )
 from .verification_service import verify_cac, verify_nin_and_bvn
 from .notifications import (
+    send_feedback_acknowledgement,
     send_landlord_payout_notification,
     send_payment_confirmation_to_landlord,
     send_rentdirect_internal_transfer_notification,
 )
-from .permissions import IsAdminRole, IsLandlordOrAdmin
+from .permissions import (
+    AllowAnyUnlessFrozen,
+    IsAdminRole,
+    IsAuthenticatedUnlessFrozen,
+    IsLandlordOrAdmin,
+)
+
+AllowAny = AllowAnyUnlessFrozen
+IsAuthenticated = IsAuthenticatedUnlessFrozen
 from .payment_queue import enqueue_booking_payout_check, enqueue_flutterwave_webhook
 from .pricing import calculate_deposit_amount, calculate_remaining_balance, resolve_booking_total
 from .security import OTP_MAX_ATTEMPTS, OTP_TTL_MINUTES, contains_contact_info, generate_otp, hash_otp, otp_matches
@@ -98,6 +107,8 @@ from .tenant_verification import normalize_tenant_verification_profile
 from .throttling import production_ratelimit
 from .community_chat import COMMUNITY_CHAT_ROLES, user_has_active_community_chat_subscription
 from .subscription_access import (
+    active_plan_code_for,
+    support_response_time_for,
     user_has_bronze_access,
     user_has_gold_access,
     user_has_platinum_access,
@@ -971,6 +982,21 @@ def format_average_response_time(seconds: float | None) -> str:
     return f"{days} days"
 
 
+PUBLIC_CONTACT_KEYS = frozenset({"email", "mobile", "mobile_number", "phone", "phone_number"})
+
+
+def strip_public_contact_details(value):
+    if isinstance(value, dict):
+        return {
+            key: strip_public_contact_details(item)
+            for key, item in value.items()
+            if str(key).strip().lower() not in PUBLIC_CONTACT_KEYS
+        }
+    if isinstance(value, list):
+        return [strip_public_contact_details(item) for item in value]
+    return value
+
+
 def build_landlord_public_profile_payload(landlord: AppUser, viewer=None) -> dict:
     listings = (
         Listing.objects
@@ -1028,7 +1054,7 @@ def build_landlord_public_profile_payload(landlord: AppUser, viewer=None) -> dic
         else None
     )
 
-    return {
+    payload = {
         "id": str(landlord.id),
         "display_name": resolve_landlord_display_name(landlord),
         "subtitle": resolve_landlord_subtitle(landlord),
@@ -1073,6 +1099,7 @@ def build_landlord_public_profile_payload(landlord: AppUser, viewer=None) -> dic
             for review in reviews[:10]
         ],
     }
+    return strip_public_contact_details(payload)
 
 
 def build_tenant_public_profile_payload(tenant: AppUser) -> dict:
@@ -1110,7 +1137,7 @@ def build_tenant_public_profile_payload(tenant: AppUser) -> dict:
     completed_tenancies = Booking.objects.filter(tenant=tenant, status=Booking.Status.COMPLETED).count()
     years_on_platform = round(max((timezone.now().date() - tenant.created_at.date()).days / 365.25, 0), 1)
 
-    return {
+    payload = {
         "id": str(tenant.id),
         "name": tenant.name,
         "role": tenant.role,
@@ -1127,6 +1154,7 @@ def build_tenant_public_profile_payload(tenant: AppUser) -> dict:
             "years_on_platform": years_on_platform,
         },
     }
+    return strip_public_contact_details(payload)
 
 
 def build_booking_checkout(payment: Payment) -> dict:
@@ -1436,7 +1464,7 @@ def subscription_renewal_amount_for(payment: SubscriptionPayment, *, now=None) -
         SubscriptionPayment.BillingCycle.MONTHLY,
         payment.amount,
     )
-    percentage = Decimal(str(payment.user.account_freeze_fee_percentage or 20))
+    percentage = Decimal(str(payment.user.account_freeze_fee_percentage or 10))
     return (Decimal(str(monthly_amount)) * percentage / Decimal("100")).quantize(Decimal("0.01"))
 
 
@@ -2290,7 +2318,8 @@ def update_booking_after_completed_payment(payment: Payment) -> Payment:
 
         booking = Booking.objects.select_for_update().select_related("listing").get(pk=payment.booking_id)
         total_amount = resolve_booking_total(booking.listing.price_per_year, booking.total_amount)
-        remaining_balance = calculate_remaining_balance(total_amount, booking.paid_amount)
+        previous_paid_amount = normalize_decimal_amount(booking.paid_amount)
+        remaining_balance = calculate_remaining_balance(total_amount, previous_paid_amount)
         if Decimal(payment.amount) > remaining_balance:
             payment.status = "failed"
             payment.provider_payload = update_payment_provider_payload(
@@ -2301,18 +2330,36 @@ def update_booking_after_completed_payment(payment: Payment) -> Payment:
             payment.save(update_fields=["status", "provider_payload", "updated_at"])
             return payment
 
+        payment_completed_at = timezone.now()
         booking.total_amount = total_amount
-        booking.paid_amount = (booking.paid_amount or Decimal("0")) + payment.amount
+        booking.paid_amount = previous_paid_amount + payment.amount
+        if (
+            booking.deposit_paid_at is None
+            and previous_paid_amount < calculate_deposit_amount(booking.listing.price_per_year)
+            and booking.paid_amount >= calculate_deposit_amount(booking.listing.price_per_year)
+        ):
+            booking.deposit_paid_at = payment_completed_at
+        if booking.full_rent_paid_at is None and previous_paid_amount < total_amount and booking.paid_amount >= total_amount:
+            booking.full_rent_paid_at = payment_completed_at
         booking.status = (
             Booking.Status.CONFIRMED
             if calculate_remaining_balance(total_amount, booking.paid_amount) <= 0
             else Booking.Status.PENDING
         )
-        booking.save(update_fields=["total_amount", "paid_amount", "status", "updated_at"])
 
         payment.status = "completed"
-        payment.payment_date = timezone.now()
+        payment.payment_date = payment_completed_at
         payment.save(update_fields=["status", "payment_date", "updated_at"])
+        booking.save(
+            update_fields=[
+                "total_amount",
+                "paid_amount",
+                "deposit_paid_at",
+                "full_rent_paid_at",
+                "status",
+                "updated_at",
+            ]
+        )
 
         # Email #1: Notify landlord of successful tenant payment, CC tenant and RentDirect
         try:
@@ -2687,6 +2734,11 @@ class UserViewSet(viewsets.GenericViewSet):
     permission_classes = [IsAuthenticated]
     parser_classes = [JSONParser, MultiPartParser, FormParser]
 
+    def get_permissions(self):
+        if self.action in {"me", "request_settings_otp", "update_settings", "password", "freeze_account"}:
+            return [DRFIsAuthenticated()]
+        return super().get_permissions()
+
     @action(detail=False, methods=["get", "patch", "delete"], url_path="me")
     def me(self, request):
         if request.method == "DELETE":
@@ -2881,8 +2933,8 @@ class UserViewSet(viewsets.GenericViewSet):
 
     @action(detail=False, methods=["post", "delete"], url_path="me/freeze")
     def freeze_account(self, request):
-        if request.user.role != AppUser.Role.LANDLORD:
-            raise PermissionDenied("Only landlord accounts can be frozen.")
+        if request.user.role not in {AppUser.Role.TENANT, AppUser.Role.LANDLORD}:
+            raise PermissionDenied("Only tenant and landlord accounts can be frozen.")
 
         if request.method == "DELETE":
             ensure_valid_settings_otp(
@@ -2925,7 +2977,7 @@ class UserViewSet(viewsets.GenericViewSet):
         request.user.account_frozen = True
         request.user.account_frozen_at = timezone.now()
         request.user.account_frozen_until = timezone.now() + timedelta(days=30 * duration_months)
-        request.user.account_freeze_fee_percentage = Decimal("20")
+        request.user.account_freeze_fee_percentage = Decimal("10")
         clear_settings_otp(request.user, save=False)
         request.user.save(
             update_fields=[
@@ -3078,19 +3130,19 @@ class UserViewSet(viewsets.GenericViewSet):
                 financial_info.pop(key, None)
             profile_payload["financial_info"] = financial_info
 
-        return Response(
-            {
-                "id": tenant.id,
-                "name": tenant.name,
-                "email": tenant.email,
-                "mobile": tenant.mobile,
-                "profile_photo_url": tenant.profile_photo_url,
-                "state_of_origin": tenant.state_of_origin,
-                "residence": tenant.residence,
-                "is_verified": tenant.is_verified,
-                "tenant_profile": profile_payload,
-            }
-        )
+        response_data = {
+            "id": tenant.id,
+            "name": tenant.name,
+            "profile_photo_url": tenant.profile_photo_url,
+            "state_of_origin": tenant.state_of_origin,
+            "residence": tenant.residence,
+            "is_verified": tenant.is_verified,
+            "tenant_profile": profile_payload,
+        }
+        can_view_private_contacts = request.user.role == AppUser.Role.ADMIN or request.user.id == tenant.id
+        if can_view_private_contacts:
+            response_data.update({"email": tenant.email, "mobile": tenant.mobile})
+        return Response(response_data)
 
     @action(detail=False, methods=["get"], url_path="tenants/(?P<tenant_id>[^/.]+)/public-profile", permission_classes=[AllowAny])
     def tenant_public_profile(self, request, tenant_id=None):
@@ -3125,10 +3177,24 @@ class ListingViewSet(viewsets.ModelViewSet):
             and getattr(self.request.user, "is_authenticated", False)
             and self.request.user.role == AppUser.Role.LANDLORD
         ):
-            qs = qs.filter(landlord=self.request.user)
+            public_listing_ids = exclude_deposit_secured_listings(
+                Listing.objects.filter(status=Listing.Status.AVAILABLE)
+            ).values("id")
+            qs = qs.filter(Q(landlord=self.request.user) | Q(id__in=public_listing_ids))
         landlord_id = self.request.query_params.get("landlord_id")
         if landlord_id:
             qs = qs.filter(landlord_id=landlord_id)
+            user = self.request.user
+            can_manage_requested_landlord = (
+                getattr(user, "is_authenticated", False)
+                and (
+                    user.role == AppUser.Role.ADMIN
+                    or (user.role == AppUser.Role.LANDLORD and str(user.id) == str(landlord_id))
+                )
+            )
+            if not can_manage_requested_landlord:
+                qs = qs.filter(status=Listing.Status.AVAILABLE)
+                qs = exclude_deposit_secured_listings(qs)
         elif self.action in {"list", "search", "nearby", "cities", "featured_listings", "location_analytics"}:
             qs = qs.filter(status=Listing.Status.AVAILABLE)
             qs = exclude_deposit_secured_listings(qs)
@@ -4647,12 +4713,28 @@ class FeedbackViewSet(viewsets.ModelViewSet):
                 else:
                     support_prefix = "Issue"
                 topic = f"{support_prefix}: {normalized_issue_topic or 'General support'}"
-        serializer.save(
+        feedback = serializer.save(
             user=self.request.user,
             name=(self.request.data.get("name") or self.request.user.name or "").strip() or self.request.user.name,
             role=self.request.user.role,
             topic=topic,
         )
+        request_type = "complaint" if topic.lower().startswith("complaint:") else (
+            "issue" if re.match(r"^(?:premium rental workflow|priority issue|issue):", topic, flags=re.IGNORECASE) else "feedback"
+        )
+        try:
+            send_feedback_acknowledgement(
+                recipient_email=self.request.user.email,
+                recipient_name=feedback.name,
+                request_type=request_type,
+                topic=feedback.topic,
+                message=feedback.message,
+                plan_code=str(active_plan_code_for(self.request.user)),
+                response_time=support_response_time_for(self.request.user),
+                feedback_id=str(feedback.id),
+            )
+        except Exception:
+            logger.exception("Unable to send feedback acknowledgement email for %s", feedback.id)
 
 
 class MessageViewSet(viewsets.ModelViewSet):

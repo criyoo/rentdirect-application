@@ -46,9 +46,9 @@ export default function LegalDocumentPage() {
                                 {audienceLabels[document.audience]}
                             </span>
                         </div>
-                        <h1 className="mt-6 text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">{document.title}</h1>
-                        <p className="mt-4 max-w-3xl text-base leading-7 text-slate-600 sm:text-lg">{document.description}</p>
-                        <div className="mt-6 inline-flex items-center gap-2 text-sm font-medium text-slate-500">
+                        <h1 className="mt-4 text-xl font-semibold leading-7 tracking-tight text-slate-950 sm:text-2xl">{document.title}</h1>
+                        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 sm:text-base">{document.description}</p>
+                        <div className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-slate-500">
                             <HiDocumentText className="h-5 w-5 text-blue-600" aria-hidden="true" />
                             Review this document before giving your electronic consent.
                         </div>
