@@ -93,7 +93,7 @@ export default function TenantDashboardPage() {
     const dashboardActions = [
         { to: '/search', label: 'Search', Icon: HiSearch, colorClass: 'text-blue-600' },
         { to: '/favourites', label: 'Favourites', Icon: HiHeart, colorClass: 'text-red-600' },
-        { to: '/enquiries', label: 'Enquiries', Icon: HiChat, colorClass: 'text-green-600' },
+        { to: '/enquiries', label: 'Chat (Enquiries)', Icon: HiChat, colorClass: 'text-green-600' },
         { to: '/verify', label: 'Verification', Icon: HiShieldCheck, colorClass: 'text-purple-600' },
         { to: user ? `/tenants/${user.id}/profile` : '#', label: 'Profile', Icon: HiUser, colorClass: 'text-orange-600' },
         { to: '/billing', label: 'Billing', Icon: HiCash, colorClass: 'text-emerald-600' },

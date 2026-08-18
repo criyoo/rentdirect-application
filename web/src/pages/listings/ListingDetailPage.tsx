@@ -485,7 +485,7 @@ export default function ListingDetailPage() {
                 <div className="max-w-6xl mx-auto">
                     <div className="grid grid-cols-1 gap-3 lg:grid-cols-5">
                         {/* Price + Actions */}
-                        <div className="rounded-2xl bg-white px-3 pb-3 pt-6 shadow-lg border">
+                        <div className="h-[28rem] overflow-y-auto rounded-2xl bg-white px-3 pb-3 pt-6 shadow-lg border">
                             <p className="text-[16px] font-bold text-gray-900 text-center">
                                 {isLandlordUser ? 'Property Management' : 'Start Rental Journey'}
                             </p>
@@ -614,7 +614,7 @@ export default function ListingDetailPage() {
                         </div>
 
                         {/* Property Details with Icons */}
-                        <div className="rounded-2xl bg-white p-6 shadow-lg border">
+                        <div className="h-[28rem] overflow-y-auto rounded-2xl bg-white p-6 shadow-lg border">
                             <p className="text-[16px] font-bold text-gray-900 mb-3 text-center">Property Details</p>
                             <br />
                             <div className="space-y-4">
@@ -656,7 +656,7 @@ export default function ListingDetailPage() {
                         </div>
 
                         {canSeePropertyVerification && listing.property_document_verification_status === 'verified' && (
-                            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 shadow-lg">
+                            <div className="h-[28rem] overflow-y-auto rounded-2xl border border-emerald-200 bg-emerald-50 p-6 shadow-lg">
                                 <p className="text-[16px] font-bold text-emerald-900">Verification Status</p>
                                 <p className="mt-3 text-sm font-medium text-emerald-800">
                                     ✓ This property has passed RentDirect property verification.
@@ -665,7 +665,7 @@ export default function ListingDetailPage() {
                         )}
 
                         {/* Features */}
-                        <div className="rounded-2xl bg-white p-6 shadow-lg border">
+                        <div className="h-[28rem] overflow-y-auto rounded-2xl bg-white p-6 shadow-lg border">
                             <p className="text-[16px] font-bold text-gray-900 mb-3 text-center">Features</p>
                             <br />
                             <div className="flex flex-wrap gap-4 text-sm">
@@ -738,7 +738,7 @@ export default function ListingDetailPage() {
                         </div>
 
                         {/* Location with Map */}
-                        <div className="rounded-2xl bg-white p-6 shadow-lg border text-center">
+                        <div className="h-[28rem] overflow-y-auto rounded-2xl bg-white p-6 shadow-lg border text-center">
                             <p className="text-[16px] font-bold text-gray-900 mb-3">Location</p>
                             <br />
                             <p className="text-gray-700 flex flex-col gap-3 text-sm text-center">
