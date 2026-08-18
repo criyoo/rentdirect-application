@@ -320,8 +320,8 @@ export default function RentalProgressPage() {
                                         key={step.key}
                                         className={`grid grid-cols-[minmax(0,1fr)_88px_88px] items-start gap-3 rounded-2xl border p-4 transition ${completed
                                             ? 'border-gray-200 bg-gray-100 text-gray-500'
-                                                : selected || selectedResponse
-                                                    ? 'border-blue-400 bg-blue-50'
+                                            : selected || selectedResponse
+                                                ? 'border-blue-400 bg-blue-50'
                                                 : unlocked
                                                     ? 'border-gray-200 bg-white hover:border-blue-300'
                                                     : 'border-gray-200 bg-gray-50 text-gray-400'
@@ -341,12 +341,12 @@ export default function RentalProgressPage() {
                                                     ) : (
                                                         <p className="mt-2 text-sm text-gray-500">
                                                             {blockedByDepositPayment
-                                                                ? 'Available after payment of the 20% deposit or the full rental amount, including the 10% refundable caution fee and the 10% administrative fee.'
+                                                                ? 'Available after payment of the 20% deposit or full rental amount (including all fees).'
                                                                 : blockedByFullRentalPayment
-                                                                ? 'Available after full payment of rent, the 10% refundable caution fee, and the 10% administrative fee.'
-                                                                : unlocked
-                                                                    ? 'Pending confirmation'
-                                                                    : 'Complete the previous checklist item first.'}
+                                                                    ? 'Available after full rental payment (including all fees).'
+                                                                    : unlocked
+                                                                        ? 'Pending confirmation'
+                                                                        : 'Complete the previous checklist item first.'}
                                                         </p>
                                                     )}
                                                 </div>
@@ -366,7 +366,7 @@ export default function RentalProgressPage() {
                                                             : 'Saved'
                                                         : selected || selectedResponse
                                                             ? 'Ready to save'
-                                                        : 'Pending'}
+                                                            : 'Pending'}
                                                 </span>
                                             </div>
                                         </div>

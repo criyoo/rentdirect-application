@@ -668,7 +668,7 @@ export default function ListingDetailPage() {
                                     <p className={`mt-3 text-sm font-medium ${isPropertyVerified ? 'text-emerald-800' : 'text-red-800'}`}>
                                         {isPropertyVerified
                                             ? '✓ This property has passed RentDirect property verification.'
-                                            : '✕ This property has not passed RentDirect property verification.'}
+                                            : '✕ This property verification is pending and is yet to passed verification.'}
                                     </p>
                                 </div>
                             )
