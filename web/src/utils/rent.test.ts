@@ -7,10 +7,11 @@ describe('rent breakdown', () => {
       annualRent: 1_000_000,
       refundableSecurityDeposit: 100_000,
       administrationFee: 100_000,
-      depositAmount: 200_000,
-      totalAmount: 1_200_000,
+      administrationFeeVat: 7_500,
+      depositAmount: 207_500,
+      totalAmount: 1_207_500,
       paidAmount: 0,
-      remainingBalance: 1_200_000,
+      remainingBalance: 1_207_500,
     })
   })
 
@@ -26,6 +27,7 @@ describe('rent breakdown', () => {
       annualRent: 0,
       refundableSecurityDeposit: 0,
       administrationFee: 0,
+      administrationFeeVat: 0,
       depositAmount: 0,
       totalAmount: 0,
       paidAmount: 0,

@@ -32,7 +32,7 @@ from core.prembly_verification import (
     validate_prembly_webhook_request,
     verify_prembly_webhook_signature,
 )
-from core.pricing import calculate_booking_total, calculate_deposit_amount
+from core.pricing import calculate_administration_fee_vat, calculate_booking_total, calculate_deposit_amount
 from core.security import hash_otp
 from core.serializers import UserSerializer
 from core.subscription_pricing import get_subscription_pricing
@@ -3279,6 +3279,12 @@ class FlutterwaveTransferPayloadTests(TestCase):
         )
 
 
+@override_settings(
+    RENTDIRECT_VAT_HOLDING_BANK_CODE="101",
+    RENTDIRECT_VAT_HOLDING_BANK_NAME="Providus",
+    RENTDIRECT_VAT_HOLDING_ACCOUNT_NUMBER="1111111111",
+    RENTDIRECT_VAT_HOLDING_ACCOUNT_NAME="RentDirect VAT Holding",
+)
 class BookingPaymentTests(TestCase):
     def setUp(self):
         self.landlord = AppUser.objects.create_user(
@@ -3331,8 +3337,9 @@ class BookingPaymentTests(TestCase):
         self.assertEqual(response.status_code, 201, response.json())
         booking = Booking.objects.get(id=response.json()["id"])
         self.assertEqual(booking.total_amount, calculate_booking_total(self.listing.price_per_year))
-        self.assertEqual(response.json()["total_amount"], 1440000.0)
-        self.assertEqual(response.json()["remaining_amount"], 1440000.0)
+        self.assertEqual(calculate_administration_fee_vat(self.listing.price_per_year), Decimal("9000.00"))
+        self.assertEqual(response.json()["total_amount"], 1449000.0)
+        self.assertEqual(response.json()["remaining_amount"], 1449000.0)
 
     def test_bronze_tenant_cannot_create_booking(self):
         tenant = AppUser.objects.create_user(
@@ -3420,7 +3427,7 @@ class BookingPaymentTests(TestCase):
         self.assertEqual(booking.paid_amount, Decimal("0.00"))
         booking_response = self.client.get(f"/api/v1/bookings/listing/{self.listing.id}")
         self.assertEqual(booking_response.status_code, 200, booking_response.json())
-        self.assertEqual(booking_response.json()["remaining_amount"], 1440000.0)
+        self.assertEqual(booking_response.json()["remaining_amount"], 1449000.0)
 
     def test_tenant_can_delete_cancelled_rental_payment_history(self):
         booking = Booking.objects.create(
@@ -3590,6 +3597,10 @@ class BookingPaymentTests(TestCase):
         FLUTTERWAVE_CLIENT_ID="test-client-id",
         FLUTTERWAVE_CLIENT_SECRET="test-client-secret",
         FLUTTERWAVE_API_BASE_URL="https://f4bexperience.flutterwave.com",
+        RENTDIRECT_VAT_HOLDING_BANK_CODE="101",
+        RENTDIRECT_VAT_HOLDING_BANK_NAME="Providus",
+        RENTDIRECT_VAT_HOLDING_ACCOUNT_NUMBER="1111111111",
+        RENTDIRECT_VAT_HOLDING_ACCOUNT_NAME="RentDirect VAT Holding",
         WEB_PUBLIC_URL="http://localhost:5173",
     )
     @patch("core.views.find_transfer_recipient")
@@ -3620,14 +3631,16 @@ class BookingPaymentTests(TestCase):
             },
         }
         create_transfer_recipient_mock.side_effect = [
-            {"status": "success", "data": {"id": "recipient_ops"}},
+            {"status": "success", "data": {"id": "recipient_admin_vat"}},
             {"status": "success", "data": {"id": "recipient_caution"}},
             {"status": "success", "data": {"id": "recipient_landlord"}},
+            {"status": "success", "data": {"id": "recipient_ops"}},
         ]
         create_bank_transfer_mock.side_effect = [
-            {"status": "success", "data": {"id": "transfer_ops", "status": "NEW"}},
+            {"status": "success", "data": {"id": "transfer_admin_vat", "status": "NEW"}},
             {"status": "success", "data": {"id": "transfer_caution", "status": "NEW"}},
             {"status": "success", "data": {"id": "transfer_landlord", "status": "NEW"}},
+            {"status": "success", "data": {"id": "transfer_ops", "status": "NEW"}},
         ]
         booking = Booking.objects.create(
             tenant=self.tenant,
@@ -3791,9 +3804,9 @@ class BookingPaymentTests(TestCase):
         final_payment.save(update_fields=["payment_date", "updated_at"])
         call_command("process_ready_payouts")
 
-        self.assertEqual(create_transfer_recipient_mock.call_count, 3)
-        self.assertEqual(create_bank_transfer_mock.call_count, 3)
-        self.assertEqual(len(mail.outbox), 5)
+        self.assertEqual(create_transfer_recipient_mock.call_count, 4)
+        self.assertEqual(create_bank_transfer_mock.call_count, 4)
+        self.assertEqual(len(mail.outbox), 6)
         landlord_transfer_emails = [message for message in mail.outbox if "Landlord Payout Initiated" in message.subject]
         internal_transfer_emails = [message for message in mail.outbox if "Internal Transfer Initiated" in message.subject]
         self.assertEqual(len(landlord_transfer_emails), 1)
@@ -3801,7 +3814,7 @@ class BookingPaymentTests(TestCase):
         self.assertEqual(set(landlord_transfer_emails[0].cc), {self.tenant.email, "info@rentdirect.homes"})
         self.assertIn("₦1,200,000.00", landlord_transfer_emails[0].body)
         self.assertNotIn("₦1,440,000.00", landlord_transfer_emails[0].body)
-        self.assertEqual(len(internal_transfer_emails), 2)
+        self.assertEqual(len(internal_transfer_emails), 3)
         for internal_email in internal_transfer_emails:
             self.assertEqual(internal_email.to, ["info@rentdirect.homes"])
             self.assertEqual(internal_email.cc, [])
@@ -3816,6 +3829,10 @@ class BookingPaymentTests(TestCase):
         self.assertEqual(
             str(settlements.get(purpose=PaymentSettlement.Purpose.CAUTION_FEE).amount),
             "120000.00",
+        )
+        self.assertEqual(
+            str(settlements.get(purpose=PaymentSettlement.Purpose.ADMINISTRATION_FEE_VAT).amount),
+            "9000.00",
         )
         landlord_settlement = settlements.get(purpose=PaymentSettlement.Purpose.LANDLORD_RENT)
         self.assertEqual(str(landlord_settlement.amount), "1200000.00")
@@ -4045,14 +4062,16 @@ class BookingPaymentTests(TestCase):
     ):
         find_transfer_recipient_mock.return_value = None
         create_transfer_recipient_mock.side_effect = [
-            {"status": "success", "data": {"id": "recipient_ops_worker"}},
+            {"status": "success", "data": {"id": "recipient_admin_vat_worker"}},
             {"status": "success", "data": {"id": "recipient_caution_worker"}},
             {"status": "success", "data": {"id": "recipient_landlord_worker"}},
+            {"status": "success", "data": {"id": "recipient_ops_worker"}},
         ]
         create_bank_transfer_mock.side_effect = [
-            {"status": "success", "data": {"id": "transfer_ops_worker", "status": "NEW"}},
+            {"status": "success", "data": {"id": "transfer_admin_vat_worker", "status": "NEW"}},
             {"status": "success", "data": {"id": "transfer_caution_worker", "status": "NEW"}},
             {"status": "success", "data": {"id": "transfer_landlord_worker", "status": "NEW"}},
+            {"status": "success", "data": {"id": "transfer_ops_worker", "status": "NEW"}},
         ]
         total_amount = calculate_booking_total(self.listing.price_per_year)
         booking = Booking.objects.create(
@@ -4087,15 +4106,15 @@ class BookingPaymentTests(TestCase):
         call_command("process_ready_payouts")
 
         settlements = PaymentSettlement.objects.filter(payment__transaction_id="WORKERPAYOUTREADY1")
-        self.assertEqual(settlements.count(), 3)
-        self.assertEqual(create_transfer_recipient_mock.call_count, 3)
-        self.assertEqual(create_bank_transfer_mock.call_count, 3)
+        self.assertEqual(settlements.count(), 4)
+        self.assertEqual(create_transfer_recipient_mock.call_count, 4)
+        self.assertEqual(create_bank_transfer_mock.call_count, 4)
         self.assertSetEqual(
             set(settlements.values_list("status", flat=True)),
             {PaymentSettlement.Status.PROCESSING},
         )
         self.assertTrue(all(settlements.values_list("transfer_reference", flat=True)))
-        self.assertEqual(len(mail.outbox), 3)
+        self.assertEqual(len(mail.outbox), 4)
 
     @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
     @patch("core.views.find_transfer_recipient")
@@ -4108,14 +4127,16 @@ class BookingPaymentTests(TestCase):
         find_transfer_recipient_mock,
     ):
         find_transfer_recipient_mock.side_effect = [
-            {"status": "success", "data": {"id": "recipient_existing_ops"}},
+            {"status": "success", "data": {"id": "recipient_existing_admin_vat"}},
             {"status": "success", "data": {"id": "recipient_existing_caution"}},
             {"status": "success", "data": {"id": "recipient_existing_landlord"}},
+            {"status": "success", "data": {"id": "recipient_existing_ops"}},
         ]
         create_bank_transfer_mock.side_effect = [
-            {"status": "success", "data": {"id": "transfer_existing_recipient_ops", "status": "NEW"}},
+            {"status": "success", "data": {"id": "transfer_existing_recipient_admin_vat", "status": "NEW"}},
             {"status": "success", "data": {"id": "transfer_existing_recipient_caution", "status": "NEW"}},
             {"status": "success", "data": {"id": "transfer_existing_recipient_landlord", "status": "NEW"}},
+            {"status": "success", "data": {"id": "transfer_existing_recipient_ops", "status": "NEW"}},
         ]
         total_amount = calculate_booking_total(self.listing.price_per_year)
         booking = Booking.objects.create(
@@ -4151,7 +4172,7 @@ class BookingPaymentTests(TestCase):
 
         settlements = PaymentSettlement.objects.filter(payment=payment)
         create_transfer_recipient_mock.assert_not_called()
-        self.assertEqual(create_bank_transfer_mock.call_count, 3)
+        self.assertEqual(create_bank_transfer_mock.call_count, 4)
         self.assertSetEqual(
             set(settlements.values_list("status", flat=True)),
             {PaymentSettlement.Status.PROCESSING},
@@ -4165,15 +4186,16 @@ class BookingPaymentTests(TestCase):
         settlements.update(status=PaymentSettlement.Status.READY)
         create_bank_transfer_mock.reset_mock()
         create_bank_transfer_mock.side_effect = [
-            {"status": "success", "data": {"id": "transfer_existing_recipient_ops_retry", "status": "NEW"}},
+            {"status": "success", "data": {"id": "transfer_existing_recipient_admin_vat_retry", "status": "NEW"}},
             {"status": "success", "data": {"id": "transfer_existing_recipient_caution_retry", "status": "NEW"}},
             {"status": "success", "data": {"id": "transfer_existing_recipient_landlord_retry", "status": "NEW"}},
+            {"status": "success", "data": {"id": "transfer_existing_recipient_ops_retry", "status": "NEW"}},
         ]
 
         call_command("process_ready_payouts")
 
         create_transfer_recipient_mock.assert_not_called()
-        self.assertEqual(create_bank_transfer_mock.call_count, 3)
+        self.assertEqual(create_bank_transfer_mock.call_count, 4)
 
     @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
     @patch("core.views.find_transfer_recipient")
@@ -4187,11 +4209,13 @@ class BookingPaymentTests(TestCase):
     ):
         find_transfer_recipient_mock.return_value = None
         create_transfer_recipient_mock.side_effect = [
+            {"status": "success", "data": {"id": "recipient_admin_vat_ok"}},
             {"status": "success", "data": {"id": "recipient_caution_failed"}},
             {"status": "success", "data": {"id": "recipient_landlord_ok"}},
             {"status": "success", "data": {"id": "recipient_ops_ok"}},
         ]
         create_bank_transfer_mock.side_effect = [
+            {"status": "success", "data": {"id": "transfer_admin_vat_ok", "status": "NEW"}},
             {
                 "status": "success",
                 "data": {
@@ -5000,6 +5024,27 @@ class SeedDemoTests(TestCase):
 
                 self.assertEqual((media_root / "seed" / "video" / "rentdirect.mp4").read_bytes(), b"homepage video")
 
+    def test_seed_demo_preserves_listing_image_content_type(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source_path = Path(temp_dir) / "listing.webp"
+            source_path.write_bytes(b"image")
+            saved = {}
+
+            class Field:
+                name = ""
+
+                def delete(self, save=False):
+                    return None
+
+                def save(self, name, content, save=False):
+                    saved["name"] = name
+                    saved["content_type"] = getattr(content, "content_type", "")
+
+            instance = type("SeedImage", (), {"file": Field()})()
+            SeedDemoDataCommand().replace_model_file(instance, "file", source_path)
+
+        self.assertEqual(saved, {"name": "listing.webp", "content_type": "image/webp"})
+
     @override_settings(SEED_DEMO_ACCOUNTS=True)
     def test_seed_demo_keeps_homepage_video_when_source_is_storage_file(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -5480,14 +5525,14 @@ class SubscriptionPaymentTests(TestCase):
         FLUTTERWAVE_CLIENT_SECRET="test-client-secret",
         FLUTTERWAVE_API_BASE_URL="https://developersandbox-api.flutterwave.com",
         FLUTTERWAVE_ENCRYPTION_KEY="MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
-        RENTDIRECT_SUBSCRIPTION_SUBACCOUNT_ID="",
-        RENTDIRECT_SUBSCRIPTION_BANK_NAME="",
-        RENTDIRECT_SUBSCRIPTION_BANK_CODE="",
-        RENTDIRECT_SUBSCRIPTION_ACCOUNT_NUMBER="",
-        RENTDIRECT_VAT_SUBACCOUNT_ID="",
-        RENTDIRECT_VAT_BANK_NAME="",
-        RENTDIRECT_VAT_BANK_CODE="",
-        RENTDIRECT_VAT_ACCOUNT_NUMBER="",
+        RENTDIRECT_OPERATING_SUBACCOUNT_ID="",
+        RENTDIRECT_OPERATING_BANK_NAME="",
+        RENTDIRECT_OPERATING_BANK_CODE="",
+        RENTDIRECT_OPERATING_ACCOUNT_NUMBER="",
+        RENTDIRECT_VAT_HOLDING_SUBACCOUNT_ID="",
+        RENTDIRECT_VAT_HOLDING_BANK_NAME="",
+        RENTDIRECT_VAT_HOLDING_BANK_CODE="",
+        RENTDIRECT_VAT_HOLDING_ACCOUNT_NUMBER="",
     )
     def test_recurring_subscription_config_requires_direct_settlement_account(self):
         tenant = AppUser.objects.create_user(
@@ -5507,12 +5552,12 @@ class SubscriptionPaymentTests(TestCase):
         self.assertFalse(response.json()["direct_settlement_configured"])
 
     @override_settings(
-        RENTDIRECT_SUBSCRIPTION_SUBACCOUNT_ID="RS_SUBSCRIPTION_TEST",
-        RENTDIRECT_VAT_SUBACCOUNT_ID="",
-        RENTDIRECT_VAT_BANK_NAME="",
-        RENTDIRECT_VAT_BANK_CODE="",
-        RENTDIRECT_VAT_ACCOUNT_NUMBER="",
-        RENTDIRECT_VAT_BUSINESS_MOBILE="",
+        RENTDIRECT_OPERATING_SUBACCOUNT_ID="RS_SUBSCRIPTION_TEST",
+        RENTDIRECT_VAT_HOLDING_SUBACCOUNT_ID="",
+        RENTDIRECT_VAT_HOLDING_BANK_NAME="",
+        RENTDIRECT_VAT_HOLDING_BANK_CODE="",
+        RENTDIRECT_VAT_HOLDING_ACCOUNT_NUMBER="",
+        RENTDIRECT_VAT_HOLDING_BUSINESS_MOBILE="",
     )
     def test_recurring_subscription_config_requires_vat_settlement_account(self):
         landlord = AppUser.objects.create_user(
@@ -5616,16 +5661,16 @@ class SubscriptionPaymentTests(TestCase):
     @override_settings(
         FLUTTERWAVE_PUBLIC_KEY="test-public-key",
         FLUTTERWAVE_SECRET_KEY="test-secret-key",
-        RENTDIRECT_SUBSCRIPTION_SUBACCOUNT_ID="RS_SUBSCRIPTION_TEST",
-        RENTDIRECT_SUBSCRIPTION_BANK_NAME="FCMB",
-        RENTDIRECT_SUBSCRIPTION_BANK_CODE="214",
-        RENTDIRECT_SUBSCRIPTION_ACCOUNT_NUMBER="0000000000",
-        RENTDIRECT_SUBSCRIPTION_ACCOUNT_NAME="RentDirect Subscription",
-        RENTDIRECT_VAT_SUBACCOUNT_ID="RS_VAT_TEST",
-        RENTDIRECT_VAT_BANK_NAME="Providus",
-        RENTDIRECT_VAT_BANK_CODE="101",
-        RENTDIRECT_VAT_ACCOUNT_NUMBER="1111111111",
-        RENTDIRECT_VAT_ACCOUNT_NAME="RentDirect VAT",
+        RENTDIRECT_OPERATING_SUBACCOUNT_ID="RS_SUBSCRIPTION_TEST",
+        RENTDIRECT_OPERATING_BANK_NAME="FCMB",
+        RENTDIRECT_OPERATING_BANK_CODE="214",
+        RENTDIRECT_OPERATING_ACCOUNT_NUMBER="0000000000",
+        RENTDIRECT_OPERATING_ACCOUNT_NAME="RentDirect Operations",
+        RENTDIRECT_VAT_HOLDING_SUBACCOUNT_ID="RS_VAT_TEST",
+        RENTDIRECT_VAT_HOLDING_BANK_NAME="Providus",
+        RENTDIRECT_VAT_HOLDING_BANK_CODE="101",
+        RENTDIRECT_VAT_HOLDING_ACCOUNT_NUMBER="1111111111",
+        RENTDIRECT_VAT_HOLDING_ACCOUNT_NAME="RentDirect VAT Holding",
         WEB_PUBLIC_URL="http://localhost:5173",
     )
     @patch("core.views.query_transaction")
@@ -5742,20 +5787,20 @@ class SubscriptionPaymentTests(TestCase):
     @override_settings(
         FLUTTERWAVE_PUBLIC_KEY="test-public-key",
         FLUTTERWAVE_SECRET_KEY="test-secret-key",
-        RENTDIRECT_SUBSCRIPTION_SUBACCOUNT_ID="",
-        RENTDIRECT_SUBSCRIPTION_BANK_NAME="FCMB",
-        RENTDIRECT_SUBSCRIPTION_BANK_CODE="",
-        RENTDIRECT_SUBSCRIPTION_ACCOUNT_NUMBER="0000000000",
-        RENTDIRECT_SUBSCRIPTION_ACCOUNT_NAME="RentDirect Subscription",
-        RENTDIRECT_SUBSCRIPTION_BUSINESS_EMAIL="billing@rentdirect.homes",
-        RENTDIRECT_SUBSCRIPTION_BUSINESS_MOBILE="08000000000",
-        RENTDIRECT_VAT_SUBACCOUNT_ID="",
-        RENTDIRECT_VAT_BANK_NAME="Providus",
-        RENTDIRECT_VAT_BANK_CODE="101",
-        RENTDIRECT_VAT_ACCOUNT_NUMBER="1111111111",
-        RENTDIRECT_VAT_ACCOUNT_NAME="RentDirect VAT",
-        RENTDIRECT_VAT_BUSINESS_EMAIL="tax@rentdirect.homes",
-        RENTDIRECT_VAT_BUSINESS_MOBILE="08000000001",
+        RENTDIRECT_OPERATING_SUBACCOUNT_ID="",
+        RENTDIRECT_OPERATING_BANK_NAME="FCMB",
+        RENTDIRECT_OPERATING_BANK_CODE="",
+        RENTDIRECT_OPERATING_ACCOUNT_NUMBER="0000000000",
+        RENTDIRECT_OPERATING_ACCOUNT_NAME="RentDirect Operations",
+        RENTDIRECT_OPERATING_BUSINESS_EMAIL="billing@rentdirect.homes",
+        RENTDIRECT_OPERATING_BUSINESS_MOBILE="08000000000",
+        RENTDIRECT_VAT_HOLDING_SUBACCOUNT_ID="",
+        RENTDIRECT_VAT_HOLDING_BANK_NAME="Providus",
+        RENTDIRECT_VAT_HOLDING_BANK_CODE="101",
+        RENTDIRECT_VAT_HOLDING_ACCOUNT_NUMBER="1111111111",
+        RENTDIRECT_VAT_HOLDING_ACCOUNT_NAME="RentDirect VAT Holding",
+        RENTDIRECT_VAT_HOLDING_BUSINESS_EMAIL="tax@rentdirect.homes",
+        RENTDIRECT_VAT_HOLDING_BUSINESS_MOBILE="08000000001",
         WEB_PUBLIC_URL="http://localhost:5173",
     )
     @patch("core.views.get_or_create_collection_subaccount_id", side_effect=["RS_CREATED_SUBSCRIPTION", "RS_CREATED_VAT"])
@@ -5791,7 +5836,7 @@ class SubscriptionPaymentTests(TestCase):
                 call(
                     bank_code="214",
                     account_number="0000000000",
-                    business_name="RentDirect Subscription",
+                    business_name="RentDirect Operations",
                     business_email="billing@rentdirect.homes",
                     business_mobile="08000000000",
                     country="NG",
@@ -5801,7 +5846,7 @@ class SubscriptionPaymentTests(TestCase):
                 call(
                     bank_code="101",
                     account_number="1111111111",
-                    business_name="RentDirect VAT",
+                    business_name="RentDirect VAT Holding",
                     business_email="tax@rentdirect.homes",
                     business_mobile="08000000001",
                     country="NG",
@@ -5820,16 +5865,16 @@ class SubscriptionPaymentTests(TestCase):
         FLUTTERWAVE_CLIENT_SECRET="test-client-secret",
         FLUTTERWAVE_API_BASE_URL="https://developersandbox-api.flutterwave.com",
         FLUTTERWAVE_ENCRYPTION_KEY="MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
-        RENTDIRECT_SUBSCRIPTION_SUBACCOUNT_ID="RS_SUBSCRIPTION_TEST",
-        RENTDIRECT_SUBSCRIPTION_BANK_NAME="FCMB",
-        RENTDIRECT_SUBSCRIPTION_BANK_CODE="214",
-        RENTDIRECT_SUBSCRIPTION_ACCOUNT_NUMBER="0000000000",
-        RENTDIRECT_SUBSCRIPTION_ACCOUNT_NAME="RentDirect Subscription",
-        RENTDIRECT_VAT_SUBACCOUNT_ID="RS_VAT_TEST",
-        RENTDIRECT_VAT_BANK_NAME="Providus",
-        RENTDIRECT_VAT_BANK_CODE="101",
-        RENTDIRECT_VAT_ACCOUNT_NUMBER="1111111111",
-        RENTDIRECT_VAT_ACCOUNT_NAME="RentDirect VAT",
+        RENTDIRECT_OPERATING_SUBACCOUNT_ID="RS_SUBSCRIPTION_TEST",
+        RENTDIRECT_OPERATING_BANK_NAME="FCMB",
+        RENTDIRECT_OPERATING_BANK_CODE="214",
+        RENTDIRECT_OPERATING_ACCOUNT_NUMBER="0000000000",
+        RENTDIRECT_OPERATING_ACCOUNT_NAME="RentDirect Operations",
+        RENTDIRECT_VAT_HOLDING_SUBACCOUNT_ID="RS_VAT_TEST",
+        RENTDIRECT_VAT_HOLDING_BANK_NAME="Providus",
+        RENTDIRECT_VAT_HOLDING_BANK_CODE="101",
+        RENTDIRECT_VAT_HOLDING_ACCOUNT_NUMBER="1111111111",
+        RENTDIRECT_VAT_HOLDING_ACCOUNT_NAME="RentDirect VAT Holding",
         WEB_PUBLIC_URL="http://localhost:5173",
     )
     @patch("core.views.create_charge")
@@ -5949,16 +5994,16 @@ class SubscriptionPaymentTests(TestCase):
         FLUTTERWAVE_CLIENT_ID="test-client-id",
         FLUTTERWAVE_CLIENT_SECRET="test-client-secret",
         FLUTTERWAVE_API_BASE_URL="https://developersandbox-api.flutterwave.com",
-        RENTDIRECT_SUBSCRIPTION_SUBACCOUNT_ID="RS_SUBSCRIPTION_TEST",
-        RENTDIRECT_SUBSCRIPTION_BANK_NAME="FCMB",
-        RENTDIRECT_SUBSCRIPTION_BANK_CODE="214",
-        RENTDIRECT_SUBSCRIPTION_ACCOUNT_NUMBER="0000000000",
-        RENTDIRECT_SUBSCRIPTION_ACCOUNT_NAME="RentDirect Subscription",
-        RENTDIRECT_VAT_SUBACCOUNT_ID="RS_VAT_TEST",
-        RENTDIRECT_VAT_BANK_NAME="Providus",
-        RENTDIRECT_VAT_BANK_CODE="101",
-        RENTDIRECT_VAT_ACCOUNT_NUMBER="1111111111",
-        RENTDIRECT_VAT_ACCOUNT_NAME="RentDirect VAT",
+        RENTDIRECT_OPERATING_SUBACCOUNT_ID="RS_SUBSCRIPTION_TEST",
+        RENTDIRECT_OPERATING_BANK_NAME="FCMB",
+        RENTDIRECT_OPERATING_BANK_CODE="214",
+        RENTDIRECT_OPERATING_ACCOUNT_NUMBER="0000000000",
+        RENTDIRECT_OPERATING_ACCOUNT_NAME="RentDirect Operations",
+        RENTDIRECT_VAT_HOLDING_SUBACCOUNT_ID="RS_VAT_TEST",
+        RENTDIRECT_VAT_HOLDING_BANK_NAME="Providus",
+        RENTDIRECT_VAT_HOLDING_BANK_CODE="101",
+        RENTDIRECT_VAT_HOLDING_ACCOUNT_NUMBER="1111111111",
+        RENTDIRECT_VAT_HOLDING_ACCOUNT_NAME="RentDirect VAT Holding",
         WEB_PUBLIC_URL="http://localhost:5173",
     )
     @patch("core.views.create_charge")

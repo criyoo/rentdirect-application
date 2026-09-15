@@ -1,13 +1,5 @@
 # RENTDIRECT PHYSICAL INSPECTION AND DOCUMENT VERIFICATION AGREEMENT
 
-## AGENT / LAWYER APPOINTMENT, CONDUCT, AND REPORTING TERMS
-
-**Effective Date:** ____________________  
-**Last Updated:** ____________________  
-**Appointment / Job Reference:** ____________________
-
-> **Important:** This is a working template for an authorised RentDirect agent, property professional, or lawyer. It is not a title certificate, valuation, survey, engineering report, or legal opinion. RentDirect must complete the contracting entity, fee terms, insurance requirements, professional-licence requirements, escalation contacts, and governing-law details with qualified Nigerian counsel before use.
-
 This Agreement sets the minimum conduct, inspection, document-review, confidentiality, and reporting requirements for a person appointed by RentDirect (the **Inspector**) to carry out a physical inspection and/or document verification for a Landlord’s Listing.
 
 ## 1. APPOINTMENT AND SCOPE
@@ -129,7 +121,7 @@ The Inspector must not select **verified** merely because a fee was paid, a Land
 
 ## 11. ESCALATION AND INCIDENTS
 
-The Inspector must immediately contact RentDirect at **info@rentdirect.homes** or the appointment contact for:
+The Inspector must immediately contact RentDirect at **<info@rentdirect.homes>** or the appointment contact for:
 
 * suspected forgery, impersonation, bribery, coercion, fraud, or illegal activity;
 * threats, injury, unsafe conditions, unlawful entry, or damage;

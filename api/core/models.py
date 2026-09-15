@@ -920,9 +920,10 @@ class Payment(models.Model):
 
 class PaymentSettlement(models.Model):
     class Purpose(models.TextChoices):
-        OPERATIONS = "operations", "RentDirect Operations"
-        CAUTION_FEE = "caution_fee", "Tenant Caution Fee"
-        LANDLORD_RENT = "landlord_rent", "Landlord Rent"
+        OPERATIONS = "operations", "RentDirect Administration Fee"
+        ADMINISTRATION_FEE_VAT = "administration_fee_vat", "VAT on RentDirect Administration Fee"
+        CAUTION_FEE = "caution_fee", "Refundable Security Deposit"
+        LANDLORD_RENT = "landlord_rent", "Rent Amount"
 
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"

@@ -175,7 +175,9 @@ class Command(BaseCommand):
             default_storage.delete(storage_name)
 
         with source_path.open("rb") as fh:
-            default_storage.save(storage_name, File(fh))
+            file = File(fh, name=source_path.name)
+            file.content_type = mimetypes.guess_type(source_path.name)[0] or "application/octet-stream"
+            default_storage.save(storage_name, file)
 
     def upsert_user(self, seed_key: str, data: dict, role: str, seed_path: Path):
         registration = self.get_seed_dict(data, "registration_credentials")
@@ -1590,4 +1592,6 @@ class Command(BaseCommand):
             field.delete(save=False)
 
         with source_path.open("rb") as fh:
-            field.save(source_path.name, File(fh), save=False)
+            file = File(fh, name=source_path.name)
+            file.content_type = mimetypes.guess_type(source_path.name)[0] or "application/octet-stream"
+            field.save(source_path.name, file, save=False)

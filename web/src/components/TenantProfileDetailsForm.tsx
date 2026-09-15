@@ -1891,8 +1891,8 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                     </SectionCard>
 
                     {/* 8. Online Presence & Legal/Criminal Declaration */}
-                    <SectionCard title="Online Presence & Legal/Criminal Declaration" step={8} activeStep={activeStep} setActiveStep={setActiveStep}>
-                        <p className="font-semibold">Social & Digital Presence (Optional)</p>
+                    <SectionCard title="Online Presence & Criminal Declaration" step={8} activeStep={activeStep} setActiveStep={setActiveStep}>
+                        <p className="font-semibold">Social & Digital Presence</p>
                         <div className="mb-3">
                             <p className="text-sm text-gray-500 mb-4">Optional, but boosts your chances of finding a property.</p>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

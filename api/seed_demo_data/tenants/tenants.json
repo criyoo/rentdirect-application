@@ -127,7 +127,7 @@
       }
     },
     "subscription_plan": {
-      "billing_type": "montly",
+      "billing_type": "monthly",
       "plan": "platinum",
       "subscription_status": "active"
     }

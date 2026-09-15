@@ -2,9 +2,6 @@
 
 ## TENANT DATA, GUARANTOR INFORMATION, AND LANDLORD ACCESS
 
-**Effective Date:** ____________________  
-**Last Updated:** ____________________
-
 This document explains the Tenant-specific consent for structured profile and screening information. It supplements the Privacy Policy and Verification and Screening Consent. It is not a promise that a Landlord will accept an application.
 
 ## 1. INFORMATION YOU MAY PROVIDE
@@ -65,7 +62,7 @@ Do not submit another person’s identity number, account credentials, or docume
 
 By submitting the profile or selecting a verification consent, you authorise RentDirect and its authorised providers to process the information for the purposes described in the Privacy Policy and Verification Consent. This may include NIN or BVN checks, document review, consistency checks, fraud prevention, and manual or assisted screening.
 
-You may request correction, withdrawal, deletion, or restriction through **info@rentdirect.homes**, subject to lawful retention, open Bookings or payments, fraud prevention, other persons’ rights, and applicable law. Withdrawal may make profile, application, payment, or contact features unavailable.
+You may request correction, withdrawal, deletion, or restriction through **<info@rentdirect.homes>**, subject to lawful retention, open Bookings or payments, fraud prevention, other persons’ rights, and applicable law. Withdrawal may make profile, application, payment, or contact features unavailable.
 
 ## 8. PRIVACY AND CONFIDENTIALITY
 

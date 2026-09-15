@@ -226,7 +226,11 @@ def send_rentdirect_internal_transfer_notification(
     settlement_id: str,
 ) -> None:
     """Email #3: When transfer is triggered to RentDirect accounts (Operations or Caution Fee)."""
-    purpose_label = "RentDirect Operations Fee" if purpose == "operations" else "Tenant Caution Fee"
+    purpose_label = {
+        "operations": "RentDirect Administration Fee",
+        "administration_fee_vat": "VAT on RentDirect Administration Fee",
+        "caution_fee": "Refundable Security Deposit",
+    }.get(purpose, purpose.replace("_", " ").title())
     subject = f"Internal Transfer Initiated — {purpose_label}"
     text_body = (
         f"An internal transfer has been initiated:\n\n"

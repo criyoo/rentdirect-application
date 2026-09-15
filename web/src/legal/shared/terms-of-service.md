@@ -1,12 +1,5 @@
 # RENTDIRECT TERMS OF SERVICE
 
-## USER AGREEMENT
-
-**Effective Date:** ____________________  
-**Last Updated:** ____________________
-
-> **Drafting note:** This document is a product-aligned draft and must be reviewed and completed by qualified Nigerian counsel before publication. Insert the full legal name, registration details, physical address, and notice address of the RentDirect operating entity before users are asked to accept it.
-
 ## IMPORTANT NOTICE
 
 These Terms of Service (the “Terms”) are a legally binding agreement between the entity that operates RentDirect (“RentDirect”, “we”, “us”, or “our”) and each person or organisation that accesses or uses the RentDirect website, applications, APIs, messaging tools, payment workflows, and related services (the “Platform”).
@@ -192,7 +185,7 @@ You agree to defend, indemnify, and hold harmless RentDirect and its officers, e
 
 ## 22. COMPLAINTS AND DISPUTE RESOLUTION
 
-Contact RentDirect first at **info@rentdirect.homes** with the account email, relevant Listing or Booking reference, dates, and supporting information. We will review complaints in a reasonable manner and may request further information.
+Contact RentDirect first at **<info@rentdirect.homes>** with the account email, relevant Listing or Booking reference, dates, and supporting information. We will review complaints in a reasonable manner and may request further information.
 
 Nothing in this section prevents a User from using a statutory complaint, consumer-protection, data-protection, court, or other remedy that cannot lawfully be waived. Subject to mandatory law, these Terms are governed by the laws of the Federal Republic of Nigeria and disputes may be brought before a court of competent jurisdiction in Nigeria.
 
@@ -202,8 +195,10 @@ If a provision is unenforceable, it will be modified to the minimum extent neces
 
 ## 24. CONTACT AND ELECTRONIC ACCEPTANCE
 
-**RentDirect support:** info@rentdirect.homes  
-**Website:** https://rentdirect.homes
+**RentDirect privacy contact:** <info@rentdirect.homes>\
+**Website:** <https://rentdirect.homes>\
+**Data Controller legal name:** SummitRock Limited\
+**Data Controller address:** Adekunle Lawal, Ikoyi, Lagos
 
 Electronic acceptance, including selecting an acceptance checkbox, creating an account, or using the Platform after notice, may constitute acceptance where permitted by applicable law.
 

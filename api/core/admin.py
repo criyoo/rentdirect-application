@@ -1120,10 +1120,45 @@ class FeaturedPaymentAdmin(admin.ModelAdmin):
 
 @admin.register(Payment)
 class PaymentAdmin(admin.ModelAdmin):
-    list_display = ("id", "booking", "amount", "currency", "status", "provider", "virtual_account_bank_name", "virtual_account_number", "payment_date")
+    list_display = (
+        "id",
+        "booking",
+        "rent_amount",
+        "refundable_security_deposit_amount",
+        "administration_fee_amount",
+        "administration_fee_vat_amount",
+        "amount",
+        "currency",
+        "status",
+        "provider",
+        "payment_date",
+    )
     list_filter = ("status", "provider", "currency", "created_at")
     search_fields = ("transaction_id", "virtual_account_number", "booking__tenant__email", "booking__listing__title")
     readonly_fields = ("transaction_id", "virtual_account_payload", "provider_payload", "webhook_data", "created_at", "updated_at")
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related("booking", "booking__listing").prefetch_related("settlements")
+
+    def _settlement_amount(self, obj, purpose):
+        settlement = next((item for item in obj.settlements.all() if item.purpose == purpose), None)
+        return settlement.amount if settlement else "-"
+
+    @admin.display(description="Rent Amount")
+    def rent_amount(self, obj):
+        return self._settlement_amount(obj, PaymentSettlement.Purpose.LANDLORD_RENT)
+
+    @admin.display(description="Refundable Security Deposit")
+    def refundable_security_deposit_amount(self, obj):
+        return self._settlement_amount(obj, PaymentSettlement.Purpose.CAUTION_FEE)
+
+    @admin.display(description="Administration Fee")
+    def administration_fee_amount(self, obj):
+        return self._settlement_amount(obj, PaymentSettlement.Purpose.OPERATIONS)
+
+    @admin.display(description="VAT on Administration Fee")
+    def administration_fee_vat_amount(self, obj):
+        return self._settlement_amount(obj, PaymentSettlement.Purpose.ADMINISTRATION_FEE_VAT)
 
 
 @admin.register(PaymentSettlement)
@@ -1230,12 +1265,20 @@ class PaymentSettlementAdmin(admin.ModelAdmin):
 
 @admin.register(SubscriptionPayment)
 class SubscriptionPaymentAdmin(admin.ModelAdmin):
-    list_display = ("id", "user", "role", "plan_code", "billing_cycle", "amount", "vat_amount", "total_amount", "currency", "status", "provider", "recurring_enabled", "billing_reason", "expires_at", "payment_date", "created_at")
+    list_display = ("id", "user", "role", "plan_code", "billing_cycle", "subscription_fee_amount", "subscription_vat_amount", "total_amount", "currency", "status", "provider", "recurring_enabled", "billing_reason", "expires_at", "payment_date", "created_at")
     list_filter = ("role", "plan_code", "billing_cycle", "status", "provider", "currency", "recurring_enabled", "billing_reason", "created_at")
     search_fields = ("transaction_id", "provider_charge_id", "user__email", "user__name", "payment_method__provider_payment_method_id")
     list_editable = ("status",)
     autocomplete_fields = ("user", "payment_method", "renewed_from")
     readonly_fields = ("transaction_id", "provider_charge_id", "cashier_url", "provider_payload", "webhook_data", "created_at", "updated_at")
+
+    @admin.display(ordering="amount", description="Subscription Fee")
+    def subscription_fee_amount(self, obj):
+        return obj.amount
+
+    @admin.display(ordering="vat_amount", description="VAT on Subscription Fee")
+    def subscription_vat_amount(self, obj):
+        return obj.vat_amount
 
 
 @admin.register(SubscriptionVATPayment)

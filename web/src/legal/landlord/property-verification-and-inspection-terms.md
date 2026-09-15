@@ -1,9 +1,5 @@
 # RENTDIRECT PROPERTY VERIFICATION AND PHYSICAL INSPECTION TERMS
 
-## LANDLORD-SPECIFIC TERMS
-
-> **Drafting note:** This product-aligned draft must be reviewed by qualified Nigerian counsel before publication. Complete the full legal name, registration details, address, inspection fee rules, notice address, and data-protection contact of the RentDirect operating entity before asking a Landlord to accept it.
-
 These Property Verification and Physical Inspection Terms apply when a Landlord asks RentDirect to verify a Listing through an in-person property inspection and document review instead of uploading property ownership documents. They supplement the Terms of Service, Privacy Policy, Verification and Screening Consent, Marketplace and Rental Disclaimer, Acceptable Use Policy, Landlord Listing and Property Owner Terms, and Subscription and Payment Policy.
 
 ## 1. THE TWO VERIFICATION OPTIONS

@@ -103,7 +103,14 @@ from .permissions import (
 AllowAny = AllowAnyUnlessFrozen
 IsAuthenticated = IsAuthenticatedUnlessFrozen
 from .payment_queue import enqueue_booking_payout_check, enqueue_flutterwave_webhook
-from .pricing import calculate_deposit_amount, calculate_remaining_balance, resolve_booking_total
+from .pricing import (
+    calculate_administration_fee,
+    calculate_administration_fee_vat,
+    calculate_deposit_amount,
+    calculate_refundable_security_deposit,
+    calculate_remaining_balance,
+    resolve_booking_total,
+)
 from .security import OTP_MAX_ATTEMPTS, OTP_TTL_MINUTES, contains_contact_info, generate_otp, hash_otp, otp_matches
 from .tenant_verification import normalize_tenant_verification_profile
 from .throttling import production_ratelimit
@@ -1380,19 +1387,19 @@ def apply_subscription_vat(payment: SubscriptionPayment, *, save: bool = True) -
 
 def resolve_subscription_payment_account() -> dict:
     return resolve_account_payload(
-        bank_name=getattr(settings, "RENTDIRECT_SUBSCRIPTION_BANK_NAME", ""),
-        bank_code=getattr(settings, "RENTDIRECT_SUBSCRIPTION_BANK_CODE", ""),
-        account_number=getattr(settings, "RENTDIRECT_SUBSCRIPTION_ACCOUNT_NUMBER", ""),
-        account_name=getattr(settings, "RENTDIRECT_SUBSCRIPTION_ACCOUNT_NAME", ""),
+        bank_name=getattr(settings, "RENTDIRECT_OPERATING_BANK_NAME", ""),
+        bank_code=getattr(settings, "RENTDIRECT_OPERATING_BANK_CODE", ""),
+        account_number=getattr(settings, "RENTDIRECT_OPERATING_ACCOUNT_NUMBER", ""),
+        account_name=getattr(settings, "RENTDIRECT_OPERATING_ACCOUNT_NAME", ""),
     )
 
 
 def resolve_vat_payment_account() -> dict:
     return resolve_account_payload(
-        bank_name=getattr(settings, "RENTDIRECT_VAT_BANK_NAME", ""),
-        bank_code=getattr(settings, "RENTDIRECT_VAT_BANK_CODE", ""),
-        account_number=getattr(settings, "RENTDIRECT_VAT_ACCOUNT_NUMBER", ""),
-        account_name=getattr(settings, "RENTDIRECT_VAT_ACCOUNT_NAME", ""),
+        bank_name=getattr(settings, "RENTDIRECT_VAT_HOLDING_BANK_NAME", ""),
+        bank_code=getattr(settings, "RENTDIRECT_VAT_HOLDING_BANK_CODE", ""),
+        account_number=getattr(settings, "RENTDIRECT_VAT_HOLDING_ACCOUNT_NUMBER", ""),
+        account_name=getattr(settings, "RENTDIRECT_VAT_HOLDING_ACCOUNT_NAME", ""),
     )
 
 
@@ -1409,18 +1416,18 @@ def collection_account_configured(*, subaccount_id: str, account: dict, business
 
 def subscription_direct_settlement_configured() -> bool:
     return collection_account_configured(
-        subaccount_id=getattr(settings, "RENTDIRECT_SUBSCRIPTION_SUBACCOUNT_ID", ""),
+        subaccount_id=getattr(settings, "RENTDIRECT_OPERATING_SUBACCOUNT_ID", ""),
         account=resolve_subscription_payment_account(),
-        business_mobile=getattr(settings, "RENTDIRECT_SUBSCRIPTION_BUSINESS_MOBILE", ""),
+        business_mobile=getattr(settings, "RENTDIRECT_OPERATING_BUSINESS_MOBILE", ""),
     ) and collection_account_configured(
-        subaccount_id=getattr(settings, "RENTDIRECT_VAT_SUBACCOUNT_ID", ""),
+        subaccount_id=getattr(settings, "RENTDIRECT_VAT_HOLDING_SUBACCOUNT_ID", ""),
         account=resolve_vat_payment_account(),
-        business_mobile=getattr(settings, "RENTDIRECT_VAT_BUSINESS_MOBILE", ""),
+        business_mobile=getattr(settings, "RENTDIRECT_VAT_HOLDING_BUSINESS_MOBILE", ""),
     )
 
 
 def resolve_subscription_subaccount_id(account: dict) -> str:
-    configured_subaccount_id = str(getattr(settings, "RENTDIRECT_SUBSCRIPTION_SUBACCOUNT_ID", "") or "").strip()
+    configured_subaccount_id = str(getattr(settings, "RENTDIRECT_OPERATING_SUBACCOUNT_ID", "") or "").strip()
     if not configured_subaccount_id:
         missing_fields = [
             label
@@ -1428,30 +1435,30 @@ def resolve_subscription_subaccount_id(account: dict) -> str:
                 "bank_name": account["bank_name"],
                 "bank_code": account["bank_code"],
                 "account_number": account["account_number"],
-                "business_mobile": getattr(settings, "RENTDIRECT_SUBSCRIPTION_BUSINESS_MOBILE", ""),
+                "business_mobile": getattr(settings, "RENTDIRECT_OPERATING_BUSINESS_MOBILE", ""),
             }.items()
             if not str(value or "").strip()
         ]
         if missing_fields:
             raise FlutterwaveError(
-                "RentDirect subscription payout account is not configured: "
+                "RentDirect operating payout account is not configured: "
                 + ", ".join(missing_fields)
             )
         configured_subaccount_id = get_or_create_collection_subaccount_id(
             bank_code=account["bank_code"],
             account_number=account["account_number"],
-            business_name=account["account_name"] or "RentDirect Subscription",
-            business_email=getattr(settings, "RENTDIRECT_SUBSCRIPTION_BUSINESS_EMAIL", ""),
-            business_mobile=getattr(settings, "RENTDIRECT_SUBSCRIPTION_BUSINESS_MOBILE", ""),
-            country=getattr(settings, "RENTDIRECT_SUBSCRIPTION_SUBACCOUNT_COUNTRY", "NG"),
-            split_type=getattr(settings, "RENTDIRECT_SUBSCRIPTION_SUBACCOUNT_SPLIT_TYPE", "flat"),
-            split_value=str(getattr(settings, "RENTDIRECT_SUBSCRIPTION_SUBACCOUNT_SPLIT_VALUE", "0") or "0"),
+            business_name=account["account_name"] or "RentDirect Operations",
+            business_email=getattr(settings, "RENTDIRECT_OPERATING_BUSINESS_EMAIL", ""),
+            business_mobile=getattr(settings, "RENTDIRECT_OPERATING_BUSINESS_MOBILE", ""),
+            country=getattr(settings, "RENTDIRECT_OPERATING_SUBACCOUNT_COUNTRY", "NG"),
+            split_type=getattr(settings, "RENTDIRECT_OPERATING_SUBACCOUNT_SPLIT_TYPE", "flat"),
+            split_value=str(getattr(settings, "RENTDIRECT_OPERATING_SUBACCOUNT_SPLIT_VALUE", "0") or "0"),
         )
     return configured_subaccount_id
 
 
 def resolve_vat_subaccount_id(account: dict) -> str:
-    configured_subaccount_id = str(getattr(settings, "RENTDIRECT_VAT_SUBACCOUNT_ID", "") or "").strip()
+    configured_subaccount_id = str(getattr(settings, "RENTDIRECT_VAT_HOLDING_SUBACCOUNT_ID", "") or "").strip()
     if not configured_subaccount_id:
         missing_fields = [
             label
@@ -1459,22 +1466,22 @@ def resolve_vat_subaccount_id(account: dict) -> str:
                 "bank_name": account["bank_name"],
                 "bank_code": account["bank_code"],
                 "account_number": account["account_number"],
-                "business_mobile": getattr(settings, "RENTDIRECT_VAT_BUSINESS_MOBILE", ""),
+                "business_mobile": getattr(settings, "RENTDIRECT_VAT_HOLDING_BUSINESS_MOBILE", ""),
             }.items()
             if not str(value or "").strip()
         ]
         if missing_fields:
             raise FlutterwaveError(
-                "RentDirect VAT payout account is not configured: "
+                "RentDirect VAT holding payout account is not configured: "
                 + ", ".join(missing_fields)
             )
         configured_subaccount_id = get_or_create_collection_subaccount_id(
             bank_code=account["bank_code"],
             account_number=account["account_number"],
-            business_name=account["account_name"] or "RentDirect VAT",
-            business_email=getattr(settings, "RENTDIRECT_VAT_BUSINESS_EMAIL", ""),
-            business_mobile=getattr(settings, "RENTDIRECT_VAT_BUSINESS_MOBILE", ""),
-            country=getattr(settings, "RENTDIRECT_VAT_SUBACCOUNT_COUNTRY", "NG"),
+            business_name=account["account_name"] or "RentDirect VAT Holding",
+            business_email=getattr(settings, "RENTDIRECT_VAT_HOLDING_BUSINESS_EMAIL", ""),
+            business_mobile=getattr(settings, "RENTDIRECT_VAT_HOLDING_BUSINESS_MOBILE", ""),
+            country=getattr(settings, "RENTDIRECT_VAT_HOLDING_SUBACCOUNT_COUNTRY", "NG"),
             split_type="flat",
             split_value="0",
         )
@@ -1497,9 +1504,9 @@ def build_subscription_subaccount_payload(payment: SubscriptionPayment) -> tuple
     subscription_ratio, vat_ratio = subscription_split_ratios(payment)
 
     transaction_charge_type = str(
-        getattr(settings, "RENTDIRECT_SUBSCRIPTION_TRANSACTION_CHARGE_TYPE", "flat") or "flat"
+        getattr(settings, "RENTDIRECT_OPERATING_TRANSACTION_CHARGE_TYPE", "flat") or "flat"
     ).strip() or "flat"
-    transaction_charge = decimal_setting("RENTDIRECT_SUBSCRIPTION_TRANSACTION_CHARGE", "0")
+    transaction_charge = decimal_setting("RENTDIRECT_OPERATING_TRANSACTION_CHARGE", "0")
     subaccounts = [
         {
             "id": subscription_subaccount_id,
@@ -1596,7 +1603,7 @@ def ensure_flutterwave_recurring_configured() -> None:
     if not flutterwave_encryption_key_is_configured():
         raise ValidationError("Flutterwave card encryption is not configured on the server.")
     if not subscription_direct_settlement_configured():
-        raise ValidationError("RentDirect subscription and VAT payout accounts are not configured.")
+        raise ValidationError("RentDirect operating and VAT holding payout accounts are not configured.")
 
 
 def ensure_flutterwave_recurring_charge_configured() -> None:
@@ -1942,7 +1949,7 @@ def build_payment_settlement_specs(payment: Payment) -> list[dict]:
     target_specs = [
         {
             "purpose": PaymentSettlement.Purpose.OPERATIONS,
-            "target_amount": normalize_decimal_amount(annual_rent * Decimal("0.10")),
+            "target_amount": calculate_administration_fee(annual_rent),
             **resolve_account_payload(
                 bank_name=settings.RENTDIRECT_OPERATING_BANK_NAME,
                 bank_code=settings.RENTDIRECT_OPERATING_BANK_CODE,
@@ -1951,8 +1958,18 @@ def build_payment_settlement_specs(payment: Payment) -> list[dict]:
             ),
         },
         {
+            "purpose": PaymentSettlement.Purpose.ADMINISTRATION_FEE_VAT,
+            "target_amount": calculate_administration_fee_vat(annual_rent),
+            **resolve_account_payload(
+                bank_name=settings.RENTDIRECT_VAT_HOLDING_BANK_NAME,
+                bank_code=settings.RENTDIRECT_VAT_HOLDING_BANK_CODE,
+                account_number=settings.RENTDIRECT_VAT_HOLDING_ACCOUNT_NUMBER,
+                account_name=settings.RENTDIRECT_VAT_HOLDING_ACCOUNT_NAME,
+            ),
+        },
+        {
             "purpose": PaymentSettlement.Purpose.CAUTION_FEE,
-            "target_amount": normalize_decimal_amount(annual_rent * Decimal("0.10")),
+            "target_amount": calculate_refundable_security_deposit(annual_rent),
             **resolve_account_payload(
                 bank_name=settings.TENANT_CAUTION_HOLDING_BANK_NAME,
                 bank_code=settings.TENANT_CAUTION_HOLDING_BANK_CODE,
@@ -2392,7 +2409,11 @@ def trigger_payment_settlements(payment: Payment) -> None:
                     AppUser.Role.TENANT,
                     "final_rent_payment_email_received",
                 )
-            elif settlement.purpose in (PaymentSettlement.Purpose.OPERATIONS, PaymentSettlement.Purpose.CAUTION_FEE):
+            elif settlement.purpose in (
+                PaymentSettlement.Purpose.OPERATIONS,
+                PaymentSettlement.Purpose.ADMINISTRATION_FEE_VAT,
+                PaymentSettlement.Purpose.CAUTION_FEE,
+            ):
                 # Email #3: Notify only RentDirect for internal transfers
                 send_rentdirect_internal_transfer_notification(
                     purpose=settlement.purpose,

@@ -4,11 +4,6 @@ The entity that operates RentDirect (“RentDirect”, “we”, “us”, or �
 
 RentDirect is a Nigerian rental marketplace connecting Tenants and Landlords. We process information to help Users search, verify, communicate, apply, pay, and manage rental progress.
 
-**Privacy contact:** <info@rentdirect.homes>  
-**Website:** <https://rentdirect.homes>  
-**Data Controller legal name and address:** ____________________  
-**Data protection contact/DPO:** ____________________
-
 This Policy should be read with the Terms of Service, Cookies Policy, Acceptable Use Policy, Verification and Screening Consent, and role-specific documents.
 
 ## 2. APPLICABLE FRAMEWORK
@@ -220,11 +215,10 @@ We may update this Policy to reflect legal, technical, or product changes. The l
 
 ## 20. CONTACT
 
-**RentDirect privacy contact:** <info@rentdirect.homes>  
+**RentDirect privacy contact:** <info@rentdirect.homes>
 **Website:** <https://rentdirect.homes>  
-**Data Controller legal name:** ____________________  
-**Data Controller address:** ____________________  
-**DPO or designated privacy contact:** ____________________
+**Data Controller legal name:** SummitRock Limited
+**Data Controller address:** Adekunle Lawal, Ikoyi, Lagos
 
 ## USER ACKNOWLEDGEMENT
 

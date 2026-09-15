@@ -2,9 +2,6 @@
 
 ## SUBSCRIPTIONS, RENTAL PAYMENTS, FEATURED LISTINGS, AND SETTLEMENTS
 
-**Effective Date:** ____________________  
-**Last Updated:** ____________________
-
 This Policy forms part of the RentDirect Terms of Service and applies to Tenant and Landlord subscriptions, rental payments, paid featured Listings, payment verification, receipts, refunds, and settlement workflows.
 
 ## 1. PAID SERVICES
@@ -21,16 +18,9 @@ The relevant checkout or payment page controls the amount, currency, duration, p
 
 ## 2. SUBSCRIPTION PLANS
 
-The Platform currently uses Bronze, Silver, Gold, and Platinum plan codes for both Tenants and Landlords. Bronze is the free plan. The current configured prices are shown below for reference; the price shown at the time of purchase controls:
+The Platform currently uses Bronze, Silver, Gold, and Platinum plan codes for both Tenants and Landlords. Bronze is the free plan. The current configured prices are shown in the billings page:
 
-| Plan | Monthly | Yearly |
-| --- | ---: | ---: |
-| Bronze | ₦0 | ₦0 |
-| Silver | ₦1,000 | ₦10,000 |
-| Gold | ₦1,200 | ₦12,000 |
-| Platinum | ₦2,000 | ₦20,000 |
-
-Plan benefits, access restrictions, response times, and feature availability are described on the Platform and may differ by role. A plan does not guarantee a property, Tenant, Landlord, viewing, response, successful payment, or rental outcome.
+Plan benefits, access restrictions, response times, and feature availability are described on the Platform and may differ by role. A plan does not guarantee a property, Tenant, Landlord, viewing, response, successful payment, or rental outcome and plan prices may change in the future.
 
 A 7.5% value added tax (VAT) is added to each paid Tenant or Landlord subscription fee. The checkout and receipt show the subscription fee, VAT amount, and total amount paid separately. Bronze subscriptions with a zero fee do not attract VAT.
 
@@ -73,7 +63,7 @@ RentDirect may receive provider status, transaction reference, payment channel, 
 
 RentDirect may verify amount, currency, reference, customer information, provider status, and transaction integrity before recording a payment as completed. A mismatch, duplicate, suspicious transaction, chargeback, reversal, or provider error may cause a payment to be failed, held for review, or corrected.
 
-Report an incorrect amount, duplicate charge, unrecognised transaction, or missing receipt promptly at **info@rentdirect.homes** with the payment reference and Booking information.
+Report an incorrect amount, duplicate charge, unrecognised transaction, or missing receipt promptly at **<info@rentdirect.homes>** with the payment reference and Booking information.
 
 ## 8. SETTLEMENTS AND LANDLORD PAYOUTS
 
@@ -113,7 +103,7 @@ RentDirect may change plan prices, benefits, payment methods, providers, fee des
 
 ## 15. CONTACT AND DISPUTES
 
-Payment support: **info@rentdirect.homes**. Include your account email, Booking or payment reference, amount, date, and the issue. Do not email passwords, full card numbers, PINs, or OTPs.
+Payment support: **<info@rentdirect.homes>**. Include your account email, Booking or payment reference, amount, date, and the issue. Do not email passwords, full card numbers, PINs, or OTPs.
 
 Nothing in this Policy removes a mandatory consumer, payment, tenancy, or data-protection right. Subject to mandatory law, the Policy is governed by Nigerian law and disputes may be brought before a competent Nigerian court.
 

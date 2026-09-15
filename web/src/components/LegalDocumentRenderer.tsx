@@ -10,7 +10,7 @@ type MarkdownBlock =
     | { type: 'rule' }
 
 function renderInlineMarkdown(text: string): ReactNode[] {
-    const tokens = text.split(/(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)]+\))/g).filter(Boolean)
+    const tokens = text.split(/(\n|\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)]+\))/g).filter(Boolean)
 
     return tokens.map((part, index) => {
         const key = `${part}-${index}`
@@ -28,6 +28,9 @@ function renderInlineMarkdown(text: string): ReactNode[] {
             }
             return <a key={key} href={href} target="_blank" rel="noreferrer" className="font-medium text-blue-700 underline decoration-blue-200 underline-offset-2 hover:text-blue-900">{label}</a>
         }
+        if (part === '\n') {
+            return <br key={key} />
+        }
         return <Fragment key={key}>{part}</Fragment>
     })
 }
@@ -42,7 +45,7 @@ function parseMarkdown(markdown: string): MarkdownBlock[] {
     let tableRows: string[][] = []
 
     const flushParagraph = () => {
-        const text = paragraphLines.join(' ').trim()
+        const text = paragraphLines.join(' ').replace(/\n /g, '\n').trim()
         if (text) blocks.push({ type: 'paragraph', text })
         paragraphLines = []
     }
@@ -65,7 +68,8 @@ function parseMarkdown(markdown: string): MarkdownBlock[] {
     }
 
     for (const rawLine of lines) {
-        const line = rawLine.trim()
+        const hasHardLineBreak = / {2,}$|\\$/.test(rawLine)
+        const line = rawLine.trim().replace(/\\$/, '')
         if (!line) {
             flushParagraph()
             flushList()
@@ -126,7 +130,7 @@ function parseMarkdown(markdown: string): MarkdownBlock[] {
         flushList()
         flushQuote()
         flushTable()
-        paragraphLines.push(line)
+        paragraphLines.push(hasHardLineBreak ? `${line}\n` : line)
     }
 
     flushParagraph()
@@ -144,12 +148,12 @@ export default function LegalDocumentRenderer({ content }: { content: string }) 
             {blocks.map((block, index) => {
                 if (block.type === 'heading') {
                     const className = block.level === 1
-                        ? 'border-b border-slate-200 pb-2 text-xl font-semibold leading-7 tracking-tight text-slate-950 md:text-2xl'
+                        ? 'border-b border-slate-200 pb-2 text-sm font-semibold leading-5 tracking-tight text-slate-950'
                         : block.level === 2
-                            ? 'text-lg font-semibold leading-6 tracking-tight text-slate-950 md:text-xl'
+                            ? 'text-sm font-semibold leading-5 tracking-tight text-slate-950'
                             : block.level === 3
-                                ? 'text-base font-semibold leading-6 text-blue-800 md:text-lg'
-                                : 'text-sm font-semibold leading-5 text-blue-800 md:text-base'
+                                ? 'text-sm font-semibold leading-5 text-blue-800'
+                                : 'text-sm font-semibold leading-5 text-blue-800'
                     const Heading = block.level === 1 ? 'h1' : block.level === 2 ? 'h2' : block.level === 3 ? 'h3' : 'h4'
                     return <Heading key={index} className={className}>{renderInlineMarkdown(block.text)}</Heading>
                 }
@@ -157,20 +161,20 @@ export default function LegalDocumentRenderer({ content }: { content: string }) 
                 if (block.type === 'list') {
                     const List = block.ordered ? 'ol' : 'ul'
                     return (
-                        <List key={index} className={`${block.ordered ? 'list-decimal' : 'list-disc'} space-y-3 rounded-2xl bg-slate-50 px-6 py-5 pl-10 text-base leading-7 text-slate-700 marker:text-blue-600`}>
+                        <List key={index} className={`${block.ordered ? 'list-decimal' : 'list-disc'} space-y-3 rounded-2xl bg-slate-50 px-6 py-5 pl-10 text-xs leading-5 text-slate-700 marker:text-blue-600`}>
                             {block.items.map((item, itemIndex) => <li key={`${index}-${itemIndex}`} className="pl-2">{renderInlineMarkdown(item)}</li>)}
                         </List>
                     )
                 }
 
                 if (block.type === 'quote') {
-                    return <blockquote key={index} className="rounded-r-2xl border-l-4 border-blue-500 bg-blue-50/70 px-5 py-4 text-base leading-7 text-slate-700">{renderInlineMarkdown(block.text)}</blockquote>
+                    return <blockquote key={index} className="rounded-r-2xl border-l-4 border-blue-500 bg-blue-50/70 px-5 py-4 text-xs leading-5 text-slate-700">{renderInlineMarkdown(block.text)}</blockquote>
                 }
 
                 if (block.type === 'table') {
                     return (
                         <div key={index} className="overflow-x-auto rounded-2xl border border-slate-200">
-                            <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+                            <table className="min-w-full divide-y divide-slate-200 text-left text-xs">
                                 <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-600">
                                     <tr>{block.rows[0]?.map((cell, cellIndex) => <th key={cellIndex} className="px-4 py-3 font-semibold">{renderInlineMarkdown(cell)}</th>)}</tr>
                                 </thead>
@@ -184,7 +188,7 @@ export default function LegalDocumentRenderer({ content }: { content: string }) 
 
                 if (block.type === 'rule') return <hr key={index} className="border-slate-200" />
 
-                return <p key={index} className="text-base leading-8 text-slate-700 md:text-lg">{renderInlineMarkdown(block.text)}</p>
+                return <p key={index} className="text-xs leading-5 text-slate-700">{renderInlineMarkdown(block.text)}</p>
             })}
         </div>
     )

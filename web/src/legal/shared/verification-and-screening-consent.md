@@ -1,12 +1,5 @@
 # RENTDIRECT VERIFICATION AND SCREENING CONSENT
 
-## IDENTITY, CORPORATE, PROPERTY, PHYSICAL, AND TENANT-PROFILE REVIEW
-
-**Effective Date:** ____________________  
-**Last Updated:** ____________________
-
-> This document supplements the Privacy Policy and Terms of Service. It is not a promise that any verification will succeed and it does not replace independent legal, title, safety, or financial due diligence.
-
 ## 1. PURPOSE
 
 RentDirect uses verification and screening workflows to improve trust in a direct rental marketplace. Depending on the role and feature, the process may help to:
@@ -100,4 +93,4 @@ Forged documents, impersonation, deliberate concealment, or material misrepresen
 
 ## 12. CONTACT AND ACCEPTANCE
 
-Questions or complaints about verification may be sent to **info@rentdirect.homes**. By submitting information for verification or using a feature that requires verification, you acknowledge this Consent and the linked Privacy Policy.
+Questions or complaints about verification may be sent to **<info@rentdirect.homes>**. By submitting information for verification or using a feature that requires verification, you acknowledge this Consent and the linked Privacy Policy.

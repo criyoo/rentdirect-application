@@ -731,7 +731,6 @@ export default function BillingPage() {
             '',
             'PAYMENT DETAILS:',
             `Subscription Fee: ${formatReceiptCurrency(payment.subscription_fee_amount ?? payment.amount, payment.currency)}`,
-            `VAT (${receiptValue(payment.vat_rate)}%): ${formatReceiptCurrency(payment.vat_amount ?? 0, payment.currency)}`,
             `Amount Paid: ${formatReceiptCurrency(payment.amount, payment.currency)}`,
             `Currency: ${receiptValue(payment.currency).toUpperCase()}`,
             '',
@@ -905,9 +904,6 @@ export default function BillingPage() {
                                             </p>
                                             <p className="mt-2 text-lg font-semibold text-slate-950">
                                                 {formatCurrencyWithSymbol(payment.total_amount)} {payment.currency.toUpperCase()}
-                                            </p>
-                                            <p className="mt-1 text-xs text-slate-500">
-                                                Includes {formatCurrencyWithSymbol(payment.vat_amount)} VAT ({payment.vat_rate}%).
                                             </p>
                                             <p className="mt-1 text-sm text-slate-600">
                                                 Created {new Date(payment.created_at).toLocaleString()}
@@ -1108,11 +1104,6 @@ export default function BillingPage() {
                                         <p className="mt-3 text-3xl text-center font-bold text-slate-950">
                                             {formatCurrencyWithSymbol(subscriptionPricing[plan.code][billingCycle])}
                                         </p>
-                                        {Number(subscriptionPricing[plan.code][billingCycle]) > 0 && (
-                                            <p className="mt-2 text-center text-sm font-medium text-slate-700">
-                                                + {subscriptionPricingCatalog?.vat_rate_percent ?? 7.5}% VAT
-                                            </p>
-                                        )}
                                         <p className="mt-2 text-sm text-center text-slate-600">
                                             {billingCycle === 'monthly'
                                                 ? `${formatCurrencyWithSymbol(subscriptionPricing[plan.code].yearly)} when billed yearly.`

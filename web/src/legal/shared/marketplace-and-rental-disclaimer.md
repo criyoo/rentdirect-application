@@ -2,9 +2,6 @@
 
 ## ASSUMPTION OF RISK, DUE DILIGENCE, AND PLATFORM LIMITATIONS
 
-**Effective Date:** ____________________  
-**Last Updated:** ____________________
-
 ## 1. PLATFORM ROLE
 
 RentDirect provides technology that helps Tenants and Landlords discover, verify, communicate, record rental progress, and use supported payment workflows. RentDirect is not automatically the owner, occupier, Tenant, Landlord, property manager, agent, legal representative, guarantor, insurer, or employer in a User transaction.
@@ -84,7 +81,7 @@ To the extent permitted by law, each User releases RentDirect from claims arisin
 
 ## 10. REPORTING AND SUPPORT
 
-Report unsafe, fraudulent, or unlawful activity through the complaint or support flow or at **info@rentdirect.homes**. Include relevant references and evidence without sending unnecessary sensitive documents. RentDirect may review or remove Content, restrict accounts, pause a workflow, or refer the matter to a provider, regulator, or law enforcement.
+Report unsafe, fraudulent, or unlawful activity through the complaint or support flow or at **<info@rentdirect.homes>**. Include relevant references and evidence without sending unnecessary sensitive documents. RentDirect may review or remove Content, restrict accounts, pause a workflow, or refer the matter to a provider, regulator, or law enforcement.
 
 ## 11. GOVERNING LAW
 

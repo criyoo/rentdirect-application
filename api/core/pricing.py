@@ -4,6 +4,7 @@ from decimal import Decimal, ROUND_HALF_UP
 MONEY_PRECISION = Decimal("0.01")
 REFUNDABLE_SECURITY_DEPOSIT_RATE = Decimal("0.10")
 ADMINISTRATION_FEE_RATE = Decimal("0.10")
+ADMINISTRATION_FEE_VAT_RATE = Decimal("0.075")
 
 
 def quantize_money(amount: Decimal | int | float | str) -> Decimal:
@@ -18,11 +19,16 @@ def calculate_administration_fee(annual_rent: Decimal | int | float | str) -> De
     return quantize_money(Decimal(annual_rent) * ADMINISTRATION_FEE_RATE)
 
 
+def calculate_administration_fee_vat(annual_rent: Decimal | int | float | str) -> Decimal:
+    return quantize_money(calculate_administration_fee(annual_rent) * ADMINISTRATION_FEE_VAT_RATE)
+
+
 def calculate_deposit_amount(annual_rent: Decimal | int | float | str) -> Decimal:
     annual_rent_decimal = Decimal(annual_rent)
     return quantize_money(
         calculate_refundable_security_deposit(annual_rent_decimal)
         + calculate_administration_fee(annual_rent_decimal)
+        + calculate_administration_fee_vat(annual_rent_decimal)
     )
 
 

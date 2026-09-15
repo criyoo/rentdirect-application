@@ -2,9 +2,6 @@
 
 ## LANDLORD-SPECIFIC TERMS
 
-**Effective Date:** ____________________  
-**Last Updated:** ____________________
-
 These Landlord Listing and Property Owner Terms apply to an individual or corporate Landlord who creates, manages, promotes, or rents a property through RentDirect. They supplement the Terms of Service, Privacy Policy, Verification and Screening Consent, Marketplace and Rental Disclaimer, Acceptable Use Policy, and Subscription and Payment Policy.
 
 ## 1. AUTHORITY TO LIST
@@ -101,7 +98,7 @@ You may access Tenant information only when permitted by the Platform and only t
 
 ## 13. REPORTING CHANGES AND COMPLAINTS
 
-Report Listing errors, suspected fraud, payment issues, unsafe conduct, or data misuse promptly at **info@rentdirect.homes**. RentDirect may investigate, request evidence, remove or archive a Listing, pause payments, require re-verification, or restrict an account.
+Report Listing errors, suspected fraud, payment issues, unsafe conduct, or data misuse promptly at **<info@rentdirect.homes>**. RentDirect may investigate, request evidence, remove or archive a Listing, pause payments, require re-verification, or restrict an account.
 
 ## 14. LANDLORD INDEMNITY
 

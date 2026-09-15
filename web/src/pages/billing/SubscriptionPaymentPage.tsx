@@ -42,7 +42,6 @@ export default function SubscriptionPaymentPage() {
     const [payment, setPayment] = useState<SubscriptionPayment | null>(null)
     const [isStarting, setIsStarting] = useState(false)
     const [isCancelling, setIsCancelling] = useState(false)
-    const [hasAttemptedAutoStart, setHasAttemptedAutoStart] = useState(false)
     const checkoutReference = (searchParams.get('reference') || searchParams.get('tx_ref') || '').trim()
     const checkoutTransactionId = searchParams.get('transaction_id') || ''
     const checkoutStatus = searchParams.get('status') || ''
@@ -188,15 +187,6 @@ export default function SubscriptionPaymentPage() {
         }
     }, [checkoutReference, checkoutStatus, checkoutTransactionId])
 
-    useEffect(() => {
-        if (!paymentId || !payment || payment.status !== 'pending' || payment.recurring_enabled || checkoutReference || hasAttemptedAutoStart || isStarting) {
-            return
-        }
-
-        setHasAttemptedAutoStart(true)
-        void startCheckout()
-    }, [checkoutReference, hasAttemptedAutoStart, isStarting, payment, paymentId])
-
     if (loading) {
         return (
             <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -227,7 +217,7 @@ export default function SubscriptionPaymentPage() {
         <div className="min-h-screen bg-gray-50 py-8">
             <div className="container-modern">
                 <div className="max-w-xl mx-auto bg-white rounded-lg shadow-lg p-6">
-                    <h1 className="text-2xl font-bold text-gray-900 mb-2">Subscription Payment</h1>
+                    <h1 className="text-2xl font-bold text-gray-900 mb-2">Subscription Payment Review</h1>
                     <div className="text-sm text-gray-600 mb-6">Payment ID: {paymentId}</div>
 
                     <div className="space-y-3 mb-6">
@@ -249,10 +239,12 @@ export default function SubscriptionPaymentPage() {
                             <span className="text-gray-600">Subscription fee</span>
                             <span className="font-medium">{formatCurrencyWithSymbol(payment?.amount || 0)} {payment?.currency || 'NGN'}</span>
                         </div>
-                        <div className="flex items-center justify-between">
-                            <span className="text-gray-600">VAT ({payment?.vat_rate || 0}%)</span>
-                            <span className="font-medium">{formatCurrencyWithSymbol(payment?.vat_amount || 0)} {payment?.currency || 'NGN'}</span>
-                        </div>
+                        {payment?.status === 'pending' && (
+                            <div className="flex items-center justify-between">
+                                <span className="text-gray-600">VAT ({payment?.vat_rate || 0}% on subscription fee)</span>
+                                <span className="font-medium">{formatCurrencyWithSymbol(payment?.vat_amount || 0)} {payment?.currency || 'NGN'}</span>
+                            </div>
+                        )}
                         <div className="flex items-center justify-between border-t border-gray-200 pt-3">
                             <span className="font-medium text-gray-900">Total amount</span>
                             <span className="font-semibold">{formatCurrencyWithSymbol(payment?.total_amount || 0)} {payment?.currency || 'NGN'}</span>
@@ -271,7 +263,7 @@ export default function SubscriptionPaymentPage() {
                         <div className="p-4 rounded-lg bg-blue-50 text-blue-800 mb-4">
                             {payment?.recurring_enabled
                                 ? 'Recurring card charge is pending provider confirmation.'
-                                : 'Redirecting to payment page to complete your subscription payment.'}
+                                : 'You will be redirected to the payment page to complete your payment.'}
                         </div>
                     )}
 

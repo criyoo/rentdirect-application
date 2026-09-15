@@ -168,11 +168,18 @@ export default function RentPage() {
         depositAmount,
         refundableSecurityDeposit,
         administrationFee,
+        administrationFeeVat,
         totalAmount,
         remainingBalance,
     } = calculateRentBreakdown(annualRent, paidAmount)
     const isFullyPaid = !showCancelledPaymentState && remainingBalance <= 0
     const canPayInitialDeposit = Boolean(booking && paidAmount <= 0 && depositAmount > 0 && depositAmount < remainingBalance)
+    const isInitialDepositSelection = paidAmount === 0 && paymentAmount === depositAmount
+    const isFullRentalSelection = paidAmount === 0 && paymentAmount === totalAmount
+    const paymentReviewRent = isInitialDepositSelection ? 0 : isFullRentalSelection ? normalizedAnnualRent : paymentAmount
+    const paymentReviewCaution = isInitialDepositSelection || isFullRentalSelection ? refundableSecurityDeposit : 0
+    const paymentReviewAdministrationFee = isInitialDepositSelection || isFullRentalSelection ? administrationFee : 0
+    const paymentReviewAdministrationFeeVat = isInitialDepositSelection || isFullRentalSelection ? administrationFeeVat : 0
     const keysCollectedConfirmed = Boolean(booking?.keys_collected_confirmed)
     const openRentalPayments = (booking?.payments || []).filter((payment) => (
         payment.status === 'pending' || payment.status === 'processing'
@@ -755,6 +762,40 @@ export default function RentPage() {
                                             </p>
                                         </div>
                                     )}
+
+                                    <div className="mt-5 rounded-xl border border-blue-100 bg-blue-50 p-4">
+                                        <h3 className="font-semibold text-blue-950">Payment Review</h3>
+                                        <div className="mt-3 space-y-2 text-sm">
+                                            {paymentReviewRent > 0 && (
+                                                <div className="flex justify-between text-blue-900">
+                                                    <span>Rent Amount</span>
+                                                    <span className="font-medium">{formatCurrencyWithSymbol(paymentReviewRent)}</span>
+                                                </div>
+                                            )}
+                                            {paymentReviewCaution > 0 && (
+                                                <div className="flex justify-between text-blue-900">
+                                                    <span>Refundable Security Deposit</span>
+                                                    <span className="font-medium">{formatCurrencyWithSymbol(paymentReviewCaution)}</span>
+                                                </div>
+                                            )}
+                                            {paymentReviewAdministrationFee > 0 && (
+                                                <div className="flex justify-between text-blue-900">
+                                                    <span>RentDirect Administration Fee</span>
+                                                    <span className="font-medium">{formatCurrencyWithSymbol(paymentReviewAdministrationFee)}</span>
+                                                </div>
+                                            )}
+                                            {paymentReviewAdministrationFeeVat > 0 && (
+                                                <div className="flex justify-between text-blue-900">
+                                                    <span>VAT (7.5% on Administration Fee)</span>
+                                                    <span className="font-medium">{formatCurrencyWithSymbol(paymentReviewAdministrationFeeVat)}</span>
+                                                </div>
+                                            )}
+                                            <div className="flex justify-between border-t border-blue-200 pt-2 font-semibold text-blue-950">
+                                                <span>Amount to Pay</span>
+                                                <span>{formatCurrencyWithSymbol(paymentAmount)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
 
                                     <div className="mt-6 flex space-x-3">
                                         <button
