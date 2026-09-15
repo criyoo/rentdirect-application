@@ -1,43 +1,49 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import BrandLogo from '@/components/BrandLogo'
+import { extractApiErrorMessage } from '@/lib/api'
+import { buildFormDraftKey, readFormDraft, removeFormDraft, writeFormDraft } from '@/lib/formDrafts'
 
-export default function AdminLoginPage()
-{
+export default function AdminLoginPage() {
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [isLoading, setIsLoading] = useState(false)
     const [error, setError] = useState('')
     const navigate = useNavigate()
     const { login } = useAuth()
+    const draftStorageKey = useMemo(() => buildFormDraftKey('admin-login', 'anonymous'), [])
 
-    const handleSubmit = async (e: React.FormEvent) =>
-    {
+    useEffect(() => {
+        const storedDraft = readFormDraft<{ email?: string }>(draftStorageKey)
+        if (storedDraft?.email) setEmail(storedDraft.email)
+    }, [draftStorageKey])
+
+    useEffect(() => {
+        writeFormDraft(draftStorageKey, { email })
+    }, [draftStorageKey, email])
+
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
         setIsLoading(true)
         setError('')
 
-        try
-        {
+        try {
             await login({ email, password })
+            removeFormDraft(draftStorageKey)
             // Check if user is admin
             const user = JSON.parse(localStorage.getItem('user') || '{}')
-            if (user.role === 'admin')
-            {
+            if (user.role === 'admin') {
                 navigate('/admin/dashboard')
-            } else
-            {
+            } else {
                 setError('Access denied. Admin privileges required.')
                 // Logout non-admin user
                 localStorage.removeItem('user')
                 localStorage.removeItem('access_token')
             }
-        } catch (err)
-        {
-            setError('Login failed. Please try again.')
-        } finally
-        {
+        } catch (err) {
+            setError(extractApiErrorMessage(err, 'Login failed. Please try again.'))
+        } finally {
             setIsLoading(false)
         }
     }

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import LegalDocumentsConsent from '@/components/LegalDocumentsConsent'
 import { useAppPopup } from '@/contexts/AppPopupContext'
-import { api } from '@/lib/api'
+import { api, extractApiErrorMessage, extractApiFieldErrors } from '@/lib/api'
 import { buildFormDraftKey, readFormDraft, removeFormDraft, writeFormDraft } from '@/lib/formDrafts'
 import { isNigeriaSelection, nigeriaStateLgaMap, nigerianStates, worldCountryOptions } from '@/lib/locations'
 import {
@@ -154,6 +154,7 @@ type LandlordVerificationDraft = {
     corporateForm?: Partial<CorporateForm>
     selectedVerificationType?: LandlordVerificationType | ''
     activeVerificationType?: LandlordVerificationType | ''
+    hasAcceptedLegalConsent?: boolean
 }
 
 const emptyIndividualForm: IndividualForm = {
@@ -232,25 +233,6 @@ function getProgressStatusClassName(status?: string) {
         return 'bg-amber-100 text-amber-700'
     }
     return 'bg-gray-100 text-gray-700'
-}
-
-function parseErrorMessage(error: any, fallback: string): string {
-    if (typeof error?.response?.data === 'string') {
-        return error.response.data
-    }
-    if (error?.response?.data?.detail) {
-        return error.response.data.detail
-    }
-    if (typeof error?.response?.data === 'object') {
-        const firstError = Object.values(error.response.data)[0]
-        if (Array.isArray(firstError) && firstError[0]) {
-            return String(firstError[0])
-        }
-        if (typeof firstError === 'string') {
-            return firstError
-        }
-    }
-    return error?.message || fallback
 }
 
 function stringValue(value: unknown): string {
@@ -495,6 +477,7 @@ export default function LandlordVerificationPage() {
         setCorporateForm({ ...corporateDefaults, ...(storedDraft?.corporateForm || {}) })
         setSelectedVerificationType(storedSelectedType || savedType)
         setActiveVerificationType(storedActiveType || storedSelectedType || savedType)
+        setHasAcceptedLegalConsent(Boolean(storedDraft?.hasAcceptedLegalConsent))
         setHydratedDraftStorageKey(landlordVerificationDraftStorageKey)
     }, [landlordVerificationDraftStorageKey, me, savedType])
 
@@ -512,11 +495,13 @@ export default function LandlordVerificationPage() {
             corporateForm,
             selectedVerificationType,
             activeVerificationType,
+            hasAcceptedLegalConsent,
         })
     }, [
         activeVerificationType,
         corporateForm,
         draftPersistenceEnabled,
+        hasAcceptedLegalConsent,
         hydratedDraftStorageKey,
         individualForm,
         landlordVerificationDraftStorageKey,
@@ -815,7 +800,17 @@ export default function LandlordVerificationPage() {
             }
         },
         onError: (error: any) => {
-            setSubmitErrorMessage(parseErrorMessage(error, 'Unable to submit identification details.'))
+            const fieldAliases: Record<string, string> = {
+                nin_number: 'nin',
+                bvn_number: 'bvn',
+                mobile: verificationType === 'individual' ? 'contact_number' : 'company_phone_number',
+            }
+            const apiFieldErrors = extractApiFieldErrors(error)
+            setFieldErrors((current) => ({
+                ...current,
+                ...Object.fromEntries(Object.entries(apiFieldErrors).map(([field, message]) => [fieldAliases[field] || field, message])),
+            }))
+            setSubmitErrorMessage(extractApiErrorMessage(error, 'Unable to submit identification details.'))
         },
     })
 
@@ -1082,7 +1077,7 @@ export default function LandlordVerificationPage() {
                                                 {fieldErrors.gender && <p className="form-error">{fieldErrors.gender}</p>}
                                             </div>
                                             <div>
-                                                <label className={formLabelDefault}>Contact Number (linked to NIN, optional)</label>
+                                                <label className={formLabelDefault}>Contact Number (linked to NIN/BVN)</label>
                                                 <input
                                                     className="form-input"
                                                     name="contact_number"

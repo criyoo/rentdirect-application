@@ -4,7 +4,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { useAuth } from '@/hooks/useAuth'
 import DashboardBackButton from '@/components/DashboardBackButton'
-import { api } from '@/lib/api'
+import { api, extractApiErrorMessage } from '@/lib/api'
+import { useAppPopup } from '@/contexts/AppPopupContext'
 import { buildFormDraftKey, readFormDraft, removeFormDraft, writeFormDraft } from '@/lib/formDrafts'
 import {
     MOBILE_ERROR_MESSAGE,
@@ -110,23 +111,6 @@ function buildGuarantorPayload(guarantor: GuarantorDetailsForm) {
     }
 }
 
-function extractErrorMessage(error: any, fallback: string): string {
-    if (typeof error?.response?.data === 'string') {
-        return error.response.data
-    }
-
-    const detail = error?.response?.data?.detail
-    if (detail) {
-        return detail
-    }
-
-    const message = Object.values(error?.response?.data || {})
-        .flat()
-        .find(Boolean)
-
-    return typeof message === 'string' ? message : error?.message || fallback
-}
-
 function Field({
     label,
     children,
@@ -144,6 +128,7 @@ function Field({
 
 export default function SettingsPage() {
     const { user, logout } = useAuth()
+    const { alert: popupAlert } = useAppPopup()
     const qc = useQueryClient()
     const { data: me, isLoading, isError } = useQuery({
         queryKey: ['users', 'me'],
@@ -289,10 +274,10 @@ export default function SettingsPage() {
                 action: challenge.action,
                 freezeDuration: challenge.freezeDuration,
             })
-            alert(`Verification code sent to ${response.target_email}.`)
+            void popupAlert(`Verification code sent to ${response.target_email}.`)
         },
         onError: (error) => {
-            alert(extractErrorMessage(error, 'Unable to send a verification code.'))
+            void popupAlert(extractApiErrorMessage(error, 'Unable to send a verification code.'))
         },
     })
 
@@ -313,10 +298,10 @@ export default function SettingsPage() {
             removeFormDraft(settingsProfileDraftStorageKey)
             persistUser(nextUser)
             closeOtpChallenge()
-            alert('Settings updated successfully.')
+            void popupAlert('Settings updated successfully.')
         },
         onError: (error) => {
-            alert(extractErrorMessage(error, 'Unable to update your settings.'))
+            void popupAlert(extractApiErrorMessage(error, 'Unable to update your settings.'))
         },
     })
 
@@ -338,10 +323,10 @@ export default function SettingsPage() {
             setNewPassword('')
             setConfirmPassword('')
             closeOtpChallenge()
-            alert('Password updated successfully.')
+            void popupAlert('Password updated successfully.')
         },
         onError: (error) => {
-            alert(extractErrorMessage(error, 'Unable to update your password.'))
+            void popupAlert(extractApiErrorMessage(error, 'Unable to update your password.'))
         },
     })
 
@@ -354,10 +339,10 @@ export default function SettingsPage() {
             setAccountFrozen(true)
             setSelectedFreezeDuration(null)
             closeOtpChallenge()
-            alert('Account frozen successfully.')
+            void popupAlert('Account frozen successfully.')
         },
         onError: (error) => {
-            alert('Failed to freeze account: ' + extractErrorMessage(error, 'Freeze failed'))
+            void popupAlert('Failed to freeze account: ' + extractApiErrorMessage(error, 'Freeze failed'))
         },
     })
 
@@ -369,10 +354,10 @@ export default function SettingsPage() {
             persistUser(nextUser)
             setAccountFrozen(false)
             closeOtpChallenge()
-            alert('Account unfrozen successfully.')
+            void popupAlert('Account unfrozen successfully.')
         },
         onError: (error) => {
-            alert('Failed to unfreeze account: ' + extractErrorMessage(error, 'Unfreeze failed'))
+            void popupAlert('Failed to unfreeze account: ' + extractApiErrorMessage(error, 'Unfreeze failed'))
         },
     })
 
@@ -386,7 +371,7 @@ export default function SettingsPage() {
             await logout()
         },
         onError: (error) => {
-            alert('Failed to delete account: ' + extractErrorMessage(error, 'Delete failed'))
+            void popupAlert('Failed to delete account: ' + extractApiErrorMessage(error, 'Delete failed'))
         },
     })
 
@@ -408,11 +393,11 @@ export default function SettingsPage() {
     const beginPasswordVerification = () => {
         if (!me) return
         if (!newPassword || !confirmPassword) {
-            alert('Fill in all password fields.')
+            void popupAlert('Fill in all password fields.')
             return
         }
         if (newPassword !== confirmPassword) {
-            alert('New password and confirmation must match.')
+            void popupAlert('New password and confirmation must match.')
             return
         }
 
@@ -437,7 +422,7 @@ export default function SettingsPage() {
     const confirmOtpChallenge = () => {
         const normalizedCode = otpCode.trim().toUpperCase()
         if (!normalizedCode || !otpChallenge) {
-            alert('Enter the verification code sent to your email.')
+            void popupAlert('Enter the verification code sent to your email.')
             return
         }
 

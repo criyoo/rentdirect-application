@@ -1,11 +1,12 @@
 import base64
 import binascii
 import logging
+import math
 import re
 import uuid
 from calendar import monthrange
 from datetime import date, timedelta
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 from typing import Any
 
@@ -51,6 +52,7 @@ from .models import (
     Review,
     SubscriptionPayment,
     SubscriptionPaymentMethod,
+    SubscriptionVATPayment,
     SupportChatMessage,
     TenantProfile,
     VerificationRequest,
@@ -1346,6 +1348,36 @@ def decimal_setting(name: str, default: str) -> Decimal:
         return Decimal(default)
 
 
+def subscription_vat_rate() -> Decimal:
+    return decimal_setting("SUBSCRIPTION_VAT_RATE_PERCENT", "7.5").quantize(Decimal("0.01"))
+
+
+def calculate_subscription_vat(subscription_fee: Decimal) -> Decimal:
+    fee = Decimal(str(subscription_fee))
+    if fee <= 0:
+        return Decimal("0.00")
+    return (fee * subscription_vat_rate() / Decimal("100")).quantize(
+        Decimal("0.01"),
+        rounding=ROUND_HALF_UP,
+    )
+
+
+def apply_subscription_vat(payment: SubscriptionPayment, *, save: bool = True) -> SubscriptionPayment:
+    next_rate = subscription_vat_rate() if payment.amount > 0 else Decimal("0.00")
+    next_vat_amount = calculate_subscription_vat(payment.amount)
+    update_fields = []
+    if payment.vat_rate != next_rate:
+        payment.vat_rate = next_rate
+        update_fields.append("vat_rate")
+    if payment.vat_amount != next_vat_amount:
+        payment.vat_amount = next_vat_amount
+        update_fields.append("vat_amount")
+    if save and update_fields and payment.pk:
+        update_fields.append("updated_at")
+        payment.save(update_fields=update_fields)
+    return payment
+
+
 def resolve_subscription_payment_account() -> dict:
     return resolve_account_payload(
         bank_name=getattr(settings, "RENTDIRECT_SUBSCRIPTION_BANK_NAME", ""),
@@ -1355,20 +1387,39 @@ def resolve_subscription_payment_account() -> dict:
     )
 
 
-def subscription_direct_settlement_configured() -> bool:
-    if str(getattr(settings, "RENTDIRECT_SUBSCRIPTION_SUBACCOUNT_ID", "") or "").strip():
+def resolve_vat_payment_account() -> dict:
+    return resolve_account_payload(
+        bank_name=getattr(settings, "RENTDIRECT_VAT_BANK_NAME", ""),
+        bank_code=getattr(settings, "RENTDIRECT_VAT_BANK_CODE", ""),
+        account_number=getattr(settings, "RENTDIRECT_VAT_ACCOUNT_NUMBER", ""),
+        account_name=getattr(settings, "RENTDIRECT_VAT_ACCOUNT_NAME", ""),
+    )
+
+
+def collection_account_configured(*, subaccount_id: str, account: dict, business_mobile: str) -> bool:
+    if str(subaccount_id or "").strip():
         return True
-    account = resolve_subscription_payment_account()
     return bool(
         account["bank_name"]
         and account["bank_code"]
         and account["account_number"]
-        and str(getattr(settings, "RENTDIRECT_SUBSCRIPTION_BUSINESS_MOBILE", "") or "").strip()
+        and str(business_mobile or "").strip()
     )
 
 
-def build_subscription_subaccount_payload() -> tuple[list[dict], dict]:
-    account = resolve_subscription_payment_account()
+def subscription_direct_settlement_configured() -> bool:
+    return collection_account_configured(
+        subaccount_id=getattr(settings, "RENTDIRECT_SUBSCRIPTION_SUBACCOUNT_ID", ""),
+        account=resolve_subscription_payment_account(),
+        business_mobile=getattr(settings, "RENTDIRECT_SUBSCRIPTION_BUSINESS_MOBILE", ""),
+    ) and collection_account_configured(
+        subaccount_id=getattr(settings, "RENTDIRECT_VAT_SUBACCOUNT_ID", ""),
+        account=resolve_vat_payment_account(),
+        business_mobile=getattr(settings, "RENTDIRECT_VAT_BUSINESS_MOBILE", ""),
+    )
+
+
+def resolve_subscription_subaccount_id(account: dict) -> str:
     configured_subaccount_id = str(getattr(settings, "RENTDIRECT_SUBSCRIPTION_SUBACCOUNT_ID", "") or "").strip()
     if not configured_subaccount_id:
         missing_fields = [
@@ -1396,32 +1447,100 @@ def build_subscription_subaccount_payload() -> tuple[list[dict], dict]:
             split_type=getattr(settings, "RENTDIRECT_SUBSCRIPTION_SUBACCOUNT_SPLIT_TYPE", "flat"),
             split_value=str(getattr(settings, "RENTDIRECT_SUBSCRIPTION_SUBACCOUNT_SPLIT_VALUE", "0") or "0"),
         )
+    return configured_subaccount_id
+
+
+def resolve_vat_subaccount_id(account: dict) -> str:
+    configured_subaccount_id = str(getattr(settings, "RENTDIRECT_VAT_SUBACCOUNT_ID", "") or "").strip()
+    if not configured_subaccount_id:
+        missing_fields = [
+            label
+            for label, value in {
+                "bank_name": account["bank_name"],
+                "bank_code": account["bank_code"],
+                "account_number": account["account_number"],
+                "business_mobile": getattr(settings, "RENTDIRECT_VAT_BUSINESS_MOBILE", ""),
+            }.items()
+            if not str(value or "").strip()
+        ]
+        if missing_fields:
+            raise FlutterwaveError(
+                "RentDirect VAT payout account is not configured: "
+                + ", ".join(missing_fields)
+            )
+        configured_subaccount_id = get_or_create_collection_subaccount_id(
+            bank_code=account["bank_code"],
+            account_number=account["account_number"],
+            business_name=account["account_name"] or "RentDirect VAT",
+            business_email=getattr(settings, "RENTDIRECT_VAT_BUSINESS_EMAIL", ""),
+            business_mobile=getattr(settings, "RENTDIRECT_VAT_BUSINESS_MOBILE", ""),
+            country=getattr(settings, "RENTDIRECT_VAT_SUBACCOUNT_COUNTRY", "NG"),
+            split_type="flat",
+            split_value="0",
+        )
+    return configured_subaccount_id
+
+
+def subscription_split_ratios(payment: SubscriptionPayment) -> tuple[int, int]:
+    fee_minor_units = max(int((payment.amount * 100).to_integral_value(rounding=ROUND_HALF_UP)), 1)
+    vat_minor_units = max(int((payment.vat_amount * 100).to_integral_value(rounding=ROUND_HALF_UP)), 1)
+    divisor = math.gcd(fee_minor_units, vat_minor_units)
+    return fee_minor_units // divisor, vat_minor_units // divisor
+
+
+def build_subscription_subaccount_payload(payment: SubscriptionPayment) -> tuple[list[dict], dict]:
+    apply_subscription_vat(payment)
+    subscription_account = resolve_subscription_payment_account()
+    vat_account = resolve_vat_payment_account()
+    subscription_subaccount_id = resolve_subscription_subaccount_id(subscription_account)
+    vat_subaccount_id = resolve_vat_subaccount_id(vat_account)
+    subscription_ratio, vat_ratio = subscription_split_ratios(payment)
 
     transaction_charge_type = str(
         getattr(settings, "RENTDIRECT_SUBSCRIPTION_TRANSACTION_CHARGE_TYPE", "flat") or "flat"
     ).strip() or "flat"
     transaction_charge = decimal_setting("RENTDIRECT_SUBSCRIPTION_TRANSACTION_CHARGE", "0")
-    subaccount = {
-        "id": configured_subaccount_id,
-        "transaction_charge_type": transaction_charge_type,
-        "transaction_charge": json_decimal(transaction_charge),
+    subaccounts = [
+        {
+            "id": subscription_subaccount_id,
+            "transaction_split_ratio": subscription_ratio,
+            "transaction_charge_type": transaction_charge_type,
+            "transaction_charge": json_decimal(transaction_charge),
+        },
+        {
+            "id": vat_subaccount_id,
+            "transaction_split_ratio": vat_ratio,
+            "transaction_charge_type": "flat",
+            "transaction_charge": 0,
+        },
+    ]
+    destinations = {
+        "subscription": {
+            **subscription_account,
+            "subaccount_id": subscription_subaccount_id,
+            "transaction_split_ratio": subscription_ratio,
+            "transaction_charge_type": transaction_charge_type,
+            "transaction_charge": str(transaction_charge),
+            "direct_settlement": True,
+        },
+        "vat": {
+            **vat_account,
+            "subaccount_id": vat_subaccount_id,
+            "transaction_split_ratio": vat_ratio,
+            "vat_rate": str(payment.vat_rate),
+            "vat_amount": str(payment.vat_amount),
+            "direct_settlement": True,
+        },
     }
-    destination = {
-        **account,
-        "subaccount_id": configured_subaccount_id,
-        "transaction_charge_type": transaction_charge_type,
-        "transaction_charge": str(transaction_charge),
-        "direct_settlement": True,
-    }
-    return [subaccount], destination
+    return subaccounts, destinations
 
 
 def build_subscription_checkout(payment: SubscriptionPayment, *, subaccounts: list[dict] | None = None) -> dict:
     if subaccounts is None:
-        subaccounts, _destination = build_subscription_subaccount_payload()
+        subaccounts, _destinations = build_subscription_subaccount_payload(payment)
     return build_checkout_payload(
         reference=payment.transaction_id or build_subscription_payment_reference(),
-        amount=payment.amount,
+        amount=payment.total_amount,
         currency=payment.currency,
         email=payment.user.email,
         redirect_url=build_subscription_payment_return_url(payment),
@@ -1436,6 +1555,10 @@ def build_subscription_checkout(payment: SubscriptionPayment, *, subaccounts: li
             "billing_cycle": payment.billing_cycle,
             "payment_purpose": "subscription",
             "subscription_subaccount_id": subaccounts[0]["id"],
+            "vat_subaccount_id": subaccounts[1]["id"],
+            "subscription_fee_amount": str(payment.amount),
+            "vat_rate": str(payment.vat_rate),
+            "vat_amount": str(payment.vat_amount),
         },
         customer_name=payment.user.name,
         customer_phone=payment.user.mobile,
@@ -1473,7 +1596,7 @@ def ensure_flutterwave_recurring_configured() -> None:
     if not flutterwave_encryption_key_is_configured():
         raise ValidationError("Flutterwave card encryption is not configured on the server.")
     if not subscription_direct_settlement_configured():
-        raise ValidationError("RentDirect subscription payout account is not configured.")
+        raise ValidationError("RentDirect subscription and VAT payout accounts are not configured.")
 
 
 def ensure_flutterwave_recurring_charge_configured() -> None:
@@ -1578,10 +1701,10 @@ def charge_subscription_with_payment_method(payment: SubscriptionPayment, *, sou
         payment.save(update_fields=["transaction_id", "updated_at"])
 
     payment_method = payment.payment_method
-    subaccounts, destination = build_subscription_subaccount_payload()
+    subaccounts, destinations = build_subscription_subaccount_payload(payment)
     charge_payload = create_charge(
         reference=payment.transaction_id,
-        amount=payment.amount,
+        amount=payment.total_amount,
         currency=payment.currency,
         customer_id=payment_method.provider_customer_id,
         payment_method_id=payment_method.provider_payment_method_id,
@@ -1596,6 +1719,10 @@ def charge_subscription_with_payment_method(payment: SubscriptionPayment, *, sou
             "billing_reason": payment.billing_reason,
             "payment_purpose": "subscription",
             "subscription_subaccount_id": subaccounts[0]["id"],
+            "vat_subaccount_id": subaccounts[1]["id"],
+            "subscription_fee_amount": str(payment.amount),
+            "vat_rate": str(payment.vat_rate),
+            "vat_amount": str(payment.vat_amount),
         },
         subaccounts=subaccounts,
         idempotency_key=f"{payment.transaction_id}-recurring-charge",
@@ -1604,7 +1731,8 @@ def charge_subscription_with_payment_method(payment: SubscriptionPayment, *, sou
     payment.provider_payload = update_payment_provider_payload(
         payment.provider_payload,
         charge_payload,
-        subscription_destination=destination,
+        subscription_destination=destinations["subscription"],
+        vat_destination=destinations["vat"],
         recurring={
             "source": source,
             "charged_at": timezone.now().isoformat(),
@@ -1639,12 +1767,15 @@ def process_due_subscription_renewals(*, now=None) -> dict[str, int]:
         account_frozen = user_account_freeze_active(payment.user, now=now)
         renewal_billing_cycle = SubscriptionPayment.BillingCycle.MONTHLY if account_frozen else payment.billing_cycle
         renewal_amount = subscription_renewal_amount_for(payment, now=now)
+        renewal_vat_amount = calculate_subscription_vat(renewal_amount)
         renewal = SubscriptionPayment.objects.create(
             user=payment.user,
             role=payment.role,
             plan_code=payment.plan_code,
             billing_cycle=renewal_billing_cycle,
             amount=renewal_amount,
+            vat_rate=subscription_vat_rate(),
+            vat_amount=renewal_vat_amount,
             currency=payment.currency,
             provider="flutterwave",
             status=SubscriptionPayment.Status.PENDING,
@@ -2397,7 +2528,27 @@ def complete_subscription_payment(payment: SubscriptionPayment, *, webhook_data=
     payment.expires_at = payment.payment_date + timedelta(days=duration_days)
     if webhook_data is not None:
         payment.webhook_data = webhook_data
-    payment.save(update_fields=["status", "payment_date", "expires_at", "webhook_data", "updated_at"])
+    with transaction.atomic():
+        payment.save(update_fields=["status", "payment_date", "expires_at", "webhook_data", "updated_at"])
+        if payment.vat_amount > 0:
+            SubscriptionVATPayment.objects.get_or_create(
+                subscription_payment=payment,
+                defaults={
+                    "payer": payment.user,
+                    "payer_name": payment.user.name or payment.user.email.split("@", 1)[0],
+                    "payer_email": payment.user.email,
+                    "entity_type": payment.role,
+                    "subscription_fee_amount": payment.amount,
+                    "amount_paid": payment.total_amount,
+                    "vat_rate": payment.vat_rate,
+                    "vat_amount": payment.vat_amount,
+                    "currency": payment.currency,
+                    "transaction_id": payment.transaction_id or str(payment.id),
+                    "provider_transaction_id": payment.provider_charge_id,
+                    "provider": payment.provider,
+                    "paid_at": payment.payment_date,
+                },
+            )
     return payment
 
 
@@ -2581,7 +2732,7 @@ def sync_subscription_payment(payment: SubscriptionPayment, *, transaction_id: s
 
     if actual_reference != (payment.transaction_id or ""):
         verification_errors.append("reference_mismatch")
-    if actual_amount != normalize_decimal_amount(payment.amount):
+    if actual_amount != normalize_decimal_amount(payment.total_amount):
         verification_errors.append("amount_mismatch")
     if actual_currency and actual_currency != payment.currency.upper():
         verification_errors.append("currency_mismatch")
@@ -2625,6 +2776,58 @@ def sync_subscription_payment(payment: SubscriptionPayment, *, transaction_id: s
     )
     payment.save(update_fields=["status", "provider_payload", "provider", "provider_charge_id", "webhook_data", "updated_at"])
     return payment
+
+
+def reconcile_pending_customer_payments(*, limit: int = 100) -> dict[str, int]:
+    limit = max(int(limit), 1)
+    candidates = list(
+        Payment.objects.select_related("booking", "booking__tenant", "booking__listing", "booking__listing__landlord")
+        .filter(provider="flutterwave", status__in=["pending", "processing"])
+        .order_by("created_at")[:limit]
+    )
+    candidates.extend(
+        FeaturedPayment.objects.select_related("listing", "landlord")
+        .filter(provider="flutterwave", status=FeaturedPayment.Status.PENDING)
+        .exclude(transaction_id__isnull=True)
+        .exclude(transaction_id="")
+        .order_by("created_at")[:limit]
+    )
+    candidates.extend(
+        SubscriptionPayment.objects.select_related("user")
+        .filter(provider="flutterwave", status=SubscriptionPayment.Status.PENDING)
+        .exclude(transaction_id__isnull=True)
+        .exclude(transaction_id="")
+        .order_by("created_at")[:limit]
+    )
+    candidates.sort(key=lambda payment: payment.created_at)
+
+    checked = completed = pending = failed = 0
+    for payment in candidates[:limit]:
+        checked += 1
+        try:
+            if isinstance(payment, Payment):
+                reconciled = sync_booking_payment(payment, source="reconciliation")
+            elif isinstance(payment, FeaturedPayment):
+                reconciled = sync_featured_payment(payment, source="reconciliation")
+            else:
+                reconciled = sync_subscription_payment(payment, source="reconciliation")
+        except FlutterwaveError:
+            pending += 1
+            continue
+
+        if reconciled.status == "completed":
+            completed += 1
+        elif reconciled.status in FAILED_PAYMENT_STATUSES:
+            failed += 1
+        else:
+            pending += 1
+
+    return {
+        "checked": checked,
+        "completed": completed,
+        "pending": pending,
+        "failed": failed,
+    }
 
 
 def ensure_supported_subscription_role(user: AppUser) -> None:
@@ -2780,7 +2983,12 @@ class UserViewSet(viewsets.GenericViewSet):
 
     @action(detail=False, methods=["get"], url_path="subscription-pricing", permission_classes=[AllowAny])
     def subscription_pricing(self, request):
-        return Response(get_subscription_pricing())
+        return Response(
+            {
+                **get_subscription_pricing(),
+                "vat_rate_percent": json_decimal(subscription_vat_rate()),
+            }
+        )
 
     @action(detail=False, methods=["post"], url_path="me/settings/request-otp")
     def request_settings_otp(self, request):
@@ -4285,6 +4493,8 @@ class SubscriptionPaymentViewSet(viewsets.GenericViewSet, mixins.ListModelMixin)
 
         amount_decimal = Decimal(str(amount_value))
         is_free_plan = amount_decimal == 0
+        vat_rate = subscription_vat_rate() if not is_free_plan else Decimal("0.00")
+        vat_amount = calculate_subscription_vat(amount_decimal)
         if recurring_requested and is_free_plan:
             raise ValidationError("Recurring payments are available only for paid subscription plans.")
         try:
@@ -4313,6 +4523,8 @@ class SubscriptionPaymentViewSet(viewsets.GenericViewSet, mixins.ListModelMixin)
                 plan_code=plan_code,
                 billing_cycle=billing_cycle,
                 amount=amount_decimal,
+                vat_rate=vat_rate,
+                vat_amount=vat_amount,
                 currency="NGN",
                 provider=next_provider,
                 status=next_status,
@@ -4326,6 +4538,8 @@ class SubscriptionPaymentViewSet(viewsets.GenericViewSet, mixins.ListModelMixin)
         else:
             payment.role = request.user.role
             payment.amount = amount_decimal
+            payment.vat_rate = vat_rate
+            payment.vat_amount = vat_amount
             payment.currency = "NGN"
             payment.provider = next_provider
             payment.status = next_status
@@ -4343,6 +4557,8 @@ class SubscriptionPaymentViewSet(viewsets.GenericViewSet, mixins.ListModelMixin)
                 update_fields=[
                     "role",
                     "amount",
+                    "vat_rate",
+                    "vat_amount",
                     "currency",
                     "provider",
                     "status",
@@ -4411,7 +4627,7 @@ class SubscriptionPaymentViewSet(viewsets.GenericViewSet, mixins.ListModelMixin)
             payment.transaction_id = build_subscription_payment_reference()
 
         try:
-            subaccounts, destination = build_subscription_subaccount_payload()
+            subaccounts, destinations = build_subscription_subaccount_payload(payment)
             checkout = build_subscription_checkout(payment, subaccounts=subaccounts)
         except FlutterwaveError as exc:
             return Response({"detail": str(exc)}, status=502)
@@ -4420,7 +4636,8 @@ class SubscriptionPaymentViewSet(viewsets.GenericViewSet, mixins.ListModelMixin)
             None,
             checkout=checkout,
             return_url=build_subscription_payment_return_url(payment),
-            subscription_destination=destination,
+            subscription_destination=destinations["subscription"],
+            vat_destination=destinations["vat"],
         )
         payment.provider = "flutterwave"
         payment.save(update_fields=["transaction_id", "provider_payload", "provider", "updated_at"])

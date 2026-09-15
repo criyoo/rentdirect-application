@@ -8,7 +8,7 @@ from pathlib import Path
 from datetime import date, timedelta
 from decimal import Decimal
 import tempfile
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 from django.conf import settings
 from django.core import mail
@@ -25,8 +25,8 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from core import flutterwave
 from core.management.commands.seed_demo_data import Command as SeedDemoDataCommand
 from core.flutterwave import FlutterwaveError
-from core.models import AppUser, Booking, BvnVerificationRecord, CacVerificationRecord, CommunityChatMessage, Document, Feedback, FeaturedPayment, Listing, ListingImage, Message, NinVerificationRecord, Payment, PaymentSettlement, Review, SubscriptionPayment, SubscriptionPaymentMethod, SupportChatMessage, TenantProfile, VerificationRequest
-from core.payment_queue import TASK_PROCESS_READY_PAYOUTS, enqueue_payment_task
+from core.models import AppUser, Booking, BvnVerificationRecord, CacVerificationRecord, CommunityChatMessage, Document, Feedback, FeaturedPayment, Listing, ListingImage, Message, NinVerificationRecord, Payment, PaymentSettlement, Review, SubscriptionPayment, SubscriptionPaymentMethod, SubscriptionVATPayment, SupportChatMessage, TenantProfile, VerificationRequest
+from core.payment_queue import TASK_PROCESS_READY_PAYOUTS, TASK_RECONCILE_PENDING_PAYMENTS, enqueue_payment_task
 from core.prembly_verification import (
     PremblyWebhookVerificationError,
     validate_prembly_webhook_request,
@@ -1384,7 +1384,9 @@ class UserViewSetTests(TestCase):
         response = self.client.get("/api/v1/users/subscription-pricing")
 
         self.assertEqual(response.status_code, 200, response.json())
-        self.assertEqual(response.json(), get_subscription_pricing())
+        self.assertEqual(response.json()["tenant"], get_subscription_pricing()["tenant"])
+        self.assertEqual(response.json()["landlord"], get_subscription_pricing()["landlord"])
+        self.assertEqual(response.json()["vat_rate_percent"], 7.5)
 
     @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
     def test_authenticated_user_can_change_password(self):
@@ -2956,6 +2958,58 @@ class PaymentQueueTests(TestCase):
 
         self.assertEqual(result, {"status": "ok"})
         call_command_mock.assert_called_once_with("process_ready_payouts")
+
+    @override_settings(PAYMENT_QUEUE_BACKEND="sync")
+    @patch("core.views.reconcile_pending_customer_payments")
+    def test_sync_queue_backend_runs_pending_payment_reconciliation_inline(self, reconcile_mock):
+        reconcile_mock.return_value = {"checked": 1, "completed": 1, "pending": 0, "failed": 0}
+
+        result = enqueue_payment_task(TASK_RECONCILE_PENDING_PAYMENTS, {"source": "test"})
+
+        self.assertEqual(result, {"status": "ok", "result": reconcile_mock.return_value})
+        reconcile_mock.assert_called_once_with()
+
+    @patch("core.views.query_transaction")
+    def test_reconciliation_completes_pending_subscription_payment(self, query_transaction_mock):
+        from core.views import reconcile_pending_customer_payments
+
+        tenant = AppUser.objects.create_user(
+            email="payment-reconciliation@example.com",
+            password="password-123",
+            name="Payment Reconciliation",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        payment = SubscriptionPayment.objects.create(
+            user=tenant,
+            role=tenant.role,
+            plan_code=SubscriptionPayment.PlanCode.SILVER,
+            billing_cycle=SubscriptionPayment.BillingCycle.MONTHLY,
+            amount="100.00",
+            currency="NGN",
+            status=SubscriptionPayment.Status.PENDING,
+            provider="flutterwave",
+            transaction_id="RECONCILE_SUBSCRIPTION_001",
+            expires_at=timezone.now(),
+        )
+        query_transaction_mock.return_value = {
+            "status": "success",
+            "data": {
+                "id": "reconciled-charge-001",
+                "tx_ref": payment.transaction_id,
+                "status": "successful",
+                "amount": "100.00",
+                "currency": "NGN",
+                "customer": {"email": tenant.email},
+            },
+        }
+
+        result = reconcile_pending_customer_payments()
+
+        payment.refresh_from_db()
+        self.assertEqual(result, {"checked": 1, "completed": 1, "pending": 0, "failed": 0})
+        self.assertEqual(payment.status, SubscriptionPayment.Status.COMPLETED)
+        self.assertEqual(payment.provider_charge_id, "reconciled-charge-001")
 
     @override_settings(
         PAYMENT_QUEUE_BACKEND="rq",
@@ -5430,6 +5484,10 @@ class SubscriptionPaymentTests(TestCase):
         RENTDIRECT_SUBSCRIPTION_BANK_NAME="",
         RENTDIRECT_SUBSCRIPTION_BANK_CODE="",
         RENTDIRECT_SUBSCRIPTION_ACCOUNT_NUMBER="",
+        RENTDIRECT_VAT_SUBACCOUNT_ID="",
+        RENTDIRECT_VAT_BANK_NAME="",
+        RENTDIRECT_VAT_BANK_CODE="",
+        RENTDIRECT_VAT_ACCOUNT_NUMBER="",
     )
     def test_recurring_subscription_config_requires_direct_settlement_account(self):
         tenant = AppUser.objects.create_user(
@@ -5441,6 +5499,31 @@ class SubscriptionPaymentTests(TestCase):
         )
         client = APIClient()
         client.force_authenticate(user=tenant)
+
+        response = client.get("/api/v1/subscriptions/recurring/config")
+
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertFalse(response.json()["enabled"])
+        self.assertFalse(response.json()["direct_settlement_configured"])
+
+    @override_settings(
+        RENTDIRECT_SUBSCRIPTION_SUBACCOUNT_ID="RS_SUBSCRIPTION_TEST",
+        RENTDIRECT_VAT_SUBACCOUNT_ID="",
+        RENTDIRECT_VAT_BANK_NAME="",
+        RENTDIRECT_VAT_BANK_CODE="",
+        RENTDIRECT_VAT_ACCOUNT_NUMBER="",
+        RENTDIRECT_VAT_BUSINESS_MOBILE="",
+    )
+    def test_recurring_subscription_config_requires_vat_settlement_account(self):
+        landlord = AppUser.objects.create_user(
+            email="landlord-vat-config@example.com",
+            password="password-123",
+            name="VAT Config Landlord",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+        )
+        client = APIClient()
+        client.force_authenticate(user=landlord)
 
         response = client.get("/api/v1/subscriptions/recurring/config")
 
@@ -5475,6 +5558,9 @@ class SubscriptionPaymentTests(TestCase):
         self.assertEqual(payment.status, SubscriptionPayment.Status.COMPLETED)
         self.assertEqual(payment.provider, "free")
         self.assertEqual(str(payment.amount), "0.00")
+        self.assertEqual(str(payment.vat_amount), "0.00")
+        self.assertEqual(response.json()["total_amount"], "0.00")
+        self.assertFalse(SubscriptionVATPayment.objects.filter(subscription_payment=payment).exists())
         self.assertIsNotNone(payment.payment_date)
         self.assertGreaterEqual(payment.expires_at, before + timedelta(days=14, seconds=-5))
         self.assertLessEqual(payment.expires_at, before + timedelta(days=14, seconds=5))
@@ -5535,6 +5621,11 @@ class SubscriptionPaymentTests(TestCase):
         RENTDIRECT_SUBSCRIPTION_BANK_CODE="214",
         RENTDIRECT_SUBSCRIPTION_ACCOUNT_NUMBER="0000000000",
         RENTDIRECT_SUBSCRIPTION_ACCOUNT_NAME="RentDirect Subscription",
+        RENTDIRECT_VAT_SUBACCOUNT_ID="RS_VAT_TEST",
+        RENTDIRECT_VAT_BANK_NAME="Providus",
+        RENTDIRECT_VAT_BANK_CODE="101",
+        RENTDIRECT_VAT_ACCOUNT_NUMBER="1111111111",
+        RENTDIRECT_VAT_ACCOUNT_NAME="RentDirect VAT",
         WEB_PUBLIC_URL="http://localhost:5173",
     )
     @patch("core.views.query_transaction")
@@ -5563,8 +5654,13 @@ class SubscriptionPaymentTests(TestCase):
         payment = SubscriptionPayment.objects.get(id=request_response.json()["id"])
         expected_amount = get_subscription_pricing()["tenant"]["silver"]["monthly"]
         expected_amount_display = f"{expected_amount:.2f}"
+        expected_vat_display = "75.00"
+        expected_total_display = "1075.00"
         self.assertEqual(payment.status, SubscriptionPayment.Status.PENDING)
         self.assertEqual(str(payment.amount), expected_amount_display)
+        self.assertEqual(str(payment.vat_rate), "7.50")
+        self.assertEqual(str(payment.vat_amount), expected_vat_display)
+        self.assertEqual(request_response.json()["total_amount"], expected_total_display)
 
         checkout_response = client.post(f"/api/v1/subscriptions/{payment.id}/flutterwave/checkout", {}, format="json")
 
@@ -5578,14 +5674,24 @@ class SubscriptionPaymentTests(TestCase):
             [
                 {
                     "id": "RS_SUBSCRIPTION_TEST",
+                    "transaction_split_ratio": 40,
                     "transaction_charge_type": "flat",
                     "transaction_charge": 0,
-                }
+                },
+                {
+                    "id": "RS_VAT_TEST",
+                    "transaction_split_ratio": 3,
+                    "transaction_charge_type": "flat",
+                    "transaction_charge": 0,
+                },
             ],
         )
         payment.refresh_from_db()
         self.assertEqual(payment.provider_payload["subscription_destination"]["subaccount_id"], "RS_SUBSCRIPTION_TEST")
         self.assertEqual(payment.provider_payload["subscription_destination"]["account_number"], "0000000000")
+        self.assertEqual(payment.provider_payload["vat_destination"]["subaccount_id"], "RS_VAT_TEST")
+        self.assertEqual(payment.provider_payload["vat_destination"]["account_number"], "1111111111")
+        self.assertEqual(checkout_payload["checkout"]["flutterwave"]["amount"], 1075.0)
 
         query_transaction_mock.return_value = {
             "status": "success",
@@ -5593,7 +5699,7 @@ class SubscriptionPaymentTests(TestCase):
                 "id": "991",
                 "tx_ref": payment.transaction_id,
                 "status": "successful",
-                "amount": expected_amount_display,
+                "amount": expected_total_display,
                 "currency": "NGN",
                 "customer": {"email": tenant.email},
             },
@@ -5615,6 +5721,23 @@ class SubscriptionPaymentTests(TestCase):
         self.assertEqual(payment.status, SubscriptionPayment.Status.COMPLETED)
         self.assertEqual(payment.provider, "flutterwave")
         self.assertIsNotNone(payment.payment_date)
+        vat_payment = SubscriptionVATPayment.objects.get(subscription_payment=payment)
+        self.assertEqual(vat_payment.payer_name, tenant.name)
+        self.assertEqual(vat_payment.payer_email, tenant.email)
+        self.assertEqual(vat_payment.entity_type, AppUser.Role.TENANT)
+        self.assertEqual(str(vat_payment.subscription_fee_amount), expected_amount_display)
+        self.assertEqual(str(vat_payment.vat_amount), expected_vat_display)
+        self.assertEqual(str(vat_payment.amount_paid), expected_total_display)
+        self.assertEqual(vat_payment.transaction_id, payment.transaction_id)
+        self.assertEqual(vat_payment.provider_transaction_id, "991")
+        self.assertEqual(vat_payment.paid_at, payment.payment_date)
+
+        repeat_verify_response = client.get(
+            "/api/v1/subscriptions/flutterwave/verify",
+            {"reference": payment.transaction_id, "transaction_id": "991", "status": "successful"},
+        )
+        self.assertEqual(repeat_verify_response.status_code, 200, repeat_verify_response.json())
+        self.assertEqual(SubscriptionVATPayment.objects.filter(subscription_payment=payment).count(), 1)
 
     @override_settings(
         FLUTTERWAVE_PUBLIC_KEY="test-public-key",
@@ -5626,9 +5749,16 @@ class SubscriptionPaymentTests(TestCase):
         RENTDIRECT_SUBSCRIPTION_ACCOUNT_NAME="RentDirect Subscription",
         RENTDIRECT_SUBSCRIPTION_BUSINESS_EMAIL="billing@rentdirect.homes",
         RENTDIRECT_SUBSCRIPTION_BUSINESS_MOBILE="08000000000",
+        RENTDIRECT_VAT_SUBACCOUNT_ID="",
+        RENTDIRECT_VAT_BANK_NAME="Providus",
+        RENTDIRECT_VAT_BANK_CODE="101",
+        RENTDIRECT_VAT_ACCOUNT_NUMBER="1111111111",
+        RENTDIRECT_VAT_ACCOUNT_NAME="RentDirect VAT",
+        RENTDIRECT_VAT_BUSINESS_EMAIL="tax@rentdirect.homes",
+        RENTDIRECT_VAT_BUSINESS_MOBILE="08000000001",
         WEB_PUBLIC_URL="http://localhost:5173",
     )
-    @patch("core.views.get_or_create_collection_subaccount_id", return_value="RS_CREATED_SUBSCRIPTION")
+    @patch("core.views.get_or_create_collection_subaccount_id", side_effect=["RS_CREATED_SUBSCRIPTION", "RS_CREATED_VAT"])
     def test_subscription_checkout_creates_flutterwave_subaccount_from_configured_account(self, subaccount_mock):
         tenant = AppUser.objects.create_user(
             email="tenant-subscription-subaccount@example.com",
@@ -5655,17 +5785,33 @@ class SubscriptionPaymentTests(TestCase):
         response = client.post(f"/api/v1/subscriptions/{payment.id}/flutterwave/checkout", {}, format="json")
 
         self.assertEqual(response.status_code, 200, response.json())
-        subaccount_mock.assert_called_once_with(
-            bank_code="214",
-            account_number="0000000000",
-            business_name="RentDirect Subscription",
-            business_email="billing@rentdirect.homes",
-            business_mobile="08000000000",
-            country="NG",
-            split_type="flat",
-            split_value="0",
+        self.assertEqual(
+            subaccount_mock.call_args_list,
+            [
+                call(
+                    bank_code="214",
+                    account_number="0000000000",
+                    business_name="RentDirect Subscription",
+                    business_email="billing@rentdirect.homes",
+                    business_mobile="08000000000",
+                    country="NG",
+                    split_type="flat",
+                    split_value="0",
+                ),
+                call(
+                    bank_code="101",
+                    account_number="1111111111",
+                    business_name="RentDirect VAT",
+                    business_email="tax@rentdirect.homes",
+                    business_mobile="08000000001",
+                    country="NG",
+                    split_type="flat",
+                    split_value="0",
+                ),
+            ],
         )
         self.assertEqual(response.json()["checkout"]["flutterwave"]["subaccounts"][0]["id"], "RS_CREATED_SUBSCRIPTION")
+        self.assertEqual(response.json()["checkout"]["flutterwave"]["subaccounts"][1]["id"], "RS_CREATED_VAT")
 
     @override_settings(
         FLUTTERWAVE_PUBLIC_KEY="test-public-key",
@@ -5679,6 +5825,11 @@ class SubscriptionPaymentTests(TestCase):
         RENTDIRECT_SUBSCRIPTION_BANK_CODE="214",
         RENTDIRECT_SUBSCRIPTION_ACCOUNT_NUMBER="0000000000",
         RENTDIRECT_SUBSCRIPTION_ACCOUNT_NAME="RentDirect Subscription",
+        RENTDIRECT_VAT_SUBACCOUNT_ID="RS_VAT_TEST",
+        RENTDIRECT_VAT_BANK_NAME="Providus",
+        RENTDIRECT_VAT_BANK_CODE="101",
+        RENTDIRECT_VAT_ACCOUNT_NUMBER="1111111111",
+        RENTDIRECT_VAT_ACCOUNT_NAME="RentDirect VAT",
         WEB_PUBLIC_URL="http://localhost:5173",
     )
     @patch("core.views.create_charge")
@@ -5773,12 +5924,24 @@ class SubscriptionPaymentTests(TestCase):
             [
                 {
                     "id": "RS_SUBSCRIPTION_TEST",
+                    "transaction_split_ratio": 40,
                     "transaction_charge_type": "flat",
                     "transaction_charge": 0,
-                }
+                },
+                {
+                    "id": "RS_VAT_TEST",
+                    "transaction_split_ratio": 3,
+                    "transaction_charge_type": "flat",
+                    "transaction_charge": 0,
+                },
             ],
         )
         self.assertEqual(payment.provider_payload["subscription_destination"]["subaccount_id"], "RS_SUBSCRIPTION_TEST")
+        self.assertEqual(payment.provider_payload["vat_destination"]["subaccount_id"], "RS_VAT_TEST")
+        self.assertEqual(str(payment.vat_amount), "90.00")
+        vat_payment = SubscriptionVATPayment.objects.get(subscription_payment=payment)
+        self.assertEqual(vat_payment.entity_type, AppUser.Role.LANDLORD)
+        self.assertEqual(str(vat_payment.amount_paid), "1290.00")
 
     @override_settings(
         FLUTTERWAVE_PUBLIC_KEY="test-public-key",
@@ -5791,6 +5954,11 @@ class SubscriptionPaymentTests(TestCase):
         RENTDIRECT_SUBSCRIPTION_BANK_CODE="214",
         RENTDIRECT_SUBSCRIPTION_ACCOUNT_NUMBER="0000000000",
         RENTDIRECT_SUBSCRIPTION_ACCOUNT_NAME="RentDirect Subscription",
+        RENTDIRECT_VAT_SUBACCOUNT_ID="RS_VAT_TEST",
+        RENTDIRECT_VAT_BANK_NAME="Providus",
+        RENTDIRECT_VAT_BANK_CODE="101",
+        RENTDIRECT_VAT_ACCOUNT_NUMBER="1111111111",
+        RENTDIRECT_VAT_ACCOUNT_NAME="RentDirect VAT",
         WEB_PUBLIC_URL="http://localhost:5173",
     )
     @patch("core.views.create_charge")
@@ -5833,7 +6001,7 @@ class SubscriptionPaymentTests(TestCase):
                     "id": "chg_renewal_123",
                     "reference": kwargs["reference"],
                     "status": "succeeded",
-                    "amount": "200.00",
+                    "amount": str(kwargs["amount"]),
                     "currency": kwargs["currency"],
                     "customer": {"email": tenant.email},
                 },
@@ -5854,6 +6022,10 @@ class SubscriptionPaymentTests(TestCase):
         self.assertEqual(create_charge_mock.call_args.kwargs["payment_method_id"], "pmd_renewal_123")
         self.assertEqual(create_charge_mock.call_args.kwargs["recurring"], True)
         self.assertEqual(create_charge_mock.call_args.kwargs["subaccounts"][0]["id"], "RS_SUBSCRIPTION_TEST")
+        self.assertEqual(create_charge_mock.call_args.kwargs["subaccounts"][1]["id"], "RS_VAT_TEST")
+        self.assertEqual(create_charge_mock.call_args.kwargs["amount"], Decimal("215.00"))
+        self.assertEqual(str(renewal.vat_amount), "15.00")
+        self.assertEqual(SubscriptionVATPayment.objects.filter(subscription_payment=renewal).count(), 1)
 
 
 class DashboardTests(TestCase):

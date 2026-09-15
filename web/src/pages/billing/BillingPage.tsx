@@ -25,6 +25,9 @@ type SubscriptionPaymentRecord = {
     plan_code: PlanCode
     billing_cycle: BillingCycle
     amount: number | string
+    vat_rate: number | string
+    vat_amount: number | string
+    total_amount: number | string
     currency: string
     status: string
     expires_at?: string | null
@@ -55,6 +58,9 @@ type BillingHistoryRecord = {
     type: 'subscription' | 'rental'
     id: string
     amount: number | string
+    subscription_fee_amount?: number | string
+    vat_rate?: number | string
+    vat_amount?: number | string
     currency: string
     status: string
     created_at: string
@@ -75,7 +81,9 @@ type BillingCycle = 'monthly' | 'yearly'
 type BillingRole = 'tenant' | 'landlord'
 type PlanCode = 'bronze' | 'silver' | 'gold' | 'platinum'
 type PlanPricing = Record<BillingCycle, number>
-type SubscriptionPricingCatalog = Record<BillingRole, Record<PlanCode, PlanPricing>>
+type SubscriptionPricingCatalog = Record<BillingRole, Record<PlanCode, PlanPricing>> & {
+    vat_rate_percent: number | string
+}
 
 type PlanBlueprint = {
     code: PlanCode
@@ -413,7 +421,10 @@ export default function BillingPage() {
             ...subscriptionPayments.map((payment) => ({
                 type: 'subscription' as const,
                 id: payment.id,
-                amount: payment.amount,
+                amount: payment.total_amount,
+                subscription_fee_amount: payment.amount,
+                vat_rate: payment.vat_rate,
+                vat_amount: payment.vat_amount,
                 currency: payment.currency,
                 status: payment.status,
                 created_at: payment.created_at,
@@ -719,6 +730,8 @@ export default function BillingPage() {
             `Expires At: ${payment.expires_at ? receiptValue(new Date(payment.expires_at).toLocaleString()) : 'N/A'}`,
             '',
             'PAYMENT DETAILS:',
+            `Subscription Fee: ${formatReceiptCurrency(payment.subscription_fee_amount ?? payment.amount, payment.currency)}`,
+            `VAT (${receiptValue(payment.vat_rate)}%): ${formatReceiptCurrency(payment.vat_amount ?? 0, payment.currency)}`,
             `Amount Paid: ${formatReceiptCurrency(payment.amount, payment.currency)}`,
             `Currency: ${receiptValue(payment.currency).toUpperCase()}`,
             '',
@@ -891,7 +904,10 @@ export default function BillingPage() {
                                                 {capitalizePlanName(payment.plan_code)} {payment.billing_cycle} plan
                                             </p>
                                             <p className="mt-2 text-lg font-semibold text-slate-950">
-                                                {formatCurrencyWithSymbol(payment.amount)} {payment.currency.toUpperCase()}
+                                                {formatCurrencyWithSymbol(payment.total_amount)} {payment.currency.toUpperCase()}
+                                            </p>
+                                            <p className="mt-1 text-xs text-slate-500">
+                                                Includes {formatCurrencyWithSymbol(payment.vat_amount)} VAT ({payment.vat_rate}%).
                                             </p>
                                             <p className="mt-1 text-sm text-slate-600">
                                                 Created {new Date(payment.created_at).toLocaleString()}
@@ -1092,6 +1108,11 @@ export default function BillingPage() {
                                         <p className="mt-3 text-3xl text-center font-bold text-slate-950">
                                             {formatCurrencyWithSymbol(subscriptionPricing[plan.code][billingCycle])}
                                         </p>
+                                        {Number(subscriptionPricing[plan.code][billingCycle]) > 0 && (
+                                            <p className="mt-2 text-center text-sm font-medium text-slate-700">
+                                                + {subscriptionPricingCatalog?.vat_rate_percent ?? 7.5}% VAT
+                                            </p>
+                                        )}
                                         <p className="mt-2 text-sm text-center text-slate-600">
                                             {billingCycle === 'monthly'
                                                 ? `${formatCurrencyWithSymbol(subscriptionPricing[plan.code].yearly)} when billed yearly.`

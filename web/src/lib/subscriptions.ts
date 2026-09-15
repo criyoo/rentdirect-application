@@ -20,6 +20,9 @@ export type SubscriptionPaymentRecord = {
     plan_code: PlanCode
     billing_cycle: 'monthly' | 'yearly'
     amount: number | string
+    vat_rate: number | string
+    vat_amount: number | string
+    total_amount: number | string
     currency: string
     status: string
     expires_at?: string | null

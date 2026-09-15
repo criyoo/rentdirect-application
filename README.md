@@ -36,6 +36,11 @@ docker compose up --build
 - API: <http://localhost:8600/api/v1>
 - Health: <http://localhost:8600/api/health/ready>
 
+### Admin Page
+
+- Local: <http://localhost:5173/admin/login>
+- Production: <https://rentdirect.homes/admin/login>
+
 ## Production Shape
 
 - `api.rentdirect.homes` routes to an ALB-backed ECS service.

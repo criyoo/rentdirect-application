@@ -3,13 +3,14 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useForm, useFieldArray } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { api, getApiUrl } from '@/lib/api'
+import { api, extractApiErrorMessage, extractApiFieldErrors, getApiUrl } from '@/lib/api'
 import { buildFormDraftKey, readFormDraft, removeFormDraft, writeFormDraft } from '@/lib/formDrafts'
 import LegalConsentCheckbox from '@/components/LegalConsentCheckbox'
 import DashboardBackButton from '@/components/DashboardBackButton'
 import { useQuery } from '@tanstack/react-query'
 import { Listing, User } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
+import { useAppPopup } from '@/contexts/AppPopupContext'
 
 const optionalPositiveNumber = z.number().min(1, 'Value must be positive').optional()
 
@@ -150,6 +151,7 @@ export default function ListingFormPage() {
     const navigate = useNavigate()
     const { id } = useParams()
     const { user } = useAuth()
+    const { alert: popupAlert } = useAppPopup()
     const isEditMode = Boolean(id)
     const [coverImage, setCoverImage] = useState<File | null>(null)
     const [additionalImages, setAdditionalImages] = useState<File[]>([])
@@ -157,6 +159,7 @@ export default function ListingFormPage() {
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [hasAcceptedLegalConsent, setHasAcceptedLegalConsent] = useState(false)
     const [legalConsentError, setLegalConsentError] = useState('')
+    const [submissionError, setSubmissionError] = useState('')
     const listingDraftStorageKey = useMemo(
         () => buildFormDraftKey(`listing-${isEditMode ? `edit:${id}` : 'new'}`, user?.id || user?.email),
         [id, isEditMode, user?.email, user?.id],
@@ -172,6 +175,7 @@ export default function ListingFormPage() {
         reset,
         watch,
         setValue,
+        setError,
     } = useForm<ListingFormValues>({
         resolver: zodResolver(schema),
         defaultValues: {
@@ -220,7 +224,6 @@ export default function ListingFormPage() {
         if (propertyVerificationMethod === 'in_person') {
             setPropertyDocumentFiles([])
         }
-        setHasAcceptedLegalConsent(false)
         setLegalConsentError('')
     }, [propertyVerificationMethod])
 
@@ -330,17 +333,19 @@ export default function ListingFormPage() {
                 ? listing.amenities.map((value) => ({ value }))
                 : [{ value: '' }],
         }
-        const storedDraft = readFormDraft<Partial<ListingFormValues>>(listingDraftStorageKey)
+        const storedDraft = readFormDraft<Partial<ListingFormValues> & { hasAcceptedLegalConsent?: boolean }>(listingDraftStorageKey)
         reset({ ...listingDefaults, ...(storedDraft || {}) })
+        setHasAcceptedLegalConsent(Boolean(storedDraft?.hasAcceptedLegalConsent))
         setHydratedDraftStorageKey(listingDraftStorageKey)
     }, [isEditMode, listing, listingDraftStorageKey, reset])
 
     useEffect(() => {
         if (isEditMode || !listingDraftStorageKey) return
 
-        const storedDraft = readFormDraft<Partial<ListingFormValues>>(listingDraftStorageKey)
+        const storedDraft = readFormDraft<Partial<ListingFormValues> & { hasAcceptedLegalConsent?: boolean }>(listingDraftStorageKey)
         if (storedDraft) {
             reset(storedDraft)
+            setHasAcceptedLegalConsent(Boolean(storedDraft.hasAcceptedLegalConsent))
         }
         setHydratedDraftStorageKey(listingDraftStorageKey)
     }, [isEditMode, listingDraftStorageKey, reset])
@@ -354,8 +359,8 @@ export default function ListingFormPage() {
             return
         }
 
-        writeFormDraft(listingDraftStorageKey, watchedFormValues)
-    }, [draftPersistenceEnabled, hydratedDraftStorageKey, listingDraftStorageKey, watchedFormValues])
+        writeFormDraft(listingDraftStorageKey, { ...watchedFormValues, hasAcceptedLegalConsent })
+    }, [draftPersistenceEnabled, hasAcceptedLegalConsent, hydratedDraftStorageKey, listingDraftStorageKey, watchedFormValues])
 
     const buildFormData = (data: ListingFormValues) => {
         const formData = new FormData()
@@ -441,22 +446,23 @@ export default function ListingFormPage() {
             return
         }
         if (!isEditMode && !coverImage) {
-            alert('Please select a cover image')
+            setSubmissionError('Please select a cover image.')
             return
         }
         if (!isEditMode && additionalImages.length === 0) {
-            alert('Please select at least one additional image')
+            setSubmissionError('Please select at least one additional image.')
             return
         }
         if (!isEditMode && data.property_verification_method === 'documents' && propertyDocumentFiles.length === 0) {
-            alert('Please upload at least one property document or choose in-person verification.')
+            setSubmissionError('Please upload at least one property document or choose in-person verification.')
             return
         }
         if (!isEditMode && data.property_verification_method === 'documents' && data.property_ownership_documents.length === 0) {
-            alert('Please select at least one ownership document type.')
+            setSubmissionError('Please select at least one ownership document type.')
             return
         }
 
+        setSubmissionError('')
         setIsSubmitting(true)
 
         try {
@@ -471,17 +477,11 @@ export default function ListingFormPage() {
             })
 
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}))
-                const detail = (errorData as { detail?: unknown }).detail
-                const message =
-                    typeof detail === 'string'
-                        ? detail
-                        : detail
-                            ? JSON.stringify(detail)
-                            : isEditMode
-                                ? 'Failed to update listing'
-                                : 'Failed to create listing'
-                alert(`Error: ${message}`)
+                const error = { response: { data: await response.json().catch(() => ({})) } }
+                Object.entries(extractApiFieldErrors(error)).forEach(([field, message]) => {
+                    setError(field as keyof ListingFormValues, { type: 'server', message })
+                })
+                setSubmissionError(extractApiErrorMessage(error, isEditMode ? 'Failed to update listing.' : 'Failed to create listing.'))
                 return
             }
 
@@ -507,17 +507,24 @@ export default function ListingFormPage() {
                     return
                 }
 
-                const featuredErr = await featuredRes.json().catch(() => ({}))
-                alert((featuredErr as { detail?: string }).detail || 'Listing created, but failed to start featured payment.')
+                const error = { response: { data: await featuredRes.json().catch(() => ({})) } }
+                await popupAlert(extractApiErrorMessage(error, 'Listing created, but failed to start featured payment.'), {
+                    title: 'Featured Payment Unavailable',
+                    variant: 'warning',
+                })
             }
 
             setDraftPersistenceEnabled(false)
             setHydratedDraftStorageKey(null)
             removeFormDraft(listingDraftStorageKey)
+            await popupAlert(isEditMode ? 'Listing updated successfully.' : 'Listing created successfully.', {
+                title: 'Listing Saved',
+                variant: 'success',
+            })
             navigate(`/listings/${result.id}`)
         } catch (error) {
             console.error(`Error ${isEditMode ? 'updating' : 'creating'} listing:`, error)
-            alert(`Failed to ${isEditMode ? 'update' : 'create'} listing. Please try again.`)
+            setSubmissionError(`Failed to ${isEditMode ? 'update' : 'create'} listing. Please try again.`)
         } finally {
             setIsSubmitting(false)
         }
@@ -535,7 +542,7 @@ export default function ListingFormPage() {
             setAdditionalImages((prev) => {
                 const merged = [...prev, ...filesArray]
                 if (merged.length > 9) {
-                    alert('Maximum 9 additional images allowed')
+                    setSubmissionError('You can upload a maximum of 9 additional images.')
                 }
                 return merged.slice(0, 9)
             })
@@ -596,6 +603,12 @@ export default function ListingFormPage() {
                         {isEditMode ? 'Edit Listing' : 'Create New Listing'}
                     </h1>
                     <h3 className="text-[22px] font-semibold text-gray-900">Property Information</h3><br />
+
+                    {submissionError && (
+                        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+                            {submissionError}
+                        </div>
+                    )}
 
                     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

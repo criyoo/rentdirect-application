@@ -1,41 +1,47 @@
-import { useState } from 'react'
-import { api } from '@/lib/api'
+import { useEffect, useMemo, useState } from 'react'
+import { api, extractApiErrorMessage } from '@/lib/api'
 import BrandLogo from '@/components/BrandLogo'
 import { HiMail } from 'react-icons/hi'
 import DashboardBackButton from '@/components/DashboardBackButton'
+import { buildFormDraftKey, readFormDraft, removeFormDraft, writeFormDraft } from '@/lib/formDrafts'
 
-export default function ForgotPasswordPage()
-{
+export default function ForgotPasswordPage() {
     const [email, setEmail] = useState('')
     const [isLoading, setIsLoading] = useState(false)
     const [isSubmitted, setIsSubmitted] = useState(false)
     const [error, setError] = useState('')
+    const draftStorageKey = useMemo(() => buildFormDraftKey('forgot-password', 'anonymous'), [])
 
-    const handleSubmit = async (e: React.FormEvent) =>
-    {
+    useEffect(() => {
+        const storedDraft = readFormDraft<{ email?: string }>(draftStorageKey)
+        if (storedDraft?.email) setEmail(storedDraft.email)
+    }, [draftStorageKey])
+
+    useEffect(() => {
+        writeFormDraft(draftStorageKey, { email })
+    }, [draftStorageKey, email])
+
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
         setError('')
         setIsLoading(true)
 
-        try
-        {
+        try {
             const response = await api.post('/auth/forgot-password', { email })
             console.log('Forgot password response:', response)
+            removeFormDraft(draftStorageKey)
             setIsSubmitted(true)
-        } catch (err: any)
-        {
+        } catch (err: any) {
             console.error('Forgot password error:', err)
             console.error('Error response:', err.response)
             console.error('Error message:', err.message)
-            setError(err.response?.data?.detail || 'Failed to send reset email')
-        } finally
-        {
+            setError(extractApiErrorMessage(err, 'Failed to send reset email'))
+        } finally {
             setIsLoading(false)
         }
     }
 
-    if (isSubmitted)
-    {
+    if (isSubmitted) {
         return (
             <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
                 <div className="max-w-md w-full space-y-8">
@@ -71,8 +77,7 @@ export default function ForgotPasswordPage()
                             <div className="space-y-3">
                                 <DashboardBackButton to="/login" label="Back to Login" className="w-full justify-center" />
                                 <button
-                                    onClick={() =>
-                                    {
+                                    onClick={() => {
                                         setIsSubmitted(false)
                                         setEmail('')
                                     }}

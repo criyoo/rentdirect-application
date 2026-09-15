@@ -1166,6 +1166,7 @@ class SubscriptionPaymentSerializer(serializers.ModelSerializer):
     user_id = serializers.UUIDField(source="user.id", read_only=True)
     payment_method = SubscriptionPaymentMethodSerializer(read_only=True)
     next_action_url = serializers.SerializerMethodField()
+    total_amount = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
 
     def get_next_action_url(self, obj):
         payload = obj.provider_payload if isinstance(obj.provider_payload, dict) else {}
@@ -1185,6 +1186,9 @@ class SubscriptionPaymentSerializer(serializers.ModelSerializer):
             "plan_code",
             "billing_cycle",
             "amount",
+            "vat_rate",
+            "vat_amount",
+            "total_amount",
             "currency",
             "status",
             "provider",

@@ -6,7 +6,7 @@ from django.db.models import OuterRef, Prefetch, Subquery
 from django.utils.html import format_html, format_html_join
 from django.utils import timezone
 
-from .models import AdminUser, AppUser, Booking, Document, Feedback, Favourite, FeaturedPayment, Landlord, LandlordProfile, Listing, ListingImage, Message, Payment, PaymentSettlement, Review, SubscriptionPayment, SubscriptionPaymentMethod, Tenant, TenantProfile, VerificationRequest, infer_listing_rental_status, sync_listing_status_from_rental_progress
+from .models import AdminUser, AppUser, Booking, Document, Feedback, Favourite, FeaturedPayment, Landlord, LandlordProfile, Listing, ListingImage, Message, Payment, PaymentSettlement, Review, SubscriptionPayment, SubscriptionPaymentMethod, SubscriptionVATPayment, Tenant, TenantProfile, VerificationRequest, infer_listing_rental_status, sync_listing_status_from_rental_progress
 
 
 PREFERRED_CONTACT_METHOD_CHOICES = (
@@ -1230,12 +1230,31 @@ class PaymentSettlementAdmin(admin.ModelAdmin):
 
 @admin.register(SubscriptionPayment)
 class SubscriptionPaymentAdmin(admin.ModelAdmin):
-    list_display = ("id", "user", "role", "plan_code", "billing_cycle", "amount", "currency", "status", "provider", "recurring_enabled", "billing_reason", "expires_at", "payment_date", "created_at")
+    list_display = ("id", "user", "role", "plan_code", "billing_cycle", "amount", "vat_amount", "total_amount", "currency", "status", "provider", "recurring_enabled", "billing_reason", "expires_at", "payment_date", "created_at")
     list_filter = ("role", "plan_code", "billing_cycle", "status", "provider", "currency", "recurring_enabled", "billing_reason", "created_at")
     search_fields = ("transaction_id", "provider_charge_id", "user__email", "user__name", "payment_method__provider_payment_method_id")
     list_editable = ("status",)
     autocomplete_fields = ("user", "payment_method", "renewed_from")
     readonly_fields = ("transaction_id", "provider_charge_id", "cashier_url", "provider_payload", "webhook_data", "created_at", "updated_at")
+
+
+@admin.register(SubscriptionVATPayment)
+class SubscriptionVATPaymentAdmin(admin.ModelAdmin):
+    list_display = ("transaction_id", "payer_name", "payer_email", "entity_type", "subscription_fee_amount", "vat_rate", "vat_amount", "amount_paid", "currency", "provider", "paid_at")
+    list_filter = ("entity_type", "currency", "provider", "paid_at")
+    search_fields = ("transaction_id", "provider_transaction_id", "payer_name", "payer_email")
+    autocomplete_fields = ("payer", "subscription_payment")
+    readonly_fields = ("subscription_payment", "payer", "payer_name", "payer_email", "entity_type", "subscription_fee_amount", "amount_paid", "vat_rate", "vat_amount", "currency", "transaction_id", "provider_transaction_id", "provider", "paid_at", "created_at", "updated_at")
+    date_hierarchy = "paid_at"
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(SubscriptionPaymentMethod)

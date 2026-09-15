@@ -49,6 +49,34 @@ export const api = axios.create({
   },
 })
 
+export function extractApiFieldErrors(error: any): Record<string, string> {
+  const data = error?.response?.data
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return {}
+
+  return Object.entries(data).reduce<Record<string, string>>((errors, [field, value]) => {
+    if (field === 'detail' || field === 'message' || field === 'error' || field === 'non_field_errors') return errors
+    const message = Array.isArray(value) ? value.find(Boolean) : value
+    if (typeof message === 'string' && message.trim()) errors[field] = message
+    return errors
+  }, {})
+}
+
+export function extractApiErrorMessage(error: any, fallback: string): string {
+  const data = error?.response?.data
+  if (typeof data === 'string' && data.trim()) return data
+  if (data && typeof data === 'object') {
+    for (const field of ['detail', 'message', 'error', 'non_field_errors']) {
+      const value = data[field]
+      const message = Array.isArray(value) ? value.find(Boolean) : value
+      if (typeof message === 'string' && message.trim()) return message
+    }
+    const fieldErrors = extractApiFieldErrors(error)
+    const message = Object.values(fieldErrors)[0]
+    if (message) return message
+  }
+  return error?.message || fallback
+}
+
 export function resolveMediaUrl(value?: string | null): string {
   if (!value) return '/placeholder.jpg'
   const normalized = value.trim()

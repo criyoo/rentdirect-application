@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import BrandLogo from '@/components/BrandLogo'
+import { buildFormDraftKey, readFormDraft, removeFormDraft, writeFormDraft } from '@/lib/formDrafts'
 import { HiEye, HiEyeOff, HiMail, HiLockClosed } from 'react-icons/hi'
 
 export default function LoginPage() {
@@ -11,6 +12,16 @@ export default function LoginPage() {
     const [error, setError] = useState('')
     const { login } = useAuth()
     const navigate = useNavigate()
+    const draftStorageKey = useMemo(() => buildFormDraftKey('login', 'anonymous'), [])
+
+    useEffect(() => {
+        const storedDraft = readFormDraft<{ email?: string }>(draftStorageKey)
+        if (storedDraft?.email) setEmail(storedDraft.email)
+    }, [draftStorageKey])
+
+    useEffect(() => {
+        writeFormDraft(draftStorageKey, { email })
+    }, [draftStorageKey, email])
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -18,6 +29,7 @@ export default function LoginPage() {
 
         try {
             await login({ email, password })
+            removeFormDraft(draftStorageKey)
         } catch (err: any) {
             setError(err.message || 'Login failed')
         }

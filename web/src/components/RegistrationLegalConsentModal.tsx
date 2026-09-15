@@ -35,7 +35,8 @@ export default function RegistrationLegalConsentModal({ isOpen, role, onAccept, 
                                 Review account policies
                             </h2>
                             <p className="mt-1 text-sm leading-6 text-slate-600">
-                                Your {role} account is email verified. Review these policies before continuing to RentDirect.
+                                Your {role} account email is successfully verified. <br />
+                                Please, review these policies before continuing to RentDirect.
                             </p>
                         </div>
                     </div>

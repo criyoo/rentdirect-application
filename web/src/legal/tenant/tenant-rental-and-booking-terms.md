@@ -2,9 +2,6 @@
 
 ## TENANT-SPECIFIC TERMS
 
-**Effective Date:** ____________________  
-**Last Updated:** ____________________
-
 These Tenant Rental and Booking Terms apply to a User who searches for, enquires about, applies for, books, pays for, or occupies a property through RentDirect. They supplement the Terms of Service, Privacy Policy, Verification and Screening Consent, Marketplace and Rental Disclaimer, and Subscription and Payment Policy.
 
 ## 1. TENANT ELIGIBILITY AND ACCOUNT
@@ -124,6 +121,6 @@ RentDirect does not guarantee that a search will produce a suitable property, th
 
 ## 16. CONTACT AND ACCEPTANCE
 
-Tenant support and complaints: **info@rentdirect.homes**. Include your account email, Listing or Booking reference, payment reference, dates, and a clear description. Do not include passwords, PINs, OTPs, or full payment-card details.
+Tenant support and complaints: **<info@rentdirect.homes>**. Include your account email, Listing or Booking reference, payment reference, dates, and a clear description. Do not include passwords, PINs, OTPs, or full payment-card details.
 
 By creating a Tenant account, submitting a profile, opening a Booking, or paying through RentDirect, you acknowledge these Tenant Terms and the linked Platform policies.

@@ -1,12 +1,3 @@
-# RENTDIRECT PRIVACY POLICY
-
-## NIGERIAN DATA PROTECTION NOTICE
-
-**Effective Date:** ____________________  
-**Last Updated:** ____________________
-
-> **Drafting note:** This product-aligned draft must be completed by qualified Nigerian privacy counsel. Insert the legal name and address of the Data Controller, confirm the appointed Data Protection Officer or contact, confirm retention periods, and align the final notice with the Nigeria Data Protection Act 2023, applicable Nigeria Data Protection Commission directions, and any law that applies to the Platform’s actual operations.
-
 ## 1. WHO WE ARE
 
 The entity that operates RentDirect (“RentDirect”, “we”, “us”, or “our”) is the Data Controller for Personal Data processed through the RentDirect website, applications, APIs, accounts, property marketplace, verification workflows, communications, payments, support services, and related products, except where a third party acts as an independent controller.

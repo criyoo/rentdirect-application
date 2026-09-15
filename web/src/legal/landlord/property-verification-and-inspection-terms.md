@@ -2,9 +2,6 @@
 
 ## LANDLORD-SPECIFIC TERMS
 
-**Effective Date:** ____________________  
-**Last Updated:** ____________________
-
 > **Drafting note:** This product-aligned draft must be reviewed by qualified Nigerian counsel before publication. Complete the full legal name, registration details, address, inspection fee rules, notice address, and data-protection contact of the RentDirect operating entity before asking a Landlord to accept it.
 
 These Property Verification and Physical Inspection Terms apply when a Landlord asks RentDirect to verify a Listing through an in-person property inspection and document review instead of uploading property ownership documents. They supplement the Terms of Service, Privacy Policy, Verification and Screening Consent, Marketplace and Rental Disclaimer, Acceptable Use Policy, Landlord Listing and Property Owner Terms, and Subscription and Payment Policy.
@@ -128,7 +125,7 @@ The Landlord must not publish an Inspector’s personal contact information, ide
 
 The Landlord must not provide forged, altered, incomplete, or misleading documents, arrange a substitute property or person, conceal a material occupant or dispute, coach an Inspector to record a false result, offer an improper benefit, threaten or harass an Inspector, or interfere with evidence.
 
-Report suspected fraud, unsafe conduct, impersonation, improper payment demands, or data misuse promptly to **info@rentdirect.homes**. RentDirect may pause a Listing or payment, require further evidence, remove a verification status, suspend an account, terminate access, preserve evidence, and report suspected unlawful conduct to an appropriate authority.
+Report suspected fraud, unsafe conduct, impersonation, improper payment demands, or data misuse promptly to **<info@rentdirect.homes>**. RentDirect may pause a Listing or payment, require further evidence, remove a verification status, suspend an account, terminate access, preserve evidence, and report suspected unlawful conduct to an appropriate authority.
 
 ## 15. LANDLORD RESPONSIBILITY AND INDEMNITY
 
@@ -138,4 +135,4 @@ To the extent permitted by law, the Landlord is responsible for loss, injury, da
 
 By choosing physical or in-person verification, scheduling or confirming an inspection, presenting documents, granting access, publishing the Listing with the physical-verification route, or continuing to use the resulting status, the Landlord acknowledges and accepts these Terms.
 
-Questions or requests concerning this document may be sent to **info@rentdirect.homes**.
+Questions or requests concerning this document may be sent to **<info@rentdirect.homes>**.

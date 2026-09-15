@@ -13,6 +13,9 @@ type SubscriptionPayment = {
     plan_code: 'bronze' | 'silver' | 'gold' | 'platinum'
     billing_cycle: 'monthly' | 'yearly'
     amount: number | string
+    vat_rate: number | string
+    vat_amount: number | string
+    total_amount: number | string
     currency: string
     status: string
     recurring_enabled?: boolean
@@ -243,8 +246,16 @@ export default function SubscriptionPaymentPage() {
                             <span className="font-medium">{statusLabel || 'PENDING'}</span>
                         </div>
                         <div className="flex items-center justify-between">
-                            <span className="text-gray-600">Amount</span>
-                            <span className="font-semibold">{formatCurrencyWithSymbol(payment?.amount || 0)} {payment?.currency || 'NGN'}</span>
+                            <span className="text-gray-600">Subscription fee</span>
+                            <span className="font-medium">{formatCurrencyWithSymbol(payment?.amount || 0)} {payment?.currency || 'NGN'}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                            <span className="text-gray-600">VAT ({payment?.vat_rate || 0}%)</span>
+                            <span className="font-medium">{formatCurrencyWithSymbol(payment?.vat_amount || 0)} {payment?.currency || 'NGN'}</span>
+                        </div>
+                        <div className="flex items-center justify-between border-t border-gray-200 pt-3">
+                            <span className="font-medium text-gray-900">Total amount</span>
+                            <span className="font-semibold">{formatCurrencyWithSymbol(payment?.total_amount || 0)} {payment?.currency || 'NGN'}</span>
                         </div>
                     </div>
 

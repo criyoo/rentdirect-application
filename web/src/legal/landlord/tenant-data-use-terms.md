@@ -2,9 +2,6 @@
 
 ## CONFIDENTIALITY, SCREENING, AND LAWFUL USE OF TENANT INFORMATION
 
-**Effective Date:** ____________________  
-**Last Updated:** ____________________
-
 These Terms apply when a Landlord or authorised representative views, receives, downloads, discusses, or otherwise uses Tenant profile, screening, enquiry, message, Booking, identity, financial, guarantor, or rental-history information through RentDirect.
 
 ## 1. LIMITED PURPOSE
@@ -30,7 +27,7 @@ Do not copy, download, screenshot, or forward a profile or document merely for c
 
 You must protect Tenant information from unauthorised access, loss, disclosure, or alteration. Access should be limited to authorised people who need it and understand their confidentiality obligations. Use secure devices and accounts, and do not send sensitive information over insecure channels.
 
-Notify RentDirect promptly at **info@rentdirect.homes** if information is lost, misdirected, exposed, stolen, or accessed by an unauthorised person. You may also have separate legal notification obligations.
+Notify RentDirect promptly at **<info@rentdirect.homes>** if information is lost, misdirected, exposed, stolen, or accessed by an unauthorised person. You may also have separate legal notification obligations.
 
 ## 4. LAWFUL AND FAIR SCREENING
 

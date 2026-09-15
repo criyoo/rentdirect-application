@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api } from '@/lib/api'
+import { api, extractApiErrorMessage } from '@/lib/api'
+import { buildFormDraftKey, readFormDraft, removeFormDraft, writeFormDraft } from '@/lib/formDrafts'
 import BrandLogo from '@/components/BrandLogo'
 
-export default function AdminRegisterPage()
-{
+export default function AdminRegisterPage() {
     const navigate = useNavigate()
     const [formData, setFormData] = useState({
         name: '',
@@ -16,30 +16,37 @@ export default function AdminRegisterPage()
     const [isLoading, setIsLoading] = useState(false)
     const [error, setError] = useState('')
     const [success, setSuccess] = useState('')
+    const draftStorageKey = useMemo(() => buildFormDraftKey('admin-registration', 'anonymous'), [])
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) =>
-    {
+    useEffect(() => {
+        const storedDraft = readFormDraft<{ name?: string; email?: string }>(draftStorageKey)
+        if (!storedDraft) return
+        setFormData((current) => ({ ...current, name: storedDraft.name || '', email: storedDraft.email || '' }))
+    }, [draftStorageKey])
+
+    useEffect(() => {
+        writeFormDraft(draftStorageKey, { name: formData.name, email: formData.email })
+    }, [draftStorageKey, formData.email, formData.name])
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setFormData({
             ...formData,
             [e.target.name]: e.target.value
         })
     }
 
-    const handleSubmit = async (e: React.FormEvent) =>
-    {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
         setError('')
         setSuccess('')
 
         // Validation
-        if (formData.password !== formData.confirmPassword)
-        {
+        if (formData.password !== formData.confirmPassword) {
             setError('Passwords do not match')
             return
         }
 
-        if (formData.password.length < 8)
-        {
+        if (formData.password.length < 8) {
             setError('Password must be at least 8 characters long')
             return
         }
@@ -47,16 +54,14 @@ export default function AdminRegisterPage()
         // Check if admin registration is enabled
         const ADMIN_REGISTRATION_CODE = import.meta.env.VITE_ADMIN_REGISTRATION_CODE || 'DIRECTRENT2025'
 
-        if (!formData.adminCode || formData.adminCode !== ADMIN_REGISTRATION_CODE)
-        {
+        if (!formData.adminCode || formData.adminCode !== ADMIN_REGISTRATION_CODE) {
             setError('Invalid admin registration code')
             return
         }
 
         setIsLoading(true)
 
-        try
-        {
+        try {
             await api.post('/admin/register', {
                 name: formData.name,
                 email: formData.email,
@@ -64,16 +69,14 @@ export default function AdminRegisterPage()
                 role: 'admin'
             })
 
+            removeFormDraft(draftStorageKey)
             setSuccess('Admin user created successfully! Redirecting to login...')
-            setTimeout(() =>
-            {
+            setTimeout(() => {
                 navigate('/admin/login')
             }, 2000)
-        } catch (err: any)
-        {
-            setError(err.response?.data?.detail || 'Failed to create admin user')
-        } finally
-        {
+        } catch (err: any) {
+            setError(extractApiErrorMessage(err, 'Failed to create admin user'))
+        } finally {
             setIsLoading(false)
         }
     }

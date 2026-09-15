@@ -32,6 +32,8 @@ The Platform currently uses Bronze, Silver, Gold, and Platinum plan codes for bo
 
 Plan benefits, access restrictions, response times, and feature availability are described on the Platform and may differ by role. A plan does not guarantee a property, Tenant, Landlord, viewing, response, successful payment, or rental outcome.
 
+A 7.5% value added tax (VAT) is added to each paid Tenant or Landlord subscription fee. The checkout and receipt show the subscription fee, VAT amount, and total amount paid separately. Bronze subscriptions with a zero fee do not attract VAT.
+
 ## 3. SUBSCRIPTION PERIOD AND RENEWAL
 
 Monthly subscriptions are intended to last for the period displayed at purchase and yearly subscriptions for the displayed annual period. The current Platform does not automatically renew subscriptions unless a separate checkout notice expressly says otherwise.

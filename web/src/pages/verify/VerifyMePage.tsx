@@ -8,7 +8,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useAuth } from '@/hooks/useAuth'
 import { useAppPopup } from '@/contexts/AppPopupContext'
 import LegalDocumentsConsent from '@/components/LegalDocumentsConsent'
-import { api } from '@/lib/api'
+import { api, extractApiErrorMessage, extractApiFieldErrors } from '@/lib/api'
 import { buildFormDraftKey, readFormDraft, removeFormDraft, writeFormDraft } from '@/lib/formDrafts'
 import { isNigeriaSelection, nigeriaStateLgaMap, nigerianStates, worldCountryOptions } from '@/lib/locations'
 import {
@@ -270,7 +270,7 @@ export default function VerifyMePage() {
         }
     }, [existingProfile, me, user])
 
-    const { register, handleSubmit, watch, reset, setValue, clearErrors, formState: { errors, isSubmitting } } = useForm<VerificationFormValues>({
+    const { register, handleSubmit, watch, reset, setValue, setError, clearErrors, formState: { errors, isSubmitting } } = useForm<VerificationFormValues>({
         resolver: zodResolver(schema),
         defaultValues,
     })
@@ -289,8 +289,9 @@ export default function VerifyMePage() {
     useEffect(() => {
         if (!verificationDraftStorageKey) return
 
-        const storedDraft = readFormDraft<Partial<VerificationFormValues>>(verificationDraftStorageKey)
+        const storedDraft = readFormDraft<Partial<VerificationFormValues> & { hasAcceptedLegalConsent?: boolean }>(verificationDraftStorageKey)
         reset({ ...defaultValues, ...(storedDraft || {}) })
+        setHasAcceptedLegalConsent(Boolean(storedDraft?.hasAcceptedLegalConsent))
         setHydratedDraftStorageKey(verificationDraftStorageKey)
     }, [defaultValues, reset, verificationDraftStorageKey])
 
@@ -303,8 +304,8 @@ export default function VerifyMePage() {
             return
         }
 
-        writeFormDraft(verificationDraftStorageKey, watchedFormValues)
-    }, [draftPersistenceEnabled, hydratedDraftStorageKey, verificationDraftStorageKey, watchedFormValues])
+        writeFormDraft(verificationDraftStorageKey, { ...watchedFormValues, hasAcceptedLegalConsent })
+    }, [draftPersistenceEnabled, hasAcceptedLegalConsent, hydratedDraftStorageKey, verificationDraftStorageKey, watchedFormValues])
 
     const nationality = watch('nationality')
     const stateOfOrigin = watch('state_of_origin')
@@ -408,7 +409,17 @@ export default function VerifyMePage() {
             }
         },
         onError: (error: any) => {
-            setSubmitError(error?.response?.data?.detail || error?.message || 'Verification failed. Please try again.')
+            const fieldAliases: Record<string, keyof VerificationFormValues> = {
+                nin: 'nin_number',
+                bvn: 'bvn_number',
+                contact_number: 'mobile',
+            }
+            const fieldErrors = extractApiFieldErrors(error)
+            Object.entries(fieldErrors).forEach(([field, message]) => {
+                const formField = fieldAliases[field] || field as keyof VerificationFormValues
+                if (formField in defaultValues) setError(formField, { type: 'server', message })
+            })
+            setSubmitError(extractApiErrorMessage(error, 'Verification failed. Please try again.'))
         },
     })
 
@@ -495,7 +506,7 @@ export default function VerifyMePage() {
                             <InputRow label="Email" error={errors.email?.message}>
                                 <TextInput register={register} name="email" type="email" placeholder="Email address" error={errors.email?.message} />
                             </InputRow>
-                            <InputRow label="Mobile (linked to NIN or BVN, optional)" error={errors.mobile?.message}>
+                            <InputRow label="Mobile (linked to NIN/BVN)" error={errors.mobile?.message}>
                                 <TextInput register={register} name="mobile" placeholder={MOBILE_INPUT_PLACEHOLDER} error={errors.mobile?.message} {...mobileInputProps} />
                             </InputRow>
                             <InputRow label="Employment Status" error={errors.employment_status?.message}>

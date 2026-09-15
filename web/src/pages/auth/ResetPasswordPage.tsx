@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
-import { api } from '@/lib/api'
+import { api, extractApiErrorMessage } from '@/lib/api'
 import BrandLogo from '@/components/BrandLogo'
 import { HiLockClosed, HiEye, HiEyeOff } from 'react-icons/hi'
 import DashboardBackButton from '@/components/DashboardBackButton'
 
-export default function ResetPasswordPage()
-{
+export default function ResetPasswordPage() {
     const { token } = useParams()
     const navigate = useNavigate()
     const [password, setPassword] = useState('')
@@ -17,51 +16,42 @@ export default function ResetPasswordPage()
     const [isSuccess, setIsSuccess] = useState(false)
     const [error, setError] = useState('')
 
-    useEffect(() =>
-    {
-        if (!token)
-        {
+    useEffect(() => {
+        if (!token) {
             navigate('/forgot-password')
         }
     }, [token, navigate])
 
-    const handleSubmit = async (e: React.FormEvent) =>
-    {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
         setError('')
 
-        if (password !== confirmPassword)
-        {
+        if (password !== confirmPassword) {
             setError('Passwords do not match')
             return
         }
 
-        if (password.length < 6)
-        {
+        if (password.length < 6) {
             setError('Password must be at least 6 characters long')
             return
         }
 
         setIsLoading(true)
 
-        try
-        {
+        try {
             await api.post('/auth/reset-password', {
                 token,
                 new_password: password
             })
             setIsSuccess(true)
-        } catch (err: any)
-        {
-            setError(err.response?.data?.detail || 'Failed to reset password')
-        } finally
-        {
+        } catch (err: any) {
+            setError(extractApiErrorMessage(err, 'Failed to reset password'))
+        } finally {
             setIsLoading(false)
         }
     }
 
-    if (isSuccess)
-    {
+    if (isSuccess) {
         return (
             <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
                 <div className="max-w-md w-full space-y-8">

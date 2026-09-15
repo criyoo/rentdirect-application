@@ -1,8 +1,3 @@
-# RENTDIRECT COOKIES AND BROWSER STORAGE POLICY
-
-**Effective Date:** __________________
-**Last Updated:** ____________________
-
 ## 1. PURPOSE
 
 This Cookies Policy explains how RentDirect uses cookies, local storage, session storage, pixels, logs, and similar browser technologies when you access the RentDirect website or web application (the “Platform”). It should be read with the Privacy Policy and Terms of Service.

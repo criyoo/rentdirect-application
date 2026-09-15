@@ -155,4 +155,6 @@ staticfiles/
 .settings/
 .classpath
 .factorypath
+.vscode
+.kilo
 .kilocode

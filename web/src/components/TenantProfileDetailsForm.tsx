@@ -4,7 +4,8 @@ import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { api, resolveMediaUrl } from '@/lib/api'
+import { api, extractApiErrorMessage, resolveMediaUrl } from '@/lib/api'
+import { useAppPopup } from '@/contexts/AppPopupContext'
 import { useAuth } from '@/hooks/useAuth'
 import { isNigeriaSelection, nigeriaStateLgaMap, nigerianStates, worldCountryOptions } from '@/lib/locations'
 import { MOBILE_ERROR_MESSAGE, MOBILE_INPUT_PATTERN, MOBILE_INPUT_PLACEHOLDER, validateMobile } from '@/lib/profile'
@@ -853,6 +854,7 @@ type TenantProfileDetailsFormProps = {
 
 export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetailsFormProps = {}) {
     const { user } = useAuth()
+    const { alert: popupAlert } = useAppPopup()
     const qc = useQueryClient()
     const tenantProfileDraftStorageKey = useMemo(() => {
         const identity = user?.id || user?.email
@@ -1220,14 +1222,14 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
             qc.invalidateQueries({ queryKey: ['tenant-profile'] })
             qc.invalidateQueries({ queryKey: ['users', 'me'] })
             qc.invalidateQueries({ queryKey: ['verification', 'status'] })
-            alert('Tenant profile updated successfully.')
+            void popupAlert('Tenant profile updated successfully.')
             setFileMap({})
             setProfilePhoto(null)
             setSubmitError('')
             onSaved?.(profile)
         },
         onError: (err: any) => {
-            setSubmitError(err?.response?.data?.detail || err.message || 'Submission failed. Please try again.')
+            setSubmitError(extractApiErrorMessage(err, 'Submission failed. Please try again.'))
         },
     })
 

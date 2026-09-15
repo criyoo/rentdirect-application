@@ -97,7 +97,7 @@ export default function LegalDocumentsConsent({ id, audience, signerName = '', c
                 <div>
                     <h2 id={`${id}-heading`} className="text-lg font-semibold text-slate-950">Review terms & conditions and give your consent</h2>
                     <p className="mt-1 text-sm leading-6 text-slate-600">
-                        Read terms and condition below to mark as read. Then “I have read & consent” before submitting your verification.
+                        Read each terms and condition below and tick the checkbox to mark as read.
                     </p>
                 </div>
             </div>
@@ -165,7 +165,7 @@ export default function LegalDocumentsConsent({ id, audience, signerName = '', c
                                                     className="mt-1 h-5 w-5 shrink-0 rounded border-slate-300 text-blue-600 accent-blue-600 focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
                                                 />
                                                 <span className="flex items-start gap-2">
-                                                    <span>Ticking this checkbox serves as concent and electronic signature/acceptance of this document.</span>
+                                                    <span>Ticking this checkbox serves as concent and electronic signature of this document.</span>
                                                     {isRead && <HiCheckCircle className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" aria-label="Document read" />}
                                                 </span>
                                             </label>

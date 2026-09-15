@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import BrandLogo from '@/components/BrandLogo'
 import RegistrationLegalConsentModal from '@/components/RegistrationLegalConsentModal'
+import { buildFormDraftKey, readFormDraft, removeFormDraft, writeFormDraft } from '@/lib/formDrafts'
 import { HiEye, HiEyeOff, HiMail, HiLockClosed, HiUser, HiUserGroup } from 'react-icons/hi'
 
 function getRegistrationErrorMessage(err: any): string {
@@ -41,6 +42,37 @@ export default function RegisterPage() {
     const [isRegistrationConsentOpen, setIsRegistrationConsentOpen] = useState(false)
     const [verifiedRole, setVerifiedRole] = useState<'tenant' | 'landlord' | null>(null)
     const { register, verifyRegistration, logout } = useAuth()
+    const draftStorageKey = useMemo(() => buildFormDraftKey('registration', 'anonymous'), [])
+
+    useEffect(() => {
+        const storedDraft = readFormDraft<{
+            name?: string
+            email?: string
+            role?: 'tenant' | 'landlord'
+            pendingEmail?: string
+            isOtpStep?: boolean
+        }>(draftStorageKey)
+        if (!storedDraft) return
+
+        setFormData((current) => ({
+            ...current,
+            name: storedDraft.name || '',
+            email: storedDraft.email || '',
+            role: isRoleLocked ? initialRole : storedDraft.role || current.role,
+        }))
+        setPendingEmail(storedDraft.pendingEmail || '')
+        setIsOtpStep(Boolean(storedDraft.isOtpStep && storedDraft.pendingEmail))
+    }, [draftStorageKey, initialRole, isRoleLocked])
+
+    useEffect(() => {
+        writeFormDraft(draftStorageKey, {
+            name: formData.name,
+            email: formData.email,
+            role: formData.role,
+            pendingEmail,
+            isOtpStep,
+        })
+    }, [draftStorageKey, formData.email, formData.name, formData.role, isOtpStep, pendingEmail])
 
     // The navbar links can change only the query string while this page is open.
     // Keep the form role and verification step in sync without requiring a refresh.
@@ -85,6 +117,7 @@ export default function RegisterPage() {
             if (verifiedUser.role !== 'tenant' && verifiedUser.role !== 'landlord') {
                 throw new Error('This account type cannot complete registration here.')
             }
+            removeFormDraft(draftStorageKey)
             setVerifiedRole(verifiedUser.role)
             setIsRegistrationConsentOpen(true)
         } catch (err: any) {

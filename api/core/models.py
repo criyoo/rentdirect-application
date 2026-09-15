@@ -1083,6 +1083,8 @@ class SubscriptionPayment(models.Model):
     plan_code = models.CharField(max_length=20, choices=PlanCode.choices)
     billing_cycle = models.CharField(max_length=20, choices=BillingCycle.choices)
     amount = models.DecimalField(max_digits=12, decimal_places=2)
+    vat_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    vat_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     currency = models.CharField(max_length=10, default="NGN")
     status = models.CharField(max_length=30, choices=Status.choices, default=Status.PENDING)
     provider = models.CharField(max_length=40, default="flutterwave")
@@ -1117,6 +1119,53 @@ class SubscriptionPayment(models.Model):
             models.Index(fields=["user", "-created_at"], name="core_subpay_user_ct_idx"),
             models.Index(fields=["status", "-created_at"], name="core_subpay_status_ct_idx"),
         ]
+
+    @property
+    def total_amount(self):
+        return self.amount + self.vat_amount
+
+
+class SubscriptionVATPayment(models.Model):
+    class EntityType(models.TextChoices):
+        TENANT = AppUser.Role.TENANT, "Tenant"
+        LANDLORD = AppUser.Role.LANDLORD, "Landlord"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    subscription_payment = models.OneToOneField(
+        SubscriptionPayment,
+        on_delete=models.PROTECT,
+        related_name="vat_payment",
+    )
+    payer = models.ForeignKey(
+        AppUser,
+        on_delete=models.SET_NULL,
+        related_name="subscription_vat_payments",
+        null=True,
+        blank=True,
+    )
+    payer_name = models.CharField(max_length=255)
+    payer_email = models.EmailField(db_index=True)
+    entity_type = models.CharField(max_length=20, choices=EntityType.choices, db_index=True)
+    subscription_fee_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    amount_paid = models.DecimalField(max_digits=12, decimal_places=2)
+    vat_rate = models.DecimalField(max_digits=5, decimal_places=2)
+    vat_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    currency = models.CharField(max_length=10, default="NGN")
+    transaction_id = models.CharField(max_length=120, unique=True)
+    provider_transaction_id = models.CharField(max_length=120, blank=True, default="", db_index=True)
+    provider = models.CharField(max_length=40, default="flutterwave")
+    paid_at = models.DateTimeField(db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-paid_at"]
+        indexes = [
+            models.Index(fields=["entity_type", "-paid_at"], name="core_subvat_role_paid_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.payer_name} - {self.transaction_id}"
 
 
 class Review(models.Model):

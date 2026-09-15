@@ -14,12 +14,14 @@ TASK_FLUTTERWAVE_WEBHOOK = "flutterwave_webhook"
 TASK_PROCESS_BOOKING_PAYOUTS = "process_booking_payouts"
 TASK_PROCESS_READY_PAYOUTS = "process_ready_payouts"
 TASK_PROCESS_SUBSCRIPTION_RENEWALS = "process_subscription_renewals"
+TASK_RECONCILE_PENDING_PAYMENTS = "reconcile_pending_payments"
 
 SUPPORTED_PAYMENT_TASKS = {
     TASK_FLUTTERWAVE_WEBHOOK,
     TASK_PROCESS_BOOKING_PAYOUTS,
     TASK_PROCESS_READY_PAYOUTS,
     TASK_PROCESS_SUBSCRIPTION_RENEWALS,
+    TASK_RECONCILE_PENDING_PAYMENTS,
 }
 
 
@@ -72,6 +74,10 @@ def enqueue_ready_payouts(*, source: str = "manual") -> None:
 
 def enqueue_subscription_renewals(*, source: str = "manual") -> None:
     enqueue_payment_task(TASK_PROCESS_SUBSCRIPTION_RENEWALS, {"source": source})
+
+
+def enqueue_pending_payment_reconciliation(*, source: str = "manual") -> None:
+    enqueue_payment_task(TASK_RECONCILE_PENDING_PAYMENTS, {"source": source})
 
 
 def redis_connection():
@@ -217,14 +223,24 @@ def execute_payment_task(task: str, payload: dict[str, Any] | None = None):
 
         return {"status": "ok", "result": process_due_subscription_renewals()}
 
+    if task == TASK_RECONCILE_PENDING_PAYMENTS:
+        from core.views import reconcile_pending_customer_payments
+
+        return {"status": "ok", "result": reconcile_pending_customer_payments()}
+
     raise PaymentQueueError(f"Unsupported payment queue task: {task}")
 
 
 def watch_scheduled_payment_tasks(*, once: bool = False) -> None:
     payout_interval = max(int(getattr(settings, "PAYMENT_QUEUE_READY_PAYOUT_INTERVAL_SECONDS", 900)), 60)
     renewal_interval = max(int(getattr(settings, "PAYMENT_QUEUE_SUBSCRIPTION_RENEWAL_INTERVAL_SECONDS", 3600)), 60)
+    reconciliation_interval = max(
+        int(getattr(settings, "PAYMENT_QUEUE_RECONCILIATION_INTERVAL_SECONDS", 300)),
+        60,
+    )
     last_payout_run = 0.0
     last_renewal_run = 0.0
+    last_reconciliation_run = 0.0
 
     while True:
         now = time.monotonic()
@@ -240,6 +256,12 @@ def watch_scheduled_payment_tasks(*, once: bool = False) -> None:
             except Exception:
                 logger.exception("Failed to enqueue scheduled subscription-renewal task.")
             last_renewal_run = now
+        if now - last_reconciliation_run >= reconciliation_interval:
+            try:
+                enqueue_pending_payment_reconciliation(source="payment_queue_scheduler")
+            except Exception:
+                logger.exception("Failed to enqueue pending-payment reconciliation task.")
+            last_reconciliation_run = now
         if once:
             return
-        time.sleep(min(30, payout_interval, renewal_interval))
+        time.sleep(min(30, payout_interval, renewal_interval, reconciliation_interval))
