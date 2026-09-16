@@ -2057,7 +2057,6 @@ class VerificationRequestViewSetTests(TestCase):
     def _complete_tenant_profile_payload(self):
         return {
             "nin_number": "12345678901",
-            "bvn_number": "22347235093",
             "first_name": "Christian",
             "middle_name": "Odezi",
             "last_name": "Aluya",
@@ -2151,6 +2150,52 @@ class VerificationRequestViewSetTests(TestCase):
             for title in ("Employment Letter", "Staff ID")
         ]
         return [str(document.id) for document in documents]
+
+    def test_tenant_nin_lga_is_validated_only_when_present(self):
+        from core.dikript_verification import validate_nin_payload as validate_dikript_nin_payload
+        from core.prembly_verification import validate_nin_payload as validate_prembly_nin_payload
+
+        input_data = {
+            "first_name": "Christian",
+            "middle_name": "Odezi",
+            "last_name": "Aluya",
+            "date_of_birth": "1977-02-06",
+            "lga": "Isoko North",
+            "mobile": "09080350066",
+        }
+        for validate_nin_payload, payload in (
+            (validate_dikript_nin_payload, self._nin_payload()),
+            (validate_prembly_nin_payload, self._prembly_nin_payload(phone="09080350066")),
+        ):
+            payload["data"]["self_origin_lga"] = "Surulere"
+            mismatches, _ = validate_nin_payload(input_data, payload["data"])
+            self.assertEqual(mismatches["lga"], "LGA does not match the NIN record.")
+
+            payload["data"]["self_origin_lga"] = ""
+            mismatches, _ = validate_nin_payload(input_data, payload["data"])
+            self.assertNotIn("lga", mismatches)
+
+    def test_landlord_bvn_lga_matches_a_contained_value(self):
+        from core.dikript_verification import validate_bvn_payload as validate_dikript_bvn_payload
+        from core.prembly_verification import validate_bvn_payload as validate_prembly_bvn_payload
+
+        input_data = {
+            "first_name": "Christian",
+            "middle_name": "Odezi",
+            "last_name": "Aluya",
+            "date_of_birth": "1977-02-06",
+            "gender": "Male",
+            "lga": "Surulere",
+            "nationality": "Nigerian",
+            "state_of_origin": "Delta",
+            "mobile": "09080350066",
+        }
+        for validate_bvn_payload, payload in (
+            (validate_dikript_bvn_payload, self._bvn_payload()),
+            (validate_prembly_bvn_payload, self._prembly_bvn_payload()),
+        ):
+            payload["data"]["lgaOfOrigin"] = "Surulere, Lagos State, Nigeria"
+            self.assertNotIn("lga", validate_bvn_payload(input_data, payload["data"]))
 
     def test_dikript_lookup_stores_successful_nin_bvn_and_cac_records(self):
         from core.dikript_verification import dikript_lookup
@@ -2273,8 +2318,8 @@ class VerificationRequestViewSetTests(TestCase):
         self.assertEqual(payload["data"]["rc_number"], "9629888")
 
     @patch("core.dikript_verification.dikript_lookup")
-    def test_tenant_profile_submission_verifies_nin_and_bvn(self, dikript_lookup_mock):
-        dikript_lookup_mock.side_effect = [self._nin_payload(), self._bvn_payload()]
+    def test_tenant_profile_submission_verifies_nin_only(self, dikript_lookup_mock):
+        dikript_lookup_mock.return_value = self._nin_payload()
         user = AppUser.objects.create_user(
             email="tenant-dikript@example.com",
             password="password-123",
@@ -2290,7 +2335,6 @@ class VerificationRequestViewSetTests(TestCase):
             "/api/v1/users/me/tenant-profile",
             {
                 "nin_number": "12345678901",
-                "bvn_number": "22347235093",
                 "first_name": "Christian",
                 "middle_name": "Odezi",
                 "last_name": "Aluya",
@@ -2307,11 +2351,11 @@ class VerificationRequestViewSetTests(TestCase):
         self.assertEqual(response.status_code, 201, response.json())
         user.refresh_from_db()
         self.assertEqual(user.nin_number, "12345678901")
-        self.assertEqual(user.bvn_number, "22347235093")
         self.assertEqual(user.tenant_verification_profile["first_name"], "Christian")
         self.assertEqual(user.tenant_verification_profile["date_of_birth"], "1977-02-06")
         self.assertEqual(user.tenant_verification_profile["nin_number"], "12345678901")
-        self.assertEqual(user.tenant_verification_profile["bvn_number"], "22347235093")
+        self.assertNotIn("bvn_number", user.tenant_verification_profile)
+        self.assertEqual(dikript_lookup_mock.call_count, 1)
         request = VerificationRequest.objects.get(user=user)
         profile = TenantProfile.objects.get(user=user)
         self.assertEqual(profile.status, TenantProfile.Status.PENDING)
@@ -2385,7 +2429,7 @@ class VerificationRequestViewSetTests(TestCase):
     @override_settings(VERIFICATION_SERVICE="prembly")
     @patch("core.prembly_verification.prembly_lookup")
     def test_tenant_profile_submission_can_use_prembly_verification(self, prembly_lookup_mock):
-        prembly_lookup_mock.side_effect = [self._prembly_nin_payload(), self._prembly_bvn_payload()]
+        prembly_lookup_mock.return_value = self._prembly_nin_payload()
         user = AppUser.objects.create_user(
             email="tenant-prembly@example.com",
             password="password-123",
@@ -2401,7 +2445,6 @@ class VerificationRequestViewSetTests(TestCase):
             "/api/v1/users/me/tenant-profile",
             {
                 "nin_number": "91231161558",
-                "bvn_number": "22347235093",
                 "first_name": "Christian",
                 "middle_name": "Odezi",
                 "last_name": "Aluya",
@@ -2416,8 +2459,8 @@ class VerificationRequestViewSetTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 201, response.json())
-        self.assertEqual(prembly_lookup_mock.call_args_list[0].kwargs["body"], {"number_nin": "91231161558"})
-        self.assertEqual(prembly_lookup_mock.call_args_list[1].kwargs["body"], {"number": "22347235093"})
+        self.assertEqual(prembly_lookup_mock.call_count, 1)
+        self.assertEqual(prembly_lookup_mock.call_args.kwargs["body"], {"number_nin": "91231161558"})
 
     @patch("core.dikript_verification.dikript_lookup")
     def test_tenant_identification_request_is_automated_without_manual_review(self, dikript_lookup_mock):
@@ -2516,8 +2559,8 @@ class VerificationRequestViewSetTests(TestCase):
         self.assertFalse(dikript_lookup_mock.called)
 
     @patch("core.dikript_verification.dikript_lookup")
-    def test_tenant_profile_submission_rejects_mismatched_bvn(self, dikript_lookup_mock):
-        dikript_lookup_mock.side_effect = [self._nin_payload(), self._bvn_payload()]
+    def test_tenant_profile_submission_uses_only_nin(self, dikript_lookup_mock):
+        dikript_lookup_mock.return_value = self._nin_payload()
         user = AppUser.objects.create_user(
             email="tenant-dikript-fail@example.com",
             password="password-123",
@@ -2547,9 +2590,9 @@ class VerificationRequestViewSetTests(TestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, 400, response.json())
-        self.assertIn("lga", response.json())
-        self.assertFalse(TenantProfile.objects.filter(user=user).exists())
+        self.assertEqual(response.status_code, 201, response.json())
+        self.assertEqual(dikript_lookup_mock.call_count, 1)
+        self.assertTrue(TenantProfile.objects.filter(user=user).exists())
 
     @patch("core.dikript_verification.dikript_lookup")
     def test_landlord_individual_identification_verifies_nin_and_bvn(self, dikript_lookup_mock):
@@ -3308,6 +3351,25 @@ class BookingPaymentTests(TestCase):
             role=AppUser.Role.TENANT,
             email_verified=True,
         )
+        TenantProfile.objects.create(
+            user=self.tenant,
+            first_name="Verified",
+            last_name="Tenant",
+            date_of_birth=date(1990, 1, 1),
+            gender="Male",
+            nationality="Nigeria",
+            state_of_origin="Lagos",
+            lga="Ikeja",
+            employment_status="Employed",
+            residence_country="Nigeria",
+            residence_state="Lagos",
+            residence_city="Ikeja",
+            residence_lga="Ikeja",
+            residence_address="1 Test Street",
+            length_of_stay="2 years",
+            housing_status="Rented",
+            status=TenantProfile.Status.APPROVED,
+        )
         self.listing = Listing.objects.create(
             landlord=self.landlord,
             title="Payment Ready Listing",
@@ -3350,6 +3412,31 @@ class BookingPaymentTests(TestCase):
             email_verified=True,
         )
         create_active_subscription(tenant, SubscriptionPayment.PlanCode.BRONZE, days=14)
+        client = APIClient()
+        client.force_authenticate(user=tenant)
+
+        response = client.post(
+            "/api/v1/bookings",
+            {
+                "listing_id": str(self.listing.id),
+                "start_date": "2026-06-19",
+                "end_date": "2027-06-19",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 403, response.json())
+        self.assertFalse(Booking.objects.filter(tenant=tenant, listing=self.listing).exists())
+
+    def test_tenant_without_completed_profile_cannot_create_booking(self):
+        tenant = AppUser.objects.create_user(
+            email="booking-incomplete-profile-tenant@example.com",
+            password="password-123",
+            name="Incomplete Profile Tenant",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        create_active_subscription(tenant, SubscriptionPayment.PlanCode.SILVER)
         client = APIClient()
         client.force_authenticate(user=tenant)
 
@@ -4376,6 +4463,25 @@ class BookingRentalProgressTests(TestCase):
             name="Progress Tenant",
             role=AppUser.Role.TENANT,
             email_verified=True,
+        )
+        TenantProfile.objects.create(
+            user=self.tenant,
+            first_name="Verified",
+            last_name="Tenant",
+            date_of_birth=date(1990, 1, 1),
+            gender="Male",
+            nationality="Nigeria",
+            state_of_origin="Lagos",
+            lga="Ikeja",
+            employment_status="Employed",
+            residence_country="Nigeria",
+            residence_state="Lagos",
+            residence_city="Ikeja",
+            residence_lga="Ikeja",
+            residence_address="1 Test Street",
+            length_of_stay="2 years",
+            housing_status="Rented",
+            status=TenantProfile.Status.APPROVED,
         )
         create_active_subscription(self.tenant, SubscriptionPayment.PlanCode.SILVER)
         self.listing = Listing.objects.create(
@@ -6577,6 +6683,25 @@ class MessageSubscriptionAccessTests(TestCase):
             user=tenant,
             status=VerificationRequest.Status.APPROVED,
         )
+        TenantProfile.objects.create(
+            user=tenant,
+            first_name="Verified",
+            last_name="Tenant",
+            date_of_birth=date(1990, 1, 1),
+            gender="Male",
+            nationality="Nigeria",
+            state_of_origin="Lagos",
+            lga="Ikeja",
+            employment_status="Employed",
+            residence_country="Nigeria",
+            residence_state="Lagos",
+            residence_city="Ikeja",
+            residence_lga="Ikeja",
+            residence_address="1 Test Street",
+            length_of_stay="2 years",
+            housing_status="Rented",
+            status=TenantProfile.Status.APPROVED,
+        )
         return tenant
 
     def create_landlord(self, email):
@@ -6628,6 +6753,33 @@ class MessageSubscriptionAccessTests(TestCase):
 
         self.assertEqual(create_response.status_code, 201, create_response.json())
         self.assertEqual(conversations_response.status_code, 200, conversations_response.json())
+
+    def test_tenant_without_completed_profile_cannot_contact_landlord(self):
+        tenant = AppUser.objects.create_user(
+            email="message-incomplete-profile-tenant@example.com",
+            password="password-123",
+            name="Incomplete Profile Tenant",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        VerificationRequest.objects.create(user=tenant, status=VerificationRequest.Status.APPROVED)
+        landlord = self.create_landlord("message-incomplete-profile-landlord@example.com")
+        create_active_subscription(tenant, SubscriptionPayment.PlanCode.SILVER)
+        create_active_subscription(landlord, SubscriptionPayment.PlanCode.SILVER)
+
+        client = APIClient()
+        client.force_authenticate(user=tenant)
+        response = client.post(
+            "/api/v1/messages",
+            {
+                "receiver_id": str(landlord.id),
+                "content": "I would like to arrange a viewing.",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 403, response.json())
+        self.assertFalse(Message.objects.filter(sender=tenant, receiver=landlord).exists())
 
     def test_bronze_tenant_cannot_read_landlord_conversations(self):
         tenant = self.create_verified_tenant("message-bronze-history-tenant@example.com")
@@ -6698,6 +6850,25 @@ class MessageEnquiryTests(TestCase):
         VerificationRequest.objects.create(
             user=tenant,
             status=VerificationRequest.Status.APPROVED,
+        )
+        TenantProfile.objects.create(
+            user=tenant,
+            first_name="Verified",
+            last_name="Tenant",
+            date_of_birth=date(1990, 1, 1),
+            gender="Male",
+            nationality="Nigeria",
+            state_of_origin="Lagos",
+            lga="Ikeja",
+            employment_status="Employed",
+            residence_country="Nigeria",
+            residence_state="Lagos",
+            residence_city="Ikeja",
+            residence_lga="Ikeja",
+            residence_address="1 Test Street",
+            length_of_stay="2 years",
+            housing_status="Rented",
+            status=TenantProfile.Status.APPROVED,
         )
         return tenant
 

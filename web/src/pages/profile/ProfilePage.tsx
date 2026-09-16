@@ -149,7 +149,7 @@ export default function ProfilePage() {
 
     return (
         <div className="container-modern py-8">
-            <DashboardBackButton fallbackTo={dashboardPath} />
+            <DashboardBackButton to={dashboardPath} label="Back to Dashboard" />
 
             <div className="mt-5 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
                 <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">

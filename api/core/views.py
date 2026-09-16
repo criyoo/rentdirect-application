@@ -86,7 +86,7 @@ from .flutterwave import (
     should_use_v4,
     verify_webhook_signature,
 )
-from .verification_service import verify_cac, verify_nin_and_bvn
+from .verification_service import verify_cac, verify_nin, verify_nin_and_bvn
 from .notifications import (
     send_feedback_acknowledgement,
     send_landlord_payout_notification,
@@ -119,6 +119,7 @@ from .subscription_access import (
     active_plan_code_for,
     support_response_time_for,
     user_has_bronze_access,
+    user_has_completed_tenant_profile,
     user_has_gold_access,
     user_has_platinum_access,
     user_has_silver_access,
@@ -206,7 +207,7 @@ def extract_mobile_verification_warning(value: Any) -> str:
     return ""
 
 
-def verify_tenant_identity_or_raise(user, profile_data: dict, nin_number: str, bvn_number: str) -> tuple[dict, dict]:
+def verify_tenant_identity_or_raise(user, profile_data: dict, nin_number: str) -> dict:
     identity_data = {
         "first_name": profile_data.get("first_name"),
         "middle_name": profile_data.get("middle_name"),
@@ -220,12 +221,10 @@ def verify_tenant_identity_or_raise(user, profile_data: dict, nin_number: str, b
     }
     if not nin_number:
         raise ValidationError({"nin_number": "NIN is required."})
-    if not bvn_number:
-        raise ValidationError({"bvn_number": "BVN is required."})
-    return verify_nin_and_bvn(identity_data, nin_number, bvn_number)
+    return verify_nin(identity_data, nin_number)
 
 
-def tenant_verified_identity_matches(user, profile_data: dict, nin_number: str, bvn_number: str) -> bool:
+def tenant_verified_identity_matches(user, profile_data: dict, nin_number: str) -> bool:
     if not VerificationRequest.objects.filter(
         user=user,
         identity_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
@@ -240,7 +239,6 @@ def tenant_verified_identity_matches(user, profile_data: dict, nin_number: str, 
         {
             **profile_data,
             "nin_number": nin_number,
-            "bvn_number": bvn_number,
         },
         user,
     )
@@ -255,7 +253,6 @@ def tenant_verified_identity_matches(user, profile_data: dict, nin_number: str, 
         "lga",
         "mobile",
         "nin_number",
-        "bvn_number",
     )
     return all(
         str(stored_profile.get(field_name) or "").strip().lower()
@@ -3247,7 +3244,7 @@ class UserViewSet(viewsets.GenericViewSet):
 
         data = request.data.copy()
         nin_number = str(data.pop("nin_number", request.user.nin_number) or "").strip()
-        bvn_number = str(data.pop("bvn_number", request.user.bvn_number) or "").strip()
+        data.pop("bvn_number", None)
         for verification_only_field in ("country_of_birth", "email", "mobile"):
             data.pop(verification_only_field, None)
         data["user"] = request.user.id
@@ -3257,8 +3254,8 @@ class UserViewSet(viewsets.GenericViewSet):
             serializer = TenantProfileSerializer(data=data)
             serializer.is_valid(raise_exception=True)
             mobile_warning = ""
-            if not tenant_verified_identity_matches(request.user, serializer.validated_data, nin_number, bvn_number):
-                verification_payloads = verify_tenant_identity_or_raise(request.user, serializer.validated_data, nin_number, bvn_number)
+            if not tenant_verified_identity_matches(request.user, serializer.validated_data, nin_number):
+                verification_payloads = verify_tenant_identity_or_raise(request.user, serializer.validated_data, nin_number)
                 mobile_warning = extract_mobile_verification_warning(verification_payloads)
             verification_profile = normalize_tenant_verification_profile(
                 {
@@ -3267,15 +3264,13 @@ class UserViewSet(viewsets.GenericViewSet):
                     "email": request.data.get("email") or request.user.email,
                     "mobile": request.data.get("mobile") or request.user.mobile,
                     "nin_number": nin_number,
-                    "bvn_number": bvn_number,
                 },
                 request.user,
             )
             with transaction.atomic():
                 request.user.nin_number = nin_number
-                request.user.bvn_number = bvn_number
                 request.user.tenant_verification_profile = verification_profile
-                request.user.save(update_fields=["nin_number", "bvn_number", "tenant_verification_profile", "updated_at"])
+                request.user.save(update_fields=["nin_number", "tenant_verification_profile", "updated_at"])
                 new_profile = serializer.save(user=request.user)
             vr = sync_tenant_profile_approval(request.user, new_profile)
             if new_profile.supporting_documents.exists():
@@ -3302,8 +3297,8 @@ class UserViewSet(viewsets.GenericViewSet):
             **serializer.validated_data,
         }
         mobile_warning = ""
-        if not tenant_verified_identity_matches(request.user, merged_profile_data, nin_number, bvn_number):
-            verification_payloads = verify_tenant_identity_or_raise(request.user, merged_profile_data, nin_number, bvn_number)
+        if not tenant_verified_identity_matches(request.user, merged_profile_data, nin_number):
+            verification_payloads = verify_tenant_identity_or_raise(request.user, merged_profile_data, nin_number)
             mobile_warning = extract_mobile_verification_warning(verification_payloads)
         verification_profile = normalize_tenant_verification_profile(
             {
@@ -3312,15 +3307,13 @@ class UserViewSet(viewsets.GenericViewSet):
                 "email": request.data.get("email") or request.user.email,
                 "mobile": request.data.get("mobile") or request.user.mobile,
                 "nin_number": nin_number,
-                "bvn_number": bvn_number,
             },
             request.user,
         )
         with transaction.atomic():
             request.user.nin_number = nin_number
-            request.user.bvn_number = bvn_number
             request.user.tenant_verification_profile = verification_profile
-            request.user.save(update_fields=["nin_number", "bvn_number", "tenant_verification_profile", "updated_at"])
+            request.user.save(update_fields=["nin_number", "tenant_verification_profile", "updated_at"])
             updated_profile = serializer.save()
         vr = sync_tenant_profile_approval(request.user, updated_profile)
         if updated_profile.supporting_documents.exists():
@@ -4045,21 +4038,18 @@ class TenantVerificationRequestViewSet(VerificationRequestBaseViewSet):
                     request.user,
                 )
             nin_number = str(profile_data.get("nin_number") or request.user.nin_number or "").strip()
-            bvn_number = str(profile_data.get("bvn_number") or request.user.bvn_number or "").strip()
             mobile_warning = extract_mobile_verification_warning(
-                verify_tenant_identity_or_raise(request.user, profile_data, nin_number, bvn_number)
+                verify_tenant_identity_or_raise(request.user, profile_data, nin_number)
             )
             request.user.nin_number = nin_number
-            request.user.bvn_number = bvn_number
             request.user.tenant_verification_profile = normalize_tenant_verification_profile(
                 {
                     **profile_data,
                     "nin_number": nin_number,
-                    "bvn_number": bvn_number,
                 },
                 request.user,
             )
-            request.user.save(update_fields=["nin_number", "bvn_number", "tenant_verification_profile", "updated_at"])
+            request.user.save(update_fields=["nin_number", "tenant_verification_profile", "updated_at"])
             if profile and tenant_profile_has_mandatory_fields(profile):
                 profile.status = TenantProfile.Status.APPROVED
                 profile.save(update_fields=["status", "updated_at"])
@@ -4086,6 +4076,8 @@ class BookingViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         if self.request.user.role != AppUser.Role.TENANT:
             raise PermissionDenied("Only tenants can rent properties.")
+        if not user_has_completed_tenant_profile(self.request.user):
+            raise PermissionDenied("Complete your tenant profile before renting a property.")
         if not user_has_silver_access(self.request.user):
             raise PermissionDenied("Renting property is available from the Silver plan.")
         serializer.save()
@@ -4122,6 +4114,8 @@ class BookingViewSet(viewsets.ModelViewSet):
     def rental_progress(self, request, pk=None):
         booking = self.get_object()
 
+        if request.user.role == AppUser.Role.TENANT and not user_has_completed_tenant_profile(request.user):
+            raise PermissionDenied("Complete your tenant profile before accessing rental progress.")
         if request.user.role == AppUser.Role.TENANT and not user_has_silver_access(request.user):
             raise PermissionDenied("Rental progress tracking is available from the Silver plan.")
 
@@ -4246,6 +4240,8 @@ class PaymentViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         if request.user.role != AppUser.Role.TENANT:
             raise PermissionDenied("Only tenants can make rental payments.")
+        if not user_has_completed_tenant_profile(request.user):
+            raise PermissionDenied("Complete your tenant profile before making rental payments.")
         if not user_has_silver_access(request.user):
             raise PermissionDenied("Rental payments are available from the Silver plan.")
         serializer = self.get_serializer(data=request.data)
@@ -4329,6 +4325,8 @@ class PaymentViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="flutterwave/checkout")
     def flutterwave_checkout(self, request, pk=None):
+        if request.user.role == AppUser.Role.TENANT and not user_has_completed_tenant_profile(request.user):
+            raise PermissionDenied("Complete your tenant profile before making rental payments.")
         if request.user.role == AppUser.Role.TENANT and not user_has_silver_access(request.user):
             raise PermissionDenied("Rental payments are available from the Silver plan.")
         payment = self.get_object()
@@ -4980,6 +4978,8 @@ class MessageViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        if self.request.user.role == AppUser.Role.TENANT and not user_has_completed_tenant_profile(self.request.user):
+            raise PermissionDenied("Complete your tenant profile before accessing landlord conversations.")
         if self.request.user.role == AppUser.Role.TENANT and not user_has_silver_access(self.request.user):
             raise PermissionDenied("Landlord conversations and enquiries are available from the Silver plan.")
         filters = Q(sender=self.request.user) | Q(receiver=self.request.user)
@@ -5046,6 +5046,8 @@ class MessageViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         if self.request.user.role == "tenant" and not self.request.user.is_verified:
             raise PermissionDenied("Your account must be verified before contacting landlords. Please submit your NIN for verification.")
+        if self.request.user.role == AppUser.Role.TENANT and not user_has_completed_tenant_profile(self.request.user):
+            raise PermissionDenied("Complete your tenant profile before contacting landlords.")
         receiver_id = serializer.validated_data.get("receiver_id")
         receiver = AppUser.objects.filter(id=receiver_id).first()
         if receiver is None:

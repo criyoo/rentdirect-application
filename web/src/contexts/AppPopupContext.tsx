@@ -1,4 +1,4 @@
-import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import {
     HiCheckCircle,
     HiExclamation,
@@ -32,6 +32,7 @@ type PopupRequest = Required<Pick<PopupOptions, 'confirmLabel' | 'cancelLabel'>>
 type AppPopupContextValue = {
     alert: (message: string, options?: PopupOptions) => Promise<void>
     confirm: (message: string, options?: PopupOptions) => Promise<boolean>
+    dismiss: () => void
 }
 
 const AppPopupContext = createContext<AppPopupContextValue | null>(null)
@@ -92,12 +93,13 @@ function variantStyles(variant: PopupVariant) {
 
 export function AppPopupProvider({ children }: { children: ReactNode }) {
     const [popup, setPopup] = useState<PopupRequest | null>(null)
+    const popupRef = useRef<PopupRequest | null>(null)
     const [countdownSeconds, setCountdownSeconds] = useState<number | null>(null)
 
     const openPopup = useCallback((mode: PopupMode, message: string, options: PopupOptions = {}) => (
         new Promise<boolean>((resolve) => {
             const variant = options.variant || (mode === 'confirm' ? 'confirm' : inferVariant(message))
-            setPopup({
+            const request = {
                 id: Date.now(),
                 mode,
                 title: options.title || (mode === 'confirm' ? 'Please confirm' : 'RentDirect'),
@@ -107,7 +109,9 @@ export function AppPopupProvider({ children }: { children: ReactNode }) {
                 cancelLabel: options.cancelLabel || 'Cancel',
                 autoConfirmSeconds: options.autoConfirmSeconds,
                 resolve,
-            })
+            }
+            popupRef.current = request
+            setPopup(request)
         })
     ), [])
 
@@ -130,13 +134,13 @@ export function AppPopupProvider({ children }: { children: ReactNode }) {
     }, [alert])
 
     const closePopup = useCallback((accepted: boolean) => {
-        setPopup((current) => {
-            if (current) {
-                current.resolve(accepted)
-            }
-            return null
-        })
+        const current = popupRef.current
+        if (!current) return
+
+        popupRef.current = null
+        setPopup(null)
         setCountdownSeconds(null)
+        current.resolve(accepted)
     }, [])
 
     useEffect(() => {
@@ -163,7 +167,8 @@ export function AppPopupProvider({ children }: { children: ReactNode }) {
         }
     }, [closePopup, popup?.autoConfirmSeconds, popup?.id, popup?.mode])
 
-    const value = useMemo(() => ({ alert, confirm }), [alert, confirm])
+    const dismiss = useCallback(() => closePopup(false), [closePopup])
+    const value = useMemo(() => ({ alert, confirm, dismiss }), [alert, confirm, dismiss])
     const styles = popup ? variantStyles(popup.variant) : null
     const Icon = styles?.icon
 

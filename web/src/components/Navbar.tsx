@@ -39,6 +39,9 @@ export default function Navbar() {
 
     // Use user from localStorage or backend
     const authenticatedUser = user || backendUser
+    const isTenantProfileEditPage = location.pathname.startsWith('/tenants/')
+        && location.pathname.endsWith('/profile')
+        && new URLSearchParams(location.search).get('edit') === '1'
 
     // Check if user is currently on their dashboard page
     const isOnDashboard = authenticatedUser && authenticatedUser.id && (
@@ -70,6 +73,7 @@ export default function Navbar() {
                     <nav className="hidden md:flex items-center gap-3">
                         <NavLink
                             to="/about"
+                            reloadDocument={isTenantProfileEditPage}
                             className={({ isActive }) => `group inline-flex items-center gap-1 rounded-xl px-6 py-2 text-sm font-semibold transition-all duration-300 hover:-translate-y-1.0 hover:bg-indigo-100 hover:text-purple-900 hover:shadow-sm active:scale-95 ${isActive ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-700'}`}
                         >
                             <HiInformationCircle className={navIconClassName} />
@@ -78,6 +82,7 @@ export default function Navbar() {
 
                         {authenticatedUser?.id ? <NavLink
                             to="/how-it-works"
+                            reloadDocument={isTenantProfileEditPage}
                             className={({ isActive }) => `group inline-flex items-center gap-1 rounded-xl px-6 py-2 text-sm font-semibold transition-all duration-300 hover:-translate-y-0.5 hover:bg-indigo-50 hover:text-indigo-700 hover:shadow-sm active:scale-95 ${isActive ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-700'}`}
                         >
                             <HiLightBulb className={navIconClassName} />
@@ -86,6 +91,7 @@ export default function Navbar() {
 
                         <NavLink
                             to="/search"
+                            reloadDocument={isTenantProfileEditPage}
                             className={({ isActive }) => `group inline-flex items-center gap-1 rounded-xl px-3 py-2 text-sm font-semibold transition-all duration-300 hover:-translate-y-0.5 hover:bg-indigo-50 hover:text-indigo-700 hover:shadow-sm active:scale-95 ${isActive ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-700'}`}
                         >
                             <HiSearch className={navIconClassName} />
@@ -107,6 +113,7 @@ export default function Navbar() {
                                 {!isOnDashboard && (
                                     <NavLink
                                         to={authenticatedUser.role === 'landlord' ? `/dashboard/landlord/${authenticatedUser.id}` : `/dashboard/tenant/${authenticatedUser.id}`}
+                                        reloadDocument={isTenantProfileEditPage}
                                         className="group btn gap-2 bg-gradient-to-r from-slate-700 to-indigo-700 text-sm font-semibold text-white shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:from-indigo-600 hover:to-purple-600 hover:shadow-lg active:scale-95"
                                     >
                                         <HiUser className={navIconClassName} />
@@ -176,110 +183,116 @@ export default function Navbar() {
                 </div>
 
                 {/* Mobile Navigation */}
-                {isMobileMenuOpen && (
-                    <div className="md:hidden py-4 border-t border-gray-200 animate-slide-up">
-                        <div className="flex flex-col gap-3">
-                            <NavLink
-                                to="/about"
-                                className={navMenuClassName}
-                                onClick={() => setIsMobileMenuOpen(false)}
-                            >
-                                <HiInformationCircle className="h-6 w-6 transition-transform duration-300 group-hover:scale-110" />
-                                <span>About</span>
-                            </NavLink>
-
-                            {authenticatedUser?.id ? (
+                {
+                    isMobileMenuOpen && (
+                        <div className="md:hidden py-4 border-t border-gray-200 animate-slide-up">
+                            <div className="flex flex-col gap-3">
                                 <NavLink
-                                    to="/how-it-works"
+                                    to="/about"
+                                    reloadDocument={isTenantProfileEditPage}
                                     className={navMenuClassName}
                                     onClick={() => setIsMobileMenuOpen(false)}
                                 >
-                                    <HiLightBulb className="h-6 w-6 transition-transform duration-300 group-hover:scale-110" />
-                                    <span>How it works</span>
+                                    <HiInformationCircle className="h-6 w-6 transition-transform duration-300 group-hover:scale-110" />
+                                    <span>About</span>
                                 </NavLink>
-                            ) : null}
 
-                            <NavLink
-                                to="/search"
-                                className={navMenuClassName}
-                                onClick={() => setIsMobileMenuOpen(false)}
-                            >
-                                <HiSearch className="h-6 w-6 transition-transform duration-300 group-hover:scale-110" />
-                                <span>Search</span>
-                            </NavLink>
-
-                            {authenticatedUser && authenticatedUser.role === 'landlord' && (
-                                <NavLink
-                                    to="/listings/new"
-                                    className={navMenuClassName}
-                                    onClick={() => setIsMobileMenuOpen(false)}
-                                >
-                                    <HiPlus className="h-6 w-6 transition-transform duration-300 group-hover:rotate-90" />
-                                    <span>Add Listing</span>
-                                </NavLink>
-                            )}
-
-                            {authenticatedUser && authenticatedUser.id ? (
-                                <div className="flex flex-col gap-3">
-                                    {!isOnDashboard && (
-                                        <NavLink
-                                            to={authenticatedUser.role === 'landlord' ? `/dashboard/landlord/${authenticatedUser.id}` : `/dashboard/tenant/${authenticatedUser.id}`}
-                                            className="group flex items-center gap-3 rounded-xl bg-gradient-to-r from-slate-700 to-indigo-700 px-4 py-3 font-semibold text-white shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:from-indigo-600 hover:to-purple-600 hover:shadow-md active:scale-[0.98]"
-                                            onClick={() => setIsMobileMenuOpen(false)}
-                                        >
-                                            <HiUser className="h-6 w-6 transition-transform duration-300 group-hover:scale-110" />
-                                            <span>Dashboard</span>
-                                        </NavLink>
-                                    )}
-
-                                    <button
-                                        onClick={handleLogout}
-                                        className="group flex w-full items-center gap-3 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 px-4 py-3 font-semibold text-white shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:from-red-600 hover:to-rose-700 hover:shadow-md active:scale-[0.98]"
-                                    >
-                                        <HiLogout className="h-6 w-6 transition-transform duration-300 group-hover:translate-x-0.5" />
-                                        <span>Logout</span>
-                                    </button>
-                                </div>
-                            ) : (
-                                <div className="flex flex-col gap-3">
+                                {authenticatedUser?.id ? (
                                     <NavLink
-                                        to="/login"
+                                        to="/how-it-works"
+                                        reloadDocument={isTenantProfileEditPage}
                                         className={navMenuClassName}
                                         onClick={() => setIsMobileMenuOpen(false)}
                                     >
-                                        <HiLogin className="h-6 w-6 transition-transform duration-300 group-hover:translate-x-0.5" />
-                                        <span>Login</span>
+                                        <HiLightBulb className="h-6 w-6 transition-transform duration-300 group-hover:scale-110" />
+                                        <span>How it works</span>
                                     </NavLink>
+                                ) : null}
 
-                                    <NavLink
-                                        to="/register?role=tenant"
-                                        onClick={() => setIsMobileMenuOpen(false)}
-                                        className={`group flex items-center gap-3 rounded-xl px-4 py-3 font-semibold shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md active:scale-[0.98] ${isTenantRegistrationActive
-                                            ? 'bg-indigo-600 text-white shadow-md'
-                                            : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-400'
-                                            }`}
-                                    >
-                                        <HiHome className="h-6 w-6 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:scale-120" />
-                                        <span>Find a home</span>
-                                    </NavLink>
+                                <NavLink
+                                    to="/search"
+                                    reloadDocument={isTenantProfileEditPage}
+                                    className={navMenuClassName}
+                                    onClick={() => setIsMobileMenuOpen(false)}
+                                >
+                                    <HiSearch className="h-6 w-6 transition-transform duration-300 group-hover:scale-110" />
+                                    <span>Search</span>
+                                </NavLink>
 
+                                {authenticatedUser && authenticatedUser.role === 'landlord' && (
                                     <NavLink
-                                        to="/register?role=landlord"
+                                        to="/listings/new"
+                                        className={navMenuClassName}
                                         onClick={() => setIsMobileMenuOpen(false)}
-                                        className={`group flex items-center gap-3 rounded-xl px-4 py-3 font-semibold shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md active:scale-[0.98] ${isLandlordRegistrationActive
-                                            ? 'bg-purple-600 text-white shadow-md'
-                                            : 'bg-purple-50 text-purple-700 hover:bg-purple-400'
-                                            }`}
                                     >
-                                        <HiOfficeBuilding className="h-6 w-6 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:scale-120" />
-                                        <span>List a Property</span>
+                                        <HiPlus className="h-6 w-6 transition-transform duration-300 group-hover:rotate-90" />
+                                        <span>Add Listing</span>
                                     </NavLink>
-                                </div>
-                            )}
+                                )}
+
+                                {authenticatedUser && authenticatedUser.id ? (
+                                    <div className="flex flex-col gap-3">
+                                        {!isOnDashboard && (
+                                            <NavLink
+                                                to={authenticatedUser.role === 'landlord' ? `/dashboard/landlord/${authenticatedUser.id}` : `/dashboard/tenant/${authenticatedUser.id}`}
+                                                reloadDocument={isTenantProfileEditPage}
+                                                className="group flex items-center gap-3 rounded-xl bg-gradient-to-r from-slate-700 to-indigo-700 px-4 py-3 font-semibold text-white shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:from-indigo-600 hover:to-purple-600 hover:shadow-md active:scale-[0.98]"
+                                                onClick={() => setIsMobileMenuOpen(false)}
+                                            >
+                                                <HiUser className="h-6 w-6 transition-transform duration-300 group-hover:scale-110" />
+                                                <span>Dashboard</span>
+                                            </NavLink>
+                                        )}
+
+                                        <button
+                                            onClick={handleLogout}
+                                            className="group flex w-full items-center gap-3 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 px-4 py-3 font-semibold text-white shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:from-red-600 hover:to-rose-700 hover:shadow-md active:scale-[0.98]"
+                                        >
+                                            <HiLogout className="h-6 w-6 transition-transform duration-300 group-hover:translate-x-0.5" />
+                                            <span>Logout</span>
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col gap-3">
+                                        <NavLink
+                                            to="/login"
+                                            className={navMenuClassName}
+                                            onClick={() => setIsMobileMenuOpen(false)}
+                                        >
+                                            <HiLogin className="h-6 w-6 transition-transform duration-300 group-hover:translate-x-0.5" />
+                                            <span>Login</span>
+                                        </NavLink>
+
+                                        <NavLink
+                                            to="/register?role=tenant"
+                                            onClick={() => setIsMobileMenuOpen(false)}
+                                            className={`group flex items-center gap-3 rounded-xl px-4 py-3 font-semibold shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md active:scale-[0.98] ${isTenantRegistrationActive
+                                                ? 'bg-indigo-600 text-white shadow-md'
+                                                : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-400'
+                                                }`}
+                                        >
+                                            <HiHome className="h-6 w-6 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:scale-120" />
+                                            <span>Find a home</span>
+                                        </NavLink>
+
+                                        <NavLink
+                                            to="/register?role=landlord"
+                                            onClick={() => setIsMobileMenuOpen(false)}
+                                            className={`group flex items-center gap-3 rounded-xl px-4 py-3 font-semibold shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md active:scale-[0.98] ${isLandlordRegistrationActive
+                                                ? 'bg-purple-600 text-white shadow-md'
+                                                : 'bg-purple-50 text-purple-700 hover:bg-purple-400'
+                                                }`}
+                                        >
+                                            <HiOfficeBuilding className="h-6 w-6 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:scale-120" />
+                                            <span>List a Property</span>
+                                        </NavLink>
+                                    </div>
+                                )}
+                            </div>
                         </div>
-                    </div>
-                )}
-            </div>
-        </header>
+                    )
+                }
+            </div >
+        </header >
     )
 }

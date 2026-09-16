@@ -12,9 +12,6 @@ import { api, extractApiErrorMessage, extractApiFieldErrors } from '@/lib/api'
 import { buildFormDraftKey, readFormDraft, removeFormDraft, writeFormDraft } from '@/lib/formDrafts'
 import { isNigeriaSelection, nigeriaStateLgaMap, nigerianStates, worldCountryOptions } from '@/lib/locations'
 import {
-    BVN_ERROR_MESSAGE,
-    BVN_INPUT_PATTERN,
-    BVN_INPUT_PLACEHOLDER,
     MOBILE_ERROR_MESSAGE,
     MOBILE_INPUT_PATTERN,
     MOBILE_INPUT_PLACEHOLDER,
@@ -22,7 +19,6 @@ import {
     NIN_INPUT_PATTERN,
     NIN_INPUT_PLACEHOLDER,
     formatIdentityNumberInput,
-    validateBvn,
     validateMobile,
     validateNin,
 } from '@/lib/profile'
@@ -42,7 +38,6 @@ const schema = z.object({
     mobile: z.string().optional().refine((value) => !value || !validateMobile(value), MOBILE_ERROR_MESSAGE),
     employment_status: z.string().min(1, 'Employment status is required'),
     nin_number: z.string().min(1, 'NIN is required').refine((value) => !validateNin(value), NIN_ERROR_MESSAGE),
-    bvn_number: z.string().min(1, 'BVN is required').refine((value) => !validateBvn(value), BVN_ERROR_MESSAGE),
 })
 
 type VerificationFormValues = z.infer<typeof schema>
@@ -190,14 +185,6 @@ const ninInputProps = {
     formatValue: formatIdentityNumberInput,
 }
 
-const bvnInputProps = {
-    inputMode: 'numeric' as const,
-    pattern: BVN_INPUT_PATTERN,
-    maxLength: 11,
-    title: BVN_ERROR_MESSAGE,
-    formatValue: formatIdentityNumberInput,
-}
-
 function SelectInput({ register, name, options, placeholder, error }: { register: any; name: keyof VerificationFormValues; options: string[]; placeholder: string; error?: string }) {
     return (
         <select
@@ -266,7 +253,6 @@ export default function VerifyMePage() {
             mobile: stringValue(verificationProfile.mobile) || me?.mobile || '',
             employment_status: existingProfile?.employment_status || optionValue(verificationProfile.employment_status, employmentOptions),
             nin_number: me?.nin_number || stringValue(verificationProfile.nin_number || verificationProfile.nin),
-            bvn_number: me?.bvn_number || stringValue(verificationProfile.bvn_number || verificationProfile.bvn),
         }
     }, [existingProfile, me, user])
 
@@ -350,7 +336,6 @@ export default function VerifyMePage() {
                 ...emptyProfileDetails,
                 ...(existingProfile || {}),
                 nin_number: data.nin_number.trim(),
-                bvn_number: data.bvn_number.trim(),
                 first_name: data.first_name,
                 middle_name: data.middle_name || '',
                 last_name: data.last_name,
@@ -392,7 +377,7 @@ export default function VerifyMePage() {
                 }
             }
 
-            const profilePath = user?.id ? `/tenants/${user.id}/profile?edit=1` : '/search'
+            const profilePath = user?.id ? `/tenants/${user.id}/profile` : '/search'
             const shouldGoToProfile = await confirm(
                 'Tenant verification completed successfully.',
                 {
@@ -411,7 +396,6 @@ export default function VerifyMePage() {
         onError: (error: any) => {
             const fieldAliases: Record<string, keyof VerificationFormValues> = {
                 nin: 'nin_number',
-                bvn: 'bvn_number',
                 contact_number: 'mobile',
             }
             const fieldErrors = extractApiFieldErrors(error)
@@ -497,20 +481,17 @@ export default function VerifyMePage() {
                             <InputRow label="National Identification Number (NIN)" error={errors.nin_number?.message}>
                                 <TextInput register={register} name="nin_number" placeholder={NIN_INPUT_PLACEHOLDER} error={errors.nin_number?.message} {...ninInputProps} />
                             </InputRow>
-                            <InputRow label="Bank Verification Number (BVN)" error={errors.bvn_number?.message}>
-                                <TextInput register={register} name="bvn_number" placeholder={BVN_INPUT_PLACEHOLDER} error={errors.bvn_number?.message} {...bvnInputProps} />
+                            <InputRow label="Employment Status" error={errors.employment_status?.message}>
+                                <SelectInput register={register} name="employment_status" options={employmentOptions} placeholder="Select employment status" error={errors.employment_status?.message} />
                             </InputRow>
                         </div>
 
-                        <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                             <InputRow label="Email" error={errors.email?.message}>
                                 <TextInput register={register} name="email" type="email" placeholder="Email address" error={errors.email?.message} />
                             </InputRow>
-                            <InputRow label="Mobile (linked to NIN/BVN)" error={errors.mobile?.message}>
+                            <InputRow label="Mobile (linked to NIN)" error={errors.mobile?.message}>
                                 <TextInput register={register} name="mobile" placeholder={MOBILE_INPUT_PLACEHOLDER} error={errors.mobile?.message} {...mobileInputProps} />
-                            </InputRow>
-                            <InputRow label="Employment Status" error={errors.employment_status?.message}>
-                                <SelectInput register={register} name="employment_status" options={employmentOptions} placeholder="Select employment status" error={errors.employment_status?.message} />
                             </InputRow>
                         </div>
 

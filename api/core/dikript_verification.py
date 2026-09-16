@@ -216,6 +216,11 @@ def _required_text_match(input_value: Any, api_value: Any) -> bool:
     return bool(_normalize_text(input_value)) and _normalize_text(input_value) == _normalize_text(api_value)
 
 
+def _required_text_contains(input_value: Any, api_value: Any) -> bool:
+    input_text = _normalize_text(input_value)
+    return bool(input_text) and input_text in _normalize_text(api_value)
+
+
 def _optional_text_match(input_value: Any, api_value: Any) -> bool:
     if not _normalize_text(input_value) or not _normalize_text(api_value):
         return True
@@ -256,6 +261,9 @@ def _validate_nin_fields(input_data: dict[str, Any], data: dict[str, Any]) -> di
         mismatches["middle_name"] = "Middle name does not match the NIN record."
     if _parse_date(input_data.get("date_of_birth")) != _parse_date(data.get("birthDate")):
         mismatches["date_of_birth"] = "Date of birth does not match the NIN record."
+    lga_of_origin = _first_present(data, "self_origin_lga", "selfOriginLga")
+    if _normalize_text(lga_of_origin) and not _required_text_match(input_data.get("lga"), lga_of_origin):
+        mismatches["lga"] = "LGA does not match the NIN record."
 
     return mismatches
 
@@ -292,7 +300,7 @@ def _validate_bvn_fields(
 
     if _normalize_gender(input_data.get("gender")) != _normalize_gender(data.get("gender")):
         mismatches["gender"] = "Gender does not match the BVN record."
-    if _normalize_region(input_data.get("lga")) != _normalize_region(data.get("lgaOfOrigin")):
+    if not _required_text_contains(input_data.get("lga"), data.get("lgaOfOrigin")):
         mismatches["lga"] = "LGA does not match the BVN record."
     if _normalize_nationality(input_data.get("nationality")) != _normalize_nationality(data.get("nationality")):
         mismatches["nationality"] = "Nationality does not match the BVN record."
@@ -390,6 +398,28 @@ def _merge_field_mismatches(
             result[field] = bvn_mismatches[field]
 
     return result
+
+
+def verify_nin(input_data: dict[str, Any], nin_number: str) -> dict[str, Any]:
+    nin_payload = dikript_lookup(
+        verification_type="nin",
+        path=settings.DIKRIPT_NIN_API_URL,
+        lookup_value=nin_number,
+        query={"nin": nin_number},
+    )
+    nin_data = nin_payload.get("data") if isinstance(nin_payload.get("data"), dict) else {}
+    if not nin_payload.get("status") or not nin_data:
+        message = extract_dikript_message(nin_payload) or "Invalid NIN. Please verify your NIN is correct."
+        raise ValidationError({"nin_number": message})
+
+    mismatches, phone_mismatch = validate_nin_payload(input_data, nin_data, defer_phone_mismatch=True)
+    mismatches.pop("mobile", None)
+    if mismatches:
+        raise ValidationError(mismatches)
+    if phone_mismatch:
+        nin_payload = {**nin_payload, "mobile_warning": MOBILE_MISMATCH_WARNING.replace("NIN or BVN", "NIN")}
+
+    return nin_payload
 
 
 def verify_nin_and_bvn(input_data: dict[str, Any], nin_number: str, bvn_number: str) -> tuple[dict[str, Any], dict[str, Any]]:

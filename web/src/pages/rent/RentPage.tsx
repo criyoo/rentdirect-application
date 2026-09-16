@@ -148,12 +148,40 @@ export default function RentPage() {
             }
         }
     })
+    const { data: tenantProfile, isLoading: isTenantProfileLoading } = useQuery({
+        queryKey: ['tenant-profile', 'rent', user?.id],
+        enabled: user?.role === 'tenant',
+        queryFn: async () => {
+            try {
+                return (await api.get<{ status?: string }>('/users/me/tenant-profile')).data
+            } catch {
+                return null
+            }
+        },
+    })
+    const { data: freshUser, isLoading: isFreshUserLoading } = useQuery({
+        queryKey: ['me', 'rent', user?.id],
+        enabled: user?.role === 'tenant',
+        queryFn: async () => (await api.get<{ is_verified?: boolean }>('/users/me')).data,
+    })
     const { data: subscriptionPaymentResponse, isLoading: isSubscriptionLoading } = useQuery({
         queryKey: ['subscription-payments', 'rent', user?.id],
         enabled: user?.role === 'tenant',
         queryFn: async () => (await api.get<SubscriptionPaymentRecord[] | { results?: SubscriptionPaymentRecord[] }>('/subscriptions')).data,
     })
+    const tenantIdentityVerified = Boolean(freshUser?.is_verified ?? user?.is_verified)
+    const tenantProfileCompleted = tenantProfile?.status === 'approved'
+    const requiresTenantVerification = user?.role === 'tenant'
+        && !isTenantProfileLoading
+        && !isFreshUserLoading
+        && !tenantIdentityVerified
+    const requiresTenantProfile = user?.role === 'tenant'
+        && !isTenantProfileLoading
+        && !isFreshUserLoading
+        && tenantIdentityVerified
+        && !tenantProfileCompleted
     const hasRentAccess = user?.role === 'tenant'
+        && tenantProfileCompleted
         && (
             subscriptionPaymentResponse !== undefined
             && hasSilverAccess(subscriptionPaymentResponse)
@@ -523,7 +551,7 @@ export default function RentPage() {
         }
     }
 
-    if (isLoading || (user?.role === 'tenant' && isSubscriptionLoading)) {
+    if (isLoading || (user?.role === 'tenant' && (isTenantProfileLoading || isFreshUserLoading || isSubscriptionLoading))) {
         return (
             <div className="min-h-[80vh] flex items-center justify-center bg-gray-50">
                 <div className="animate-pulse text-gray-500">Loading rental information…</div>
@@ -535,6 +563,44 @@ export default function RentPage() {
         return (
             <div className="min-h-[80vh] flex items-center justify-center bg-gray-50">
                 <div className="text-gray-500">Listing not found.</div>
+            </div>
+        )
+    }
+
+    if (requiresTenantVerification) {
+        return (
+            <div className="min-h-[80vh] flex items-center justify-center bg-gray-50 px-4">
+                <div className="max-w-md w-full rounded-2xl border bg-white p-8 text-center shadow-lg">
+                    <h1 className="text-2xl font-bold text-gray-900">Verification Required</h1>
+                    <p className="mt-3 text-gray-600">Complete your tenant verification before renting this property.</p>
+                    <button
+                        type="button"
+                        onClick={() => navigate('/verify')}
+                        className="mt-6 w-full rounded-lg bg-blue-600 px-4 py-3 font-medium text-white hover:bg-blue-700"
+                    >
+                        Complete Verification
+                    </button>
+                    <DashboardBackButton to={`/listings/${listing.id}`} label="Back to Listing" className="mt-3 w-full justify-center" />
+                </div>
+            </div>
+        )
+    }
+
+    if (requiresTenantProfile) {
+        return (
+            <div className="min-h-[80vh] flex items-center justify-center bg-gray-50 px-4">
+                <div className="max-w-md w-full rounded-2xl border bg-white p-8 text-center shadow-lg">
+                    <h1 className="text-2xl font-bold text-gray-900">Profile Completion Required</h1>
+                    <p className="mt-3 text-gray-600">Complete your tenant profile before renting this property.</p>
+                    <button
+                        type="button"
+                        onClick={() => navigate(`/tenants/${user!.id}/profile?edit=1`)}
+                        className="mt-6 w-full rounded-lg bg-blue-600 px-4 py-3 font-medium text-white hover:bg-blue-700"
+                    >
+                        Complete Profile
+                    </button>
+                    <DashboardBackButton to={`/listings/${listing.id}`} label="Back to Listing" className="mt-3 w-full justify-center" />
+                </div>
             </div>
         )
     }

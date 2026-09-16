@@ -53,10 +53,21 @@ export default function ContactLandlordPage() {
         queryFn: async () => (await api.get<Listing>(`/listings/${id}`)).data
     })
 
-    const { data: currentUser } = useQuery({
+    const { data: currentUser, isLoading: isCurrentUserLoading } = useQuery({
         queryKey: ['users', 'me'],
         enabled: !!user,
         queryFn: async () => (await api.get<User>('/users/me')).data,
+    })
+    const { data: tenantProfile, isLoading: isTenantProfileLoading } = useQuery({
+        queryKey: ['tenant-profile', 'contact-landlord', user?.id],
+        enabled: user?.role === 'tenant',
+        queryFn: async () => {
+            try {
+                return (await api.get<{ status?: string }>('/users/me/tenant-profile')).data
+            } catch {
+                return null
+            }
+        },
     })
 
     const { data: landlordUser } = useQuery({
@@ -74,10 +85,22 @@ export default function ContactLandlordPage() {
         enabled: user?.role === 'tenant',
         queryFn: async () => (await api.get<SubscriptionPaymentRecord[] | { results?: SubscriptionPaymentRecord[] }>('/subscriptions')).data,
     })
+    const tenantIdentityVerified = Boolean(currentUser?.is_verified ?? user?.is_verified)
+    const tenantProfileCompleted = tenantProfile?.status === 'approved'
+    const requiresTenantVerification = user?.role === 'tenant'
+        && !isCurrentUserLoading
+        && !isTenantProfileLoading
+        && !tenantIdentityVerified
+    const requiresTenantProfile = user?.role === 'tenant'
+        && !isCurrentUserLoading
+        && !isTenantProfileLoading
+        && tenantIdentityVerified
+        && !tenantProfileCompleted
     const canUseTenantMessaging = user?.role === 'landlord'
         || (
             subscriptionPaymentResponse !== undefined
             && user?.role === 'tenant'
+            && tenantProfileCompleted
             && hasSilverAccess(subscriptionPaymentResponse)
         )
     const { data: messageHistory, isLoading: messagesLoading } = useQuery({
@@ -216,7 +239,7 @@ export default function ContactLandlordPage() {
         }
     }
 
-    if (listingLoading || (user?.role === 'tenant' && isSubscriptionLoading)) {
+    if (listingLoading || (user?.role === 'tenant' && (isCurrentUserLoading || isTenantProfileLoading || isSubscriptionLoading))) {
         return (
             <div className="min-h-screen bg-gray-50 flex items-center justify-center">
                 <div className="animate-pulse text-gray-500">Loading...</div>
@@ -232,7 +255,7 @@ export default function ContactLandlordPage() {
         )
     }
 
-    if (user?.role === 'tenant' && !user?.is_verified) {
+    if (requiresTenantVerification) {
         return (
             <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
                 <div className="max-w-md w-full bg-white rounded-2xl shadow-lg border p-8 text-center">
@@ -244,10 +267,33 @@ export default function ContactLandlordPage() {
                     <h2 className="text-xl font-bold text-gray-900 mb-2">Verification Required</h2>
                     <p className="text-gray-600 mb-6">Your NIN must be verified before you can contact landlords. Please complete your verification to continue.</p>
                     <button
-                        onClick={() => navigate('/dashboard/tenant/' + user.id)}
+                        onClick={() => navigate('/verify')}
                         className="w-full rounded-lg bg-blue-600 px-4 py-3 font-medium text-white hover:bg-blue-700 transition"
                     >
-                        Go to Dashboard to Verify
+                        Complete Verification
+                    </button>
+                    <DashboardBackButton to={`/listings/${listing.id}`} label="Back to Listing" className="mt-3 w-full justify-center" />
+                </div>
+            </div>
+        )
+    }
+
+    if (requiresTenantProfile) {
+        return (
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+                <div className="max-w-md w-full bg-white rounded-2xl shadow-lg border p-8 text-center">
+                    <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg className="w-8 h-8 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77-1.333.192-3 1.732-3z" />
+                        </svg>
+                    </div>
+                    <h2 className="text-xl font-bold text-gray-900 mb-2">Profile Completion Required</h2>
+                    <p className="text-gray-600 mb-6">Complete your tenant profile before you can contact landlords.</p>
+                    <button
+                        onClick={() => navigate(`/tenants/${user!.id}/profile?edit=1`)}
+                        className="w-full rounded-lg bg-blue-600 px-4 py-3 font-medium text-white hover:bg-blue-700 transition"
+                    >
+                        Complete Profile
                     </button>
                     <DashboardBackButton to={`/listings/${listing.id}`} label="Back to Listing" className="mt-3 w-full justify-center" />
                 </div>
@@ -450,52 +496,52 @@ export default function ContactLandlordPage() {
                                     </div>
                                 ) : liveMessages.length > 0 ? (
                                     <>
-                                    {liveMessages.map((msg) => (
-                                        <div
-                                            key={msg.id}
-                                            className={`flex items-end gap-3 ${msg.sender_id === String(user?.id || '') ? 'justify-end' : 'justify-start'}`}
-                                        >
-                                            {msg.sender_id !== String(user?.id || '') && (
-                                                <img
-                                                    src={resolveMediaUrl(counterpartPhotoUrl)}
-                                                    alt={counterpartFirstName}
-                                                    loading="lazy"
-                                                    decoding="async"
-                                                    className="h-8 w-8 rounded-full object-cover"
-                                                    onError={(event) => {
-                                                        event.currentTarget.src = '/placeholder.jpg'
-                                                    }}
-                                                />
-                                            )}
+                                        {liveMessages.map((msg) => (
                                             <div
-                                                className={`max-w-xs lg:max-w-lg xl:max-w-xl px-4 py-3 rounded-2xl ${msg.sender_id === String(user?.id || '')
-                                                    ? 'bg-blue-600 text-white'
-                                                    : 'bg-gray-100 text-gray-900'
-                                                    }`}
+                                                key={msg.id}
+                                                className={`flex items-end gap-3 ${msg.sender_id === String(user?.id || '') ? 'justify-end' : 'justify-start'}`}
                                             >
-                                                <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                                                <p className={`text-xs mt-1 ${msg.sender_id === String(user?.id || '') ? 'text-blue-100' : 'text-gray-500'
-                                                    }`}>
-                                                    {new Date(msg.created_at).toLocaleTimeString([], {
-                                                        hour: '2-digit',
-                                                        minute: '2-digit'
-                                                    })}
-                                                </p>
+                                                {msg.sender_id !== String(user?.id || '') && (
+                                                    <img
+                                                        src={resolveMediaUrl(counterpartPhotoUrl)}
+                                                        alt={counterpartFirstName}
+                                                        loading="lazy"
+                                                        decoding="async"
+                                                        className="h-8 w-8 rounded-full object-cover"
+                                                        onError={(event) => {
+                                                            event.currentTarget.src = '/placeholder.jpg'
+                                                        }}
+                                                    />
+                                                )}
+                                                <div
+                                                    className={`max-w-xs lg:max-w-lg xl:max-w-xl px-4 py-3 rounded-2xl ${msg.sender_id === String(user?.id || '')
+                                                        ? 'bg-blue-600 text-white'
+                                                        : 'bg-gray-100 text-gray-900'
+                                                        }`}
+                                                >
+                                                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                                                    <p className={`text-xs mt-1 ${msg.sender_id === String(user?.id || '') ? 'text-blue-100' : 'text-gray-500'
+                                                        }`}>
+                                                        {new Date(msg.created_at).toLocaleTimeString([], {
+                                                            hour: '2-digit',
+                                                            minute: '2-digit'
+                                                        })}
+                                                    </p>
+                                                </div>
+                                                {msg.sender_id === String(user?.id || '') && (
+                                                    <img
+                                                        src={resolveMediaUrl(currentUser?.profile_photo_url)}
+                                                        alt={currentUser?.name || 'You'}
+                                                        loading="lazy"
+                                                        decoding="async"
+                                                        className="h-8 w-8 rounded-full object-cover"
+                                                        onError={(event) => {
+                                                            event.currentTarget.src = '/placeholder.jpg'
+                                                        }}
+                                                    />
+                                                )}
                                             </div>
-                                            {msg.sender_id === String(user?.id || '') && (
-                                                <img
-                                                    src={resolveMediaUrl(currentUser?.profile_photo_url)}
-                                                    alt={currentUser?.name || 'You'}
-                                                    loading="lazy"
-                                                    decoding="async"
-                                                    className="h-8 w-8 rounded-full object-cover"
-                                                    onError={(event) => {
-                                                        event.currentTarget.src = '/placeholder.jpg'
-                                                    }}
-                                                />
-                                            )}
-                                        </div>
-                                    ))}
+                                        ))}
                                     </>
                                 ) : (
                                     <div className="text-center py-20">

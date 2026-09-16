@@ -16,12 +16,10 @@ TENANT_VERIFICATION_PROFILE_FIELDS = (
     "mobile",
     "employment_status",
     "nin_number",
-    "bvn_number",
 )
 
 TENANT_VERIFICATION_FIELD_ALIASES = {
     "nin": "nin_number",
-    "bvn": "bvn_number",
 }
 
 
@@ -54,7 +52,6 @@ def normalize_tenant_verification_profile(raw_profile: dict | None, user=None) -
         source.setdefault("email", getattr(user, "email", ""))
         source.setdefault("mobile", getattr(user, "mobile", ""))
         source.setdefault("nin_number", getattr(user, "nin_number", ""))
-        source.setdefault("bvn_number", getattr(user, "bvn_number", ""))
         source.setdefault("state_of_origin", getattr(user, "state_of_origin", ""))
 
     normalized = {}

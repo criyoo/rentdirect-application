@@ -25,6 +25,10 @@ def _provider_module():
     raise VerificationProviderUnavailable(detail=f"Unsupported verification provider: {provider}")
 
 
+def verify_nin(input_data: dict[str, Any], nin_number: str) -> dict[str, Any]:
+    return _provider_module().verify_nin(input_data, nin_number)
+
+
 def verify_nin_and_bvn(input_data: dict[str, Any], nin_number: str, bvn_number: str) -> tuple[dict[str, Any], dict[str, Any]]:
     return _provider_module().verify_nin_and_bvn(input_data, nin_number, bvn_number)
 

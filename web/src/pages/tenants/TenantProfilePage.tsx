@@ -1,5 +1,5 @@
-import { ReactNode } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { ReactNode, useEffect } from 'react'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
     HiBadgeCheck,
@@ -15,6 +15,7 @@ import {
 
 import TenantProfileDetailsForm from '@/components/TenantProfileDetailsForm'
 import DashboardBackButton from '@/components/DashboardBackButton'
+import { useAppPopup } from '@/contexts/AppPopupContext'
 import { useAuth } from '@/hooks/useAuth'
 import { api, resolveMediaUrl } from '@/lib/api'
 import { TenantProfileSummary } from '@/types'
@@ -360,10 +361,15 @@ export default function TenantProfilePage() {
     const navigate = useNavigate()
     const queryClient = useQueryClient()
     const [searchParams] = useSearchParams()
+    const { dismiss } = useAppPopup()
     const { user } = useAuth()
     const isOwnTenantProfile = user?.role === 'tenant' && String(user.id) === String(tenantId)
+    useEffect(() => {
+        dismiss()
+    }, [dismiss])
+
     const profileBackPath = isOwnTenantProfile
-        ? `/dashboard/tenant/${user?.id}`
+        ? `/dashboard/tenant/${tenantId}`
         : user?.role === 'landlord'
             ? '/landlord/enquiries'
             : '/'
@@ -374,13 +380,14 @@ export default function TenantProfilePage() {
         queryFn: async () => (await api.get<TenantProfileSummary>(`/users/tenants/${tenantId}/profile`)).data,
     })
     const profileIsApproved = String(data?.tenant_profile?.status || '').trim().toLowerCase() === 'approved'
-    const shouldShowEditForm = isOwnTenantProfile && (
-        requestedEditMode
-        || (!isLoading && !isError && (
+    const profileNeedsCompletion = isOwnTenantProfile
+        && !isLoading
+        && !isError
+        && (
             !data?.profile_photo_url
             || (!profileIsApproved && tenantProfileNeedsDetails(data?.tenant_profile))
-        ))
-    )
+        )
+    const shouldShowEditForm = isOwnTenantProfile && requestedEditMode
 
     if (shouldShowEditForm) {
         const profilePath = `/tenants/${tenantId}/profile`
@@ -388,7 +395,7 @@ export default function TenantProfilePage() {
         return (
             <div className="container-modern py-8">
                 <div className="mb-6">
-                    <DashboardBackButton to={profileBackPath} />
+                    <DashboardBackButton to={profileBackPath} reloadDocument />
                 </div>
                 <TenantProfileDetailsForm
                     onSaved={() => {
@@ -433,6 +440,20 @@ export default function TenantProfilePage() {
             <div className="mb-6">
                 <DashboardBackButton to={profileBackPath} />
             </div>
+
+            {profileNeedsCompletion && (
+                <div className="flex flex-col gap-4 rounded-xl border border-amber-200 bg-amber-50 p-5 text-amber-900 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <h3 className="font-semibold">Complete your tenant profile</h3>
+                        <p className="mt-1 text-sm text-amber-800">
+                            Add your rental and personal details to unlock renting and landlord messaging.
+                        </p>
+                    </div>
+                    <Link to={`/tenants/${tenantId}/profile?edit=1`} className="btn btn-primary shrink-0">
+                        Complete Profile
+                    </Link>
+                </div>
+            )}
 
             <div className="rounded-xl border border-gray-200 bg-white p-6">
                 <div className="mx-auto flex max-w-3xl flex-col items-center text-center">

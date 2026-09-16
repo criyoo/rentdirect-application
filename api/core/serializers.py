@@ -46,7 +46,7 @@ from .models import (
     VerificationRequest,
 )
 from .pricing import calculate_booking_total, calculate_remaining_balance, resolve_booking_total
-from .subscription_access import user_has_gold_access, user_has_silver_access
+from .subscription_access import user_has_completed_tenant_profile, user_has_gold_access, user_has_silver_access
 from .tenant_scoring import build_tenant_screening_summary
 from .location_services import decimal_from_float, resolve_city_state_coordinates
 from .image_optimization import optimize_listing_image
@@ -942,6 +942,8 @@ class BookingSerializer(serializers.ModelSerializer):
         request = self.context["request"]
         if request.user.role != AppUser.Role.TENANT:
             raise serializers.ValidationError({"detail": "Only tenants can rent properties."})
+        if not user_has_completed_tenant_profile(request.user):
+            raise serializers.ValidationError({"detail": "Complete your tenant profile before renting a property."})
         if not user_has_silver_access(request.user):
             raise serializers.ValidationError({"detail": "Renting property is available from the Silver plan."})
         listing_id = validated_data.pop("listing_id")

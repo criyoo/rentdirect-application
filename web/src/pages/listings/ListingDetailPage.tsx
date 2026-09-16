@@ -295,16 +295,31 @@ export default function ListingDetailPage() {
     }, [currentImageIndex])
 
     const tenantProfileStatus = tenantProfile?.status
+    const tenantProfileCompleted = tenantProfileStatus === 'approved'
     const isVerifiedFresh = freshUser?.is_verified ?? user?.is_verified
     const isTenantVerificationLoading = user?.role === 'tenant' && (isTenantProfileLoading || isFreshUserLoading)
-    const tenantIdentityVerified = Boolean(isVerifiedFresh || tenantProfileStatus === 'approved')
+    const tenantIdentityVerified = Boolean(isVerifiedFresh || tenantProfileCompleted)
     const tenantVerificationStatus = tenantIdentityVerified ? 'approved' : tenantProfileStatus || 'unverified'
     const requiresTenantVerification = user?.role === 'tenant' && !isTenantVerificationLoading && !tenantIdentityVerified
-    const isTenantSubscriptionLoading = user?.role === 'tenant' && !requiresTenantVerification && isSubscriptionPaymentsLoading
-    const requiresTenantSubscription = user?.role === 'tenant' && !requiresTenantVerification && isBronzeTenant
+    const requiresTenantProfile = user?.role === 'tenant'
+        && !isTenantVerificationLoading
+        && tenantIdentityVerified
+        && !tenantProfileCompleted
+    const isTenantSubscriptionLoading = user?.role === 'tenant'
+        && !requiresTenantVerification
+        && !requiresTenantProfile
+        && isSubscriptionPaymentsLoading
+    const requiresTenantSubscription = user?.role === 'tenant'
+        && !requiresTenantVerification
+        && !requiresTenantProfile
+        && isBronzeTenant
 
     const redirectToTenantVerification = () => {
         navigate('/verify')
+    }
+
+    const redirectToTenantProfile = () => {
+        navigate(user?.id ? `/tenants/${user.id}/profile?edit=1` : '/search')
     }
 
     const redirectToBilling = () => {
@@ -319,6 +334,10 @@ export default function ListingDetailPage() {
         }
         if (requiresTenantVerification) {
             redirectToTenantVerification()
+            return
+        }
+        if (requiresTenantProfile) {
+            redirectToTenantProfile()
             return
         }
         if (isBronzeTenant) {
@@ -337,6 +356,10 @@ export default function ListingDetailPage() {
         }
         if (requiresTenantVerification) {
             redirectToTenantVerification()
+            return
+        }
+        if (requiresTenantProfile) {
+            redirectToTenantProfile()
             return
         }
         if (isBronzeTenant) {
@@ -582,6 +605,19 @@ export default function ListingDetailPage() {
                                                     className="text-sm mt-2 text-blue-600 hover:text-blue-700 font-medium text-sm underline"
                                                 >
                                                     Complete Verification
+                                                </button>
+                                            </div>
+                                        ) : requiresTenantProfile ? (
+                                            <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
+                                                <p className="text-sm font-medium">Profile Completion Required</p>
+                                                <p className="text-xs mt-1">
+                                                    Complete your tenant profile before you can contact landlords or rent this property.
+                                                </p>
+                                                <button
+                                                    onClick={redirectToTenantProfile}
+                                                    className="text-sm mt-2 text-blue-600 hover:text-blue-700 font-medium underline"
+                                                >
+                                                    Complete Profile
                                                 </button>
                                             </div>
                                         ) : requiresTenantSubscription ? (

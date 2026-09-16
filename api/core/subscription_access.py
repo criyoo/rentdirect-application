@@ -1,6 +1,6 @@
 from django.utils import timezone
 
-from .models import AppUser, SubscriptionPayment
+from .models import AppUser, SubscriptionPayment, TenantProfile
 
 
 FREE_PLAN_CODE = SubscriptionPayment.PlanCode.BRONZE
@@ -53,6 +53,16 @@ def support_response_time_for(user):
     plan_code = active_plan_code_for(user)
     role_response_times = SUPPORT_RESPONSE_TIMES.get(user.role, SUPPORT_RESPONSE_TIMES[AppUser.Role.TENANT])
     return role_response_times.get(plan_code, role_response_times[FREE_PLAN_CODE])
+
+
+def user_has_completed_tenant_profile(user):
+    if getattr(user, "role", None) != AppUser.Role.TENANT:
+        return False
+    try:
+        profile = user.tenant_profile
+    except TenantProfile.DoesNotExist:
+        return False
+    return profile.status == TenantProfile.Status.APPROVED
 
 
 def user_has_bronze_access(user):

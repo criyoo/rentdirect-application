@@ -13,7 +13,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from .models import AppUser, Listing, Message
 from .security import contains_contact_info
-from .subscription_access import user_has_bronze_access, user_has_silver_access
+from .subscription_access import user_has_bronze_access, user_has_completed_tenant_profile, user_has_silver_access
 
 try:
     import redis.asyncio as redis_async
@@ -79,6 +79,8 @@ def _resolve_conversation(user, scope):
     if not listing_id:
         return None
 
+    if user.role == AppUser.Role.TENANT and not user_has_completed_tenant_profile(user):
+        return None
     if user.role == AppUser.Role.TENANT and not user_has_silver_access(user):
         return None
 
@@ -112,6 +114,8 @@ def _resolve_conversation(user, scope):
 def _can_send_message(sender, receiver, content):
     if sender.role == AppUser.Role.TENANT and not sender.is_verified:
         return False, "Your account must be verified before contacting landlords. Please submit your NIN for verification."
+    if sender.role == AppUser.Role.TENANT and not user_has_completed_tenant_profile(sender):
+        return False, "Complete your tenant profile before contacting landlords."
     if sender.role == AppUser.Role.TENANT and receiver.role == AppUser.Role.LANDLORD:
         if not user_has_silver_access(sender):
             return False, "Contacting landlords is available from the Silver plan."

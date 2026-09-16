@@ -6,6 +6,7 @@ type DashboardBackButtonProps = {
     to?: string
     label?: string
     className?: string
+    reloadDocument?: boolean
 }
 
 export default function DashboardBackButton({
@@ -13,6 +14,7 @@ export default function DashboardBackButton({
     to,
     label = 'Back',
     className = '',
+    reloadDocument = false,
 }: DashboardBackButtonProps) {
     const navigate = useNavigate()
 
@@ -31,7 +33,7 @@ export default function DashboardBackButton({
     )
 
     if (to) {
-        return <Link to={to} className={buttonClassName} aria-label={label}>{buttonContent}</Link>
+        return <Link to={to} reloadDocument={reloadDocument} className={buttonClassName} aria-label={label}>{buttonContent}</Link>
     }
 
     return (
