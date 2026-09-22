@@ -36,6 +36,7 @@ type SubscriptionPaymentRecord = {
     recurring_enabled?: boolean
     next_action_url?: string
     payment_method?: SubscriptionPaymentMethod | null
+    payment_method_type?: string
     created_at: string
 }
 
@@ -66,6 +67,7 @@ type BillingHistoryRecord = {
     created_at: string
     title: string
     transaction_id?: string | null
+    payment_method?: string
     role?: BillingRole
     plan_code?: PlanCode
     billing_cycle?: BillingCycle
@@ -266,6 +268,17 @@ function capitalizePlanName(planCode: PlanCode) {
     return planCode.charAt(0).toUpperCase() + planCode.slice(1)
 }
 
+function formatPaymentMethodLabel(value?: string): string {
+    const normalized = String(value || '').trim().toLowerCase()
+    if (!normalized) {
+        return ''
+    }
+    return normalized
+        .split('_')
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ')
+}
+
 function receiptValue(value?: string | number | null) {
     const normalized = String(value ?? '').normalize('NFKD').replace(/[^\x20-\x7E]/g, ' ').replace(/\s+/g, ' ').trim()
     return normalized || 'N/A'
@@ -430,6 +443,7 @@ export default function BillingPage() {
                 created_at: payment.created_at,
                 title: `${payment.plan_code.charAt(0).toUpperCase()}${payment.plan_code.slice(1)} ${payment.billing_cycle} subscription`,
                 transaction_id: payment.transaction_id,
+                payment_method: payment.payment_method_type || payment.payment_method?.payment_type || '',
                 role: payment.role,
                 plan_code: payment.plan_code,
                 billing_cycle: payment.billing_cycle,
@@ -444,6 +458,7 @@ export default function BillingPage() {
                 status: payment.status,
                 created_at: payment.created_at,
                 title: 'Rental payment',
+                payment_method: payment.payment_method || '',
             })),
         ].sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime()),
         [payments, subscriptionPayments],
@@ -1009,13 +1024,13 @@ export default function BillingPage() {
                             )}
 
                             {!selectedPaymentMethodId && (
-                                <div className="grid gap-4 md:grid-cols-4">
+                                <div className="grid gap-4 md:grid-cols-5">
                                     <input
                                         type="text"
                                         inputMode="numeric"
                                         autoComplete="cc-number"
                                         value={cardForm.cardNumber}
-                                        onChange={(event) => setCardForm((current) => ({ ...current, cardNumber: event.target.value.replace(/\D/g, '').slice(0, 18) }))}
+                                        onChange={(event) => setCardForm((current) => ({ ...current, cardNumber: event.target.value.replace(/\D/g, '').slice(0, 19) }))}
                                         placeholder="Card number"
                                         maxLength={18}
                                         className="rounded-2xl border border-slate-300 px-4 py-3 text-sm text-slate-800 md:col-span-2"
@@ -1173,13 +1188,19 @@ export default function BillingPage() {
                         ) : (
                             <div className="divide-y divide-slate-200">
                                 {filteredPayments.map((payment) => (
-                                    <div key={payment.id} className="flex flex-col gap-3 p-5 md:flex-row md:items-center md:justify-between">
+                                    <div key={payment.id} className="flex flex-col gap-1 px-4 py-3 md:flex-row md:items-center md:justify-between">
                                         <div>
-                                            <p className="text-sm font-semibold text-slate-950">{payment.title}</p>
-                                            <p className="mt-1 text-xs text-slate-500">#{payment.id}</p>
-                                            <p className="mt-1 text-sm text-slate-600">{new Date(payment.created_at).toLocaleString()}</p>
+                                            <p className="text-base font-semibold text-slate-950">Subscription Plan: {payment.plan_code} {payment.billing_cycle}</p>
+                                            <p className="mt-0.5 text-sm text-slate-500">Transaction ID: {payment.transaction_id}</p>
+                                            <p className="mt-0.5 text-sm text-slate-500">Payment ID: {payment.id}</p>
+                                            {formatPaymentMethodLabel(payment.payment_method) && (
+                                                <p className="mt-0.5 text-sm text-slate-900">
+                                                    Method: {formatPaymentMethodLabel(payment.payment_method)}
+                                                </p>
+                                            )}
+                                            <p className="mt-0.5 text-sm text-slate-600">{new Date(payment.created_at).toLocaleString()}</p>
                                         </div>
-                                        <div className="flex flex-col gap-3 md:items-end">
+                                        <div className="flex flex-col gap-1.5 md:items-end">
                                             <div className="text-sm text-slate-700">{formatCurrencyWithSymbol(payment.amount)} {payment.currency.toUpperCase()}</div>
                                             <div className="flex flex-wrap items-center gap-2 md:justify-end">
                                                 <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-700">

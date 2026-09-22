@@ -125,6 +125,46 @@
     * {
         @apply transition-colors duration-200;
     }
+
+    /* Interactive affordance — pointer cursor + hover animation on links/buttons */
+    a,
+    button,
+    [role="button"],
+    select,
+    summary,
+    label {
+        cursor: pointer;
+    }
+
+    button:not(:disabled),
+    [role="button"],
+    a[class*="btn"] {
+        transition:
+            transform 0.15s ease,
+            box-shadow 0.15s ease,
+            color 0.2s,
+            background-color 0.2s,
+            border-color 0.2s;
+    }
+
+    button:not(:disabled):hover,
+    [role="button"]:hover,
+    a[class*="btn"]:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    }
+
+    button:not(:disabled):active,
+    [role="button"]:active,
+    a[class*="btn"]:active {
+        transform: translateY(0);
+        box-shadow: none;
+    }
+
+    a:not([class*="btn"]):hover {
+        text-decoration: underline;
+        text-underline-offset: 3px;
+    }
 }
 
 @layer components {

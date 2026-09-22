@@ -46,6 +46,7 @@ router.register("admin", AdminViewSet, basename="admin")
 
 subscription_payment_detail = SubscriptionPaymentViewSet.as_view({"get": "retrieve"})
 subscription_payment_checkout = SubscriptionPaymentViewSet.as_view({"post": "flutterwave_checkout"})
+subscription_payment_banks = SubscriptionPaymentViewSet.as_view({"get": "flutterwave_banks"})
 featured_payment_detail = FeaturedViewSet.as_view({"get": "retrieve"})
 featured_payment_checkout = FeaturedViewSet.as_view({"post": "flutterwave_checkout"})
 featured_payment_update_duration = FeaturedViewSet.as_view({"put": "update_duration"})
@@ -57,6 +58,7 @@ urlpatterns = [
     path("v1/homepage-video", homepage_video),
     path("v1/subscriptions/payments/<uuid:pk>", subscription_payment_detail),
     path("v1/subscriptions/<uuid:pk>/flutterwave/checkout", subscription_payment_checkout),
+    path("v1/subscriptions/flutterwave/banks", subscription_payment_banks),
     path("v1/featured/payments/<uuid:pk>", featured_payment_detail),
     path("v1/featured/payments/<uuid:pk>/update-duration", featured_payment_update_duration),
     path("v1/featured/<uuid:pk>/flutterwave/checkout", featured_payment_checkout),

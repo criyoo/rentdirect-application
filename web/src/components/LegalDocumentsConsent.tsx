@@ -11,6 +11,7 @@ type LegalDocumentsConsentProps = {
     consented: boolean
     onConsentChange: (consented: boolean) => void
     disabled?: boolean
+    singleConsent?: boolean
 }
 
 function addToSet(current: Set<string>, value: string): Set<string> {
@@ -19,7 +20,15 @@ function addToSet(current: Set<string>, value: string): Set<string> {
     return next
 }
 
-export default function LegalDocumentsConsent({ id, audience, signerName = '', consented, onConsentChange, disabled = false }: LegalDocumentsConsentProps) {
+export default function LegalDocumentsConsent({
+    id,
+    audience,
+    signerName = '',
+    consented,
+    onConsentChange,
+    disabled = false,
+    singleConsent = false,
+}: LegalDocumentsConsentProps) {
     const documents = useMemo(() => getLegalDocumentsForAudience(audience), [audience])
     const [openSlug, setOpenSlug] = useState<string | null>(null)
     const [openedSlugs, setOpenedSlugs] = useState<Set<string>>(new Set())
@@ -32,8 +41,9 @@ export default function LegalDocumentsConsent({ id, audience, signerName = '', c
         day: 'numeric',
     }))
 
+    const reviewedSlugs = singleConsent ? checkableSlugs : readSlugs
     const allDocumentsOpened = documents.every((document) => openedSlugs.has(document.slug))
-    const allDocumentsRead = documents.every((document) => readSlugs.has(document.slug))
+    const allDocumentsRead = documents.every((document) => reviewedSlugs.has(document.slug))
     const canConsent = allDocumentsOpened && allDocumentsRead
 
     useEffect(() => {
@@ -79,9 +89,14 @@ export default function LegalDocumentsConsent({ id, audience, signerName = '', c
         setConsentError('')
     }
 
-    const handleConsent = () => {
+    const handleConsentChange = (checked: boolean) => {
+        if (!checked) {
+            setConsentError('')
+            onConsentChange(false)
+            return
+        }
         if (!canConsent) {
-            setConsentError('Scroll through every legal document and tick each document checkbox before giving consent.')
+            setConsentError('Scroll through every legal document before giving consent.')
             return
         }
         setConsentError('')
@@ -97,7 +112,9 @@ export default function LegalDocumentsConsent({ id, audience, signerName = '', c
                 <div>
                     <h2 id={`${id}-heading`} className="text-lg font-semibold text-slate-950">Review terms & conditions and give your consent</h2>
                     <p className="mt-1 text-sm leading-6 text-slate-600">
-                        Read each terms and condition below and tick the checkbox to mark as read.
+                        {singleConsent
+                            ? 'Read each terms and condition below, then tick the consent checkbox at the bottom to accept and electronically sign all documents.'
+                            : 'Read each terms and condition below and tick the checkbox at the end to mark as read.'}
                     </p>
                 </div>
             </div>
@@ -106,6 +123,7 @@ export default function LegalDocumentsConsent({ id, audience, signerName = '', c
                 {documents.map((document, index) => {
                     const isOpen = openSlug === document.slug
                     const isRead = readSlugs.has(document.slug)
+                    const isReviewed = reviewedSlugs.has(document.slug)
                     const isOpened = openedSlugs.has(document.slug)
                     const canCheckDocument = checkableSlugs.has(document.slug)
                     const checkboxId = `${id}-${document.slug}-checkbox`
@@ -125,12 +143,12 @@ export default function LegalDocumentsConsent({ id, audience, signerName = '', c
                                     <span className="min-w-0">
                                         <span className="block truncate text-sm font-semibold text-slate-900">{document.title}</span>
                                         <span className="mt-0.5 block text-xs text-slate-500">
-                                            {isRead ? 'Read to the end' : isOpened ? 'Review document to mark as read.' : 'Open to review'}
+                                            {isReviewed ? 'Read to the end' : isOpened ? 'Review document to mark as read.' : 'Open to review'}
                                         </span>
                                     </span>
                                 </span>
                                 <span className="flex shrink-0 items-center gap-2">
-                                    {isRead && <HiCheckCircle className="h-5 w-5 text-emerald-600" aria-label="Document read" />}
+                                    {isReviewed && <HiCheckCircle className="h-5 w-5 text-emerald-600" aria-label="Document read" />}
                                     <HiChevronDown className={`h-5 w-5 text-slate-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
                                 </span>
                             </button>
@@ -150,26 +168,32 @@ export default function LegalDocumentsConsent({ id, audience, signerName = '', c
                                 >
                                     <LegalDocumentRenderer content={document.content} />
                                     {canCheckDocument ? (
-                                        <div className="mt-7 rounded-xl border border-blue-100 bg-blue-50/70 px-4 py-4">
-                                            <div className="grid gap-2 text-sm text-slate-700 sm:grid-cols-2">
-                                                <p><span className="font-semibold text-slate-900">Name:</span> {signerName || 'Not provided'}</p>
-                                                <p><span className="font-semibold text-slate-900">Date:</span> {consentDate}</p>
+                                        singleConsent ? (
+                                            <div className="mt-7 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
+                                                This document has been reviewed. Continue to the remaining documents, then give your consent below.
                                             </div>
-                                            <label htmlFor={checkboxId} className="mt-4 flex cursor-pointer items-start gap-3 text-sm leading-6 text-slate-700">
-                                                <input
-                                                    id={checkboxId}
-                                                    type="checkbox"
-                                                    checked={isRead}
-                                                    disabled={disabled}
-                                                    onChange={(event) => handleDocumentCheck(document.slug, event.target.checked)}
-                                                    className="mt-1 h-5 w-5 shrink-0 rounded border-slate-300 text-blue-600 accent-blue-600 focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
-                                                />
-                                                <span className="flex items-start gap-2">
-                                                    <span>Ticking this checkbox serves as concent and electronic signature of this document.</span>
-                                                    {isRead && <HiCheckCircle className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" aria-label="Document read" />}
-                                                </span>
-                                            </label>
-                                        </div>
+                                        ) : (
+                                            <div className="mt-7 rounded-xl border border-blue-100 bg-blue-50/70 px-4 py-4">
+                                                <div className="grid gap-2 text-sm text-slate-700 sm:grid-cols-2">
+                                                    <p><span className="font-semibold text-slate-900">Name:</span> {signerName || 'Not provided'}</p>
+                                                    <p><span className="font-semibold text-slate-900">Date:</span> {consentDate}</p>
+                                                </div>
+                                                <label htmlFor={checkboxId} className="mt-4 flex cursor-pointer items-start gap-3 text-sm leading-6 text-slate-700">
+                                                    <input
+                                                        id={checkboxId}
+                                                        type="checkbox"
+                                                        checked={isRead}
+                                                        disabled={disabled}
+                                                        onChange={(event) => handleDocumentCheck(document.slug, event.target.checked)}
+                                                        className="mt-1 h-5 w-5 shrink-0 rounded border-slate-300 text-blue-600 accent-blue-600 focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                                    />
+                                                    <span className="flex items-start gap-2">
+                                                        <span>Ticking this checkbox serves as consent and electronic signature of this document.</span>
+                                                        {isRead && <HiCheckCircle className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" aria-label="Document read" />}
+                                                    </span>
+                                                </label>
+                                            </div>
+                                        )
                                     ) : (
                                         <div className="mt-7 rounded-xl bg-blue-50 px-4 py-3 text-center text-sm font-medium text-blue-800">
                                             Scroll to the bottom of this document to review and sign it.
@@ -185,7 +209,7 @@ export default function LegalDocumentsConsent({ id, audience, signerName = '', c
             <div className="mt-5 rounded-xl border border-blue-100 bg-white p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
                     <span className="font-medium text-slate-700">
-                        {readSlugs.size} of {documents.length} documents read to the end
+                        {reviewedSlugs.size} of {documents.length} documents read to the end
                     </span>
                     {consented && (
                         <span className="inline-flex items-center gap-1.5 font-semibold text-emerald-700">
@@ -195,15 +219,32 @@ export default function LegalDocumentsConsent({ id, audience, signerName = '', c
                     )}
                 </div>
 
-                <button
-                    type="button"
-                    onClick={handleConsent}
-                    disabled={disabled || consented}
-                    className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-                >
-                    {consented ? <HiCheckCircle className="h-5 w-5" aria-hidden="true" /> : <HiLockClosed className="h-5 w-5" aria-hidden="true" />}
-                    {consented ? 'I have read & consented' : 'I have read & consent'}
-                </button>
+                {singleConsent ? (
+                    <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-4 text-sm leading-6 text-slate-700 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60">
+                        <input
+                            type="checkbox"
+                            checked={consented}
+                            disabled={disabled || (!canConsent && !consented)}
+                            onChange={(event) => handleConsentChange(event.target.checked)}
+                            className="mt-1 h-5 w-5 shrink-0 rounded border-slate-300 text-blue-600 accent-blue-600 focus:ring-2 focus:ring-blue-500"
+                        />
+                        <span>
+                            <span className="block font-semibold text-slate-900">I have read and accept all terms and conditions.</span>
+                            <span className="mt-1 block">Ticking this checkbox serves as my electronic signature and consent for all documents shown above.</span>
+                            <span className="mt-2 block text-xs text-slate-500">Name: {signerName || 'Not provided'} · Date: {consentDate}</span>
+                        </span>
+                    </label>
+                ) : (
+                    <button
+                        type="button"
+                        onClick={() => handleConsentChange(true)}
+                        disabled={disabled || consented}
+                        className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                    >
+                        {consented ? <HiCheckCircle className="h-5 w-5" aria-hidden="true" /> : <HiLockClosed className="h-5 w-5" aria-hidden="true" />}
+                        {consented ? 'I have read & consented' : 'I have read & consent'}
+                    </button>
+                )}
 
                 {consentError && <p className="mt-3 text-sm font-medium text-red-700" role="alert">{consentError}</p>}
             </div>

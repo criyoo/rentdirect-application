@@ -45,7 +45,8 @@ export default function EnquiriesPage() {
             const response = await api.get<Enquiry[] | PaginatedResponse<Enquiry>>('/messages/enquiries')
             return normalizeResults(response.data)
         },
-        enabled: !!user
+        enabled: !!user,
+        retry: 1,
     })
 
     if (isLoading) {
@@ -181,7 +182,7 @@ export default function EnquiriesPage() {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                         </svg>
                     </div>
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">No enquiries yet</h3>
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">There are no enquiries / chats</h3>
                     <p className="text-gray-600 mb-6">Start exploring properties and contact landlords to see your enquiries here.</p>
                     <Link
                         to="/search"

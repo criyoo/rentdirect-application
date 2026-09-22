@@ -2,6 +2,15 @@ from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
 
+from .financial_constants import (
+    MONTHS_PER_YEAR,
+    TENANT_MONTHLY_INCOME_HIGH_BAND,
+    TENANT_MONTHLY_INCOME_MID_BAND,
+    TENANT_MONTHLY_INCOME_STANDARD_BAND,
+    TENANT_MONTHLY_INCOME_TOP_BAND,
+    ZERO_AMOUNT,
+)
+
 
 BENCHMARK_SCORE_CAP = 100
 
@@ -174,13 +183,13 @@ def _get_income_band_score(profile) -> int:
     income = _to_decimal(_as_dict(profile.financial_info).get("monthly_income_amount"))
     if income is None or income <= 0:
         return 0
-    if income >= Decimal("2000000"):
+    if income >= TENANT_MONTHLY_INCOME_TOP_BAND:
         return BENCHMARK_SCORE_CAP
-    if income >= Decimal("1200000"):
+    if income >= TENANT_MONTHLY_INCOME_HIGH_BAND:
         return 68
-    if income >= Decimal("750000"):
+    if income >= TENANT_MONTHLY_INCOME_MID_BAND:
         return 60
-    if income >= Decimal("400000"):
+    if income >= TENANT_MONTHLY_INCOME_STANDARD_BAND:
         return 48
     return 30
 
@@ -322,16 +331,16 @@ def _get_payment_capacity_score(profile, listing) -> int:
 
         monthly_outgoings = sum(
             (
-                _first_decimal(financial_info, field_name) or Decimal("0")
+                _first_decimal(financial_info, field_name) or ZERO_AMOUNT
                 for field_name in ("monthly_expenses", "credit_commitment", "outstanding_loans")
             ),
-            Decimal("0"),
+            ZERO_AMOUNT,
         )
         available_monthly_income = monthly_income - monthly_outgoings
         if available_monthly_income <= 0:
             return 0
 
-        monthly_rent = yearly_rent / Decimal("12")
+        monthly_rent = yearly_rent / MONTHS_PER_YEAR
         if monthly_rent <= 0:
             return 0
         capacity_ratio = available_monthly_income / monthly_rent
@@ -345,7 +354,7 @@ def _get_payment_capacity_score(profile, listing) -> int:
         savings = _first_decimal(financial_info, "savings")
 
         if average_monthly_income is not None and average_monthly_income > 0:
-            annual_resources = average_monthly_income * Decimal("12")
+            annual_resources = average_monthly_income * MONTHS_PER_YEAR
         elif average_annual_income is not None and average_annual_income > 0:
             annual_resources = average_annual_income
         elif savings is not None and savings > 0:
@@ -359,8 +368,8 @@ def _get_payment_capacity_score(profile, listing) -> int:
                 financial_info,
                 "outgoing_expenses",
                 "monthly_expenses",
-            ) or Decimal("0")
-            annual_outgoings = monthly_outgoings * Decimal("12")
+            ) or ZERO_AMOUNT
+            annual_outgoings = monthly_outgoings * MONTHS_PER_YEAR
 
         available_annual_resources = annual_resources - annual_outgoings
         if available_annual_resources <= 0:

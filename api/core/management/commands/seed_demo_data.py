@@ -22,9 +22,21 @@ from core.models import (
     VerificationRequest,
     build_listing_property_document_title,
 )
+from core.financial_constants import ZERO_AMOUNT
+from core.pricing import calculate_listing_deposit_amount
 from core.profile_validation import is_valid_mobile, is_valid_nin, normalize_residence, normalize_state_of_origin
 from core.subscription_pricing import get_subscription_pricing
 from core.tenant_verification import normalize_tenant_verification_date, normalize_tenant_verification_profile
+
+
+CONTENT_TYPES_BY_SUFFIX = {
+    ".mp4": "video/mp4",
+    ".webp": "image/webp",
+}
+
+
+def content_type_for_path(path: Path) -> str:
+    return mimetypes.guess_type(path.name)[0] or CONTENT_TYPES_BY_SUFFIX.get(path.suffix.lower(), "")
 
 
 class Command(BaseCommand):
@@ -53,10 +65,13 @@ class Command(BaseCommand):
         seed_payloads = self.load_seed_payloads(seed_specs)
         force = options.get("force")
 
+        self.seed_homepage_video()
+
         if not force and self.landlord_or_tenant_accounts_exist():
             missing_seed_keys = self.missing_seed_account_keys(seed_payloads)
             if not missing_seed_keys:
-                self.stdout.write("Seed demo landlord and tenant accounts already exist; skipping demo account seed")
+                self.refresh_existing_seed_listings(seed_payloads)
+                self.stdout.write("Seed demo landlord and tenant accounts already exist; refreshed homepage seed assets")
                 return
             seed_payloads = [
                 (
@@ -73,8 +88,6 @@ class Command(BaseCommand):
 
         created_users = 0
         created_listings = 0
-
-        self.seed_homepage_video()
 
         for seed_path, role, payload in seed_payloads:
             for seed_key, data in payload.items():
@@ -176,8 +189,18 @@ class Command(BaseCommand):
 
         with source_path.open("rb") as fh:
             file = File(fh, name=source_path.name)
-            file.content_type = mimetypes.guess_type(source_path.name)[0] or "application/octet-stream"
+            file.content_type = content_type_for_path(source_path) or "application/octet-stream"
             default_storage.save(storage_name, file)
+
+    def refresh_existing_seed_listings(self, seed_payloads: list[tuple[Path, str, dict]]) -> None:
+        for _seed_path, role, payload in seed_payloads:
+            if role != AppUser.Role.LANDLORD:
+                continue
+            for _seed_key, data in payload.items():
+                email = self.seed_user_email(data)
+                user = AppUser.objects.filter(role=role, email=email).first()
+                if user:
+                    self.seed_listings(user, data)
 
     def upsert_user(self, seed_key: str, data: dict, role: str, seed_path: Path):
         registration = self.get_seed_dict(data, "registration_credentials")
@@ -490,7 +513,7 @@ class Command(BaseCommand):
                 continue
 
             title = path.stem.replace("_", " ").title()
-            content_type = mimetypes.guess_type(path.name)[0] or ""
+            content_type = content_type_for_path(path)
             doc, _ = Document.objects.get_or_create(
                 owner=user,
                 title=title,
@@ -507,7 +530,7 @@ class Command(BaseCommand):
                 continue
 
             title = path.stem.replace("_", " ").title()
-            content_type = mimetypes.guess_type(path.name)[0] or ""
+            content_type = content_type_for_path(path)
             doc, _ = Document.objects.get_or_create(
                 owner=user,
                 title=title,
@@ -1187,7 +1210,7 @@ class Command(BaseCommand):
             raise ValueError(f"Invalid decimal seed value: {value}") from exc
 
     def calculate_seed_deposit_amount(self, price_per_year: Decimal) -> Decimal:
-        return (price_per_year * Decimal("0.20")).quantize(Decimal("0.01"))
+        return calculate_listing_deposit_amount(price_per_year)
 
     def normalized_seed_date_string(self, value) -> str:
         if not self.has_seed_value(value):
@@ -1267,7 +1290,7 @@ class Command(BaseCommand):
             features = listing_data.get("features") or {}
             rental_preferences = listing_data.get("rental_preferences") or {}
             property_verification = listing_data.get("property_verification") or {}
-            price_per_year = self.seed_decimal(listing_data.get("price_per_year"), default=Decimal("0"))
+            price_per_year = self.seed_decimal(listing_data.get("price_per_year"), default=ZERO_AMOUNT)
             verification_method = self.resolve_listing_verification_method(property_verification)
             listing.title = title
             listing.description = listing_data.get("description", "")
@@ -1437,7 +1460,7 @@ class Command(BaseCommand):
 
         uploaded_documents = []
         for path in property_paths:
-            content_type = mimetypes.guess_type(path.name)[0] or ""
+            content_type = content_type_for_path(path)
             document = Document(
                 owner=user,
                 title=build_listing_property_document_title(
@@ -1593,5 +1616,5 @@ class Command(BaseCommand):
 
         with source_path.open("rb") as fh:
             file = File(fh, name=source_path.name)
-            file.content_type = mimetypes.guess_type(source_path.name)[0] or "application/octet-stream"
+            file.content_type = content_type_for_path(source_path) or "application/octet-stream"
             field.save(source_path.name, file, save=False)

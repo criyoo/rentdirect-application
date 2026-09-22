@@ -14,8 +14,8 @@ export type EncryptedFlutterwaveCard = {
 }
 
 const NONCE_CHARACTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
-const MIN_CARD_NUMBER_DIGITS = 16
-const MAX_CARD_NUMBER_DIGITS = 18
+const MIN_CARD_NUMBER_DIGITS = 15
+const MAX_CARD_NUMBER_DIGITS = 19
 
 function generateNonce(length = 12) {
   const bytes = globalThis.crypto.getRandomValues(new Uint8Array(length))
@@ -96,5 +96,17 @@ export async function encryptFlutterwaveCard(card: CardDetails, encryptionKey: s
     encrypted_expiry_month: await encryptAES(normalized.expiryMonth, encryptionKey, nonce),
     encrypted_expiry_year: await encryptAES(normalized.expiryYear, encryptionKey, nonce),
     encrypted_cvv: await encryptAES(normalized.cvv, encryptionKey, nonce),
+  }
+}
+
+export async function encryptFlutterwavePin(pin: string, encryptionKey: string) {
+  const normalizedPin = pin.replace(/\D/g, '')
+  if (normalizedPin.length < 4 || normalizedPin.length > 8) {
+    throw new Error('Enter a valid 4 to 8 digit PIN.')
+  }
+  const nonce = generateNonce()
+  return {
+    nonce,
+    encrypted_pin: await encryptAES(normalizedPin, encryptionKey, nonce),
   }
 }

@@ -1,10 +1,15 @@
 from decimal import Decimal, ROUND_HALF_UP
 
-
-MONEY_PRECISION = Decimal("0.01")
-REFUNDABLE_SECURITY_DEPOSIT_RATE = Decimal("0.10")
-ADMINISTRATION_FEE_RATE = Decimal("0.10")
-ADMINISTRATION_FEE_VAT_RATE = Decimal("0.075")
+from .financial_constants import (
+    ADMINISTRATION_FEE_RATE,
+    ADMINISTRATION_FEE_VAT_RATE,
+    FEATURED_PROPERTY_MONTHLY_DURATION_DAYS,
+    FEATURED_PROPERTY_MONTHLY_FEE,
+    LISTING_DEPOSIT_RATE,
+    MONEY_PRECISION,
+    REFUNDABLE_SECURITY_DEPOSIT_RATE,
+    ZERO_AMOUNT,
+)
 
 
 def quantize_money(amount: Decimal | int | float | str) -> Decimal:
@@ -32,6 +37,16 @@ def calculate_deposit_amount(annual_rent: Decimal | int | float | str) -> Decima
     )
 
 
+def calculate_listing_deposit_amount(annual_rent: Decimal | int | float | str) -> Decimal:
+    return quantize_money(Decimal(annual_rent) * LISTING_DEPOSIT_RATE)
+
+
+def calculate_featured_property_fee(days: int) -> Decimal:
+    return quantize_money(
+        (FEATURED_PROPERTY_MONTHLY_FEE / Decimal(FEATURED_PROPERTY_MONTHLY_DURATION_DAYS)) * Decimal(days)
+    )
+
+
 def calculate_booking_total(annual_rent: Decimal | int | float | str) -> Decimal:
     annual_rent_decimal = quantize_money(annual_rent)
     return quantize_money(annual_rent_decimal + calculate_deposit_amount(annual_rent_decimal))
@@ -42,7 +57,7 @@ def resolve_booking_total(
     stored_total_amount: Decimal | int | float | str | None,
 ) -> Decimal:
     calculated_total = calculate_booking_total(annual_rent)
-    stored_total = Decimal(stored_total_amount or 0)
+    stored_total = Decimal(stored_total_amount or ZERO_AMOUNT)
     return calculated_total if stored_total < calculated_total else quantize_money(stored_total)
 
 
@@ -50,6 +65,6 @@ def calculate_remaining_balance(
     total_amount: Decimal | int | float | str | None,
     paid_amount: Decimal | int | float | str | None,
 ) -> Decimal:
-    total = Decimal(total_amount or 0)
-    paid = Decimal(paid_amount or 0)
-    return quantize_money(max(total - paid, Decimal("0")))
+    total = Decimal(total_amount or ZERO_AMOUNT)
+    paid = Decimal(paid_amount or ZERO_AMOUNT)
+    return quantize_money(max(total - paid, ZERO_AMOUNT))

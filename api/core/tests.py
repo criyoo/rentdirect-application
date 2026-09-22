@@ -79,6 +79,28 @@ def create_active_subscription(user, plan_code=SubscriptionPayment.PlanCode.SILV
     )
 
 
+def make_landlord_listing_ready(landlord):
+    landlord.landlord_verification_type = AppUser.LandlordVerificationType.INDIVIDUAL
+    landlord.landlord_verification_profile = {
+        "first_name": "Demo",
+        "last_name": "Landlord",
+        "date_of_birth": "1990-01-01",
+        "country_of_birth": "Nigeria",
+        "state_of_birth": "Lagos",
+        "nationality": "Nigerian",
+        "state_of_origin": "Lagos",
+        "lga_of_origin": "Ikeja",
+        "gender": "male",
+        "email": landlord.email,
+        "nin": "12345678901",
+        "bvn": "12345678901",
+        "residential_address": "1 Demo Street, Lagos",
+    }
+    landlord.save(update_fields=["landlord_verification_type", "landlord_verification_profile"])
+    create_active_subscription(landlord)
+    return landlord
+
+
 class PremblyWebhookSecurityTests(TestCase):
     def _signature(self, raw_body: bytes, public_key: str) -> str:
         digest = hmac.new(public_key.encode("utf-8"), raw_body, hashlib.sha256).digest()
@@ -714,7 +736,10 @@ class ListingTests(TestCase):
         self.assertEqual(public_payload["city"], "")
         self.assertEqual(public_payload["state"], "Lagos")
         self.assertIsNone(public_payload["latitude"])
-        self.assertIsNone(public_payload["property_document_verification_status"])
+        self.assertEqual(
+            public_payload["property_document_verification_status"],
+            VerificationRequest.VerificationProgressStatus.VERIFIED,
+        )
         self.assertNotIn("landlord_email", public_payload)
 
         bronze_client = self.tenant_client_with_plan(SubscriptionPayment.PlanCode.BRONZE, "bronze-visibility")
@@ -722,14 +747,20 @@ class ListingTests(TestCase):
         self.assertEqual(bronze_payload["address"], "")
         self.assertEqual(bronze_payload["city"], listing.city)
         self.assertEqual(bronze_payload["state"], listing.state)
-        self.assertIsNone(bronze_payload["property_document_verification_status"])
+        self.assertEqual(
+            bronze_payload["property_document_verification_status"],
+            VerificationRequest.VerificationProgressStatus.VERIFIED,
+        )
 
         silver_client = self.tenant_client_with_plan(SubscriptionPayment.PlanCode.SILVER, "silver-visibility")
         silver_payload = silver_client.get(f"/api/v1/listings/{listing.id}").json()
         self.assertEqual(silver_payload["address"], "")
         self.assertEqual(silver_payload["city"], listing.city)
         self.assertEqual(silver_payload["state"], listing.state)
-        self.assertIsNone(silver_payload["property_document_verification_status"])
+        self.assertEqual(
+            silver_payload["property_document_verification_status"],
+            VerificationRequest.VerificationProgressStatus.VERIFIED,
+        )
 
         gold_client = self.tenant_client_with_plan(SubscriptionPayment.PlanCode.GOLD, "gold-visibility")
         gold_payload = gold_client.get(f"/api/v1/listings/{listing.id}").json()
@@ -878,6 +909,7 @@ class ListingTests(TestCase):
             identity_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
             property_document_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
         )
+        make_landlord_listing_ready(landlord)
         client = APIClient()
         client.force_authenticate(user=landlord)
 
@@ -1074,6 +1106,7 @@ class ListingTests(TestCase):
             status=VerificationRequest.Status.APPROVED,
             identity_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
         )
+        make_landlord_listing_ready(landlord)
         client = APIClient()
         client.force_authenticate(user=landlord)
         cover_image = SimpleUploadedFile(
@@ -3080,7 +3113,51 @@ class PaymentQueueTests(TestCase):
 
 
 class FlutterwaveTransferPayloadTests(TestCase):
-    @patch("core.flutterwave._get_v4_access_token", return_value="test-access-token")
+    @override_settings(
+        FLUTTERWAVE_API_VERSION="v4",
+        FLUTTERWAVE_CLIENT_ID="test-client-id",
+        FLUTTERWAVE_CLIENT_SECRET="test-client-secret",
+        FLUTTERWAVE_API_BASE_URL="https://developersandbox-api.flutterwave.com",
+    )
+    @patch("core.flutterwave.v4._request_json_v4")
+    def test_update_charge_submits_authorization(self, request_mock):
+        request_mock.return_value = {"status": "success", "data": {"id": "chg_123", "status": "succeeded"}}
+
+        response = flutterwave.update_charge(
+            charge_id="chg_123",
+            authorization={"type": "pin", "pin": {"encrypted_pin": "cipher", "nonce": "nonce"}},
+            idempotency_key="authorize-123",
+        )
+
+        self.assertEqual(response["data"]["status"], "succeeded")
+        request_mock.assert_called_once_with(
+            method="PUT",
+            path="/charges/chg_123",
+            payload={"authorization": {"type": "pin", "pin": {"encrypted_pin": "cipher", "nonce": "nonce"}}},
+            idempotency_key="authorize-123",
+        )
+
+    @patch("core.flutterwave.v3.create_collection_subaccount")
+    def test_collection_subaccount_retries_mobile_bank_code_alias(self, create_subaccount_mock):
+        create_subaccount_mock.side_effect = [
+            flutterwave.FlutterwaveError("Sorry we couldn't verify your account number."),
+            {"status": "success", "data": {"id": "RS_OPAY_SUBACCOUNT"}},
+        ]
+
+        subaccount_id = flutterwave.get_or_create_collection_subaccount_id(
+            bank_code="100004",
+            account_number="9041487757",
+            business_name="RentDirect Operations",
+            business_mobile="08000000000",
+        )
+
+        self.assertEqual(subaccount_id, "RS_OPAY_SUBACCOUNT")
+        self.assertEqual(
+            [call.kwargs["bank_code"] for call in create_subaccount_mock.call_args_list],
+            ["100004", "999992"],
+        )
+
+    @patch("core.flutterwave.v4._get_v4_access_token", return_value="test-access-token")
     def test_flutterwave_v4_get_headers_include_trace_id_without_idempotency_header(self, _get_token_mock):
         headers = flutterwave._build_v4_headers(
             method="GET",
@@ -3090,7 +3167,7 @@ class FlutterwaveTransferPayloadTests(TestCase):
         self.assertEqual(headers["X-Trace-Id"], "recipient-lookup-trace")
         self.assertNotIn("X-Idempotency-Key", headers)
 
-    @patch("core.flutterwave._request_json_v4")
+    @patch("core.flutterwave.v4._request_json_v4")
     def test_transfer_recipient_reuses_existing_account(self, request_mock):
         request_mock.return_value = {
             "status": "success",
@@ -3118,7 +3195,7 @@ class FlutterwaveTransferPayloadTests(TestCase):
             path="/transfers/recipients?size=50",
         )
 
-    @patch("core.flutterwave._request_json_v4")
+    @patch("core.flutterwave.v4._request_json_v4")
     def test_transfer_recipient_searches_all_recipient_pages(self, request_mock):
         request_mock.side_effect = [
             {
@@ -3149,7 +3226,7 @@ class FlutterwaveTransferPayloadTests(TestCase):
             {"method": "GET", "path": "/transfers/recipients?size=50&next=next-recipient-page"},
         )
 
-    @patch("core.flutterwave._request_json_v4")
+    @patch("core.flutterwave.v4._request_json_v4")
     def test_transfer_recipient_supports_cursor_pagination_payload(self, request_mock):
         request_mock.side_effect = [
             {
@@ -3181,7 +3258,7 @@ class FlutterwaveTransferPayloadTests(TestCase):
             "/transfers/recipients?size=50&next=cursor-recipient-page",
         )
 
-    @patch("core.flutterwave._request_json_v4")
+    @patch("core.flutterwave.v4._request_json_v4")
     def test_transfer_recipient_recovers_from_existing_recipient_conflict(self, request_mock):
         request_mock.side_effect = [
             {"status": "success", "data": []},
@@ -3210,7 +3287,7 @@ class FlutterwaveTransferPayloadTests(TestCase):
         self.assertEqual(recipient["data"]["id"], "recipient_after_conflict")
         self.assertEqual(request_mock.call_args_list[1].kwargs["method"], "POST")
 
-    @patch("core.flutterwave._request_json_v4")
+    @patch("core.flutterwave.v4._request_json_v4")
     def test_customer_phone_payload_uses_numeric_three_digit_country_code(self, request_mock):
         request_mock.return_value = {"status": "success", "data": {"id": "customer_123"}}
 
@@ -3223,7 +3300,7 @@ class FlutterwaveTransferPayloadTests(TestCase):
         payload = request_mock.call_args.kwargs["payload"]
         self.assertEqual(payload["phone"], {"country_code": "234", "number": "9080350066"})
 
-    @patch("core.flutterwave._request_json_v4")
+    @patch("core.flutterwave.v4._request_json_v4")
     def test_transfer_recipient_payload_uses_flutterwave_ngn_bank_type(self, request_mock):
         request_mock.return_value = {"status": "success", "data": {"id": "recipient_123"}}
 
@@ -3245,7 +3322,7 @@ class FlutterwaveTransferPayloadTests(TestCase):
         self.assertNotIn("phone", payload)
         self.assertNotIn("national_identification", payload)
 
-    @patch("core.flutterwave._request_json_v4")
+    @patch("core.flutterwave.v4._request_json_v4")
     def test_transfer_recipient_normalizes_moniepoint_bank_code(self, request_mock):
         request_mock.return_value = {"status": "success", "data": {"id": "recipient_123"}}
 
@@ -3263,12 +3340,13 @@ class FlutterwaveTransferPayloadTests(TestCase):
         self.assertEqual(payload["bank"], {"account_number": "8099446062", "code": "50515"})
 
     @override_settings(
+        FLUTTERWAVE_API_VERSION="v4",
         FLUTTERWAVE_CLIENT_ID="test-client-id",
         FLUTTERWAVE_CLIENT_SECRET="test-client-secret",
         FLUTTERWAVE_API_BASE_URL="https://developersandbox-api.flutterwave.com",
     )
-    @patch("core.flutterwave._request_json_v3")
-    @patch("core.flutterwave._request_json_v4")
+    @patch("core.flutterwave.v3._request_json_v3")
+    @patch("core.flutterwave.v4._request_json_v4")
     def test_bank_transfer_payload_uses_payment_instruction_with_recipient_id(self, request_v4_mock, request_v3_mock):
         request_v4_mock.return_value = {"status": "success", "data": {"id": "transfer_123", "status": "NEW"}}
 
@@ -3302,11 +3380,12 @@ class FlutterwaveTransferPayloadTests(TestCase):
         request_v3_mock.assert_not_called()
 
     @override_settings(
+        FLUTTERWAVE_API_VERSION="v4",
         FLUTTERWAVE_CLIENT_ID="test-client-id",
         FLUTTERWAVE_CLIENT_SECRET="test-client-secret",
         FLUTTERWAVE_API_BASE_URL="https://developersandbox-api.flutterwave.com",
     )
-    @patch("core.flutterwave._request_json_v4")
+    @patch("core.flutterwave.v4._request_json_v4")
     def test_retrieve_bank_transfer_fetches_current_v4_status(self, request_v4_mock):
         request_v4_mock.return_value = {
             "status": "success",
@@ -3565,6 +3644,7 @@ class BookingPaymentTests(TestCase):
     @override_settings(
         FLUTTERWAVE_PUBLIC_KEY="test-public-key",
         FLUTTERWAVE_SECRET_KEY="test-secret-key",
+        FLUTTERWAVE_API_VERSION="v4",
         FLUTTERWAVE_CLIENT_ID="test-client-id",
         FLUTTERWAVE_CLIENT_SECRET="test-client-secret",
         FLUTTERWAVE_API_BASE_URL="https://f4bexperience.flutterwave.com",
@@ -3601,7 +3681,7 @@ class BookingPaymentTests(TestCase):
         payload = response.json()
         self.assertEqual(payload["payment"]["status"], "pending")
         self.assertEqual(payload["checkout"]["checkout_mode"], "inline")
-        self.assertEqual(payload["checkout"]["flutterwave"]["payment_options"], "banktransfer,bank,ussd")
+        self.assertEqual(payload["checkout"]["flutterwave"]["payment_options"], "banktransfer,account,ussd")
         payment = Payment.objects.get(id=payload["payment"]["id"])
         self.assertEqual(payment.provider_payload["checkout"]["checkout_mode"], "inline")
         self.assertEqual(payment.provider_payload["collection_mode"], "inline_bank_checkout")
@@ -3681,6 +3761,7 @@ class BookingPaymentTests(TestCase):
         EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
         FLUTTERWAVE_PUBLIC_KEY="test-public-key",
         FLUTTERWAVE_SECRET_KEY="test-secret-key",
+        FLUTTERWAVE_API_VERSION="v4",
         FLUTTERWAVE_CLIENT_ID="test-client-id",
         FLUTTERWAVE_CLIENT_SECRET="test-client-secret",
         FLUTTERWAVE_API_BASE_URL="https://f4bexperience.flutterwave.com",
@@ -4137,7 +4218,7 @@ class BookingPaymentTests(TestCase):
         self.assertEqual(settlement.last_error, "Transfer rejected by beneficiary bank")
         self.assertIn("Transfer rejected by beneficiary bank", "\n".join(logs.output))
 
-    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend", FLUTTERWAVE_API_VERSION="v4")
     @patch("core.views.find_transfer_recipient")
     @patch("core.views.create_bank_transfer")
     @patch("core.views.create_transfer_recipient")
@@ -4203,7 +4284,7 @@ class BookingPaymentTests(TestCase):
         self.assertTrue(all(settlements.values_list("transfer_reference", flat=True)))
         self.assertEqual(len(mail.outbox), 4)
 
-    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend", FLUTTERWAVE_API_VERSION="v4")
     @patch("core.views.find_transfer_recipient")
     @patch("core.views.create_bank_transfer")
     @patch("core.views.create_transfer_recipient")
@@ -5092,7 +5173,7 @@ class SeedDemoTests(TestCase):
                 call_command("seed_demo_data")
                 call_command("seed_demo_data", stdout=out)
 
-        self.assertIn("Seed demo landlord and tenant accounts already exist; skipping demo account seed", out.getvalue())
+        self.assertIn("Seed demo landlord and tenant accounts already exist; refreshed homepage seed assets", out.getvalue())
         self.assertEqual(AppUser.objects.filter(role=AppUser.Role.LANDLORD).count(), 1)
         self.assertEqual(AppUser.objects.filter(role=AppUser.Role.TENANT).count(), 1)
 
@@ -5175,6 +5256,10 @@ class SeedDemoTests(TestCase):
         with tempfile.TemporaryDirectory() as temp_media_root:
             with override_settings(MEDIA_ROOT=temp_media_root, STORAGES=TEST_FILE_STORAGES):
                 call_command("seed_demo_data")
+                featured_listing = Listing.objects.filter(featured=True).first()
+                featured_listing.featured = False
+                featured_listing.save(update_fields=["featured", "updated_at"])
+                featured_listing.images.all().delete()
                 call_command("seed_demo_data")
 
         landlords = list(AppUser.objects.filter(role=AppUser.Role.LANDLORD))
@@ -5627,6 +5712,7 @@ class FeaturedPaymentTests(TestCase):
 
 class SubscriptionPaymentTests(TestCase):
     @override_settings(
+        FLUTTERWAVE_API_VERSION="v4",
         FLUTTERWAVE_CLIENT_ID="test-client-id",
         FLUTTERWAVE_CLIENT_SECRET="test-client-secret",
         FLUTTERWAVE_API_BASE_URL="https://developersandbox-api.flutterwave.com",
@@ -5765,6 +5851,7 @@ class SubscriptionPaymentTests(TestCase):
         self.assertEqual(payment.status, SubscriptionPayment.Status.COMPLETED)
 
     @override_settings(
+        FLUTTERWAVE_API_VERSION="v3",
         FLUTTERWAVE_PUBLIC_KEY="test-public-key",
         FLUTTERWAVE_SECRET_KEY="test-secret-key",
         RENTDIRECT_OPERATING_SUBACCOUNT_ID="RS_SUBSCRIPTION_TEST",
@@ -5805,8 +5892,8 @@ class SubscriptionPaymentTests(TestCase):
         payment = SubscriptionPayment.objects.get(id=request_response.json()["id"])
         expected_amount = get_subscription_pricing()["tenant"]["silver"]["monthly"]
         expected_amount_display = f"{expected_amount:.2f}"
-        expected_vat_display = "75.00"
-        expected_total_display = "1075.00"
+        expected_vat_display = "37.50"
+        expected_total_display = "537.50"
         self.assertEqual(payment.status, SubscriptionPayment.Status.PENDING)
         self.assertEqual(str(payment.amount), expected_amount_display)
         self.assertEqual(str(payment.vat_rate), "7.50")
@@ -5842,7 +5929,7 @@ class SubscriptionPaymentTests(TestCase):
         self.assertEqual(payment.provider_payload["subscription_destination"]["account_number"], "0000000000")
         self.assertEqual(payment.provider_payload["vat_destination"]["subaccount_id"], "RS_VAT_TEST")
         self.assertEqual(payment.provider_payload["vat_destination"]["account_number"], "1111111111")
-        self.assertEqual(checkout_payload["checkout"]["flutterwave"]["amount"], 1075.0)
+        self.assertEqual(checkout_payload["checkout"]["flutterwave"]["amount"], 537.5)
 
         query_transaction_mock.return_value = {
             "status": "success",
@@ -5891,6 +5978,7 @@ class SubscriptionPaymentTests(TestCase):
         self.assertEqual(SubscriptionVATPayment.objects.filter(subscription_payment=payment).count(), 1)
 
     @override_settings(
+        FLUTTERWAVE_API_VERSION="v3",
         FLUTTERWAVE_PUBLIC_KEY="test-public-key",
         FLUTTERWAVE_SECRET_KEY="test-secret-key",
         RENTDIRECT_OPERATING_SUBACCOUNT_ID="",
@@ -5965,8 +6053,81 @@ class SubscriptionPaymentTests(TestCase):
         self.assertEqual(response.json()["checkout"]["flutterwave"]["subaccounts"][1]["id"], "RS_CREATED_VAT")
 
     @override_settings(
+        FLUTTERWAVE_API_VERSION="v4",
+        FLUTTERWAVE_CLIENT_ID="test-client-id",
+        FLUTTERWAVE_CLIENT_SECRET="test-client-secret",
+        FLUTTERWAVE_API_BASE_URL="https://developersandbox-api.flutterwave.com",
+        RENTDIRECT_OPERATING_SUBACCOUNT_ID="RS_SUBSCRIPTION_TEST",
+        RENTDIRECT_VAT_HOLDING_SUBACCOUNT_ID="RS_VAT_TEST",
+        WEB_PUBLIC_URL="http://localhost:5173",
+    )
+    @patch("core.views.create_charge")
+    @patch("core.views.create_dynamic_virtual_account")
+    @patch("core.views.create_customer")
+    def test_subscription_checkout_uses_v4_bank_transfer_flow(
+        self,
+        create_customer_mock,
+        create_dynamic_virtual_account_mock,
+        create_charge_mock,
+    ):
+        tenant = AppUser.objects.create_user(
+            email="tenant-v4-subscription@example.com",
+            password="password-123",
+            name="V4 Subscription Tenant",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        payment = SubscriptionPayment.objects.create(
+            user=tenant,
+            role=tenant.role,
+            plan_code=SubscriptionPayment.PlanCode.SILVER,
+            billing_cycle=SubscriptionPayment.BillingCycle.MONTHLY,
+            amount="100.00",
+            vat_rate="7.50",
+            vat_amount="7.50",
+            currency="NGN",
+            status=SubscriptionPayment.Status.PENDING,
+            provider="flutterwave",
+            transaction_id="SUBV4CHECKOUT001",
+            expires_at=timezone.now() + timedelta(days=30),
+        )
+        create_customer_mock.return_value = {"status": "success", "data": {"id": "cus_v4_123"}}
+        create_dynamic_virtual_account_mock.return_value = {
+            "status": "success",
+            "data": {
+                "id": "vacct_v4_123",
+                "account_number": "0123456789",
+                "bank_name": "Flutterwave",
+                "bank_code": "50515",
+            },
+        }
+
+        client = APIClient()
+        client.force_authenticate(user=tenant)
+        response = client.post(
+            f"/api/v1/subscriptions/{payment.id}/flutterwave/checkout",
+            {"payment_method": {"type": "bank_transfer", "bank_transfer": {}}},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertEqual(response.json()["checkout"]["checkout_mode"], "v4")
+        self.assertEqual(
+            response.json()["checkout"]["next_action"]["type"],
+            "requires_bank_transfer",
+        )
+        create_dynamic_virtual_account_mock.assert_called_once()
+        create_charge_mock.assert_not_called()
+        payment.refresh_from_db()
+        self.assertEqual(
+            payment.provider_payload["charge"]["data"]["next_action"]["type"],
+            "requires_bank_transfer",
+        )
+
+    @override_settings(
         FLUTTERWAVE_PUBLIC_KEY="test-public-key",
         FLUTTERWAVE_SECRET_KEY="test-secret-key",
+        FLUTTERWAVE_API_VERSION="v4",
         FLUTTERWAVE_CLIENT_ID="test-client-id",
         FLUTTERWAVE_CLIENT_SECRET="test-client-secret",
         FLUTTERWAVE_API_BASE_URL="https://developersandbox-api.flutterwave.com",
@@ -6089,14 +6250,15 @@ class SubscriptionPaymentTests(TestCase):
         )
         self.assertEqual(payment.provider_payload["subscription_destination"]["subaccount_id"], "RS_SUBSCRIPTION_TEST")
         self.assertEqual(payment.provider_payload["vat_destination"]["subaccount_id"], "RS_VAT_TEST")
-        self.assertEqual(str(payment.vat_amount), "90.00")
+        self.assertEqual(str(payment.vat_amount), "60.00")
         vat_payment = SubscriptionVATPayment.objects.get(subscription_payment=payment)
         self.assertEqual(vat_payment.entity_type, AppUser.Role.LANDLORD)
-        self.assertEqual(str(vat_payment.amount_paid), "1290.00")
+        self.assertEqual(str(vat_payment.amount_paid), "860.00")
 
     @override_settings(
         FLUTTERWAVE_PUBLIC_KEY="test-public-key",
         FLUTTERWAVE_SECRET_KEY="test-secret-key",
+        FLUTTERWAVE_API_VERSION="v4",
         FLUTTERWAVE_CLIENT_ID="test-client-id",
         FLUTTERWAVE_CLIENT_SECRET="test-client-secret",
         FLUTTERWAVE_API_BASE_URL="https://developersandbox-api.flutterwave.com",

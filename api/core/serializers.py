@@ -45,8 +45,9 @@ from .models import (
     TenantProfile,
     VerificationRequest,
 )
-from .pricing import calculate_booking_total, calculate_remaining_balance, resolve_booking_total
-from .subscription_access import user_has_completed_tenant_profile, user_has_gold_access, user_has_silver_access
+from .financial_constants import ZERO_AMOUNT
+from .pricing import calculate_booking_total, calculate_listing_deposit_amount, calculate_remaining_balance, resolve_booking_total
+from .subscription_access import user_has_completed_tenant_profile, user_has_silver_access
 from .tenant_scoring import build_tenant_screening_summary
 from .location_services import decimal_from_float, resolve_city_state_coordinates
 from .image_optimization import optimize_listing_image
@@ -316,8 +317,6 @@ class AmenitiesField(serializers.ListField):
 class ListingSerializer(serializers.ModelSerializer):
     PROPERTY_VERIFICATION_METHOD_DOCUMENTS = "documents"
     PROPERTY_VERIFICATION_METHOD_IN_PERSON = "in_person"
-    DEPOSIT_RATE = Decimal("0.20")
-
     landlord_id = serializers.UUIDField(source="landlord.id", read_only=True)
     landlord_name = serializers.CharField(source="landlord.name", read_only=True)
     landlord_email = serializers.EmailField(source="landlord.email", read_only=True)
@@ -416,7 +415,7 @@ class ListingSerializer(serializers.ModelSerializer):
 
     @classmethod
     def calculate_deposit_amount(cls, price_per_year):
-        return (Decimal(price_per_year) * cls.DEPOSIT_RATE).quantize(Decimal("0.01"))
+        return calculate_listing_deposit_amount(price_per_year)
 
     def validate(self, attrs):
         price_per_year = attrs.get("price_per_year")
@@ -571,12 +570,16 @@ class ListingSerializer(serializers.ModelSerializer):
                 "uploaded_document_count": len(uploaded_documents),
                 "submitted_at": timezone.now().isoformat(),
             }
-            listing.property_document_verification_status = VerificationRequest.VerificationProgressStatus.PENDING
-            listing.physical_property_status = (
-                VerificationRequest.VerificationProgressStatus.PENDING
-                if verification_method == self.PROPERTY_VERIFICATION_METHOD_IN_PERSON
-                else VerificationRequest.VerificationProgressStatus.UNVERIFIED
-            )
+            if verification_method == self.PROPERTY_VERIFICATION_METHOD_IN_PERSON:
+                listing.property_document_verification_status = VerificationRequest.VerificationProgressStatus.UNVERIFIED
+                listing.physical_property_status = VerificationRequest.VerificationProgressStatus.PENDING
+            else:
+                listing.property_document_verification_status = (
+                    VerificationRequest.VerificationProgressStatus.PENDING
+                    if uploaded_documents or listing.property_documents.exists()
+                    else VerificationRequest.VerificationProgressStatus.UNVERIFIED
+                )
+                listing.physical_property_status = VerificationRequest.VerificationProgressStatus.UNVERIFIED
             listing.save(
                 update_fields=[
                     "property_document_submission",
@@ -606,12 +609,6 @@ class ListingSerializer(serializers.ModelSerializer):
             AppUser.Role.LANDLORD,
             AppUser.Role.ADMIN,
         }
-        can_view_property_verification = is_admin or is_listing_owner
-        if is_tenant:
-            gold_cache_key = "_request_user_has_gold_access"
-            if gold_cache_key not in self.context:
-                self.context[gold_cache_key] = user_has_gold_access(user)
-            can_view_property_verification = self.context[gold_cache_key]
 
         if not can_view_city_state:
             data["address"] = ""
@@ -624,9 +621,6 @@ class ListingSerializer(serializers.ModelSerializer):
             data["postal_code"] = ""
             data["latitude"] = None
             data["longitude"] = None
-        if not can_view_property_verification:
-            data["property_document_verification_status"] = None
-            data["physical_property_status"] = None
         if not (is_admin or is_listing_owner):
             data["ownership_status"] = ""
             data["ownership_types"] = []
@@ -717,6 +711,7 @@ class VerificationRequestSerializer(serializers.ModelSerializer):
             "status",
             "identity_verification_status",
             "property_document_verification_status",
+            "physical_property_status",
             "verification_method",
             "confidence_score",
             "automated_decision",
@@ -829,7 +824,7 @@ class BookingSerializer(serializers.ModelSerializer):
 
     def get_remaining_amount(self, obj):
         if obj.status == Booking.Status.CANCELLED:
-            return Decimal("0.00")
+            return ZERO_AMOUNT
         return calculate_remaining_balance(self.get_total_amount(obj), obj.paid_amount)
 
     def get_landlord_rental_amount(self, obj):
@@ -847,13 +842,13 @@ class BookingSerializer(serializers.ModelSerializer):
         if not self._request_user_can_view_landlord_financials(obj):
             return None
         paid_rent = self._tenant_paid_landlord_rent_amount(obj)
-        collected = self.get_landlord_collected_amount(obj) or Decimal("0.00")
-        return max(paid_rent - collected, Decimal("0.00"))
+        collected = self.get_landlord_collected_amount(obj) or ZERO_AMOUNT
+        return max(paid_rent - collected, ZERO_AMOUNT)
 
     def get_landlord_balance_payment_amount(self, obj):
         if not self._request_user_can_view_landlord_financials(obj):
             return None
-        return max(self._landlord_rent_amount(obj) - self._tenant_paid_landlord_rent_amount(obj), Decimal("0.00"))
+        return max(self._landlord_rent_amount(obj) - self._tenant_paid_landlord_rent_amount(obj), ZERO_AMOUNT)
 
     def _request_user_can_view_landlord_financials(self, obj):
         request = self.context.get("request")
@@ -877,7 +872,7 @@ class BookingSerializer(serializers.ModelSerializer):
             settlements = settlements.filter(status__in=statuses)
         if exclude_statuses is not None:
             settlements = settlements.exclude(status__in=exclude_statuses)
-        total = settlements.aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
+        total = settlements.aggregate(total=Sum("amount"))["total"] or ZERO_AMOUNT
         return total
 
     def _landlord_rent_amount(self, obj):
@@ -885,7 +880,7 @@ class BookingSerializer(serializers.ModelSerializer):
 
     def _tenant_paid_landlord_rent_amount(self, obj):
         paid_amount = Decimal(obj.paid_amount or 0)
-        return min(max(paid_amount, Decimal("0.00")), self._landlord_rent_amount(obj))
+        return min(max(paid_amount, ZERO_AMOUNT), self._landlord_rent_amount(obj))
 
     def get_rental_progress(self, obj):
         request = self.context.get("request")
@@ -1168,7 +1163,32 @@ class SubscriptionPaymentSerializer(serializers.ModelSerializer):
     user_id = serializers.UUIDField(source="user.id", read_only=True)
     payment_method = SubscriptionPaymentMethodSerializer(read_only=True)
     next_action_url = serializers.SerializerMethodField()
+    next_action = serializers.SerializerMethodField()
+    status_detail = serializers.SerializerMethodField()
+    checkout_mode = serializers.SerializerMethodField()
+    payment_method_type = serializers.SerializerMethodField()
     total_amount = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+
+    def get_next_action(self, obj):
+        payload = obj.provider_payload if isinstance(obj.provider_payload, dict) else {}
+        charge_payload = payload.get("charge") if isinstance(payload.get("charge"), dict) else payload
+        data = charge_payload.get("data") if isinstance(charge_payload, dict) else {}
+        next_action = data.get("next_action") if isinstance(data, dict) else {}
+        return next_action if isinstance(next_action, dict) else {}
+
+    def get_checkout_mode(self, obj):
+        from .flutterwave import flutterwave_api_version
+
+        return flutterwave_api_version()
+
+    def get_payment_method_type(self, obj):
+        payload = obj.provider_payload if isinstance(obj.provider_payload, dict) else {}
+        method_type = str(payload.get("payment_method_type") or "").strip()
+        if method_type:
+            return method_type
+        if obj.payment_method_id and obj.payment_method:
+            return str(obj.payment_method.payment_type or "").strip()
+        return ""
 
     def get_next_action_url(self, obj):
         payload = obj.provider_payload if isinstance(obj.provider_payload, dict) else {}
@@ -1178,6 +1198,32 @@ class SubscriptionPaymentSerializer(serializers.ModelSerializer):
         except ImportError:
             return ""
         return extract_next_action_url(charge_payload)
+
+    def get_status_detail(self, obj):
+        if obj.status == SubscriptionPayment.Status.CANCELLED:
+            return "Payment Cancelled"
+        payload = obj.provider_payload if isinstance(obj.provider_payload, dict) else {}
+        charge_payload = payload.get("charge") if isinstance(payload.get("charge"), dict) else payload
+        data = charge_payload.get("data") if isinstance(charge_payload, dict) else {}
+        if not isinstance(data, dict):
+            return ""
+        processor_response = data.get("processor_response") if isinstance(data.get("processor_response"), dict) else {}
+        for key in ("message", "gateway_response", "response_message", "narration", "detail"):
+            value = processor_response.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        generic_messages = {"charge updated", "charge created", "charges fetched", "charge fetched"}
+        for container in (data, charge_payload):
+            for key in ("status_detail", "message", "detail"):
+                value = container.get(key)
+                if isinstance(value, str) and value.strip() and value.strip().lower() not in generic_messages:
+                    return value.strip()
+        if obj.status == SubscriptionPayment.Status.FAILED:
+            processor_type = str(processor_response.get("type") or "").strip()
+            processor_code = str(processor_response.get("code") or "").strip()
+            if processor_type or processor_code:
+                return f"Payment failed — {processor_type or 'declined'} (code {processor_code or 'n/a'})."
+        return ""
 
     class Meta:
         model = SubscriptionPayment
@@ -1200,7 +1246,11 @@ class SubscriptionPaymentSerializer(serializers.ModelSerializer):
             "recurring_enabled",
             "billing_reason",
             "payment_method",
+            "payment_method_type",
             "next_action_url",
+            "next_action",
+            "status_detail",
+            "checkout_mode",
             "expires_at",
             "payment_date",
             "created_at",

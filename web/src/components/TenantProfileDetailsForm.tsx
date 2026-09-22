@@ -29,37 +29,9 @@ const requiredFieldMessage = 'This field is required.'
 
 const optionalMobileField = z.string().optional().refine((value) => !value || !validateMobile(value), MOBILE_ERROR_MESSAGE)
 
-function parseDateInput(value?: string | null): Date | null {
-    const normalizedValue = String(value || '').trim()
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(normalizedValue)) {
-        return null
-    }
-    const parsedDate = new Date(`${normalizedValue}T00:00:00`)
-    return Number.isNaN(parsedDate.getTime()) ? null : parsedDate
-}
-
-function currentResidencePeriodIsAtLeastFiveYears(moveInValue?: string | null, moveOutValue?: string | null): boolean {
-    const moveInDate = parseDateInput(moveInValue)
-    const moveOutDate = parseDateInput(moveOutValue)
-    if (!moveInDate || !moveOutDate) {
-        return false
-    }
-
-    const fiveYearAnniversary = new Date(moveInDate)
-    fiveYearAnniversary.setFullYear(fiveYearAnniversary.getFullYear() + 5)
-    return moveOutDate >= fiveYearAnniversary
-}
-
-function yearsSinceMoveInDate(value?: string | null): number {
-    const moveInDate = parseDateInput(value)
-    if (!moveInDate) {
-        return 0
-    }
-
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const elapsedMilliseconds = today.getTime() - moveInDate.getTime()
-    return Math.max(0, elapsedMilliseconds / (365.2425 * 24 * 60 * 60 * 1000))
+function lengthOfStayIsAtLeastFiveYears(value?: string | number | null): boolean {
+    const years = Number(String(value ?? '').trim())
+    return Number.isFinite(years) && years >= 5
 }
 
 function rentalHistoryItemHasAnyValue(item?: Record<string, string | undefined>): boolean {
@@ -236,7 +208,6 @@ const schema = z.object({
     if (data.employment_status && data.employment_status !== 'Employed') {
         requireNestedFields(ctx, data.financial_info, 'financial_info', [
             'bank_name',
-            'bank_address',
             'account_name',
             'account_number',
             'business_name',
@@ -315,22 +286,7 @@ const schema = z.object({
             })
         })
 
-    const currentResidenceIsFiveYearsOrMore = currentResidencePeriodIsAtLeastFiveYears(
-        data.financial_info?.current_move_in_date,
-        data.financial_info?.expected_move_out_date,
-    )
-    if (currentResidenceIsFiveYearsOrMore) {
-        return
-    }
-
-    if (data.rental_history_same_as_current_residence) {
-        if (filledRentalHistory.length === 0) {
-            ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                path: ['rental_history', 0, 'property_address'],
-                message: 'Add at least one previous rental property because your current residence move in date is less than 5 years ago.',
-            })
-        }
+    if (lengthOfStayIsAtLeastFiveYears(data.length_of_stay)) {
         return
     }
 
@@ -338,7 +294,7 @@ const schema = z.object({
         ctx.addIssue({
             code: z.ZodIssueCode.custom,
             path: ['rental_history', 0, 'property_address'],
-            message: 'Provide at least one rental history address.',
+            message: 'Provide at least one rental history address because your current residence is less than 5 years old.',
         })
     }
 })
@@ -414,38 +370,20 @@ function extractDirtyFormValues(dirtyFields: unknown, formValues: unknown): Reco
     return dirtyValues
 }
 
-const employmentOptions = ['Employed', 'Self Employed', 'Business Owner', 'Freelancer', 'Retired', 'Unemployed', 'Student']
+const employmentOptions = ['Employed', 'Self Employed', 'Business Owner', 'Freelancer', 'Retired']
 const genderOptions = ['Male', 'Female']
 const housingStatusOptions = ['Owned', 'Rented', 'Family Property', 'Employer Provided', 'Other']
 const employmentTypeOptions = ['Full-time', 'Part-time', 'Contract', 'Internship']
 const maritalStatusOptions = ['Married', 'Single', 'Divorced', 'Separated', 'Widow/Widower']
 
-type FileMap = Record<string, File[]>
-type UploadFileItem = { key: string; file: File }
-
-const employmentDocumentKeys = ['employment_letter', 'staff_id', 'payslip'] as const
-const supportingDocumentLabels: Record<string, string> = {
-    employment_letter: 'Employment Letter',
-    staff_id: 'Staff ID',
-    payslip: 'Payslip',
-    bank_statement: 'Bank Statement',
-    tax_clearance: 'Tax Clearance',
-    cac_registration: 'CAC Registration Document',
-    guarantor_gov_id: 'Guarantor Government ID',
-    guarantor_photo: 'Guarantor Passport Photo',
-    guarantor_utility: 'Guarantor Utility Bill',
-    bank_statement_6m: 'Bank Statement',
-    gov_id: 'Government ID',
-    passport_photo: 'Passport Photo',
-    utility_bill: 'Utility Bill',
-    cac_doc: 'CAC Registration',
-    tax_clearance_doc: 'Tax Clearance',
-    payment_slip: 'Payment Slip',
-    student_id: 'Student ID',
+type SupportingDocument = {
+    file: File | null
+    name: string
 }
 
-function selectedEmploymentDocumentTypeCount(fileMap: FileMap): number {
-    return employmentDocumentKeys.filter((key) => (fileMap[key] || []).length > 0).length
+type UploadFileItem = {
+    file: File
+    name: string
 }
 
 type SectionProps = {
@@ -503,6 +441,7 @@ function TextInput({
     pattern,
     maxLength,
     title,
+    digitsOnly = false,
 }: {
     register: any
     name: string
@@ -516,14 +455,22 @@ function TextInput({
     pattern?: string
     maxLength?: number
     title?: string
+    digitsOnly?: boolean
 }) {
+    const registration = register(name)
     return (
         <input
-            {...register(name)}
+            {...registration}
+            onChange={(event) => {
+                if (digitsOnly) {
+                    event.target.value = event.target.value.replace(/[^0-9]/g, '')
+                }
+                registration.onChange(event)
+            }}
             type={type}
             min={min}
             step={step}
-            inputMode={inputMode}
+            inputMode={digitsOnly ? 'numeric' : inputMode}
             pattern={pattern}
             maxLength={maxLength}
             title={title}
@@ -564,41 +511,6 @@ function SelectInput({ register, name, options, placeholder, error }: { register
             {placeholder && <option value="">{placeholder}</option>}
             {options.map(o => <option key={o} value={o}>{o}</option>)}
         </select>
-    )
-}
-
-function FileUploadBox({ label, files, onChange, accept = '.pdf,.jpg,.jpeg,.png' }: { label: string; files: File[]; onChange: (files: File[]) => void; accept?: string }) {
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files) {
-            onChange([...files, ...Array.from(e.target.files)])
-        }
-    }
-    const removeFile = (idx: number) => {
-        const next = [...files]
-        next.splice(idx, 1)
-        onChange(next)
-    }
-    return (
-        <div className="border border-dashed border-gray-300 rounded-lg p-4">
-            <p className="text-sm font-medium text-gray-700 mb-2">{label}</p>
-            <input
-                type="file"
-                multiple
-                accept={accept}
-                onChange={handleChange}
-                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-            />
-            {files.length > 0 && (
-                <ul className="mt-2 space-y-1">
-                    {files.map((f, i) => (
-                        <li key={i} className="flex items-center justify-between text-sm text-gray-600 bg-gray-50 rounded px-2 py-1">
-                            <span className="truncate">{f.name}</span>
-                            <button type="button" onClick={() => removeFile(i)} className="text-red-500 hover:text-red-700 ml-2 text-xs">Remove</button>
-                        </li>
-                    ))}
-                </ul>
-            )}
-        </div>
     )
 }
 
@@ -863,7 +775,7 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
     const [activeStep, setActiveStep] = useState(1)
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [submitError, setSubmitError] = useState('')
-    const [fileMap, setFileMap] = useState<FileMap>({})
+    const [supportingDocuments, setSupportingDocuments] = useState<SupportingDocument[]>([{ file: null, name: '' }])
     const [profilePhoto, setProfilePhoto] = useState<File | null>(null)
     const [profilePhotoPreview, setProfilePhotoPreview] = useState('/placeholder.jpg')
     const [hydratedDraftStorageKey, setHydratedDraftStorageKey] = useState<string | null>(null)
@@ -948,8 +860,9 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
     const residenceServiceCharge = watch('financial_info.current_service_charge')
     const residenceMoveInDate = watch('financial_info.current_move_in_date')
     const residenceExpectedMoveOutDate = watch('financial_info.expected_move_out_date')
+    const residenceLengthOfStay = watch('length_of_stay')
+    const averageAnnualIncome = watch('financial_info.average_annual_income')
     const residenceReasonForLeave = watch('financial_info.reason_for_wanting_to_leave')
-    const rentalHistorySameAsCurrent = watch('rental_history_same_as_current_residence')
     const residenceCountryIsNigeria = isNigeriaSelection(residenceCountry)
     const nationalityIsNigeria = isNigeriaSelection(nationality)
     const stateOfOriginOptions = nationalityIsNigeria && stateOfOrigin
@@ -958,19 +871,9 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
     const residenceLgaOptions = residenceCountryIsNigeria && residenceState
         ? nigeriaStateLgaMap[residenceState] || []
         : []
-    const currentResidenceYears = useMemo(
-        () => yearsSinceMoveInDate(residenceMoveInDate),
-        [residenceMoveInDate],
-    )
-    const currentResidenceMeetsMinimumHistory = currentResidencePeriodIsAtLeastFiveYears(
-        residenceMoveInDate,
-        residenceExpectedMoveOutDate,
-    )
-    const requiresAdditionalRentalHistory = Boolean(rentalHistorySameAsCurrent && !currentResidenceMeetsMinimumHistory)
-    const rentalHistoryFieldsDisabled = Boolean(rentalHistorySameAsCurrent && currentResidenceMeetsMinimumHistory)
-    const existingSupportingDocumentCount = existingProfile?.supporting_document_urls?.filter(Boolean).length || 0
-    const employmentDocumentTypeCount = Math.min(existingSupportingDocumentCount, 2) + selectedEmploymentDocumentTypeCount(fileMap)
-    const hasRequiredEmploymentDocuments = employmentStatus !== 'Employed' || employmentDocumentTypeCount >= 2
+    const currentResidenceMeetsMinimumHistory = lengthOfStayIsAtLeastFiveYears(residenceLengthOfStay)
+    const rentalHistorySameAsCurrent = currentResidenceMeetsMinimumHistory
+    const rentalHistoryFieldsDisabled = currentResidenceMeetsMinimumHistory
     const currentResidenceRentalHistoryPreview = useMemo(() => ({
         property_address: [residenceAddress, residenceCity, residenceState].filter(Boolean).join(', '),
         annual_rent: residenceAnnualRent || '',
@@ -1038,7 +941,11 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
         const storedDraft = readTenantProfileDraft(tenantProfileDraftStorageKey)
         const inMemoryDraft = extractDirtyFormValues(dirtyFieldsRef.current, getValues())
         const draftValues = mergeTenantProfileValues(storedDraft || {}, inMemoryDraft)
-        reset(mergeTenantProfileValues(baseValues, draftValues))
+        const mergedValues = mergeTenantProfileValues(baseValues, draftValues)
+        if (!mergedValues.employment_status && baseValues.employment_status) {
+            mergedValues.employment_status = baseValues.employment_status
+        }
+        reset(mergedValues)
         setHydratedDraftStorageKey(tenantProfileDraftStorageKey)
     }, [existingProfile, getValues, hasFetchedExistingProfile, hasFetchedUserProfile, reset, tenantProfileDraftStorageKey, verificationProfileDefaults])
 
@@ -1095,11 +1002,22 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
     }, [residenceAddress, sameAsCurrent, setValue])
 
     useEffect(() => {
-        if (!currentResidenceMeetsMinimumHistory || rentalHistorySameAsCurrent) {
-            return
-        }
-        setValue('rental_history_same_as_current_residence', true)
-    }, [currentResidenceMeetsMinimumHistory, rentalHistorySameAsCurrent, setValue])
+        setValue(
+            'rental_history_same_as_current_residence',
+            currentResidenceMeetsMinimumHistory,
+            { shouldDirty: false },
+        )
+    }, [currentResidenceMeetsMinimumHistory, setValue])
+
+    useEffect(() => {
+        const annualIncomeValue = String(averageAnnualIncome ?? '').trim()
+        const annualIncome = Number(annualIncomeValue)
+        const monthlyIncome = annualIncomeValue && Number.isFinite(annualIncome)
+            ? String(annualIncome / 12)
+            : ''
+
+        setValue('financial_info.average_monthly_income', monthlyIncome, { shouldDirty: false })
+    }, [averageAnnualIncome, setValue])
 
     useEffect(() => {
         if (!propertyManagerSameAsLandlordName) {
@@ -1132,10 +1050,10 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
     const uploadFiles = useMutation({
         mutationFn: async (files: UploadFileItem[]) => {
             const ids: string[] = []
-            for (const { key, file } of files) {
+            for (const { file, name } of files) {
                 const formData = new FormData()
                 formData.append('file', file)
-                formData.append('title', supportingDocumentLabels[key] || file.name)
+                formData.append('title', name.trim() || file.name)
                 const res = await api.post('/documents', formData, {
                     headers: { 'Content-Type': 'multipart/form-data' },
                 })
@@ -1158,14 +1076,8 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
         const manualHistory = (data.rental_history || []).filter((item) => rentalHistoryItemHasAnyValue(item))
         const currentResidenceHistory = buildCurrentResidenceRentalHistoryEntry(data)
 
-        if (data.rental_history_same_as_current_residence) {
-            if (currentResidencePeriodIsAtLeastFiveYears(
-                data.financial_info?.current_move_in_date,
-                data.financial_info?.expected_move_out_date,
-            )) {
-                return [currentResidenceHistory]
-            }
-            return [currentResidenceHistory, ...manualHistory]
+        if (lengthOfStayIsAtLeastFiveYears(data.length_of_stay)) {
+            return [currentResidenceHistory]
         }
 
         return manualHistory
@@ -1175,6 +1087,12 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
         mutationFn: async (data: FormValues) => {
             if (!profilePhoto && !me?.profile_photo_url) {
                 throw new Error('Profile photo is required.')
+            }
+
+            const allFiles = supportingDocuments.flatMap(({ file, name }) => file ? [{ file, name }] : [])
+            const incompleteDocument = supportingDocuments.some(({ file, name }) => file && !name.trim())
+            if (incompleteDocument) {
+                throw new Error('Enter a name for each supporting document.')
             }
 
             if (profilePhoto) {
@@ -1187,7 +1105,6 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                 localStorage.setItem('user', JSON.stringify(photoResponse.data))
             }
 
-            const allFiles = Object.entries(fileMap).flatMap(([key, files]) => files.map((file) => ({ key, file })))
             const payload: Record<string, any> = {
                 ...data,
                 country_of_birth: stringValue(verificationProfile.country_of_birth),
@@ -1223,7 +1140,7 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
             qc.invalidateQueries({ queryKey: ['users', 'me'] })
             qc.invalidateQueries({ queryKey: ['verification', 'status'] })
             void popupAlert('Tenant profile updated successfully.')
-            setFileMap({})
+            setSupportingDocuments([{ file: null, name: '' }])
             setProfilePhoto(null)
             setSubmitError('')
             onSaved?.(profile)
@@ -1237,17 +1154,11 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
         setIsSubmitting(true)
         setSubmitError('')
         try {
-            if (!hasRequiredEmploymentDocuments) {
-                setActiveStep(3)
-                setSubmitError('Upload any 2 of Employment Letter, Staff ID, or Payslip before submitting.')
-                window.scrollTo({ top: 0, behavior: 'smooth' })
-                return
-            }
             await submitProfile.mutateAsync(data)
         } finally {
             setIsSubmitting(false)
         }
-    }, [hasRequiredEmploymentDocuments, submitProfile])
+    }, [submitProfile])
 
     const onInvalid = useCallback((formErrors: FieldErrors<FormValues>) => {
         const errorPaths = collectErrorPaths(formErrors)
@@ -1257,21 +1168,6 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
         setSubmitError('Please complete the required fields before submitting for verification.')
         window.scrollTo({ top: 0, behavior: 'smooth' })
     }, [])
-
-    const setFilesForKey = useCallback((key: string) => (files: File[]) => {
-        setFileMap(prev => ({ ...prev, [key]: files }))
-    }, [])
-
-    if (!existingProfile && !(me?.is_verified && hasVerificationProfileDefaults)) {
-        return (
-            <div className="rounded-xl border bg-white p-6 text-gray-600">
-                Complete tenant verification before adding the rest of your tenant profile.
-                <div className="mt-4">
-                    <Link to="/verify" replace className="btn btn-primary">Go to Verification</Link>
-                </div>
-            </div>
-        )
-    }
 
     return (
         <div className="space-y-6">
@@ -1413,29 +1309,21 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                                 <p className="text-sm font-semibold text-gray-700">Payment Capacity Information</p>
                                 <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <InputRow label="Monthly Income Amount" error={errors.financial_info?.monthly_income_amount?.message}>
-                                        <TextInput register={register} name="financial_info.monthly_income_amount" placeholder="e.g. 500000" error={errors.financial_info?.monthly_income_amount?.message} />
+                                        <TextInput register={register} name="financial_info.monthly_income_amount" digitsOnly placeholder="e.g. 500000" error={errors.financial_info?.monthly_income_amount?.message} />
                                     </InputRow>
                                     <InputRow label="Monthly Expenses" error={errors.financial_info?.monthly_expenses?.message}>
-                                        <TextInput register={register} name="financial_info.monthly_expenses" placeholder="e.g. 200000" error={errors.financial_info?.monthly_expenses?.message} />
+                                        <TextInput register={register} name="financial_info.monthly_expenses" digitsOnly placeholder="e.g. 200000" error={errors.financial_info?.monthly_expenses?.message} />
                                     </InputRow>
                                 </div>
                                 <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <InputRow label="Credit Commitment" error={errors.financial_info?.credit_commitment?.message}>
-                                        <TextInput register={register} name="financial_info.credit_commitment" placeholder="e.g. 50000/month" error={errors.financial_info?.credit_commitment?.message} />
+                                        <TextInput register={register} name="financial_info.credit_commitment" digitsOnly placeholder="e.g. 50000" error={errors.financial_info?.credit_commitment?.message} />
                                     </InputRow>
                                     <InputRow label="Outstanding Loans" error={errors.financial_info?.outstanding_loans?.message}>
-                                        <TextInput register={register} name="financial_info.outstanding_loans" placeholder="e.g. 2000000" error={errors.financial_info?.outstanding_loans?.message} />
+                                        <TextInput register={register} name="financial_info.outstanding_loans" digitsOnly placeholder="e.g. 2000000" error={errors.financial_info?.outstanding_loans?.message} />
                                     </InputRow>
                                 </div>
                             </div>
-                            <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <FileUploadBox label="Employment Letter" files={fileMap['employment_letter'] || []} onChange={setFilesForKey('employment_letter')} />
-                                <FileUploadBox label="Staff ID Card" files={fileMap['staff_id'] || []} onChange={setFilesForKey('staff_id')} />
-                                <FileUploadBox label="Payslip (Last 3-6 months)" files={fileMap['payslip'] || []} onChange={setFilesForKey('payslip')} />
-                            </div>
-                            {!hasRequiredEmploymentDocuments && (
-                                <p className="mt-2 text-sm text-red-600">Upload any 2 of Employment Letter, Staff ID, or Payslip.</p>
-                            )}
                         </SectionCard>
                     )}
 
@@ -1491,10 +1379,10 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                             <InputRow label="Current Annual Rent" error={errors.financial_info?.current_annual_rent?.message}>
-                                <TextInput register={register} name="financial_info.current_annual_rent" placeholder="e.g. 1200000" error={errors.financial_info?.current_annual_rent?.message} />
+                                <TextInput register={register} name="financial_info.current_annual_rent" digitsOnly placeholder="e.g. 1200000" error={errors.financial_info?.current_annual_rent?.message} />
                             </InputRow>
                             <InputRow label="Service Charge (Optional)" error={errors.financial_info?.current_service_charge?.message}>
-                                <TextInput register={register} name="financial_info.current_service_charge" placeholder="e.g. 150000" error={errors.financial_info?.current_service_charge?.message} />
+                                <TextInput register={register} name="financial_info.current_service_charge" digitsOnly placeholder="e.g. 150000" error={errors.financial_info?.current_service_charge?.message} />
                             </InputRow>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
@@ -1561,7 +1449,7 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                     </SectionCard>
 
                     {/* 4. Rental History */}
-                    <SectionCard title="Rental History (not less than 5 years)" step={4} activeStep={activeStep} setActiveStep={setActiveStep}>
+                    <SectionCard title="Rental History" step={4} activeStep={activeStep} setActiveStep={setActiveStep}>
                         <p className="text-sm text-gray-500 mb-4">
                             {currentResidenceMeetsMinimumHistory
                                 ? 'Current residence is 5 years or more, no further rental history is required'
@@ -1571,7 +1459,8 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                             <input
                                 type="checkbox"
                                 {...register('rental_history_same_as_current_residence')}
-                                disabled={currentResidenceMeetsMinimumHistory}
+                                checked={currentResidenceMeetsMinimumHistory}
+                                disabled
                                 className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                             />
                             <label className="text-sm text-gray-700">Same as current residence?</label>
@@ -1615,12 +1504,6 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                                         <p className="mt-2 text-sm text-gray-900">{currentResidenceRentalHistoryPreview.reason_for_leave || 'Enter your reason for wanting to leave above.'}</p>
                                     </div>
                                 </div>
-                            </div>
-                        )}
-
-                        {rentalHistorySameAsCurrent && !currentResidenceMeetsMinimumHistory && (
-                            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                                Your current residence covers less than 5 years. Add at least one previous rental property below.
                             </div>
                         )}
 
@@ -1672,7 +1555,7 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                                 </div>
                             </div>
                         ))}
-                        {!rentalHistoryFieldsDisabled && (!rentalHistorySameAsCurrent || requiresAdditionalRentalHistory) && rentalFields.length < 5 && (
+                        {!rentalHistoryFieldsDisabled && rentalFields.length < 5 && (
                             <button
                                 type="button"
                                 onClick={() => appendRental({ property_address: '' })}
@@ -1681,119 +1564,6 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                                 {rentalHistorySameAsCurrent ? '+ Add Another Previous Property' : '+ Add Another Property'}
                             </button>
                         )}
-                    </SectionCard>
-
-                    {/* 5. Financial Verification (conditional) */}
-                    {employmentStatus && employmentStatus !== 'Employed' && (
-                        <SectionCard title="Financial Verification" step={5} activeStep={activeStep} setActiveStep={setActiveStep}>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <InputRow label="Bank Name" error={errors.financial_info?.bank_name?.message}>
-                                    <TextInput register={register} name="financial_info.bank_name" placeholder="Bank name" error={errors.financial_info?.bank_name?.message} />
-                                </InputRow>
-                                <InputRow label="Bank Address" error={errors.financial_info?.bank_address?.message}>
-                                    <TextInput register={register} name="financial_info.bank_address" placeholder="Bank branch address" error={errors.financial_info?.bank_address?.message} />
-                                </InputRow>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                                <InputRow label="Account Name" error={errors.financial_info?.account_name?.message}>
-                                    <TextInput register={register} name="financial_info.account_name" placeholder="Account name" error={errors.financial_info?.account_name?.message} />
-                                </InputRow>
-                                <InputRow label="Account Number" error={errors.financial_info?.account_number?.message}>
-                                    <TextInput register={register} name="financial_info.account_number" placeholder="Account number" error={errors.financial_info?.account_number?.message} />
-                                </InputRow>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-                                <InputRow label="Business Name" error={errors.financial_info?.business_name?.message}>
-                                    <TextInput register={register} name="financial_info.business_name" placeholder="Business name" error={errors.financial_info?.business_name?.message} />
-                                </InputRow>
-                                <InputRow label="Business Address" error={errors.financial_info?.business_address?.message}>
-                                    <TextInput register={register} name="financial_info.business_address" placeholder="Business address" error={errors.financial_info?.business_address?.message} />
-                                </InputRow>
-                                <InputRow label="Business Type" error={errors.financial_info?.business_type?.message}>
-                                    <TextInput register={register} name="financial_info.business_type" placeholder="Business type" error={errors.financial_info?.business_type?.message} />
-                                </InputRow>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                                <InputRow label="Average Monthly Income (Optional)" error={errors.financial_info?.average_monthly_income?.message}>
-                                    <TextInput register={register} name="financial_info.average_monthly_income" placeholder="e.g. 500000" error={errors.financial_info?.average_monthly_income?.message} />
-                                </InputRow>
-                                <InputRow label="Average Annual Income (Optional)" error={errors.financial_info?.average_annual_income?.message}>
-                                    <TextInput register={register} name="financial_info.average_annual_income" placeholder="e.g. 6000000" error={errors.financial_info?.average_annual_income?.message} />
-                                </InputRow>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                                <InputRow label="Savings (Optional)" error={errors.financial_info?.savings?.message}>
-                                    <TextInput register={register} name="financial_info.savings" placeholder="e.g. 2500000" error={errors.financial_info?.savings?.message} />
-                                </InputRow>
-                                <InputRow label="Outgoing Expenses (Monthly)" error={errors.financial_info?.outgoing_expenses?.message}>
-                                    <TextInput register={register} name="financial_info.outgoing_expenses" placeholder="e.g. 200000" error={errors.financial_info?.outgoing_expenses?.message} />
-                                </InputRow>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                                <InputRow label="Current Annual Rent" error={errors.financial_info?.current_annual_rent?.message}>
-                                    <TextInput register={register} name="financial_info.current_annual_rent" placeholder="e.g. 1500000/year" error={errors.financial_info?.current_annual_rent?.message} />
-                                </InputRow>
-                                <InputRow label="Current Service Charge (Optional)" error={errors.financial_info?.current_service_charge?.message}>
-                                    <TextInput register={register} name="financial_info.current_service_charge" placeholder="e.g. 100000/year" error={errors.financial_info?.current_service_charge?.message} />
-                                </InputRow>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                                <InputRow label="Credit Commitment" error={errors.financial_info?.credit_commitment?.message}>
-                                    <TextInput register={register} name="financial_info.credit_commitment" placeholder="e.g. 50000/month" error={errors.financial_info?.credit_commitment?.message} />
-                                </InputRow>
-                                <InputRow label="Outstanding Loans" error={errors.financial_info?.outstanding_loans?.message}>
-                                    <TextInput register={register} name="financial_info.outstanding_loans" placeholder="e.g. 2000000" error={errors.financial_info?.outstanding_loans?.message} />
-                                </InputRow>
-                            </div>
-                            <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <FileUploadBox label="Bank Statement (6 Months)" files={fileMap['bank_statement'] || []} onChange={setFilesForKey('bank_statement')} />
-                                <FileUploadBox label="Tax Clearance" files={fileMap['tax_clearance'] || []} onChange={setFilesForKey('tax_clearance')} />
-                                <FileUploadBox label="CAC Registration Document" files={fileMap['cac_registration'] || []} onChange={setFilesForKey('cac_registration')} />
-                            </div>
-                        </SectionCard>
-                    )}
-
-                    {/* 6. Guarantor Details */}
-                    <SectionCard title="Guarantor Details" step={6} activeStep={activeStep} setActiveStep={setActiveStep}>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <InputRow label="Full Name" error={errors.guarantor_details?.full_name?.message}>
-                                <TextInput register={register} name="guarantor_details.full_name" placeholder="Guarantor full name" error={errors.guarantor_details?.full_name?.message} />
-                            </InputRow>
-                            <InputRow label="Relationship" error={errors.guarantor_details?.relationship?.message}>
-                                <TextInput register={register} name="guarantor_details.relationship" placeholder="e.g. Parent, Sibling, Friend" error={errors.guarantor_details?.relationship?.message} />
-                            </InputRow>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                            <InputRow label="Email" error={errors.guarantor_details?.email?.message}>
-                                <TextInput register={register} name="guarantor_details.email" placeholder="guarantor@email.com" error={errors.guarantor_details?.email?.message} />
-                            </InputRow>
-                            <InputRow label="Mobile Number" error={errors.guarantor_details?.mobile_number?.message}>
-                                <TextInput register={register} name="guarantor_details.mobile_number" placeholder={MOBILE_INPUT_PLACEHOLDER} error={errors.guarantor_details?.mobile_number?.message} {...mobileInputProps} />
-                            </InputRow>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                            <InputRow label="Occupation" error={errors.guarantor_details?.occupation?.message}>
-                                <TextInput register={register} name="guarantor_details.occupation" placeholder="Occupation" error={errors.guarantor_details?.occupation?.message} />
-                            </InputRow>
-                            <InputRow label="Employer" error={errors.guarantor_details?.employer?.message}>
-                                <TextInput register={register} name="guarantor_details.employer" placeholder="Employer name" error={errors.guarantor_details?.employer?.message} />
-                            </InputRow>
-                        </div>
-                        <div className="mt-4">
-                            <InputRow label="Residential Address" error={errors.guarantor_details?.residential_address?.message}>
-                                <textarea
-                                    {...register('guarantor_details.residential_address')}
-                                    placeholder="Guarantor residential address"
-                                    rows={2}
-                                    className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.guarantor_details?.residential_address ? 'border-red-300' : 'border-gray-300'}`}
-                                />
-                            </InputRow>
-                        </div>
-                        <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <FileUploadBox label="Government ID" files={fileMap['guarantor_gov_id'] || []} onChange={setFilesForKey('guarantor_gov_id')} />
-                            <FileUploadBox label="Passport Photo" files={fileMap['guarantor_photo'] || []} onChange={setFilesForKey('guarantor_photo')} />
-                            <FileUploadBox label="Utility Bill" files={fileMap['guarantor_utility'] || []} onChange={setFilesForKey('guarantor_utility')} />
-                        </div>
                     </SectionCard>
 
                     {/* 7. Landlord Information */}
@@ -1890,6 +1660,102 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                         </div>
                     </SectionCard>
 
+                    {/* 5. Financial Verification (conditional) */}
+                    {employmentStatus && employmentStatus !== 'Employed' && (
+                        <SectionCard title="Financial Verification" step={5} activeStep={activeStep} setActiveStep={setActiveStep}>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <InputRow label="Bank Name" error={errors.financial_info?.bank_name?.message}>
+                                    <TextInput register={register} name="financial_info.bank_name" placeholder="Bank name" error={errors.financial_info?.bank_name?.message} />
+                                </InputRow>
+                                <InputRow label="Account Name" error={errors.financial_info?.account_name?.message}>
+                                    <TextInput register={register} name="financial_info.account_name" placeholder="Account name" error={errors.financial_info?.account_name?.message} />
+                                </InputRow>
+                                <InputRow label="Account Number" error={errors.financial_info?.account_number?.message}>
+                                    <TextInput register={register} name="financial_info.account_number" placeholder="Account number" error={errors.financial_info?.account_number?.message} />
+                                </InputRow>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                                <InputRow label="Business Name" error={errors.financial_info?.business_name?.message}>
+                                    <TextInput register={register} name="financial_info.business_name" placeholder="Business name" error={errors.financial_info?.business_name?.message} />
+                                </InputRow>
+                                <InputRow label="Business Type" error={errors.financial_info?.business_type?.message}>
+                                    <TextInput register={register} name="financial_info.business_type" placeholder="Business type" error={errors.financial_info?.business_type?.message} />
+                                </InputRow>
+                                <InputRow label="Business Address" error={errors.financial_info?.business_address?.message}>
+                                    <TextInput register={register} name="financial_info.business_address" placeholder="Business address" error={errors.financial_info?.business_address?.message} />
+                                </InputRow>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                                <InputRow label="Average Annual Income" error={errors.financial_info?.average_annual_income?.message}>
+                                    <TextInput register={register} name="financial_info.average_annual_income" digitsOnly placeholder="e.g. 6000000" error={errors.financial_info?.average_annual_income?.message} />
+                                </InputRow>
+                                <InputRow label="Average Monthly Income" error={errors.financial_info?.average_monthly_income?.message}>
+                                    <TextInput register={register} name="financial_info.average_monthly_income" digitsOnly placeholder="e.g. 500000" error={errors.financial_info?.average_monthly_income?.message} disabled />
+                                </InputRow>
+                                <InputRow label="Savings" error={errors.financial_info?.savings?.message}>
+                                    <TextInput register={register} name="financial_info.savings" digitsOnly placeholder="e.g. 2500000" error={errors.financial_info?.savings?.message} />
+                                </InputRow>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                                <InputRow label="Current Annual Rent" error={errors.financial_info?.current_annual_rent?.message}>
+                                    <TextInput register={register} name="financial_info.current_annual_rent" digitsOnly placeholder="e.g. 1500000" error={errors.financial_info?.current_annual_rent?.message} />
+                                </InputRow>
+                                <InputRow label="Current Service Charge (if any)" error={errors.financial_info?.current_service_charge?.message}>
+                                    <TextInput register={register} name="financial_info.current_service_charge" digitsOnly placeholder="e.g. 100000" error={errors.financial_info?.current_service_charge?.message} />
+                                </InputRow>
+                                <InputRow label="Monthly Outgoing Expenses" error={errors.financial_info?.outgoing_expenses?.message}>
+                                    <TextInput register={register} name="financial_info.outgoing_expenses" digitsOnly placeholder="e.g. 200000" error={errors.financial_info?.outgoing_expenses?.message} />
+                                </InputRow>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                                <InputRow label="Outstanding Loans (if any)" error={errors.financial_info?.outstanding_loans?.message}>
+                                    <TextInput register={register} name="financial_info.outstanding_loans" digitsOnly placeholder="e.g. 2000000" error={errors.financial_info?.outstanding_loans?.message} />
+                                </InputRow>
+                                <InputRow label="Credit Commitment (if any)" error={errors.financial_info?.credit_commitment?.message}>
+                                    <TextInput register={register} name="financial_info.credit_commitment" digitsOnly placeholder="e.g. 50000" error={errors.financial_info?.credit_commitment?.message} />
+                                </InputRow>
+                            </div>
+                        </SectionCard>
+                    )}
+
+                    {/* 6. Guarantor Details */}
+                    <SectionCard title="Guarantor Details" step={6} activeStep={activeStep} setActiveStep={setActiveStep}>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <InputRow label="Full Name" error={errors.guarantor_details?.full_name?.message}>
+                                <TextInput register={register} name="guarantor_details.full_name" placeholder="Guarantor full name" error={errors.guarantor_details?.full_name?.message} />
+                            </InputRow>
+                            <InputRow label="Relationship" error={errors.guarantor_details?.relationship?.message}>
+                                <TextInput register={register} name="guarantor_details.relationship" placeholder="e.g. Parent, Sibling, Friend" error={errors.guarantor_details?.relationship?.message} />
+                            </InputRow>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                            <InputRow label="Email" error={errors.guarantor_details?.email?.message}>
+                                <TextInput register={register} name="guarantor_details.email" placeholder="guarantor@email.com" error={errors.guarantor_details?.email?.message} />
+                            </InputRow>
+                            <InputRow label="Mobile Number" error={errors.guarantor_details?.mobile_number?.message}>
+                                <TextInput register={register} name="guarantor_details.mobile_number" placeholder={MOBILE_INPUT_PLACEHOLDER} error={errors.guarantor_details?.mobile_number?.message} {...mobileInputProps} />
+                            </InputRow>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                            <InputRow label="Occupation" error={errors.guarantor_details?.occupation?.message}>
+                                <TextInput register={register} name="guarantor_details.occupation" placeholder="Occupation" error={errors.guarantor_details?.occupation?.message} />
+                            </InputRow>
+                            <InputRow label="Employer" error={errors.guarantor_details?.employer?.message}>
+                                <TextInput register={register} name="guarantor_details.employer" placeholder="Employer name" error={errors.guarantor_details?.employer?.message} />
+                            </InputRow>
+                        </div>
+                        <div className="mt-4">
+                            <InputRow label="Residential Address" error={errors.guarantor_details?.residential_address?.message}>
+                                <textarea
+                                    {...register('guarantor_details.residential_address')}
+                                    placeholder="Guarantor residential address"
+                                    rows={2}
+                                    className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.guarantor_details?.residential_address ? 'border-red-300' : 'border-gray-300'}`}
+                                />
+                            </InputRow>
+                        </div>
+                    </SectionCard>
+
                     {/* 8. Online Presence & Legal/Criminal Declaration */}
                     <SectionCard title="Online Presence & Criminal Declaration" step={8} activeStep={activeStep} setActiveStep={setActiveStep}>
                         <p className="font-semibold">Social & Digital Presence</p>
@@ -1959,50 +1825,49 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
 
                     </SectionCard>
 
-                    {/* 9. Supporting Documents if employed (conditional) */}
-                    {employmentStatus && employmentStatus === 'Employed' && (
-                        <SectionCard title="Supporting Documents" step={9} activeStep={activeStep} setActiveStep={setActiveStep}>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <FileUploadBox label="Staff ID Card" files={fileMap['staff_id'] || []} onChange={setFilesForKey('staff_id')} />
-                                <FileUploadBox label="Pay Slip" files={fileMap['payslip'] || []} onChange={setFilesForKey('payslip')} />
-                                <FileUploadBox label="Bank Statement (6 Months)" files={fileMap['bank_statement_6m'] || []} onChange={setFilesForKey('bank_statement_6m')} />
-                                <FileUploadBox label="Government ID (NIN Card or Slip/Driver's License/Passport)" files={fileMap['gov_id'] || []} onChange={setFilesForKey('gov_id')} />
-                                <FileUploadBox label="Passport Photo" files={fileMap['passport_photo'] || []} onChange={setFilesForKey('passport_photo')} />
-                                <FileUploadBox label="Utility Bill (Proof of Address)" files={fileMap['utility_bill'] || []} onChange={setFilesForKey('utility_bill')} />
-                            </div>
-                            {!hasRequiredEmploymentDocuments && (
-                                <p className="mt-2 text-sm text-red-600">Upload any 2 of Employment Letter, Staff ID, or Payslip.</p>
-                            )}
-                        </SectionCard>
-                    )}
-
-                    {/* 9. Supporting Documents if self-employed (conditional) */}
-                    {employmentStatus && (employmentStatus === 'Self Employed' || employmentStatus === 'Business Owner') && (
-                        <SectionCard title="Supporting Documents" step={9} activeStep={activeStep} setActiveStep={setActiveStep}>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <FileUploadBox label="CAC Registration" files={fileMap['cac_doc'] || []} onChange={setFilesForKey('cac_doc')} />
-                                <FileUploadBox label="Tax Clearance" files={fileMap['tax_clearance_doc'] || []} onChange={setFilesForKey('tax_clearance_doc')} />
-                                <FileUploadBox label="Bank Statement (6 Months)" files={fileMap['bank_statement_6m'] || []} onChange={setFilesForKey('bank_statement_6m')} />
-                                <FileUploadBox label="Government ID (NIN Card or Slip/Driver's License/Passport)" files={fileMap['gov_id'] || []} onChange={setFilesForKey('gov_id')} />
-                                <FileUploadBox label="Passport Photo" files={fileMap['passport_photo'] || []} onChange={setFilesForKey('passport_photo')} />
-                                <FileUploadBox label="Utility Bill (Proof of Address)" files={fileMap['utility_bill'] || []} onChange={setFilesForKey('utility_bill')} />
-                            </div>
-                        </SectionCard>
-                    )}
-
-                    {/* 9. Supporting Documents if student (conditional) */}
-                    {employmentStatus && (employmentStatus === 'Freelancer' || employmentStatus === 'Retired' || employmentStatus === 'Student') && (
-                        <SectionCard title="Supporting Documents" step={9} activeStep={activeStep} setActiveStep={setActiveStep}>
-                            <div>
-                                <FileUploadBox label="Payment Slip (Freelancer Only)" files={fileMap['payment_slip'] || []} onChange={setFilesForKey('payment_slip')} />
-                                <FileUploadBox label="Student ID Card (Student Only)" files={fileMap['student_id'] || []} onChange={setFilesForKey('student_id')} />
-                                <FileUploadBox label="Bank Statement (6 Months)" files={fileMap['bank_statement_6m'] || []} onChange={setFilesForKey('bank_statement_6m')} />
-                                <FileUploadBox label="Government ID (NIN Card or Slip/Driver's License/Passport)" files={fileMap['gov_id'] || []} onChange={setFilesForKey('gov_id')} />
-                                <FileUploadBox label="Passport Photo" files={fileMap['passport_photo'] || []} onChange={setFilesForKey('passport_photo')} />
-                                <FileUploadBox label="Utility Bill (Proof of Address)" files={fileMap['utility_bill'] || []} onChange={setFilesForKey('utility_bill')} />
-                            </div>
-                        </SectionCard>
-                    )}
+                    {/* 9. Supporting Documents */}
+                    <SectionCard title="Supporting Documents" step={9} activeStep={activeStep} setActiveStep={setActiveStep}>
+                        <div className="space-y-3">
+                            {supportingDocuments.map((document, index) => (
+                                <div key={index} className="flex flex-col gap-3 rounded-lg border border-gray-200 p-3 md:flex-row md:items-center">
+                                    <input
+                                        type="file"
+                                        accept=".pdf,.jpg,.jpeg,.png"
+                                        onChange={(event) => {
+                                            const file = event.target.files?.[0] || null
+                                            setSupportingDocuments((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, file } : item))
+                                        }}
+                                        className="block w-full text-sm text-gray-500 file:mr-3 file:rounded-full file:border-0 file:bg-blue-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-blue-700 hover:file:bg-blue-100 md:flex-1"
+                                    />
+                                    <input
+                                        type="text"
+                                        value={document.name}
+                                        onChange={(event) => setSupportingDocuments((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value } : item))}
+                                        placeholder="Document name"
+                                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 md:flex-1"
+                                    />
+                                    {supportingDocuments.length > 1 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setSupportingDocuments((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                                            className="text-sm text-red-600 hover:text-red-700"
+                                        >
+                                            Remove
+                                        </button>
+                                    )}
+                                    {index === supportingDocuments.length - 1 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setSupportingDocuments((current) => [...current, { file: null, name: '' }])}
+                                            className="whitespace-nowrap text-sm font-medium text-blue-600 hover:text-blue-700"
+                                        >
+                                            + Add document
+                                        </button>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </SectionCard>
 
                     {/* Submit */}
                     <div className="flex items-center justify-between pt-6">

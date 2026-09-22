@@ -1,5 +1,6 @@
+import { useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
     HiCash,
     HiChat,
@@ -25,6 +26,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useAppPopup } from '@/contexts/AppPopupContext'
 import DashboardBackButton from '@/components/DashboardBackButton'
 import { api, resolveMediaUrl } from '@/lib/api'
+import { hasBronzeAccess, SubscriptionPaymentRecord } from '@/lib/subscriptions'
 import { Booking, Listing, Payment } from '@/types'
 import { formatCurrencyWithSymbol } from '@/utils/currency'
 
@@ -74,7 +76,16 @@ function canDeleteBookingFromHistory(booking: Booking) {
 export default function TenantDashboardPage() {
     const { user } = useAuth()
     const queryClient = useQueryClient()
-    const { confirm } = useAppPopup()
+    const location = useLocation()
+    const navigate = useNavigate()
+    const { alert, confirm } = useAppPopup()
+
+    useEffect(() => {
+        const notice = (location.state as { registrationNotice?: string } | null)?.registrationNotice
+        if (!notice) return
+        navigate(location.pathname, { replace: true, state: {} })
+        void alert(notice, { variant: 'info' })
+    }, [alert, location.pathname, location.state, navigate])
     const { data: featured } = useQuery({
         queryKey: ['listings', 'featured'],
         queryFn: async () => (await api.get<Listing[]>('/featured/listings')).data
@@ -84,6 +95,50 @@ export default function TenantDashboardPage() {
         enabled: !!user,
         queryFn: async () => normalizeResults((await api.get<Booking[] | PaginatedResponse<Booking>>('/bookings')).data)
     })
+    const { data: tenantProfile } = useQuery({
+        queryKey: ['users', 'me', 'tenant-profile', 'dashboard'],
+        enabled: user?.role === 'tenant',
+        queryFn: async () => {
+            try {
+                return (await api.get<{ status: string }>('/users/me/tenant-profile')).data
+            } catch {
+                return null
+            }
+        },
+    })
+    const { data: subscriptionPaymentResponse } = useQuery({
+        queryKey: ['subscription-payments', 'tenant-dashboard', user?.id],
+        enabled: user?.role === 'tenant',
+        queryFn: async () => (await api.get<SubscriptionPaymentRecord[] | PaginatedResponse<SubscriptionPaymentRecord>>('/subscriptions')).data,
+    })
+    const { data: freshUser } = useQuery({
+        queryKey: ['users', 'me', 'tenant-dashboard', user?.id],
+        enabled: !!user && user.role === 'tenant',
+        queryFn: async () => (await api.get<{ is_verified: boolean }>('/users/me')).data,
+    })
+
+    const isTenantVerified = Boolean(freshUser?.is_verified ?? user?.is_verified ?? tenantProfile?.status === 'approved')
+    const isTenantProfileComplete = tenantProfile?.status === 'approved'
+    const isTenantSubscribed = subscriptionPaymentResponse !== undefined && !hasBronzeAccess(subscriptionPaymentResponse)
+
+    const missingEnquirySteps = [
+        !isTenantVerified && { label: 'Verification', to: '/verify' },
+        !isTenantProfileComplete && { label: 'Profile completion', to: user?.id ? `/tenants/${user.id}/profile?edit=1` : '/search' },
+        !isTenantSubscribed && { label: 'A subscription plan', to: '/billing' },
+    ].filter(Boolean) as { label: string; to: string }[]
+
+    const handleEnquiriesClick = async () => {
+        if (missingEnquirySteps.length === 0) {
+            navigate('/enquiries')
+            return
+        }
+        const labels = missingEnquirySteps.map((step) => step.label)
+        const requirement = labels.length > 1
+            ? `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}`
+            : labels[0]
+        const proceed = await confirm(`${requirement} is required to contact landlords.`, { variant: 'confirm', confirmLabel: 'Proceed', cancelLabel: 'Cancel' })
+        if (proceed) navigate(missingEnquirySteps[0].to)
+    }
 
     const activeBookings = bookings.filter(booking => !['cancelled', 'completed'].includes(booking.status))
     const totalCommitted = activeBookings.reduce((sum, booking) => sum + getBookingFinancials(booking).totalAmount, 0)
@@ -93,7 +148,7 @@ export default function TenantDashboardPage() {
     const dashboardActions = [
         { to: '/search', label: 'Search', Icon: HiSearch, colorClass: 'text-blue-600' },
         { to: '/favourites', label: 'Favourites', Icon: HiHeart, colorClass: 'text-red-600' },
-        { to: '/enquiries', label: 'Chat (Enquiries)', Icon: HiChat, colorClass: 'text-green-600' },
+        { to: '/enquiries', label: 'Chat / Enquiries', Icon: HiChat, colorClass: 'text-green-600' },
         { to: '/verify', label: 'Verification', Icon: HiShieldCheck, colorClass: 'text-purple-600' },
         { to: user ? `/tenants/${user.id}/profile` : '#', label: 'Profile', Icon: HiUser, colorClass: 'text-orange-600' },
         { to: '/billing', label: 'Billing', Icon: HiCash, colorClass: 'text-emerald-600' },
@@ -162,6 +217,7 @@ export default function TenantDashboardPage() {
                     <div className="mb-5">
                         <DashboardBackButton fallbackTo="/" />
                     </div>
+
                     <div className="mb-6 flex items-center justify-between">
                         <div>
                             <h1 className="text-4xl font-bold text-gray-900 mb-2">
@@ -171,23 +227,21 @@ export default function TenantDashboardPage() {
                                 Find your perfect home and manage your rental journey
                             </p>
                         </div>
-                        {/* <div className="hidden items-center gap-3 md:flex">
-                            <Link to="/enquiries" className="btn btn-primary">
-                                <HiChat className="w-10 h-10 mr-1" />
-                                Enquiries
-                            </Link>
-                            <div className="w-24 h-20 bg-gradient-to-br from-blue-600 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg">
-                                <HiHome className="w-12 h-8 text-white" />
-                            </div>
-                        </div> */}
                     </div>
 
                     <div className="grid grid-cols-2 gap-4 mb-8 md:grid-cols-3 lg:grid-cols-6">
                         {dashboardActions.map(({ to, label, Icon, colorClass }) => (
-                            <Link key={label} to={to} className="card p-4 text-center hover:shadow-lg transition-all duration-200 group">
-                                <Icon className={`w-6 h-6 ${colorClass} mx-auto mb-2 group-hover:scale-110 transition-transform`} />
-                                <span className="text-sm font-medium text-gray-700">{label}</span>
-                            </Link>
+                            label === 'Chat / Enquiries' ? (
+                                <button key={label} type="button" onClick={handleEnquiriesClick} className="card p-4 text-center hover:shadow-lg transition-all duration-200 group">
+                                    <Icon className={`w-6 h-6 ${colorClass} mx-auto mb-2 group-hover:scale-110 transition-transform`} />
+                                    <span className="text-sm font-medium text-gray-700">{label}</span>
+                                </button>
+                            ) : (
+                                <Link key={label} to={to} className="card p-4 text-center hover:shadow-lg transition-all duration-200 group">
+                                    <Icon className={`w-6 h-6 ${colorClass} mx-auto mb-2 group-hover:scale-110 transition-transform`} />
+                                    <span className="text-sm font-medium text-gray-700">{label}</span>
+                                </Link>
+                            )
                         ))}
                     </div>
                 </div>
@@ -280,10 +334,12 @@ export default function TenantDashboardPage() {
                                                     <p className="text-xs uppercase tracking-[0.2em] text-gray-500">Total</p>
                                                     <p className="mt-2 text-base font-semibold text-gray-900">{formatCurrencyWithSymbol(totalAmount)}</p>
                                                 </div>
+
                                                 <div className="rounded-xl bg-green-50 px-4 py-3">
                                                     <p className="text-xs uppercase tracking-[0.2em] text-green-700">Paid</p>
                                                     <p className="mt-2 text-base font-semibold text-green-700">{formatCurrencyWithSymbol(paidAmount)}</p>
                                                 </div>
+
                                                 <div className="rounded-xl bg-red-50 px-4 py-3">
                                                     <p className="text-xs uppercase tracking-[0.2em] text-red-700">Balance</p>
                                                     <p className="mt-2 text-base font-semibold text-red-700">{formatCurrencyWithSymbol(remainingAmount)}</p>
@@ -377,29 +433,27 @@ export default function TenantDashboardPage() {
                                             </div>
                                         )}
                                     </div>
-                                    <div className="p-6 text-center">
-                                        <h3 className="text-lg font-semibold text-gray-900 mb-2 line-clamp-2 group-hover:text-blue-600 transition-colors duration-200">
+                                    <div className="p-2 text-center">
+                                        <h3 className="text-base font-semibold text-gray-900 mb-0.5 line-clamp-1 group-hover:text-blue-600 transition-colors duration-200">
                                             {property.title}
                                         </h3>
-                                        <p className="text-gray-600 text-sm mb-3">{property.city}, {property.state}</p>
-                                        <div className="text-[15px] font-semibold text-blue-600 mb-4">
+                                        <p className="text-gray-600 text-[14px] mb-0.5">{property.city}, {property.state}</p>
+                                        <div className="text-[16px] font-semibold text-blue-600 mb-0.5">
                                             {formatCurrencyWithSymbol(Number(property.price_per_year))}/year
                                         </div>
 
-                                        <div className="flex items-center justify-center space-x-4 mb-4 text-sm text-gray-600">
+                                        <div className="flex items-center justify-center space-x-3 mb-1 text-gray-600">
                                             <div className="flex items-center space-x-1">
                                                 <HiHome className="w-4 h-4" />
-                                                <span className="font-medium">{property.bedrooms}</span>
-                                                <span>bed</span>
+                                                <span className="text-[14px] font-medium">{property.bedrooms} bed</span>
                                             </div>
                                             <div className="flex items-center space-x-1">
                                                 <HiViewGrid className="w-4 h-4" />
-                                                <span className="font-medium">{property.bathrooms}</span>
-                                                <span>bath</span>
+                                                <span className="text-[14px] font-medium">{property.bathrooms} bath</span>
                                             </div>
                                         </div>
 
-                                        <Link to={`/listings/${property.id}`} className="btn btn-primary w-full">
+                                        <Link to={`/listings/${property.id}`} className="btn btn-primary w-full py-1.5 text-sm">
                                             View Property
                                         </Link>
                                     </div>
@@ -426,8 +480,8 @@ export default function TenantDashboardPage() {
                             <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
                                 <HiStar className="w-8 h-8 text-white" />
                             </div>
-                            <h3 className="text-xl font-bold text-gray-900 mb-2">
-                                Benefits for tenant on RentDirect
+                            <h3 className="text-[24px] font-bold text-gray-900 mb-2">
+                                Benefits of RentDirect for tenant
                             </h3>
                         </div>
 

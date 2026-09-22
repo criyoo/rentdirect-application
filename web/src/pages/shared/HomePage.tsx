@@ -268,7 +268,7 @@ export default function HomePage() {
                         </p>
                     </div>
 
-                    <div className="grid-modern grid-cols-1 md:grid-cols-6 lg:grid-cols63 gap-3">
+                    <div className="grid-modern grid-cols-1 md:grid-cols-6 lg:grid-cols6 gap-3">
                         <div className="card p-8 text-center hover:shadow-6xl transition-all duration-600">
                             <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center mx-auto mb-4">
                                 <HiCurrencyDollar className="w-6 h-6 text-emerald-600" />

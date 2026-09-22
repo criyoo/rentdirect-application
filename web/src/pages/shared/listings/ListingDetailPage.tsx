@@ -168,13 +168,6 @@ export default function ListingDetailPage() {
     )
     const canSeeCityState = Boolean(user)
     const canReviewAsTenant = user?.role === 'tenant' && subscriptionPaymentResponse !== undefined && hasGoldAccess(subscriptionPaymentResponse)
-    const canSeePropertyVerification = isListingLandlord
-        || user?.role === 'admin'
-        || (
-            user?.role === 'tenant'
-            && subscriptionPaymentResponse !== undefined
-            && hasGoldAccess(subscriptionPaymentResponse)
-        )
     const canLoadNearestAmenities = !!listing?.id && canSeePreciseLocation
     const { data: nearestAmenities } = useQuery({
         queryKey: ['listing', listing?.id, 'nearest-amenities'],
@@ -383,7 +376,7 @@ export default function ListingDetailPage() {
     const locationAccessMessage = !user
         ? 'Sign in to view the city and state. The full address is available after the required rental payment.'
         : user.role === 'tenant'
-            ? 'Full address and map available for rented properties.'
+            ? 'Full address and map available after let is agreed'
             : 'Full address available to the listing landlord and tenants renting the property.'
     const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapLocationQuery)}`
     const googleMapEmbedSrc = `https://www.google.com/maps?q=${encodeURIComponent(mapLocationQuery)}&output=embed`
@@ -411,7 +404,7 @@ export default function ListingDetailPage() {
                 <div className="mb-8">
                     <div className="relative">
                         {/* Main Image */}
-                        <div className="relative h-[30rem] max-w-6xl mx-auto rounded-2xl overflow-hidden shadow-lg">
+                        <div className="relative h-[40rem] max-w-8xl mx-auto rounded-2xl overflow-hidden shadow-lg">
                             <img
                                 className="h-full w-full object-cover"
                                 src={resolveMediaUrl(allImages[currentImageIndex])}
@@ -455,7 +448,7 @@ export default function ListingDetailPage() {
 
                         {/* Thumbnail Gallery with Horizontal Scroll */}
                         {allImages.length > 1 && (
-                            <div className="relative mt-4 max-w-2xl mx-auto">
+                            <div className="relative mt-6 max-w-3xl mx-auto">
                                 {allImages.length > 4 && (
                                     <button
                                         onClick={prevImage}
@@ -511,14 +504,14 @@ export default function ListingDetailPage() {
                     </div>
                 </div>
 
-                <div className="max-w-7xl mx-auto">
+                <div className="max-w-8xl mx-auto">
                     <div className="grid grid-cols-1 gap-3 lg:grid-cols-5">
                         {/* Price + Actions */}
                         <div className="h-[20rem] overflow-y-auto rounded-2xl bg-white px-3 pb-3 pt-6 shadow-lg border">
                             <p className="text-[16px] font-bold text-gray-900 text-center">
                                 {isLandlordUser ? 'Property Management' : 'Start Rental Journey'}
                             </p>
-                            <div className="mt-6 space-y-3">
+                            <div className="mt-3 space-y-3">
                                 {isLandlordUser ? (
                                     <>
                                         <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 text-sm text-slate-700">
@@ -564,7 +557,7 @@ export default function ListingDetailPage() {
                                                     }`}
                                             >
                                                 {toggleFavourite.isPending ? '...' : (
-                                                    isFavourite ? '❤️ Remove from Favourites' : '🤍 Add to Favourites'
+                                                    isFavourite ? '❤️  Remove from Favourites' : '🤍  Add to Favourites'
                                                 )}
                                             </button>
                                         )}
@@ -580,11 +573,11 @@ export default function ListingDetailPage() {
                                                     setIsReviewOpen(true)
                                                 }}
                                                 className={`text-sm w-full rounded-lg px-3 py-1.5 font-medium transition ${!canReviewAsTenant
-                                                    ? 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                                                    : 'bg-amber-400 text-blue-900 hover:bg-amber-600'
+                                                    ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                    : 'bg-amber-400 text-purple-700 hover:bg-amber-600'
                                                     }`}
                                             >
-                                                {!canReviewAsTenant ? 'Upgrade to Review' : existingReview ? 'Edit Property Review' : 'Review Property'}
+                                                {!canReviewAsTenant ? 'Subscribe to Review' : existingReview ? 'Edit Property Review' : 'Review Property'}
                                             </button>
                                         )}
 
@@ -622,9 +615,9 @@ export default function ListingDetailPage() {
                                             </div>
                                         ) : requiresTenantSubscription ? (
                                             <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-sm text-blue-800">
-                                                <p className="text-sm font-medium">Subscription Required</p>
+                                                <p className="text-sm font-bold">Subscription Required</p>
                                                 <p className="mt-1">
-                                                    Upgrade your tenant subscription to contact landlords, arrange viewing, or rent this property.
+                                                    Subscribe to contact landlords and rent this property.
                                                 </p>
                                                 <button
                                                     onClick={redirectToBilling}
@@ -689,16 +682,17 @@ export default function ListingDetailPage() {
                                 {listing.deposit_amount && (
                                     <div className="pt-2 border-t border-gray-100">
                                         <div className="flex items-center justify-between">
-                                            <span className="text-[14px] text-blue-600">20% Deposit:</span>
-                                            <span className="font-medium text-[14px] text-blue-600">{formatCurrencyWithSymbol(listing.deposit_amount)}</span>
+                                            <span className="text-[16px] text-blue-600">Optional<br />20% Deposit:</span>
+                                            <span className="font-medium text-[16px] text-blue-600"><br />{formatCurrencyWithSymbol(listing.deposit_amount)}</span>
                                         </div>
                                     </div>
                                 )}
                             </div>
                         </div>
 
-                        {canSeePropertyVerification && (() => {
+                        {(() => {
                             const isPropertyVerified = listing.property_document_verification_status === 'verified'
+                                || listing.physical_property_status === 'verified'
                             return (
                                 <div className={`h-[20rem] overflow-y-auto rounded-2xl border p-6 shadow-lg ${isPropertyVerified
                                     ? 'border-emerald-200 bg-emerald-50'
@@ -715,6 +709,8 @@ export default function ListingDetailPage() {
                                 </div>
                             )
                         })()}
+
+
 
                         {/* Features */}
                         <div className="h-[20rem] overflow-y-auto rounded-2xl bg-white p-6 shadow-lg border">

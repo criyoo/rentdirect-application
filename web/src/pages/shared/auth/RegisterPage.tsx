@@ -27,7 +27,9 @@ export default function RegisterPage() {
     const isRoleLocked = requestedRole === 'tenant' || requestedRole === 'landlord'
     const initialRole = requestedRole === 'landlord' ? 'landlord' : 'tenant'
     const [formData, setFormData] = useState({
-        name: '',
+        firstName: '',
+        middleName: '',
+        lastName: '',
         email: '',
         password: '',
         role: initialRole as 'tenant' | 'landlord'
@@ -40,13 +42,15 @@ export default function RegisterPage() {
     const [showPassword, setShowPassword] = useState(false)
     const [error, setError] = useState('')
     const [isRegistrationConsentOpen, setIsRegistrationConsentOpen] = useState(false)
-    const [verifiedRole, setVerifiedRole] = useState<'tenant' | 'landlord' | null>(null)
+    const [verifiedUser, setVerifiedUser] = useState<{ id: string; role: 'tenant' | 'landlord' } | null>(null)
     const { register, verifyRegistration, logout } = useAuth()
     const draftStorageKey = useMemo(() => buildFormDraftKey('registration', 'anonymous'), [])
 
     useEffect(() => {
         const storedDraft = readFormDraft<{
-            name?: string
+            firstName?: string
+            middleName?: string
+            lastName?: string
             email?: string
             role?: 'tenant' | 'landlord'
             pendingEmail?: string
@@ -56,7 +60,9 @@ export default function RegisterPage() {
 
         setFormData((current) => ({
             ...current,
-            name: storedDraft.name || '',
+            firstName: storedDraft.firstName || '',
+            middleName: storedDraft.middleName || '',
+            lastName: storedDraft.lastName || '',
             email: storedDraft.email || '',
             role: isRoleLocked ? initialRole : storedDraft.role || current.role,
         }))
@@ -66,13 +72,24 @@ export default function RegisterPage() {
 
     useEffect(() => {
         writeFormDraft(draftStorageKey, {
-            name: formData.name,
+            firstName: formData.firstName,
+            middleName: formData.middleName,
+            lastName: formData.lastName,
             email: formData.email,
             role: formData.role,
             pendingEmail,
             isOtpStep,
         })
-    }, [draftStorageKey, formData.email, formData.name, formData.role, isOtpStep, pendingEmail])
+    }, [
+        draftStorageKey,
+        formData.email,
+        formData.firstName,
+        formData.lastName,
+        formData.middleName,
+        formData.role,
+        isOtpStep,
+        pendingEmail,
+    ])
 
     // The navbar links can change only the query string while this page is open.
     // Keep the form role and verification step in sync without requiring a refresh.
@@ -93,7 +110,11 @@ export default function RegisterPage() {
         setIsSubmitting(true)
 
         try {
-            const result = await register(formData)
+            const { firstName, middleName, lastName, ...registrationData } = formData
+            const result = await register({
+                ...registrationData,
+                name: [firstName, middleName, lastName].filter(Boolean).join(' '),
+            })
             setPendingEmail(result.email)
             setOtpExpiresIn(result.expires_in_seconds)
             setIsOtpStep(true)
@@ -118,7 +139,7 @@ export default function RegisterPage() {
                 throw new Error('This account type cannot complete registration here.')
             }
             removeFormDraft(draftStorageKey)
-            setVerifiedRole(verifiedUser.role)
+            setVerifiedUser({ id: verifiedUser.id, role: verifiedUser.role })
             setIsRegistrationConsentOpen(true)
         } catch (err: any) {
             setError(err.message || 'Verification failed')
@@ -137,19 +158,29 @@ export default function RegisterPage() {
     const displayedRole = isRoleLocked ? initialRole : formData.role
 
     const handleRegistrationConsent = () => {
-        if (!verifiedRole) return
+        if (!verifiedUser) return
 
-        if (verifiedRole === 'landlord') {
+        if (verifiedUser.role === 'landlord') {
             localStorage.setItem('landlord_onboarding_pending_identity', '1')
-            navigate('/landlord/verification')
+            navigate(`/dashboard/landlord/${verifiedUser.id}`, {
+                state: {
+                    registrationNotice:
+                        'Verification, Profile completion and a subscription plan is required to create listing',
+                },
+            })
         } else {
-            navigate('/verify')
+            navigate(`/dashboard/tenant/${verifiedUser.id}`, {
+                state: {
+                    registrationNotice:
+                        'Verification, Profile completion and a subscription plan is required to contact landlord and rent a property',
+                },
+            })
         }
     }
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-            <div className="max-w-md w-full space-y-8">
+            <div className="max-w-xl w-full space-y-8">
                 {/* Header */}
                 <div className="text-center">
                     <div
@@ -177,7 +208,7 @@ export default function RegisterPage() {
                 </div>
 
                 {/* Registration Form */}
-                <div className="card p-8">
+                <div className="card p-6">
                     <form onSubmit={isOtpStep ? handleVerifyOtp : handleSubmit} className="space-y-6">
                         {error && (
                             <div className="bg-red-50 border border-red-200 rounded-lg p-4">
@@ -246,25 +277,46 @@ export default function RegisterPage() {
                             </>
                         ) : (
                             <>
-                                {/* Name Field */}
-                                <div>
-                                    <label htmlFor="name" className="form-label">
-                                        Full name
-                                    </label>
-                                    <div className="relative">
-                                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                            <HiUser className="h-5 w-5 text-gray-400" />
-                                        </div>
+                                <div className="grid gap-4 sm:grid-cols-3">
+                                    <div>
+                                        <label htmlFor="firstName" className="form-label">First name</label>
                                         <input
-                                            id="name"
-                                            name="name"
+                                            id="firstName"
+                                            name="firstName"
                                             type="text"
-                                            autoComplete="name"
+                                            autoComplete="given-name"
                                             required
-                                            value={formData.name}
+                                            value={formData.firstName}
                                             onChange={handleChange}
-                                            className="form-input pl-10"
-                                            placeholder="Enter your full name"
+                                            className="form-input"
+                                            placeholder="Enter first name"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label htmlFor="middleName" className="form-label">Middle name</label>
+                                        <input
+                                            id="middleName"
+                                            name="middleName"
+                                            type="text"
+                                            autoComplete="additional-name"
+                                            value={formData.middleName}
+                                            onChange={handleChange}
+                                            className="form-input"
+                                            placeholder="Optional - Enter middle name"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label htmlFor="lastName" className="form-label">Last name</label>
+                                        <input
+                                            id="lastName"
+                                            name="lastName"
+                                            type="text"
+                                            autoComplete="family-name"
+                                            required
+                                            value={formData.lastName}
+                                            onChange={handleChange}
+                                            className="form-input"
+                                            placeholder="Enter last name"
                                         />
                                     </div>
                                 </div>
@@ -432,7 +484,7 @@ export default function RegisterPage() {
 
                 <RegistrationLegalConsentModal
                     isOpen={isRegistrationConsentOpen}
-                    role={verifiedRole || displayedRole}
+                    role={verifiedUser?.role || displayedRole}
                     onAccept={handleRegistrationConsent}
                     onCancel={() => {
                         setIsRegistrationConsentOpen(false)

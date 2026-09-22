@@ -54,7 +54,7 @@ type VerificationStatusResponse = {
 }
 
 const genderOptions = ['Male', 'Female']
-const employmentOptions = ['Employed', 'Self Employed', 'Business Owner', 'Freelancer', 'Retired', 'Unemployed', 'Student']
+const employmentOptions = ['Employed', 'Self Employed', 'Business Owner', 'Freelancer', 'Retired']
 
 const emptyProfileDetails = {
     residence_country: '',
@@ -199,7 +199,7 @@ function SelectInput({ register, name, options, placeholder, error }: { register
     )
 }
 
-export default function VerifyMePage() {
+export default function TenantVerificationPage() {
     const { user } = useAuth()
     const { alert: popupAlert, confirm } = useAppPopup()
     const navigate = useNavigate()
@@ -276,7 +276,11 @@ export default function VerifyMePage() {
         if (!verificationDraftStorageKey) return
 
         const storedDraft = readFormDraft<Partial<VerificationFormValues> & { hasAcceptedLegalConsent?: boolean }>(verificationDraftStorageKey)
-        reset({ ...defaultValues, ...(storedDraft || {}) })
+        reset({
+            ...defaultValues,
+            ...(storedDraft || {}),
+            employment_status: storedDraft?.employment_status || defaultValues.employment_status,
+        })
         setHasAcceptedLegalConsent(Boolean(storedDraft?.hasAcceptedLegalConsent))
         setHydratedDraftStorageKey(verificationDraftStorageKey)
     }, [defaultValues, reset, verificationDraftStorageKey])
@@ -502,6 +506,7 @@ export default function VerifyMePage() {
                             id="tenant-verification-legal-consent"
                             audience="tenant"
                             signerName={signerName}
+                            singleConsent
                             consented={hasAcceptedLegalConsent}
                             disabled={isVerificationLocked}
                             onConsentChange={setHasAcceptedLegalConsent}

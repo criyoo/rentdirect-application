@@ -1,5 +1,6 @@
+import { useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import {
     HiBadgeCheck,
     HiCash,
@@ -77,7 +78,16 @@ function getBookingFinancials(booking: Booking) {
 export default function LandlordDashboardPage() {
     const { userId } = useParams()
     const { user } = useAuth()
-    const { confirm } = useAppPopup()
+    const location = useLocation()
+    const navigate = useNavigate()
+    const { alert, confirm } = useAppPopup()
+
+    useEffect(() => {
+        const notice = (location.state as { registrationNotice?: string } | null)?.registrationNotice
+        if (!notice) return
+        navigate(location.pathname, { replace: true, state: {} })
+        void alert(notice, { variant: 'info' })
+    }, [alert, location.pathname, location.state, navigate])
     const qc = useQueryClient()
     const { data: listings = [], isLoading } = useQuery({
         queryKey: ['dashboard', 'landlord', 'listings', userId],
@@ -397,12 +407,12 @@ export default function LandlordDashboardPage() {
                                         </div>
                                     </div>
 
-                                    <div className="p-6">
-                                        <h3 className="text-lg font-semibold text-gray-900 mb-2 line-clamp-2 group-hover:text-blue-600 transition-colors duration-200">
+                                    <div className="p-4">
+                                        <h3 className="text-lg font-semibold text-gray-900 mb-1 line-clamp-2 group-hover:text-blue-600 transition-colors duration-200">
                                             {listing.title}
                                         </h3>
-                                        <p className="text-gray-600 text-sm mb-3">{listing.city}</p>
-                                        <div className="text-2xl font-bold text-blue-600 mb-4">
+                                        <p className="text-gray-600 text-sm mb-1">{listing.city}</p>
+                                        <div className="text-2xl font-bold text-blue-600 mb-2">
                                             {formatCurrencyWithSymbol(Number(listing.price_per_year || 0))}
                                         </div>
                                         <div className="text-sm text-gray-500">per year</div>

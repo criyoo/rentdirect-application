@@ -144,7 +144,7 @@ export function AppPopupProvider({ children }: { children: ReactNode }) {
     }, [])
 
     useEffect(() => {
-        if (!popup?.autoConfirmSeconds || popup.mode !== 'confirm') {
+        if (!popup?.autoConfirmSeconds) {
             setCountdownSeconds(null)
             return
         }

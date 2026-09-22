@@ -7,6 +7,12 @@ from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, Permis
 from django.db import models
 from django.utils import timezone
 
+from .financial_constants import (
+    ACCOUNT_FREEZE_FEE_PERCENTAGE,
+    FEATURED_PROPERTY_MONTHLY_DURATION_DAYS,
+    LISTING_DEPOSIT_RATE,
+    LISTING_TOTAL_MULTIPLIER,
+)
 from .pricing import calculate_deposit_amount, resolve_booking_total
 
 DEPOSIT_LISTING_HOLD_DAYS = 3
@@ -91,7 +97,11 @@ class AppUser(AbstractBaseUser, PermissionsMixin):
     account_frozen = models.BooleanField(default=False)
     account_frozen_at = models.DateTimeField(null=True, blank=True)
     account_frozen_until = models.DateTimeField(null=True, blank=True)
-    account_freeze_fee_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=10)
+    account_freeze_fee_percentage = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=ACCOUNT_FREEZE_FEE_PERCENTAGE,
+    )
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -314,7 +324,7 @@ def deposit_secured_booking_queryset():
     deposit_due = models.ExpressionWrapper(
         models.F("listing__price_per_year")
         * models.Value(
-            Decimal("0.20"),
+            LISTING_DEPOSIT_RATE,
             output_field=models.DecimalField(max_digits=4, decimal_places=2),
         ),
         output_field=models.DecimalField(max_digits=12, decimal_places=2),
@@ -322,7 +332,7 @@ def deposit_secured_booking_queryset():
     calculated_total = models.ExpressionWrapper(
         models.F("listing__price_per_year")
         * models.Value(
-            Decimal("1.20"),
+            LISTING_TOTAL_MULTIPLIER,
             output_field=models.DecimalField(max_digits=4, decimal_places=2),
         ),
         output_field=models.DecimalField(max_digits=12, decimal_places=2),
@@ -979,7 +989,7 @@ class FeaturedPayment(models.Model):
     transaction_id = models.CharField(max_length=120, unique=True, null=True, blank=True)
     opay_order_no = models.CharField(max_length=120, blank=True, default="")
     opay_cashier_url = models.URLField(blank=True, default="")
-    featured_duration_days = models.PositiveSmallIntegerField(default=30)
+    featured_duration_days = models.PositiveSmallIntegerField(default=FEATURED_PROPERTY_MONTHLY_DURATION_DAYS)
     expires_at = models.DateTimeField()
     provider_payload = models.JSONField(blank=True, null=True)
     webhook_data = models.JSONField(blank=True, null=True)

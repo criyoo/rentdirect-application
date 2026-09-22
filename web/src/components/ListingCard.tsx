@@ -126,10 +126,10 @@ export default function ListingCard({ listing, isFavourite = false }: ListingCar
                 </div>
 
                 {/* Content */}
-                <div className="flex flex-1 flex-col items-center p-4 text-center">
+                <div className="flex flex-1 flex-col items-center p-3 text-center">
                     {/* Title and Location */}
-                    <div className="text-center  mb-3">
-                        <h3 className="mb-1 text-lg font-semibold text-gray-900 line-clamp-2 group-hover:text-blue-600 transition-colors duration-200">
+                    <div className="text-center mb-1">
+                        <h3 className="mb-0.5 text-lg font-semibold text-gray-900 line-clamp-2 group-hover:text-blue-600 transition-colors duration-200">
                             {listing.title}
                         </h3>
                         <div className="flex items-center justify-center text-gray-600 text-sm">
@@ -137,14 +137,14 @@ export default function ListingCard({ listing, isFavourite = false }: ListingCar
                             <span className="truncate">{locationLabel}</span>
                         </div>
                         {hasDistance ? (
-                            <div className="mt-1 text-sm font-medium text-blue-600">
+                            <div className="mt-0.5 text-sm font-medium text-blue-600">
                                 {distanceKm.toFixed(1)} km away
                             </div>
                         ) : null}
                     </div>
 
                     {/* Property Details */}
-                    <div className="mb-1 flex items-center justify-center space-x-4 text-sm text-gray-600">
+                    <div className="mb-0.5 flex items-center justify-center space-x-4 text-sm text-gray-600">
                         <div className="flex items-center space-x-1">
                             <HiHome className="w-4 h-4" />
                             <span className="font-medium">{listing.bedrooms}</span>

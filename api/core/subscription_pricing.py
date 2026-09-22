@@ -1,13 +1,8 @@
-import json
-from functools import lru_cache
-from pathlib import Path
+from copy import deepcopy
 from typing import Any
 
+from .financial_constants import SUBSCRIPTION_PRICING
 
-SUBSCRIPTION_PRICING_PATH = Path(__file__).with_name("subscription-pricing.json")
 
-
-@lru_cache(maxsize=1)
 def get_subscription_pricing() -> dict[str, Any]:
-    with SUBSCRIPTION_PRICING_PATH.open("r", encoding="utf-8") as pricing_file:
-        return json.load(pricing_file)
+    return {role: deepcopy(plan_pricing) for role, plan_pricing in SUBSCRIPTION_PRICING.items()}
