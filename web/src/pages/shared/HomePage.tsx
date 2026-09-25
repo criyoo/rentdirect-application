@@ -106,10 +106,11 @@ export default function HomePage() {
                                         Home Today
                                     </span>
                                 </h1>
-                                <h3 className="text-4xl text-blue-100 mb-3">No agents. No middleman.</h3>
+                                <h3 className="text-4xl text-blue-100 mb-3">Skip the Hassle.</h3>
+                                <p className="text-2xl font-bold text-yellow-400 mb-3">No agents. No middlemen.</p>
                                 <p className="text-xl text-blue-100 mb-8 max-w-2xl">
-                                    Discover thousands of verified properties from trusted landlords.
-                                    Direct communication, transparent pricing, and seamless rental experience.
+                                    Discover verified properties with transparent pricing, connect directly with landlords, and find your next home faster with <span className="text-yellow-400">Sally</span>, your AI rental assistant.
+                                    <span className="mt-4 font-bold block text-[24px] text-yellow-400">Find it. Love it. Rent it.</span>
                                 </p>
 
                                 <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
@@ -293,9 +294,9 @@ export default function HomePage() {
                             <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center mx-auto mb-4">
                                 <HiSearch className="w-6 h-6 text-indigo-600" />
                             </div>
-                            <h3 className={classNameUSP}>Efficient Tracking</h3>
+                            <h3 className={classNameUSP}>AI Assistant</h3>
                             <p className="text-blue-600">
-                                Track every transaction including rentals progress and payments.
+                                Use our AI assistant to find what you need and track every transaction including rental progress and payments.
                             </p>
                         </div>
 

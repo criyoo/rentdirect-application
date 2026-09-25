@@ -95,7 +95,6 @@ from .financial_constants import (
     ADMINISTRATION_FEE_RATE,
     ADMINISTRATION_FEE_VAT_RATE,
     CARD_PAYMENT_LIMIT_NGN,
-    CAUTION_FEE_RATE,
     DEFAULT_SUBSCRIPTION_VAT_RATE_PERCENT,
     DEPOSIT_LISTING_HOLD_DAYS,
     FEATURED_PROPERTY_MAX_DURATION_DAYS,
@@ -108,7 +107,7 @@ from .financial_constants import (
     MONEY_PRECISION,
     PAYMENT_CANCELLATION_ADMIN_FEE_RATE,
     PERCENT_DENOMINATOR,
-    REFUNDABLE_SECURITY_DEPOSIT_RATE,
+    REFUNDABLE_CAUTION_FEE_RATE,
     ZERO_AMOUNT,
 )
 from .verification_service import verify_cac, verify_nin, verify_nin_and_bvn
@@ -133,7 +132,7 @@ from .pricing import (
     calculate_administration_fee_vat,
     calculate_deposit_amount,
     calculate_featured_property_fee,
-    calculate_refundable_security_deposit,
+    calculate_refundable_caution_fee,
     calculate_remaining_balance,
     resolve_booking_total,
 )
@@ -2173,7 +2172,7 @@ def build_payment_settlement_specs(payment: Payment) -> list[dict]:
         },
         {
             "purpose": PaymentSettlement.Purpose.CAUTION_FEE,
-            "target_amount": calculate_refundable_security_deposit(annual_rent),
+            "target_amount": calculate_refundable_caution_fee(annual_rent),
             **resolve_account_payload(
                 bank_name=settings.TENANT_CAUTION_HOLDING_BANK_NAME,
                 bank_code=settings.TENANT_CAUTION_HOLDING_BANK_CODE,
@@ -5643,11 +5642,10 @@ def health(request):
 def financial_config(request):
     return Response(
         {
-            "refundable_security_deposit_rate": str(REFUNDABLE_SECURITY_DEPOSIT_RATE),
+            "refundable_caution_fee_rate": str(REFUNDABLE_CAUTION_FEE_RATE),
             "administration_fee_rate": str(ADMINISTRATION_FEE_RATE),
             "administration_fee_vat_rate": str(ADMINISTRATION_FEE_VAT_RATE),
             "listing_deposit_rate": str(LISTING_DEPOSIT_RATE),
-            "caution_fee_rate": str(CAUTION_FEE_RATE),
             "legal_fee_max_rate": str(LEGAL_FEE_MAX_RATE),
             "listing_deposit_hold_days": DEPOSIT_LISTING_HOLD_DAYS,
             "payment_cancellation_admin_fee_rate": str(PAYMENT_CANCELLATION_ADMIN_FEE_RATE),

@@ -3,12 +3,11 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 
 interface FinancialConfigResponse {
-    refundable_security_deposit_rate: string
     administration_fee_rate: string
     administration_fee_vat_rate: string
     listing_deposit_rate: string
     listing_deposit_hold_days: number
-    caution_fee_rate: string
+    refundable_caution_fee_rate: string
     legal_fee_max_rate: string
     payment_cancellation_admin_fee_rate: string
     card_payment_limit: string
@@ -21,12 +20,11 @@ interface FinancialConfigResponse {
 }
 
 export interface FinancialConfig {
-    refundableSecurityDepositRate: number
     administrationFeeRate: number
     administrationFeeVatRate: number
     listingDepositRate: number
     listingDepositHoldDays: number
-    cautionFeeRate: number
+    refundableCautionFeeRate: number
     legalFeeMaxRate: number
     paymentCancellationAdminFeeRate: number
     cardPaymentLimit: number
@@ -40,12 +38,11 @@ export interface FinancialConfig {
 
 function toFinancialConfig(data: FinancialConfigResponse): FinancialConfig {
     return {
-        refundableSecurityDepositRate: Number(data.refundable_security_deposit_rate),
         administrationFeeRate: Number(data.administration_fee_rate),
         administrationFeeVatRate: Number(data.administration_fee_vat_rate),
         listingDepositRate: Number(data.listing_deposit_rate),
         listingDepositHoldDays: Number(data.listing_deposit_hold_days),
-        cautionFeeRate: Number(data.caution_fee_rate),
+        refundableCautionFeeRate: Number(data.refundable_caution_fee_rate),
         legalFeeMaxRate: Number(data.legal_fee_max_rate),
         paymentCancellationAdminFeeRate: Number(data.payment_cancellation_admin_fee_rate),
         cardPaymentLimit: Number(data.card_payment_limit),

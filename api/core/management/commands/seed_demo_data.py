@@ -22,7 +22,7 @@ from core.models import (
     VerificationRequest,
     build_listing_property_document_title,
 )
-from core.financial_constants import CAUTION_FEE_RATE, ZERO_AMOUNT
+from core.financial_constants import REFUNDABLE_CAUTION_FEE_RATE, ZERO_AMOUNT
 from core.pricing import calculate_listing_deposit_amount
 from core.profile_validation import is_valid_mobile, is_valid_nin, normalize_residence, normalize_state_of_origin
 from core.subscription_pricing import get_subscription_pricing
@@ -1310,7 +1310,7 @@ class Command(BaseCommand):
             listing.service_charge = self.seed_decimal(listing_data.get("service_charge"))
             listing.caution_fee = self.seed_decimal(
                 listing_data.get("caution_fee"),
-                default=(price_per_year * CAUTION_FEE_RATE).quantize(Decimal("0.01")),
+                default=(price_per_year * REFUNDABLE_CAUTION_FEE_RATE).quantize(Decimal("0.01")),
             )
             listing.legal_fee = self.seed_decimal(listing_data.get("legal_fee"))
             listing.nightly_rate = self.seed_decimal(listing_data.get("nightly_rate"))

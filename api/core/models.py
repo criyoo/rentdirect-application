@@ -9,10 +9,10 @@ from django.utils import timezone
 
 from .financial_constants import (
     ACCOUNT_FREEZE_FEE_PERCENTAGE,
+    BOOKING_TOTAL_MULTIPLIER,
     DEPOSIT_LISTING_HOLD_DAYS,
+    INITIAL_CHECKOUT_PAYMENT_RATE,
     FEATURED_PROPERTY_MONTHLY_DURATION_DAYS,
-    LISTING_DEPOSIT_RATE,
-    LISTING_TOTAL_MULTIPLIER,
 )
 from .pricing import calculate_deposit_amount, resolve_booking_total
 
@@ -323,16 +323,16 @@ def deposit_secured_booking_queryset():
     deposit_due = models.ExpressionWrapper(
         models.F("listing__price_per_year")
         * models.Value(
-            LISTING_DEPOSIT_RATE,
-            output_field=models.DecimalField(max_digits=4, decimal_places=2),
+            INITIAL_CHECKOUT_PAYMENT_RATE,
+            output_field=models.DecimalField(max_digits=6, decimal_places=5),
         ),
         output_field=models.DecimalField(max_digits=12, decimal_places=2),
     )
     calculated_total = models.ExpressionWrapper(
         models.F("listing__price_per_year")
         * models.Value(
-            LISTING_TOTAL_MULTIPLIER,
-            output_field=models.DecimalField(max_digits=4, decimal_places=2),
+            BOOKING_TOTAL_MULTIPLIER,
+            output_field=models.DecimalField(max_digits=6, decimal_places=5),
         ),
         output_field=models.DecimalField(max_digits=12, decimal_places=2),
     )
@@ -991,7 +991,7 @@ class PaymentSettlement(models.Model):
     class Purpose(models.TextChoices):
         OPERATIONS = "operations", "RentDirect Administration Fee"
         ADMINISTRATION_FEE_VAT = "administration_fee_vat", "VAT on RentDirect Administration Fee"
-        CAUTION_FEE = "caution_fee", "Refundable Security Deposit"
+        CAUTION_FEE = "caution_fee", "Refundable Caution Fee"
         LANDLORD_RENT = "landlord_rent", "Rent Amount"
 
     class Status(models.TextChoices):

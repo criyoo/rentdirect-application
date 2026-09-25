@@ -7,7 +7,7 @@ from .financial_constants import (
     FEATURED_PROPERTY_MONTHLY_FEE,
     LISTING_DEPOSIT_RATE,
     MONEY_PRECISION,
-    REFUNDABLE_SECURITY_DEPOSIT_RATE,
+    REFUNDABLE_CAUTION_FEE_RATE,
     ZERO_AMOUNT,
 )
 
@@ -16,8 +16,8 @@ def quantize_money(amount: Decimal | int | float | str) -> Decimal:
     return Decimal(amount).quantize(MONEY_PRECISION, rounding=ROUND_HALF_UP)
 
 
-def calculate_refundable_security_deposit(annual_rent: Decimal | int | float | str) -> Decimal:
-    return quantize_money(Decimal(annual_rent) * REFUNDABLE_SECURITY_DEPOSIT_RATE)
+def calculate_refundable_caution_fee(annual_rent: Decimal | int | float | str) -> Decimal:
+    return quantize_money(Decimal(annual_rent) * REFUNDABLE_CAUTION_FEE_RATE)
 
 
 def calculate_administration_fee(annual_rent: Decimal | int | float | str) -> Decimal:
@@ -31,7 +31,7 @@ def calculate_administration_fee_vat(annual_rent: Decimal | int | float | str) -
 def calculate_deposit_amount(annual_rent: Decimal | int | float | str) -> Decimal:
     annual_rent_decimal = Decimal(annual_rent)
     return quantize_money(
-        calculate_refundable_security_deposit(annual_rent_decimal)
+        calculate_refundable_caution_fee(annual_rent_decimal)
         + calculate_administration_fee(annual_rent_decimal)
         + calculate_administration_fee_vat(annual_rent_decimal)
     )

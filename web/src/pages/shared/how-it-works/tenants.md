@@ -64,7 +64,7 @@ You can pay by card or bank transfer through Flutterwave.
 
 ### What does the tenant service fee cover?
 
-The administration fee (15% of the annual rent, plus VAT) covers administration, legal, verification, viewing, and agreement support. A refundable 5% security deposit also applies. The full amount is shown before you submit payment.
+The administration fee (15% of the annual rent, plus VAT) covers administration, legal, verification, viewing, and agreement support. A refundable 5% caution fee also applies. The full amount is shown before you submit payment.
 
 ### Can I make a partial payment?
 

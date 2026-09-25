@@ -95,7 +95,7 @@ Yes. Verified landlords can manage multiple listings from one dashboard.
 
 ### What fees do tenants pay?
 
-Tenants see the applicable rental charges — a 15% administration fee (plus VAT) and a refundable 5% security deposit — before submitting a payment. The administration fee covers administration, legal, verification, viewing, and agreement support.
+Tenants see the applicable rental charges — a 15% administration fee (plus VAT) and a refundable 5% caution fee — before submitting a payment. The administration fee covers administration, legal, verification, viewing, and agreement support.
 
 ### How do I get help?
 

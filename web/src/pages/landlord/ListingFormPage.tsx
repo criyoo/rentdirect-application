@@ -302,14 +302,14 @@ export default function ListingFormPage() {
         })
         // Caution fee defaults to the configured rate (5%) of annual rent — editable.
         const cautionFee = Number.isFinite(annualRent) && annualRent > 0
-            ? Number((annualRent * (financialConfig?.cautionFeeRate ?? 0.05)).toFixed(2))
+            ? Number((annualRent * (financialConfig?.refundableCautionFeeRate ?? 0.05)).toFixed(2))
             : undefined
         setValue('caution_fee', cautionFee as ListingFormValues['caution_fee'], {
             shouldDirty: false,
             shouldTouch: false,
             shouldValidate: Boolean(cautionFee),
         })
-    }, [pricePerYear, setValue, financialConfig?.listingDepositRate, financialConfig?.cautionFeeRate])
+    }, [pricePerYear, setValue, financialConfig?.listingDepositRate, financialConfig?.refundableCautionFeeRate])
 
     const { fields: amenityFields, append: appendAmenity, remove: removeAmenity } = useFieldArray({
         control,

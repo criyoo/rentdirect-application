@@ -1124,7 +1124,7 @@ class PaymentAdmin(admin.ModelAdmin):
         "id",
         "booking",
         "rent_amount",
-        "refundable_security_deposit_amount",
+        "refundable_caution_fee_amount",
         "administration_fee_amount",
         "administration_fee_vat_amount",
         "amount",
@@ -1148,8 +1148,8 @@ class PaymentAdmin(admin.ModelAdmin):
     def rent_amount(self, obj):
         return self._settlement_amount(obj, PaymentSettlement.Purpose.LANDLORD_RENT)
 
-    @admin.display(description="Refundable Security Deposit")
-    def refundable_security_deposit_amount(self, obj):
+    @admin.display(description="Refundable Caution Fee")
+    def refundable_caution_fee_amount(self, obj):
         return self._settlement_amount(obj, PaymentSettlement.Purpose.CAUTION_FEE)
 
     @admin.display(description="Administration Fee")

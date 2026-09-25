@@ -7,14 +7,23 @@ PERCENT_DENOMINATOR = Decimal("100")
 MONEY_MINOR_UNIT_FACTOR = Decimal("100")
 MONTHS_PER_YEAR = Decimal("12")
 
-REFUNDABLE_SECURITY_DEPOSIT_RATE = Decimal("0.05")
-CAUTION_FEE_RATE = Decimal("0.05")
+REFUNDABLE_CAUTION_FEE_RATE = Decimal("0.05")
 LEGAL_FEE_MAX_RATE = Decimal("0.05")
-ADMINISTRATION_FEE_RATE = Decimal("0.15")
+ADMINISTRATION_FEE_RATE = Decimal("0.10")
 ADMINISTRATION_FEE_VAT_RATE = Decimal("0.075")
 LISTING_DEPOSIT_RATE = Decimal("0.30")
 LISTING_TOTAL_MULTIPLIER = Decimal("1.20")
-DEPOSIT_LISTING_HOLD_DAYS = 3
+# Initial checkout payment the tenant makes to secure a booking:
+# refundable caution fee + administration fee + VAT on the fee only
+# (no VAT on the deposit). Mirrors calculate_deposit_amount /
+# calculate_booking_total so queryset annotations match Python-side checks.
+INITIAL_CHECKOUT_PAYMENT_RATE = (
+    REFUNDABLE_CAUTION_FEE_RATE
+    + ADMINISTRATION_FEE_RATE
+    + (ADMINISTRATION_FEE_RATE * ADMINISTRATION_FEE_VAT_RATE)
+)
+BOOKING_TOTAL_MULTIPLIER = Decimal("1") + INITIAL_CHECKOUT_PAYMENT_RATE
+DEPOSIT_LISTING_HOLD_DAYS = 7
 PAYMENT_CANCELLATION_ADMIN_FEE_RATE = Decimal("0.01")
 CARD_PAYMENT_LIMIT_NGN = Decimal("7000000.00")
 ACCOUNT_FREEZE_FEE_PERCENTAGE = Decimal("10.00")

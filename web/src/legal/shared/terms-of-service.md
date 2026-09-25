@@ -137,7 +137,7 @@ The Tenant and Landlord remain responsible for agreeing the property, rent, term
 
 ## 13. PAYMENTS AND PAID FEATURES
 
-The Platform may display annual rent, a refundable security deposit, an administration or service fee, paid amounts, and a remaining balance. The current checkout calculation uses a refundable security deposit equal to 10% of annual rent and an administration fee equal to 10% of annual rent, unless the checkout page states a different lawful amount.
+The Platform may display annual rent, a refundable caution fee, an administration or service fee, paid amounts, and a remaining balance. The current checkout calculation uses a refundable caution fee equal to 5% of annual rent and an administration fee equal to 15% of annual rent, unless the checkout page states a different lawful amount.
 
 Payments may be processed and verified through Flutterwave or another approved provider. RentDirect may receive payment status notifications and may maintain settlement records for operations, caution-fee, and Landlord-rent purposes. A payment record does not, by itself, create a tenancy, transfer title, or guarantee release of funds on a particular date.
 

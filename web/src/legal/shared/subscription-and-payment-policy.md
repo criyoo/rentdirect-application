@@ -37,15 +37,15 @@ RentDirect may change prices or benefits for future purchases. A change does not
 Before a rental payment, the Platform may show:
 
 * annual rent;
-* refundable security deposit;
+* refundable caution fee;
 * administration or service fee;
 * total Booking amount;
 * amount already paid; and
 * remaining balance.
 
-The current calculation uses a refundable security deposit equal to 10% of annual rent and an administration fee equal to 10% of annual rent. The final amount shown at checkout, including any applicable taxes, provider charges, adjustments, or lawful changes, controls.
+The current calculation uses a refundable caution fee equal to 5% of annual rent and an administration fee equal to 15% of annual rent. The final amount shown at checkout, including any applicable taxes, provider charges, adjustments, or lawful changes, controls.
 
-The security deposit is described as refundable subject to the tenancy agreement, applicable law, lawful deductions, and the actual condition and obligations of the tenancy. RentDirect does not decide disputed deductions unless a separate written service says it will do so.
+The caution fee is described as refundable subject to the tenancy agreement, applicable law, lawful deductions, and the actual condition and obligations of the tenancy. RentDirect does not decide disputed deductions unless a separate written service says it will do so.
 
 ## 5. PARTIAL AND REMAINING PAYMENTS
 

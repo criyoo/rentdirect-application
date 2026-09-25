@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { calculateRentBreakdown } from './rent'
 
 const RATES = {
-  refundableSecurityDepositRate: 0.1,
+  refundableCautionFeeRate: 0.1,
   administrationFeeRate: 0.2,
   administrationFeeVatRate: 0.05,
   listingDepositRate: 0.25,
@@ -12,7 +12,7 @@ describe('rent breakdown', () => {
   it('calculates the deposit, total, and remaining balance from the given rates', () => {
     expect(calculateRentBreakdown(1_000_000, 0, RATES)).toEqual({
       annualRent: 1_000_000,
-      refundableSecurityDeposit: 100_000,
+      refundableCautionFee: 100_000,
       administrationFee: 200_000,
       administrationFeeVat: 10_000,
       depositAmount: 310_000,
@@ -33,7 +33,7 @@ describe('rent breakdown', () => {
   it('normalizes missing values to zero', () => {
     expect(calculateRentBreakdown(0, 0, RATES)).toEqual({
       annualRent: 0,
-      refundableSecurityDeposit: 0,
+      refundableCautionFee: 0,
       administrationFee: 0,
       administrationFeeVat: 0,
       depositAmount: 0,

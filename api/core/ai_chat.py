@@ -24,7 +24,7 @@ from .financial_constants import (
     DEFAULT_SUBSCRIPTION_VAT_RATE_PERCENT,
     FEATURED_PROPERTY_MONTHLY_FEE,
     LISTING_DEPOSIT_RATE,
-    REFUNDABLE_SECURITY_DEPOSIT_RATE,
+    REFUNDABLE_CAUTION_FEE_RATE,
 )
 from .location_services import CITY_COORDINATES, STATE_COORDINATES
 from .models import Listing, deposit_secured_booking_queryset
@@ -32,7 +32,7 @@ from .permissions import AllowAnyUnlessFrozen
 from .pricing import (
     calculate_administration_fee,
     calculate_administration_fee_vat,
-    calculate_refundable_security_deposit,
+    calculate_refundable_caution_fee,
     quantize_money,
 )
 from .serializers import PublicAiListingSerializer
@@ -517,7 +517,7 @@ def get_property_details_tool(arguments: dict) -> dict:
         rent = Decimal(listing.price_per_year)
         admin_fee = calculate_administration_fee(rent)
         admin_vat = calculate_administration_fee_vat(rent)
-        security_deposit = calculate_refundable_security_deposit(rent)
+        security_deposit = calculate_refundable_caution_fee(rent)
         listing_fees = {
             "service_charge": listing.service_charge,
             "caution_fee": listing.caution_fee,
@@ -528,7 +528,7 @@ def get_property_details_tool(arguments: dict) -> dict:
             "annual_rent": float(rent),
             "administration_fee": float(admin_fee),
             "vat_on_administration_fee": float(admin_vat),
-            "refundable_security_deposit": float(security_deposit),
+            "refundable_caution_fee": float(security_deposit),
             **{k: float(v) if v is not None else None for k, v in listing_fees.items()},
         }
         summary["estimated_move_in_cost_ngn"] = float(
@@ -598,7 +598,7 @@ def get_pricing_and_fees_tool(_arguments: dict) -> dict:
         "rental_charges": {
             "administration_fee_percent_of_annual_rent": float(ADMINISTRATION_FEE_RATE * 100),
             "vat_on_administration_fee_percent": float(ADMINISTRATION_FEE_VAT_RATE * 100),
-            "refundable_security_deposit_percent": float(REFUNDABLE_SECURITY_DEPOSIT_RATE * 100),
+            "refundable_caution_fee_percent": float(REFUNDABLE_CAUTION_FEE_RATE * 100),
             "listing_deposit_percent": float(LISTING_DEPOSIT_RATE * 100),
         },
         "subscription_plans": plans,
@@ -1156,7 +1156,7 @@ def _pricing_reply(normalized: str, user_messages: list | None = None) -> str:
             f"When you rent, there's a "
             f"{charges['administration_fee_percent_of_annual_rent']:g}% administration fee "
             f"(plus {charges['vat_on_administration_fee_percent']:g}% VAT on it) and a "
-            f"{charges['refundable_security_deposit_percent']:g}% refundable security deposit — "
+            f"{charges['refundable_caution_fee_percent']:g}% refundable caution fee — "
             "you'll see the full breakdown before paying."
         )
     reply = " ".join(parts)

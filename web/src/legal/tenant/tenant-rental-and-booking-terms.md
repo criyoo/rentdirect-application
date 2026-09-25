@@ -48,12 +48,12 @@ The parties must agree the property, term, rent, deposit, permitted use, repairs
 
 ## 6. RENT, DEPOSIT, AND FEES
 
-The checkout may show annual rent, a refundable security deposit, an administration or service fee, the total, the amount paid, and the remaining balance. The current RentDirect calculation uses:
+The checkout may show annual rent, a refundable caution fee, an administration or service fee, the total, the amount paid, and the remaining balance. The current RentDirect calculation uses:
 
-* refundable security deposit: 10% of annual rent; and
+* refundable caution fee: 5% of annual rent; and
 * administration fee: 10% of annual rent.
 
-The final checkout controls. The security deposit remains subject to the signed tenancy agreement, the property’s actual condition, lawful deductions, and applicable law. The administration or service fee is a Platform charge for the services described at checkout and is not automatically a Landlord deposit.
+The final checkout controls. The caution fee remains subject to the signed tenancy agreement, the property’s actual condition, lawful deductions, and applicable law. The administration or service fee is a Platform charge for the services described at checkout and is not automatically a Landlord deposit.
 
 ## 7. PAYMENTS
 

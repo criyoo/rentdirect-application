@@ -45,7 +45,7 @@ from .models import (
     TenantProfile,
     VerificationRequest,
 )
-from .financial_constants import CAUTION_FEE_RATE, LEGAL_FEE_MAX_RATE, ZERO_AMOUNT
+from .financial_constants import REFUNDABLE_CAUTION_FEE_RATE, LEGAL_FEE_MAX_RATE, ZERO_AMOUNT
 from .pricing import calculate_booking_total, calculate_listing_deposit_amount, calculate_remaining_balance, quantize_money, resolve_booking_total
 from .subscription_access import user_has_completed_tenant_profile, user_has_silver_access
 from .tenant_scoring import build_tenant_screening_summary
@@ -478,7 +478,7 @@ class ListingSerializer(serializers.ModelSerializer):
             attrs["deposit_amount"] = self.calculate_deposit_amount(price_for_deposit)
             # Caution fee defaults to 5% of annual rent on new listings unless set.
             if self.instance is None and attrs.get("caution_fee") is None:
-                attrs["caution_fee"] = quantize_money(Decimal(price_for_deposit) * CAUTION_FEE_RATE)
+                attrs["caution_fee"] = quantize_money(Decimal(price_for_deposit) * REFUNDABLE_CAUTION_FEE_RATE)
             legal_fee = attrs.get("legal_fee")
             if legal_fee is not None:
                 legal_cap = quantize_money(Decimal(price_for_deposit) * LEGAL_FEE_MAX_RATE)

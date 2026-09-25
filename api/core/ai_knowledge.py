@@ -10,7 +10,7 @@ here, so this file only holds narrative copy that has no other source.
 from .financial_constants import (
     ADMINISTRATION_FEE_RATE,
     ADMINISTRATION_FEE_VAT_RATE,
-    REFUNDABLE_SECURITY_DEPOSIT_RATE,
+    REFUNDABLE_CAUTION_FEE_RATE,
 )
 from .subscription_pricing import get_subscription_pricing
 
@@ -38,11 +38,11 @@ def _fees_content() -> str:
     """Fees topic built from financial_constants so numbers never drift from checkout."""
     admin_pct = float(ADMINISTRATION_FEE_RATE * 100)
     vat_pct = float(ADMINISTRATION_FEE_VAT_RATE * 100)
-    deposit_pct = float(REFUNDABLE_SECURITY_DEPOSIT_RATE * 100)
+    deposit_pct = float(REFUNDABLE_CAUTION_FEE_RATE * 100)
     return (
         f"Fees and payments: Rent is priced per year in Naira. At checkout tenants pay the rent plus an "
         f"administration fee of {admin_pct:g}% of the annual rent (plus {vat_pct:g}% VAT on the fee) and a "
-        f"refundable security deposit of {deposit_pct:g}% — all shown before payment. Payments are made "
+        f"refundable caution fee of {deposit_pct:g}% — all shown before payment. Payments are made "
         f"securely by card or bank transfer through Flutterwave, with payment history, receipts, and "
         f"balances in the dashboard. Subscription plans — tenants: {_plan_prices('tenant')}. Landlords: "
         f"{_plan_prices('landlord')}. Tenants need Silver or higher to contact landlords, apply to rent, "

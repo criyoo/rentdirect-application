@@ -229,7 +229,7 @@ def send_rentdirect_internal_transfer_notification(
     purpose_label = {
         "operations": "RentDirect Administration Fee",
         "administration_fee_vat": "VAT on RentDirect Administration Fee",
-        "caution_fee": "Refundable Security Deposit",
+        "caution_fee": "Refundable Caution Fee",
     }.get(purpose, purpose.replace("_", " ").title())
     subject = f"Internal Transfer Initiated — {purpose_label}"
     text_body = (

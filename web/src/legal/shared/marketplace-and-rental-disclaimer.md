@@ -54,7 +54,7 @@ If there is an immediate risk of harm, contact the appropriate emergency service
 
 ## 6. PAYMENTS AND SETTLEMENTS
 
-RentDirect may provide a payment workflow through Flutterwave or another provider. The Platform may show annual rent, refundable security deposit, administration fee, paid amount, and balance. The payment workflow may maintain settlement records for operations, caution fees, and Landlord rent and may release funds when internal progress conditions and provider requirements are satisfied.
+RentDirect may provide a payment workflow through Flutterwave or another provider. The Platform may show annual rent, refundable caution fee, administration fee, paid amount, and balance. The payment workflow may maintain settlement records for operations, caution fees, and Landlord rent and may release funds when internal progress conditions and provider requirements are satisfied.
 
 Payment processing or a settlement record does not:
 

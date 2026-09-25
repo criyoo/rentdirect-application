@@ -20,7 +20,6 @@ type PaymentCheckoutResponse = {
 }
 
 const CARD_PAYMENT_LIMIT_NGN = 7000000
-const CARD_PAYMENT_LIMIT_MESSAGE = 'Flutterwave card payments are limited to ₦7,000,000 per transaction. Please use Bank Transfer for this payment.'
 const PENDING_PAYMENT_CANCEL_MESSAGE = 'Are you sure you want to cancel this payment?'
 const COMPLETED_PAYMENT_CANCEL_MESSAGE = 'Are sure you want to cancel payment for this property? Refund will take 3 to 5 working days to the same account used in making payment and a 1% fee will be charged to cover admin fee and bank charges.'
 const KEY_COLLECTED_CANCEL_MESSAGE = 'Sorry transaction cannot be cancelled. Landlord will need to approve refund. Status shows Tenant and Landlord have confirmed collection of keys to the property.'
@@ -116,7 +115,7 @@ export default function RentPage() {
     const navigate = useNavigate()
     const [searchParams, setSearchParams] = useSearchParams()
     const qc = useQueryClient()
-    const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'card' | 'bank'>('bank')
+
     const [hasAcceptedRentalTerms, setHasAcceptedRentalTerms] = useState(false)
     const [rentalTermsError, setRentalTermsError] = useState('')
     const [showPaymentForm, setShowPaymentForm] = useState(false)
@@ -196,7 +195,7 @@ export default function RentPage() {
     const {
         annualRent: normalizedAnnualRent,
         depositAmount,
-        refundableSecurityDeposit,
+        refundableCautionFee,
         administrationFee,
         administrationFeeVat,
         optionalDepositAmount,
@@ -208,7 +207,7 @@ export default function RentPage() {
     const isInitialDepositSelection = paidAmount === 0 && paymentAmount === depositAmount
     const isFullRentalSelection = paidAmount === 0 && paymentAmount === totalAmount
     const paymentReviewRent = isInitialDepositSelection ? 0 : isFullRentalSelection ? normalizedAnnualRent : paymentAmount
-    const paymentReviewCaution = isInitialDepositSelection || isFullRentalSelection ? refundableSecurityDeposit : 0
+    const paymentReviewCaution = isInitialDepositSelection || isFullRentalSelection ? refundableCautionFee : 0
     const paymentReviewAdministrationFee = isInitialDepositSelection || isFullRentalSelection ? administrationFee : 0
     const paymentReviewAdministrationFeeVat = isInitialDepositSelection || isFullRentalSelection ? administrationFeeVat : 0
     const keysCollectedConfirmed = Boolean(booking?.keys_collected_confirmed)
@@ -310,7 +309,7 @@ export default function RentPage() {
             return (await api.post<PaymentCheckoutResponse>('/payments', {
                 booking_id: booking!.id,
                 amount,
-                payment_method: selectedPaymentMethod
+                payment_method: amount > CARD_PAYMENT_LIMIT_NGN ? 'bank' : 'card'
             })).data
         },
         onSuccess: async ({ payment, checkout }) => {
@@ -458,11 +457,6 @@ export default function RentPage() {
             alert('Payment amount cannot exceed the remaining balance.')
             return
         }
-        if (selectedPaymentMethod === 'card' && paymentAmount > CARD_PAYMENT_LIMIT_NGN) {
-            alert(CARD_PAYMENT_LIMIT_MESSAGE)
-            setSelectedPaymentMethod('bank')
-            return
-        }
         processPayment.mutate(paymentAmount)
     }
 
@@ -484,21 +478,8 @@ export default function RentPage() {
         continuePendingPayment.mutate(paymentId)
     }
 
-    const handlePaymentMethodChange = (method: 'card' | 'bank') => {
-        if (method === 'card' && paymentAmount > CARD_PAYMENT_LIMIT_NGN) {
-            alert(CARD_PAYMENT_LIMIT_MESSAGE)
-            setSelectedPaymentMethod('bank')
-            return
-        }
-        setSelectedPaymentMethod(method)
-    }
-
     const selectPaymentAmount = (amount: number) => {
         setPaymentAmount(amount)
-        if (selectedPaymentMethod === 'card' && amount > CARD_PAYMENT_LIMIT_NGN) {
-            alert(CARD_PAYMENT_LIMIT_MESSAGE)
-            setSelectedPaymentMethod('bank')
-        }
     }
 
     const handleCancelPayment = async (payment: Payment) => {
@@ -634,14 +615,14 @@ export default function RentPage() {
     return (
         <div className="bg-gray-50 py-10">
             <div className="container-modern">
-                <div className="max-w-6xl mx-auto">
+                <div className="max-w-8xl mx-auto">
                     <div className="mb-8">
                         <h1 className="text-3xl font-bold text-gray-900">Rent This Property</h1>
                         <p className="text-gray-600 mt-2">Complete your rental application and payment</p>
                     </div>
 
-                    <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-5">
-                        <div className="space-y-4 lg:col-span-3">
+                    <div className="mb-4 grid grid-cols-1 items-stretch gap-4 lg:grid-cols-5">
+                        <div className="flex flex-col gap-4 lg:col-span-3">
                             <div className="bg-white rounded-2xl p-6 shadow-lg border">
                                 <h2 className="text-xl font-semibold mb-3">Property Details</h2>
                                 <div className="flex items-start space-x-4">
@@ -670,7 +651,7 @@ export default function RentPage() {
                                 </div>
                             </div>
 
-                            <div className="bg-white rounded-2xl gap-2 p-5 shadow-lg border">
+                            <div className="flex-1 bg-white rounded-2xl gap-2 p-5 shadow-lg border">
                                 <h2 className="text-xl font-semibold mb-4">Rental Terms</h2>
                                 <div className="space-y-4">
                                     <div className="flex justify-between items-center py-2 border-b">
@@ -683,13 +664,15 @@ export default function RentPage() {
                                             <span className="font-semibold text-blue-900">{formatCurrencyWithSymbol(optionalDepositAmount)}</span>
                                         </div>
                                         <p className="mt-2 text-sm text-blue-800">
-                                            The {formatRatePercent(financialConfig?.listingDepositRate)} deposit amount is inclusive in the rental amount.<br />
-                                            The property is removed from public search for a maximum of {formatDays(financialConfig?.listingDepositHoldDays)} pending full rental payment.
+                                            Pay {formatRatePercent(financialConfig?.listingDepositRate)} deposit to secure this property.<br /><br/>
+                                            The property is removed from public search for a maximum of {formatDays(financialConfig?.listingDepositHoldDays)} holiday period pending full rental payment.
+                                            Deposit will be refunded less 1% administrative fee if full rental amount it not paid on or before the holiday period.<br/>
+                                            Allow 3 working days for refund to be credited to your account.
                                         </p>
                                     </div>
                                     <div className="flex justify-between items-center py-2 border-b">
-                                        <span className="text-gray-600">Refundable Security Deposit:</span>
-                                        <span className="font-semibold">{formatCurrencyWithSymbol(refundableSecurityDeposit)}</span>
+                                        <span className="text-gray-600">Refundable Caution Fee:</span>
+                                        <span className="font-semibold">{formatCurrencyWithSymbol(refundableCautionFee)}</span>
                                     </div>
                                     <div className="flex justify-between items-center py-2 border-b">
                                         <span className="text-gray-600">Rentdirect Fee:</span>
@@ -743,44 +726,9 @@ export default function RentPage() {
                             )}
 
                             {showPaymentForm && booking && !showCancelledPaymentState && (
-                                <div className="bg-white rounded-2xl p-6 shadow-lg border mb-6">
-                                    <h2 className="text-xl font-semibold mb-4">Payment Method</h2>
-                                    <div className="space-y-3">
-                                        <label className="flex items-center space-x-3 cursor-pointer">
-                                            <input
-                                                type="radio"
-                                                name="paymentMethod"
-                                                value="card"
-                                                checked={selectedPaymentMethod === 'card'}
-                                                onChange={() => handlePaymentMethodChange('card')}
-                                                className="text-blue-600"
-                                            />
-                                            <div className="flex items-center space-x-2">
-                                                <svg className="w-6 h-6 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
-                                                    <path d="M4 4a2 2 0 00-2 2v1h16V6a2 2 0 00-2-2H4zM18 9H2v5a2 2 0 002 2h12a2 2 0 002-2V9zM4 13a1 1 0 011-1h1a1 1 0 110 2H5a1 1 0 01-1-1zm5-1a1 1 0 100 2h1a1 1 0 100-2H9z" />
-                                                </svg>
-                                                <span>Credit/Debit Card</span>
-                                            </div>
-                                        </label>
-                                        <label className="flex items-center space-x-3 cursor-pointer">
-                                            <input
-                                                type="radio"
-                                                name="paymentMethod"
-                                                value="bank"
-                                                checked={selectedPaymentMethod === 'bank'}
-                                                onChange={() => handlePaymentMethodChange('bank')}
-                                                className="text-blue-600"
-                                            />
-                                            <div className="flex items-center space-x-2">
-                                                <svg className="w-6 h-6 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
-                                                    <path fillRule="evenodd" d="M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zm2 6a2 2 0 012-2h8a2 2 0 012 2v4a2 2 0 01-2 2H8a2 2 0 01-2-2v-4zm6 4a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
-                                                </svg>
-                                                <span>Bank Transfer</span>
-                                            </div>
-                                        </label>
-                                    </div>
-
-                                    <div className="mt-5">
+                                <div className="bg-white rounded-2xl p-6 shadow-lg border">
+                                    <h2 className="text-xl font-semibold mb-4">Payment</h2>
+                                    <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">Amount to pay</label>
                                         <div className="mb-3 grid gap-3 sm:grid-cols-2">
                                             {canPayInitialDeposit && (
@@ -816,24 +764,8 @@ export default function RentPage() {
                                         </p>
                                     </div>
 
-                                    {selectedPaymentMethod === 'card' && (
-                                        <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-                                            <p className="text-sm text-gray-600">
-                                                You have chosen card payment, your card details will be required to complete payment.
-                                            </p>
-                                        </div>
-                                    )}
-
-                                    {selectedPaymentMethod === 'bank' && (
-                                        <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-                                            <p className="text-sm text-gray-600">
-                                                You have chosen bank transfer as your payment option, you will receive bank details to complete the payment.
-                                            </p>
-                                        </div>
-                                    )}
-
                                     <div className="mt-5 rounded-xl border border-blue-100 bg-blue-50 p-4">
-                                        <h3 className="font-semibold text-blue-950">Payment Review</h3>
+                                        <h4 className="font-semibold text-blue-950">Payment Review</h4>
                                         <div className="mt-3 space-y-2 text-sm">
                                             {paymentReviewRent > 0 && (
                                                 <div className="flex justify-between text-blue-900">
@@ -843,7 +775,7 @@ export default function RentPage() {
                                             )}
                                             {paymentReviewCaution > 0 && (
                                                 <div className="flex justify-between text-blue-900">
-                                                    <span>Refundable Security Deposit</span>
+                                                    <span>Refundable Caution Fee</span>
                                                     <span className="font-medium">{formatCurrencyWithSymbol(paymentReviewCaution)}</span>
                                                 </div>
                                             )}
@@ -855,7 +787,7 @@ export default function RentPage() {
                                             )}
                                             {paymentReviewAdministrationFeeVat > 0 && (
                                                 <div className="flex justify-between text-blue-900">
-                                                    <span>VAT ({formatRatePercent(financialConfig?.administrationFeeVatRate)} on Administration Fee)</span>
+                                                    <span>VAT ({formatRatePercent(financialConfig?.administrationFeeVatRate)})</span>
                                                     <span className="font-medium">{formatCurrencyWithSymbol(paymentReviewAdministrationFeeVat)}</span>
                                                 </div>
                                             )}
@@ -953,7 +885,7 @@ export default function RentPage() {
                         </div>
 
                         <div className="lg:col-span-2 lg:self-stretch">
-                            <div className="h-full bg-white rounded-2xl p-12 shadow-lg border top-6 flex flex-col">
+                            <div className="h-full bg-white rounded-2xl p-12 shadow-lg border flex flex-col">
                                 <h2 className="text-xl font-semibold mb-2">Payment Summary</h2>
 
                                 <div className="mt-4 space-y-3 mb-6">
@@ -962,8 +894,8 @@ export default function RentPage() {
                                         <span>{formatCurrencyWithSymbol(normalizedAnnualRent)}</span>
                                     </div>
                                     <div className="mt-6 flex justify-between">
-                                        <span className="text-gray-600">Refundable Security Deposit:</span>
-                                        <span>{formatCurrencyWithSymbol(refundableSecurityDeposit)}</span>
+                                        <span className="text-gray-600">Refundable Caution Fee:</span>
+                                        <span>{formatCurrencyWithSymbol(refundableCautionFee)}</span>
                                     </div>
                                     <div className="mt-6 flex justify-between">
                                         <span className="text-gray-600">Rentdirect Fee:</span>
@@ -1178,7 +1110,7 @@ export default function RentPage() {
                         <h4 className="font-semibold text-blue-900 mb-2">What's Included:</h4>
                         <ul className="text-[14px] text-blue-800 space-y-1">
                             <li>Annual rent</li>
-                            <li>Refundable security deposit</li>
+                            <li>Refundable caution fee</li>
                             <p className="mt-4 text-[16px] font-semibold text-indigo-800">15% Rentdirect fee covers the following:</p>
                             <li>Administration fee</li>
                             <li>Legal fee</li>
