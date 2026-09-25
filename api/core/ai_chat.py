@@ -312,11 +312,7 @@ def search_properties_tool(arguments: dict) -> dict:
             state_terms.update({"FCT", "Abuja"})
         state_query = Q()
         for term in state_terms:
-            state_query |= (
-                Q(state__icontains=term)
-                | Q(address__icontains=term)
-                | Q(landlord__residence__state__icontains=term)
-            )
+            state_query |= Q(state__icontains=term) | Q(address__icontains=term)
         qs = qs.filter(state_query)
     if min_price is not None:
         applied_filters["min_price"] = float(min_price)
