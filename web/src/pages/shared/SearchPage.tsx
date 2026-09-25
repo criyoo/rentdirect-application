@@ -407,7 +407,6 @@ export default function SearchPage() {
         }
         if (typeof totalCount === 'number') setAiTotalCount(totalCount)
         else setAiTotalCount(null)
-        document.getElementById('search-results')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
 
     // Check if a listing is in user's favourites

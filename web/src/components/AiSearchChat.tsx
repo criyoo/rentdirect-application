@@ -160,9 +160,9 @@ export default function AiSearchChat({ onListingsFound }: AiSearchChatProps) {
                 {messages.map((message, index) => (
                     <div key={index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                         <div
-                            className={`max-w-[90%] rounded-2xl px-4 py-3 text-sm sm:max-w-[85%] ${message.role === 'user'
+                            className={`max-w-[90%] rounded-2xl px-4 py-3 text-sm sm:max-w-[55%] ${message.role === 'user'
                                 ? 'rounded-tr-sm bg-indigo-600 text-white'
-                                : 'rounded-tl-sm bg-gray-50 text-gray-800 ring-1 ring-gray-100'
+                                : 'rounded-tl-sm bg-orange-200 text-gray-800 ring-1 ring-gray-100'
                                 }`}
                         >
                             <p className="whitespace-pre-wrap leading-6">{message.content}</p>
@@ -187,7 +187,7 @@ export default function AiSearchChat({ onListingsFound }: AiSearchChatProps) {
                     type="text"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    placeholder='Try "I am looking for a 3 bedroom house in Lekki under ₦5m"...'
+                    placeholder='Try "Can you show me a list of 3 bedroom properties in Lekki under ₦5m"...'
                     className="flex-1 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
                     maxLength={2000}
                 />
