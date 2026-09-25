@@ -746,7 +746,7 @@ class ListingTests(TestCase):
         bronze_client = self.tenant_client_with_plan(SubscriptionPayment.PlanCode.BRONZE, "bronze-visibility")
         bronze_payload = bronze_client.get(f"/api/v1/listings/{listing.id}").json()
         self.assertEqual(bronze_payload["address"], "")
-        self.assertEqual(bronze_payload["city"], listing.city)
+        self.assertEqual(bronze_payload["city"], "")
         self.assertEqual(bronze_payload["state"], listing.state)
         self.assertEqual(
             bronze_payload["property_document_verification_status"],
@@ -892,9 +892,16 @@ class ListingTests(TestCase):
 
         self.assertEqual(response.status_code, 200, response.json())
         self.assertEqual(response.json()["title"], listing.title)
-        self.assertEqual(response.json()["city"], listing.city)
+        self.assertEqual(response.json()["city"], "")
         self.assertEqual(response.json()["state"], listing.state)
         self.assertEqual(response.json()["address"], "")
+
+        create_active_subscription(outsider, SubscriptionPayment.PlanCode.SILVER)
+        subscribed_response = client.get(f"/api/v1/listings/{listing.id}")
+        self.assertEqual(subscribed_response.status_code, 200, subscribed_response.json())
+        self.assertEqual(subscribed_response.json()["city"], listing.city)
+        self.assertEqual(subscribed_response.json()["state"], listing.state)
+        self.assertEqual(subscribed_response.json()["address"], "")
 
     def test_landlord_can_create_listing_with_multipart_amenities(self):
         landlord = AppUser.objects.create_user(
@@ -1268,7 +1275,7 @@ class ListingTests(TestCase):
         payload = response.json()
         self.assertEqual(payload["state"], "Lagos")
         self.assertEqual(payload["address"], "")
-        self.assertEqual(payload["city"], "Ikoyi")
+        self.assertEqual(payload["city"], "")
         self.assertEqual(payload["lga"], "")
         self.assertIsNone(payload["latitude"])
         self.assertIsNone(payload["longitude"])
@@ -5277,7 +5284,7 @@ class SeedDemoTests(TestCase):
 
         self.assertEqual(len(landlords), 11)
         self.assertEqual(len(tenants), 6)
-        self.assertEqual(listings.count(), 14)
+        self.assertEqual(listings.count(), 15)
         self.assertEqual(listings.filter(featured=True).count(), 4)
         self.assertEqual(VerificationRequest.objects.filter(user__in=seed_users).count(), 17)
         self.assertEqual(SubscriptionPayment.objects.filter(user__in=seed_users).count(), 17)
