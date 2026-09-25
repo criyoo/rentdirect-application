@@ -720,7 +720,7 @@ class ListingTests(TestCase):
             address="10 Premium Location",
             city="Ikoyi",
             state="Lagos",
-            postal_code="100001",
+            lga="Eti-Osa",
             latitude=Decimal("6.454100"),
             longitude=Decimal("3.435100"),
             property_type="Apartment",
@@ -745,7 +745,9 @@ class ListingTests(TestCase):
         bronze_client = self.tenant_client_with_plan(SubscriptionPayment.PlanCode.BRONZE, "bronze-visibility")
         bronze_payload = bronze_client.get(f"/api/v1/listings/{listing.id}").json()
         self.assertEqual(bronze_payload["address"], "")
-        self.assertEqual(bronze_payload["city"], listing.city)
+        self.assertEqual(bronze_payload["city"], "")
+        self.assertEqual(bronze_payload["lga"], "")
+        self.assertEqual(bronze_payload["area"], "")
         self.assertEqual(bronze_payload["state"], listing.state)
         self.assertEqual(
             bronze_payload["property_document_verification_status"],
@@ -891,9 +893,14 @@ class ListingTests(TestCase):
 
         self.assertEqual(response.status_code, 200, response.json())
         self.assertEqual(response.json()["title"], listing.title)
-        self.assertEqual(response.json()["city"], listing.city)
+        self.assertEqual(response.json()["city"], "")
         self.assertEqual(response.json()["state"], listing.state)
         self.assertEqual(response.json()["address"], "")
+
+        create_active_subscription(outsider, SubscriptionPayment.PlanCode.SILVER)
+        subscribed_response = client.get(f"/api/v1/listings/{listing.id}")
+        self.assertEqual(subscribed_response.json()["city"], listing.city)
+        self.assertEqual(subscribed_response.json()["address"], "")
 
     def test_landlord_can_create_listing_with_multipart_amenities(self):
         landlord = AppUser.objects.create_user(
@@ -944,7 +951,7 @@ class ListingTests(TestCase):
                 "address": "23 Gerald Road",
                 "city": "Ikoyi",
                 "state": "Lagos",
-                "postal_code": "100021",
+                "lga": "Eti-Osa",
                 "property_type": "Apartment",
                 "bedrooms": 2,
                 "bathrooms": 2,
@@ -992,7 +999,7 @@ class ListingTests(TestCase):
         self.assertTrue(listing.fitted_kitchen)
         self.assertEqual(listing.ownership_types, ["Sole Owner"])
         self.assertEqual(listing.property_ownership_documents, property_ownership_documents)
-        self.assertEqual(str(listing.deposit_amount), "500000.00")
+        self.assertEqual(str(listing.deposit_amount), "750000.00")
         self.assertEqual(listing.property_documents.count(), 1)
         document = listing.property_documents.get()
         self.assertLessEqual(len(document.title), Document._meta.get_field("title").max_length)
@@ -1071,7 +1078,7 @@ class ListingTests(TestCase):
                 "address": "23 Gerald Road",
                 "city": "Ikoyi",
                 "state": "Lagos",
-                "postal_code": "100021",
+                "lga": "Eti-Osa",
                 "property_type": "Apartment",
                 "bedrooms": 2,
                 "bathrooms": 2,
@@ -1130,7 +1137,7 @@ class ListingTests(TestCase):
                 "address": "45 Admiralty Road",
                 "city": "Lekki",
                 "state": "Lagos",
-                "postal_code": "100022",
+                "lga": "Eti-Osa",
                 "property_type": "Apartment",
                 "bedrooms": 2,
                 "bathrooms": 2,
@@ -1150,7 +1157,7 @@ class ListingTests(TestCase):
 
         self.assertEqual(response.status_code, 201, response.json())
         listing = Listing.objects.get(title="In Person Listing")
-        self.assertEqual(str(listing.deposit_amount), "360000.00")
+        self.assertEqual(str(listing.deposit_amount), "540000.00")
         self.assertEqual(listing.property_documents.count(), 0)
         self.assertEqual(
             listing.physical_property_status,
@@ -1206,7 +1213,7 @@ class ListingTests(TestCase):
                 "address": "2 Bronze Road",
                 "city": "Lagos",
                 "state": "Lagos",
-                "postal_code": "100001",
+                "lga": "Eti-Osa",
                 "property_type": "Apartment",
                 "bedrooms": 2,
                 "bathrooms": 2,
@@ -1250,7 +1257,7 @@ class ListingTests(TestCase):
             address="12 Exact Street",
             city="Ikoyi",
             state="Lagos",
-            postal_code="100001",
+            lga="Eti-Osa",
             latitude="6.450000",
             longitude="3.430000",
             property_type="Apartment",
@@ -1267,8 +1274,8 @@ class ListingTests(TestCase):
         payload = response.json()
         self.assertEqual(payload["state"], "Lagos")
         self.assertEqual(payload["address"], "")
-        self.assertEqual(payload["city"], "Ikoyi")
-        self.assertEqual(payload["postal_code"], "")
+        self.assertEqual(payload["city"], "")
+        self.assertEqual(payload["lga"], "")
         self.assertIsNone(payload["latitude"])
         self.assertIsNone(payload["longitude"])
 
@@ -1286,7 +1293,7 @@ class ListingTests(TestCase):
             description="Original description",
             address="10 Old Street",
             city="Lagos",
-            postal_code="100001",
+            lga="Ikeja",
             property_type="Apartment",
             bedrooms=2,
             bathrooms=2,
@@ -2391,7 +2398,7 @@ class VerificationRequestViewSetTests(TestCase):
         self.assertEqual(dikript_lookup_mock.call_count, 1)
         request = VerificationRequest.objects.get(user=user)
         profile = TenantProfile.objects.get(user=user)
-        self.assertEqual(profile.status, TenantProfile.Status.PENDING)
+        self.assertEqual(profile.status, TenantProfile.Status.APPROVED)
         self.assertEqual(request.status, VerificationRequest.Status.APPROVED)
         self.assertEqual(request.identity_verification_status, VerificationRequest.VerificationProgressStatus.VERIFIED)
         self.assertEqual(request.verification_method, VerificationRequest.Method.AUTOMATED)
@@ -3287,6 +3294,12 @@ class FlutterwaveTransferPayloadTests(TestCase):
         self.assertEqual(recipient["data"]["id"], "recipient_after_conflict")
         self.assertEqual(request_mock.call_args_list[1].kwargs["method"], "POST")
 
+    @override_settings(
+        FLUTTERWAVE_API_VERSION="v4",
+        FLUTTERWAVE_CLIENT_ID="test-client-id",
+        FLUTTERWAVE_CLIENT_SECRET="test-client-secret",
+        FLUTTERWAVE_API_BASE_URL="https://developersandbox-api.flutterwave.com",
+    )
     @patch("core.flutterwave.v4._request_json_v4")
     def test_customer_phone_payload_uses_numeric_three_digit_country_code(self, request_mock):
         request_mock.return_value = {"status": "success", "data": {"id": "customer_123"}}
@@ -3478,9 +3491,9 @@ class BookingPaymentTests(TestCase):
         self.assertEqual(response.status_code, 201, response.json())
         booking = Booking.objects.get(id=response.json()["id"])
         self.assertEqual(booking.total_amount, calculate_booking_total(self.listing.price_per_year))
-        self.assertEqual(calculate_administration_fee_vat(self.listing.price_per_year), Decimal("9000.00"))
-        self.assertEqual(response.json()["total_amount"], 1449000.0)
-        self.assertEqual(response.json()["remaining_amount"], 1449000.0)
+        self.assertEqual(calculate_administration_fee_vat(self.listing.price_per_year), Decimal("13500.00"))
+        self.assertEqual(response.json()["total_amount"], 1453500.0)
+        self.assertEqual(response.json()["remaining_amount"], 1453500.0)
 
     def test_bronze_tenant_cannot_create_booking(self):
         tenant = AppUser.objects.create_user(
@@ -3593,7 +3606,7 @@ class BookingPaymentTests(TestCase):
         self.assertEqual(booking.paid_amount, Decimal("0.00"))
         booking_response = self.client.get(f"/api/v1/bookings/listing/{self.listing.id}")
         self.assertEqual(booking_response.status_code, 200, booking_response.json())
-        self.assertEqual(booking_response.json()["remaining_amount"], 1449000.0)
+        self.assertEqual(booking_response.json()["remaining_amount"], 1453500.0)
 
     def test_tenant_can_delete_cancelled_rental_payment_history(self):
         booking = Booking.objects.create(
@@ -3992,15 +4005,15 @@ class BookingPaymentTests(TestCase):
         settlements = PaymentSettlement.objects.filter(payment__transaction_id=final_payment_payload["payment"]["transaction_id"])
         self.assertEqual(
             str(settlements.get(purpose=PaymentSettlement.Purpose.OPERATIONS).amount),
-            "120000.00",
+            "180000.00",
         )
         self.assertEqual(
             str(settlements.get(purpose=PaymentSettlement.Purpose.CAUTION_FEE).amount),
-            "120000.00",
+            "60000.00",
         )
         self.assertEqual(
             str(settlements.get(purpose=PaymentSettlement.Purpose.ADMINISTRATION_FEE_VAT).amount),
-            "9000.00",
+            "13500.00",
         )
         landlord_settlement = settlements.get(purpose=PaymentSettlement.Purpose.LANDLORD_RENT)
         self.assertEqual(str(landlord_settlement.amount), "1200000.00")
@@ -5112,12 +5125,13 @@ class SeedDemoTests(TestCase):
     def assert_seed_subscription(self, subscription, user):
         self.assertEqual(subscription.user, user)
         self.assertEqual(subscription.role, user.role)
-        self.assertEqual(subscription.plan_code, SubscriptionPayment.PlanCode.PLATINUM)
+        self.assertIn(subscription.plan_code, SubscriptionPayment.PlanCode.values)
         self.assertEqual(subscription.billing_cycle, SubscriptionPayment.BillingCycle.MONTHLY)
         self.assertEqual(subscription.status, SubscriptionPayment.Status.COMPLETED)
         self.assertEqual(subscription.provider, "seed_demo")
         self.assertEqual(subscription.billing_reason, "seed_demo")
-        self.assertEqual(str(subscription.amount), "2000.00")
+        expected_amount = get_subscription_pricing()[user.role][subscription.plan_code][subscription.billing_cycle]
+        self.assertEqual(subscription.amount, Decimal(str(expected_amount)))
         self.assertEqual(subscription.provider_charge_id, subscription.transaction_id)
         self.assertFalse(subscription.recurring_enabled)
         self.assertTrue(subscription.provider_payload["dummy_payment"])
@@ -5267,13 +5281,13 @@ class SeedDemoTests(TestCase):
         seed_users = [*landlords, *tenants]
         listings = Listing.objects.filter(landlord__in=landlords)
 
-        self.assertEqual(len(landlords), 4)
-        self.assertEqual(len(tenants), 1)
-        self.assertEqual(listings.count(), 4)
+        self.assertEqual(len(landlords), 11)
+        self.assertEqual(len(tenants), 6)
+        self.assertEqual(listings.count(), 15)
         self.assertEqual(listings.filter(featured=True).count(), 4)
-        self.assertEqual(VerificationRequest.objects.filter(user__in=seed_users).count(), 5)
-        self.assertEqual(SubscriptionPayment.objects.filter(user__in=seed_users).count(), 5)
-        self.assertEqual(TenantProfile.objects.filter(user__in=tenants).count(), 1)
+        self.assertEqual(VerificationRequest.objects.filter(user__in=seed_users).count(), 17)
+        self.assertEqual(SubscriptionPayment.objects.filter(user__in=seed_users).count(), 17)
+        self.assertEqual(TenantProfile.objects.filter(user__in=tenants).count(), 6)
 
         seeded_tenant_profile = TenantProfile.objects.get(user__email="criyo.career+jade@gmail.com")
         self.assertEqual(seeded_tenant_profile.financial_info["monthly_income_amount"], "500000")
@@ -5418,7 +5432,7 @@ class SeedDemoTests(TestCase):
                             "description": "Original description",
                             "address": "23 Gerald Road",
                             "city": "Ikoyi",
-                            "postal_code": "100021",
+                            "lga": "Eti-Osa",
                             "bedroom": 3,
                             "bathroom": 3,
                             "square_feet": 3000,
@@ -5438,7 +5452,7 @@ class SeedDemoTests(TestCase):
                             "description": "Updated description",
                             "address": "23 Gerald Road",
                             "city": "Ikoyi",
-                            "postal_code": "100021",
+                            "lga": "Eti-Osa",
                             "bedroom": 5,
                             "bathroom": 4,
                             "square_feet": 4800,
@@ -5500,7 +5514,7 @@ class SeedDemoTests(TestCase):
                             "description": "Listing one",
                             "address": "23 Gerald Road",
                             "city": "Ikoyi",
-                            "postal_code": "100021",
+                            "lga": "Eti-Osa",
                             "bedroom": 3,
                             "bathroom": 3,
                             "square_feet": 3000,
@@ -5513,7 +5527,7 @@ class SeedDemoTests(TestCase):
                             "description": "Listing two",
                             "address": "24 Gerald Road",
                             "city": "Ikoyi",
-                            "postal_code": "100021",
+                            "lga": "Eti-Osa",
                             "bedroom": 2,
                             "bathroom": 2,
                             "square_feet": 2000,
@@ -6468,7 +6482,7 @@ class DashboardTests(TestCase):
         self.assertEqual(booking_payload["landlord_collected_amount"], 250000.0)
         self.assertEqual(booking_payload["landlord_expecting_payment_amount"], 350000.0)
         self.assertEqual(booking_payload["landlord_balance_payment_amount"], 400000.0)
-        self.assertEqual(booking_payload["remaining_amount"], 607500.0) # Fix this error - find out what test it is and what should be the amount
+        self.assertEqual(booking_payload["remaining_amount"], 611250.0)
 
 
 class PublicStatsTests(TestCase):

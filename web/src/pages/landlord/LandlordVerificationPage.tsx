@@ -1,5 +1,6 @@
 import { ChangeEvent, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 
 import LegalDocumentsConsent from '@/components/LegalDocumentsConsent'
 import { useAppPopup } from '@/contexts/AppPopupContext'
@@ -341,6 +342,16 @@ function buildIndividualProfilePayload(form: IndividualForm, savedProfile: Recor
     }
 }
 
+function mergeNonEmptyDraft<T extends Record<string, any>>(defaults: T, draft: Record<string, any> | undefined): T {
+    const merged = { ...defaults }
+    Object.entries(draft || {}).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && String(value).trim() !== '') {
+            ; (merged as Record<string, any>)[key] = value
+        }
+    })
+    return merged
+}
+
 function buildInitialIndividualForm(me?: User): IndividualForm {
     const savedProfile = me?.landlord_verification_profile || {}
     const nameParts = (me?.name || '').trim().split(/\s+/).filter(Boolean)
@@ -399,6 +410,7 @@ function buildInitialCorporateForm(me?: User): CorporateForm {
 
 export default function LandlordVerificationPage() {
     const { alert: popupAlert, confirm } = useAppPopup()
+    const navigate = useNavigate()
     const queryClient = useQueryClient()
     const [individualForm, setIndividualForm] = useState<IndividualForm>(emptyIndividualForm)
     const [corporateForm, setCorporateForm] = useState<CorporateForm>(emptyCorporateForm)
@@ -473,8 +485,8 @@ export default function LandlordVerificationPage() {
         const storedSelectedType = normalizeVerificationType(storedDraft?.selectedVerificationType)
         const storedActiveType = normalizeVerificationType(storedDraft?.activeVerificationType)
 
-        setIndividualForm({ ...individualDefaults, ...(storedDraft?.individualForm || {}) })
-        setCorporateForm({ ...corporateDefaults, ...(storedDraft?.corporateForm || {}) })
+        setIndividualForm(mergeNonEmptyDraft(individualDefaults, storedDraft?.individualForm))
+        setCorporateForm(mergeNonEmptyDraft(corporateDefaults, storedDraft?.corporateForm))
         setSelectedVerificationType(storedSelectedType || savedType)
         setActiveVerificationType(storedActiveType || storedSelectedType || savedType)
         setHasAcceptedLegalConsent(Boolean(storedDraft?.hasAcceptedLegalConsent))
@@ -798,6 +810,14 @@ export default function LandlordVerificationPage() {
                     await popupAlert(mobileWarning, { title: 'Warning', variant: 'warning' })
                 }
             }
+
+            const shouldProceed = await confirm(
+                'Your identity has been successfully verified, you can now proceed to complete your profile and subscribe if not done already. Profile completion and subscription is required to list properties',
+                { variant: 'confirm', confirmLabel: 'Proceed', cancelLabel: 'Cancel' }
+            )
+            if (shouldProceed && me?.id) {
+                navigate(`/dashboard/landlord/${me.id}`)
+            }
         },
         onError: (error: any) => {
             const fieldAliases: Record<string, string> = {
@@ -825,7 +845,7 @@ export default function LandlordVerificationPage() {
             submittedAt: verificationStatus?.identification?.submitted_at,
         },
         {
-            label: 'House Document Verification',
+            label: 'Property Document Verification',
             status: verificationStatus?.property_documents?.status || 'unverified',
             submittedAt: verificationStatus?.property_documents?.submitted_at,
         },
@@ -894,8 +914,8 @@ export default function LandlordVerificationPage() {
                                     disabled={isTrackSelectionLocked}
                                 />
                                 <span>
-                                    <span className="block font-semibold text-gray-900">Individual Landlord</span>
-                                    <span className="mt-1 block text-sm text-gray-600">
+                                    <span className={`block font-semibold ${selectedVerificationType === 'individual' ? 'text-blue-700' : 'text-gray-900'}`}>Individual Landlord</span>
+                                    <span className={`mt-1 block text-sm ${selectedVerificationType === 'individual' ? 'text-blue-600' : 'text-gray-600'}`}>
                                         Verify as a person who owns or directly manages property.
                                     </span>
                                 </span>
@@ -910,8 +930,8 @@ export default function LandlordVerificationPage() {
                                     disabled={isTrackSelectionLocked}
                                 />
                                 <span>
-                                    <span className="block font-semibold text-gray-900">Corporate Landlord</span>
-                                    <span className="mt-1 block text-sm text-gray-600">
+                                    <span className={`block font-semibold ${selectedVerificationType === 'corporate' ? 'text-purple-700' : 'text-gray-900'}`}>Corporate Landlord</span>
+                                    <span className={`mt-1 block text-sm ${selectedVerificationType === 'corporate' ? 'text-purple-600' : 'text-gray-600'}`}>
                                         Verify as a registered company or corporate property manager.
                                     </span>
                                 </span>
@@ -937,9 +957,15 @@ export default function LandlordVerificationPage() {
                                 setActiveVerificationType(selectedVerificationType)
                             }}
                             disabled={!selectedVerificationType || isVerificationLocked}
-                            className="btn btn-primary mt-6 w-full py-3 disabled:cursor-not-allowed disabled:opacity-50"
+                            className={`btn ${selectedVerificationType === 'corporate' ? 'bg-purple-600 text-white hover:bg-purple-700 focus:ring-purple-500 shadow-sm hover:shadow-md' : 'btn-primary'} mt-6 w-full py-3 disabled:cursor-not-allowed disabled:opacity-50`}
                         >
-                            {isVerificationLocked ? 'Identification Verified' : 'Verify Identity'}
+                            {isVerificationLocked
+                                ? 'Identification Verified'
+                                : selectedVerificationType === 'corporate'
+                                    ? 'Verify Corporate Landlord Identity'
+                                    : selectedVerificationType === 'individual'
+                                        ? 'Verify Individual Landlord Identity'
+                                        : 'Verify Identity'}
                         </button>
                     </section>
 
@@ -1397,6 +1423,7 @@ export default function LandlordVerificationPage() {
                                             id="landlord-verification-legal-consent"
                                             audience="landlord"
                                             signerName={signerName}
+                                            singleConsent
                                             consented={hasAcceptedLegalConsent}
                                             disabled={isVerificationLocked}
                                             onConsentChange={setHasAcceptedLegalConsent}

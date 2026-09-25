@@ -92,15 +92,23 @@ from .flutterwave import (
 )
 from .financial_constants import (
     ACCOUNT_FREEZE_FEE_PERCENTAGE,
+    ADMINISTRATION_FEE_RATE,
+    ADMINISTRATION_FEE_VAT_RATE,
     CARD_PAYMENT_LIMIT_NGN,
+    CAUTION_FEE_RATE,
     DEFAULT_SUBSCRIPTION_VAT_RATE_PERCENT,
+    DEPOSIT_LISTING_HOLD_DAYS,
     FEATURED_PROPERTY_MAX_DURATION_DAYS,
     FEATURED_PROPERTY_MIN_DURATION_DAYS,
     FEATURED_PROPERTY_MONTHLY_DURATION_DAYS,
+    FEATURED_PROPERTY_MONTHLY_FEE,
+    LEGAL_FEE_MAX_RATE,
+    LISTING_DEPOSIT_RATE,
     MONEY_MINOR_UNIT_FACTOR,
     MONEY_PRECISION,
     PAYMENT_CANCELLATION_ADMIN_FEE_RATE,
     PERCENT_DENOMINATOR,
+    REFUNDABLE_SECURITY_DEPOSIT_RATE,
     ZERO_AMOUNT,
 )
 from .verification_service import verify_cac, verify_nin, verify_nin_and_bvn
@@ -863,10 +871,8 @@ def landlord_profile_has_mandatory_fields(user: AppUser) -> bool:
 
 
 def sync_tenant_profile_approval(user: AppUser, profile: TenantProfile) -> VerificationRequest:
-    complete_profile = tenant_profile_has_mandatory_fields(profile)
-    next_profile_status = TenantProfile.Status.APPROVED if complete_profile else TenantProfile.Status.PENDING
-    if profile.status != next_profile_status:
-        profile.status = next_profile_status
+    if profile.status != TenantProfile.Status.APPROVED:
+        profile.status = TenantProfile.Status.APPROVED
         profile.save(update_fields=["status", "updated_at"])
 
     verified_at = timezone.now()
@@ -3686,9 +3692,9 @@ class ListingViewSet(viewsets.ModelViewSet):
         user = request.user
         if not getattr(user, "is_authenticated", False):
             return False
-        if user.role == AppUser.Role.TENANT:
-            return user_has_silver_access(user)
-        return user.role in {AppUser.Role.LANDLORD, AppUser.Role.ADMIN}
+        if user.role == AppUser.Role.ADMIN:
+            return True
+        return user_has_silver_access(user)
 
     @action(detail=False, methods=["get"], url_path="cities", permission_classes=[AllowAny])
     def cities(self, request):
@@ -4221,11 +4227,9 @@ class LandlordVerificationRequestViewSet(VerificationRequestBaseViewSet):
                 mobile_warning = extract_mobile_verification_warning(verify_landlord_identity_or_raise(request.user))
                 verification.identity_verification_status = VerificationRequest.VerificationProgressStatus.VERIFIED
                 verification.verification_method = VerificationRequest.Method.AUTOMATED
-                if landlord_profile_has_mandatory_fields(request.user):
-                    verification.status = VerificationRequest.Status.APPROVED
-                    verification.reviewed_at = timezone.now()
-                    _append_update_fields(update_fields, "status", "reviewed_at")
-                _append_update_fields(update_fields, "identity_verification_status", "verification_method")
+                verification.status = VerificationRequest.Status.APPROVED
+                verification.reviewed_at = timezone.now()
+                _append_update_fields(update_fields, "identity_verification_status", "verification_method", "status", "reviewed_at")
                 return mobile_warning
             else:
                 verification.identity_verification_status = VerificationRequest.VerificationProgressStatus.PENDING
@@ -4280,7 +4284,7 @@ class TenantVerificationRequestViewSet(VerificationRequestBaseViewSet):
                 request.user,
             )
             request.user.save(update_fields=["nin_number", "tenant_verification_profile", "updated_at"])
-            if profile and tenant_profile_has_mandatory_fields(profile):
+            if profile and profile.status != TenantProfile.Status.APPROVED:
                 profile.status = TenantProfile.Status.APPROVED
                 profile.save(update_fields=["status", "updated_at"])
             verification.identity_verification_status = VerificationRequest.VerificationProgressStatus.VERIFIED
@@ -5632,6 +5636,30 @@ class AdminViewSet(viewsets.ViewSet):
 def health(request):
     ok, payload = database_healthcheck()
     return JsonResponse(payload, status=200 if ok else 503)
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def financial_config(request):
+    return Response(
+        {
+            "refundable_security_deposit_rate": str(REFUNDABLE_SECURITY_DEPOSIT_RATE),
+            "administration_fee_rate": str(ADMINISTRATION_FEE_RATE),
+            "administration_fee_vat_rate": str(ADMINISTRATION_FEE_VAT_RATE),
+            "listing_deposit_rate": str(LISTING_DEPOSIT_RATE),
+            "caution_fee_rate": str(CAUTION_FEE_RATE),
+            "legal_fee_max_rate": str(LEGAL_FEE_MAX_RATE),
+            "listing_deposit_hold_days": DEPOSIT_LISTING_HOLD_DAYS,
+            "payment_cancellation_admin_fee_rate": str(PAYMENT_CANCELLATION_ADMIN_FEE_RATE),
+            "card_payment_limit": str(CARD_PAYMENT_LIMIT_NGN),
+            "account_freeze_fee_percentage": str(ACCOUNT_FREEZE_FEE_PERCENTAGE),
+            "subscription_vat_rate_percent": str(DEFAULT_SUBSCRIPTION_VAT_RATE_PERCENT),
+            "featured_property_monthly_fee": str(FEATURED_PROPERTY_MONTHLY_FEE),
+            "featured_property_monthly_duration_days": FEATURED_PROPERTY_MONTHLY_DURATION_DAYS,
+            "featured_property_min_duration_days": FEATURED_PROPERTY_MIN_DURATION_DAYS,
+            "featured_property_max_duration_days": FEATURED_PROPERTY_MAX_DURATION_DAYS,
+        }
+    )
 
 
 @api_view(["GET"])

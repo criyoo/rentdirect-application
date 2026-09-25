@@ -1,4 +1,5 @@
 import nigeriaStateLgaRaw from '@/data/nigeria-state-lga.json'
+import nigeriaStateCitiesRaw from '@/data/nigeria-state-cities.json'
 
 type NigeriaStateLgaMap = Record<string, string[]>
 
@@ -8,6 +9,13 @@ export const nigeriaStateLgaMap: NigeriaStateLgaMap = Object.fromEntries(
     Object.entries(rawNigeriaStateLgaMap).map(([state, lgas]) => [
         state === 'FCT' ? 'Federal Capital Territory' : state,
         lgas.map((lga) => lga.trim()),
+    ]),
+)
+
+export const nigeriaStateCitiesMap: NigeriaStateLgaMap = Object.fromEntries(
+    Object.entries(nigeriaStateCitiesRaw as NigeriaStateLgaMap).map(([state, cities]) => [
+        state === 'FCT' ? 'Federal Capital Territory' : state,
+        cities,
     ]),
 )
 

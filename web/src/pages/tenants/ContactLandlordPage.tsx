@@ -407,7 +407,7 @@ export default function ContactLandlordPage() {
                                     <h3 className="font-bold text-gray-900 text-[20px]">{listing.title}</h3>
                                     <p className="text-gray-600 text-sm">
                                         {listing.city}, {listing.state}<br />
-                                        <p className="text-xs">Zip Code: {listing.postal_code}</p>
+                                        <p className="text-xs">LGA: {listing.lga}</p>
                                     </p>
                                 </div>
 

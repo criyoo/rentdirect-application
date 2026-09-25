@@ -10,7 +10,10 @@ import DashboardBackButton from '@/components/DashboardBackButton'
 import { useQuery } from '@tanstack/react-query'
 import { Listing, User } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
+import { formatDays, formatRatePercent, useFinancialConfig } from '@/hooks/useFinancialConfig'
+import { formatCurrencyWithSymbol } from '@/utils/currency'
 import { useAppPopup } from '@/contexts/AppPopupContext'
+import { nigerianStates, nigeriaStateLgaMap, nigeriaStateCitiesMap } from '@/lib/locations'
 
 const optionalPositiveNumber = z.number().min(1, 'Value must be positive').optional()
 
@@ -23,7 +26,7 @@ const schema = z.object({
     address: z.string().min(1, 'Address is required'),
     city: z.string().min(1, 'City is required'),
     state: z.string().min(1, 'State is required'),
-    postal_code: z.string().min(1, 'Postal code is required'),
+    lga: z.string().min(1, 'LGA is required'),
     property_type: z.string().min(1, 'Property type is required'),
     bedrooms: requiredPositiveNumber('At least 1 bedroom required'),
     bathrooms: requiredPositiveNumber('At least 1 bathroom required'),
@@ -31,6 +34,31 @@ const schema = z.object({
     square_feet: optionalPositiveNumber,
     price_per_year: requiredPositiveNumber('Price is required'),
     deposit_amount: requiredPositiveNumber('Deposit amount is required'),
+    service_charge: optionalPositiveNumber,
+    caution_fee: optionalPositiveNumber,
+    legal_fee: optionalPositiveNumber,
+    nightly_rate: optionalPositiveNumber,
+    negotiable: z.boolean(),
+    area: z.string().optional(),
+    nearest_landmark: z.string().optional(),
+    furnishing_level: z.string().optional(),
+    air_conditioning: z.boolean(),
+    internet: z.boolean(),
+    boys_quarters: z.boolean(),
+    prepaid_meter: z.boolean(),
+    gated_estate: z.boolean(),
+    security_guard: z.boolean(),
+    cctv: z.boolean(),
+    wheelchair_accessible: z.boolean(),
+    power_supply: z.string().optional(),
+    water_supply: z.string().optional(),
+    floor_number: optionalPositiveNumber,
+    total_floors: optionalPositiveNumber,
+    parking_spaces: optionalPositiveNumber,
+    year_built: optionalPositiveNumber,
+    pet_policy: z.string().optional(),
+    video_tour_url: z.string().optional(),
+    available_until: z.string().optional(),
     utilities_included: z.boolean(),
     pet_friendly: z.boolean(),
     parking: z.boolean(),
@@ -47,8 +75,10 @@ const schema = z.object({
     property_ownership_documents: z.array(z.string()),
     property_verification_method: z.enum(['documents', 'in_person']),
     minimum_rental_duration: z.string().min(1, 'Minimum rental duration is required'),
+    maximum_rental_duration: z.string().optional(),
     maximum_occupancy: z.string().min(1, 'Maximum occupancy is required'),
     smoking_allowed: z.boolean(),
+    party_allowed: z.boolean(),
     commercial_activities_allowed: z.boolean(),
     short_let_allowed: z.boolean(),
     student_tenants_allowed: z.boolean(),
@@ -134,6 +164,7 @@ const corporateOwnershipDocumentOptions = [
 
 const rentalPreferenceOptions = [
     { field: 'smoking_allowed', label: 'Smoking Allowed?' },
+    { field: 'party_allowed', label: 'Party Allowed?' },
     { field: 'commercial_activities_allowed', label: 'Commercial Activities Allowed?' },
     { field: 'short_let_allowed', label: 'Short-let Allowed?' },
     { field: 'student_tenants_allowed', label: 'Student Tenants Allowed?' },
@@ -184,7 +215,7 @@ export default function ListingFormPage() {
             address: '',
             city: '',
             state: '',
-            postal_code: '',
+            lga: '',
             property_type: '',
             bedrooms: 1,
             bathrooms: 1,
@@ -201,12 +232,31 @@ export default function ListingFormPage() {
             electric_fence: false,
             fitted_kitchen: false,
             furnished: false,
+            negotiable: false,
+            air_conditioning: false,
+            internet: false,
+            boys_quarters: false,
+            prepaid_meter: false,
+            gated_estate: false,
+            security_guard: false,
+            cctv: false,
+            wheelchair_accessible: false,
+            area: '',
+            nearest_landmark: '',
+            furnishing_level: '',
+            power_supply: '',
+            water_supply: '',
+            pet_policy: '',
+            video_tour_url: '',
+            available_until: '',
             ownership_types: [],
             property_ownership_documents: [],
             property_verification_method: 'documents',
             minimum_rental_duration: '',
+            maximum_rental_duration: '',
             maximum_occupancy: '',
             smoking_allowed: false,
+            party_allowed: false,
             commercial_activities_allowed: false,
             short_let_allowed: false,
             student_tenants_allowed: false,
@@ -219,6 +269,12 @@ export default function ListingFormPage() {
     const propertyVerificationMethod = watch('property_verification_method')
     const pricePerYear = watch('price_per_year')
     const watchedFormValues = watch()
+    const selectedState = watch('state')
+    const cityValue = watch('city')
+    const [cityIsOther, setCityIsOther] = useState(false)
+    const { data: financialConfig } = useFinancialConfig()
+    const lgaOptions = selectedState ? (nigeriaStateLgaMap[selectedState] ?? []) : []
+    const cityOptions = selectedState ? (nigeriaStateCitiesMap[selectedState] ?? []) : []
 
     useEffect(() => {
         if (propertyVerificationMethod === 'in_person') {
@@ -227,17 +283,33 @@ export default function ListingFormPage() {
         setLegalConsentError('')
     }, [propertyVerificationMethod])
 
+    // A stored city that isn't in the state's list is treated as an "Other" entry.
+    useEffect(() => {
+        if (cityValue && cityOptions.length > 0 && !cityOptions.includes(cityValue)) {
+            setCityIsOther(true)
+        }
+    }, [cityValue, cityOptions])
+
     useEffect(() => {
         const annualRent = Number(pricePerYear)
         const depositAmount = Number.isFinite(annualRent) && annualRent > 0
-            ? Number((annualRent * 0.2).toFixed(2))
+            ? Number((annualRent * (financialConfig?.listingDepositRate ?? 0.2)).toFixed(2))
             : undefined
         setValue('deposit_amount', depositAmount as ListingFormValues['deposit_amount'], {
             shouldDirty: false,
             shouldTouch: false,
             shouldValidate: Boolean(depositAmount),
         })
-    }, [pricePerYear, setValue])
+        // Caution fee defaults to the configured rate (5%) of annual rent — editable.
+        const cautionFee = Number.isFinite(annualRent) && annualRent > 0
+            ? Number((annualRent * (financialConfig?.cautionFeeRate ?? 0.05)).toFixed(2))
+            : undefined
+        setValue('caution_fee', cautionFee as ListingFormValues['caution_fee'], {
+            shouldDirty: false,
+            shouldTouch: false,
+            shouldValidate: Boolean(cautionFee),
+        })
+    }, [pricePerYear, setValue, financialConfig?.listingDepositRate, financialConfig?.cautionFeeRate])
 
     const { fields: amenityFields, append: appendAmenity, remove: removeAmenity } = useFieldArray({
         control,
@@ -296,7 +368,7 @@ export default function ListingFormPage() {
             address: listing.address,
             city: listing.city,
             state: listing.state || '',
-            postal_code: listing.postal_code,
+            lga: listing.lga || '',
             property_type: listing.property_type,
             bedrooms: listing.bedrooms,
             bathrooms: listing.bathrooms,
@@ -304,6 +376,7 @@ export default function ListingFormPage() {
             square_feet: listing.square_feet,
             price_per_year: Number(listing.price_per_year),
             deposit_amount: listing.deposit_amount,
+            service_charge: listing.service_charge ? Number(listing.service_charge) : undefined,
             utilities_included: listing.utilities_included,
             pet_friendly: listing.pet_friendly,
             parking: listing.parking,
@@ -316,12 +389,38 @@ export default function ListingFormPage() {
             electric_fence: listing.electric_fence,
             fitted_kitchen: listing.fitted_kitchen,
             furnished: listing.furnished,
+            negotiable: Boolean(listing.negotiable),
+            air_conditioning: Boolean(listing.air_conditioning),
+            internet: Boolean(listing.internet),
+            boys_quarters: Boolean(listing.boys_quarters),
+            prepaid_meter: Boolean(listing.prepaid_meter),
+            gated_estate: Boolean(listing.gated_estate),
+            security_guard: Boolean(listing.security_guard),
+            cctv: Boolean(listing.cctv),
+            wheelchair_accessible: Boolean(listing.wheelchair_accessible),
+            area: listing.area || '',
+            nearest_landmark: listing.nearest_landmark || '',
+            furnishing_level: listing.furnishing_level || '',
+            power_supply: listing.power_supply || '',
+            water_supply: listing.water_supply || '',
+            pet_policy: listing.pet_policy || '',
+            video_tour_url: listing.video_tour_url || '',
+            available_until: listing.available_until || '',
+            caution_fee: listing.caution_fee ? Number(listing.caution_fee) : undefined,
+            legal_fee: listing.legal_fee ? Number(listing.legal_fee) : undefined,
+            nightly_rate: listing.nightly_rate ? Number(listing.nightly_rate) : undefined,
+            floor_number: listing.floor_number ?? undefined,
+            total_floors: listing.total_floors ?? undefined,
+            parking_spaces: listing.parking_spaces ?? undefined,
+            year_built: listing.year_built ?? undefined,
             ownership_types: listing.ownership_types || [],
             property_ownership_documents: listing.property_ownership_documents || [],
             property_verification_method: listing.property_document_submission?.in_person_verification_requested ? 'in_person' as const : 'documents' as const,
             minimum_rental_duration: listing.minimum_rental_duration || '',
+            maximum_rental_duration: listing.maximum_rental_duration || '',
             maximum_occupancy: listing.maximum_occupancy ? String(listing.maximum_occupancy) : '',
             smoking_allowed: Boolean(listing.smoking_allowed),
+            party_allowed: Boolean(listing.party_allowed),
             commercial_activities_allowed: Boolean(listing.commercial_activities_allowed),
             short_let_allowed: Boolean(listing.short_let_allowed),
             student_tenants_allowed: Boolean(listing.student_tenants_allowed),
@@ -369,7 +468,7 @@ export default function ListingFormPage() {
         formData.append('address', data.address)
         formData.append('city', data.city)
         formData.append('state', data.state)
-        formData.append('postal_code', data.postal_code)
+        formData.append('lga', data.lga)
         formData.append('property_type', data.property_type)
         formData.append('bedrooms', data.bedrooms.toString())
         formData.append('bathrooms', data.bathrooms.toString())
@@ -381,6 +480,27 @@ export default function ListingFormPage() {
         }
         if (Number.isFinite(data.deposit_amount)) {
             formData.append('deposit_amount', data.deposit_amount.toString())
+        }
+        if (data.service_charge) {
+            formData.append('service_charge', data.service_charge.toString())
+        }
+        for (const feeField of ['caution_fee', 'legal_fee', 'nightly_rate'] as const) {
+            if (data[feeField]) {
+                formData.append(feeField, data[feeField].toString())
+            }
+        }
+        for (const numField of ['floor_number', 'total_floors', 'parking_spaces', 'year_built'] as const) {
+            if (data[numField]) {
+                formData.append(numField, data[numField].toString())
+            }
+        }
+        for (const textField of ['area', 'nearest_landmark', 'furnishing_level', 'power_supply', 'water_supply', 'pet_policy', 'video_tour_url', 'available_until'] as const) {
+            if (data[textField]) {
+                formData.append(textField, data[textField])
+            }
+        }
+        for (const flagField of ['negotiable', 'air_conditioning', 'internet', 'boys_quarters', 'prepaid_meter', 'gated_estate', 'security_guard', 'cctv', 'wheelchair_accessible'] as const) {
+            formData.append(flagField, data[flagField].toString())
         }
 
         formData.append('utilities_included', data.utilities_included.toString())
@@ -403,8 +523,10 @@ export default function ListingFormPage() {
         formData.append('furnished', data.furnished.toString())
         formData.append('property_verification_method', data.property_verification_method)
         formData.append('minimum_rental_duration', data.minimum_rental_duration)
+        formData.append('maximum_rental_duration', data.maximum_rental_duration || '')
         formData.append('maximum_occupancy', data.maximum_occupancy)
         formData.append('smoking_allowed', data.smoking_allowed.toString())
+        formData.append('party_allowed', data.party_allowed.toString())
         formData.append('commercial_activities_allowed', data.commercial_activities_allowed.toString())
         formData.append('short_let_allowed', data.short_let_allowed.toString())
         formData.append('student_tenants_allowed', data.student_tenants_allowed.toString())
@@ -459,6 +581,14 @@ export default function ListingFormPage() {
         }
         if (!isEditMode && data.property_verification_method === 'documents' && data.property_ownership_documents.length === 0) {
             setSubmissionError('Please select at least one ownership document type.')
+            return
+        }
+
+        const legalFeeCap = Number(data.price_per_year) * (financialConfig?.legalFeeMaxRate ?? 0.05)
+        if (data.legal_fee && data.legal_fee > legalFeeCap) {
+            setError('legal_fee', {
+                message: `Legal fee cannot exceed 5% of the annual rent (${formatCurrencyWithSymbol(legalFeeCap)}).`,
+            })
             return
         }
 
@@ -553,7 +683,7 @@ export default function ListingFormPage() {
         setPropertyDocumentFiles(Array.from(e.target.files || []))
     }
 
-    const classNameTitles = "block text-sm font-bold text-gray-700 mb-2"
+    const classNameTitles = "block text-[14px] text-gray-700 mb-2"
 
     if (isEditMode && isListingLoading) {
         return <div className="p-6">Loading listing...</div>
@@ -585,7 +715,7 @@ export default function ListingFormPage() {
                     </div>
                     <button
                         onClick={() => navigate('/landlord/verification')}
-                        className="w-full rounded-lg bg-blue-600 px-4 py-3 font-medium text-white hover:bg-blue-700 transition"
+                        className="w-full rounded-lg bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700 transition"
                     >
                         Go to Verification
                     </button>
@@ -618,7 +748,7 @@ export default function ListingFormPage() {
                                 </label>
                                 <input
                                     {...register('title')}
-                                    className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                    className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
                                     placeholder="e.g., Beautiful 3-bedroom apartment"
                                 />
                                 {errors.title && <p className="mt-1 text-sm text-red-600">{errors.title.message}</p>}
@@ -630,7 +760,7 @@ export default function ListingFormPage() {
                                 </label>
                                 <select
                                     {...register('property_type')}
-                                    className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                    className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
                                 >
                                     <option value="">Select property type</option>
                                     <option value="Flat">Flat</option>
@@ -652,59 +782,129 @@ export default function ListingFormPage() {
                             <textarea
                                 {...register('description')}
                                 rows={4}
-                                className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                className="w-full rounded-lg border border-gray-300 px-4 py-1 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
                                 placeholder="Describe your property in detail..."
                             />
                             {errors.description && <p className="mt-1 text-sm text-red-600">{errors.description.message}</p>}
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <div>
                                 <label className={classNameTitles}>
-                                    Address *
+                                    State *
                                 </label>
-                                <input
-                                    {...register('address')}
-                                    className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
-                                    placeholder="Full street address"
-                                />
-                                {errors.address && <p className="mt-1 text-sm text-red-600">{errors.address.message}</p>}
+                                <select
+                                    {...register('state', {
+                                        onChange: () => {
+                                            setValue('lga', '')
+                                            setValue('city', '')
+                                            setCityIsOther(false)
+                                        },
+                                    })}
+                                    className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                >
+                                    <option value="">Select state</option>
+                                    {nigerianStates.map((state) => (
+                                        <option key={state} value={state}>{state}</option>
+                                    ))}
+                                </select>
+                                {errors.state && <p className="mt-1 text-sm text-red-600">{errors.state.message}</p>}
+                            </div>
+
+                            <div>
+                                <label className={classNameTitles}>
+                                    Local Government Area (LGA) *
+                                </label>
+                                <select
+                                    {...register('lga')}
+                                    disabled={!selectedState}
+                                    className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none disabled:cursor-not-allowed disabled:bg-gray-100"
+                                >
+                                    <option value="">{selectedState ? 'Select LGA' : 'Select a state first'}</option>
+                                    {lgaOptions.map((lga) => (
+                                        <option key={lga} value={lga}>{lga}</option>
+                                    ))}
+                                </select>
+                                {errors.lga && <p className="mt-1 text-sm text-red-600">{errors.lga.message}</p>}
                             </div>
 
                             <div>
                                 <label className={classNameTitles}>
                                     City *
                                 </label>
-                                <input
-                                    {...register('city')}
-                                    className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
-                                    placeholder="City"
-                                />
+                                {cityIsOther ? (
+                                    <input
+                                        {...register('city')}
+                                        className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                        placeholder="Enter city"
+                                    />
+                                ) : (
+                                    <select
+                                        value={cityValue || ''}
+                                        disabled={!selectedState}
+                                        onChange={(event) => {
+                                            if (event.target.value === '__other__') {
+                                                setCityIsOther(true)
+                                                setValue('city', '')
+                                            } else {
+                                                setValue('city', event.target.value, { shouldValidate: true })
+                                            }
+                                        }}
+                                        className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none disabled:cursor-not-allowed disabled:bg-gray-100"
+                                    >
+                                        <option value="">{selectedState ? 'Select city' : 'Select a state first'}</option>
+                                        {cityOptions.map((city) => (
+                                            <option key={city} value={city}>{city}</option>
+                                        ))}
+                                        <option value="__other__">Other</option>
+                                    </select>
+                                )}
+                                {cityIsOther && (
+                                    <button
+                                        type="button"
+                                        onClick={() => { setCityIsOther(false); setValue('city', '') }}
+                                        className="mt-1 text-xs text-blue-600 hover:underline"
+                                    >
+                                        Choose from list instead
+                                    </button>
+                                )}
                                 {errors.city && <p className="mt-1 text-sm text-red-600">{errors.city.message}</p>}
                             </div>
-
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-1">
                             <div>
                                 <label className={classNameTitles}>
-                                    State *
+                                    Address *
                                 </label>
                                 <input
-                                    {...register('state')}
-                                    className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
-                                    placeholder="State"
+                                    {...register('address')}
+                                    className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                    placeholder="Full street address"
                                 />
-                                {errors.state && <p className="mt-1 text-sm text-red-600">{errors.state.message}</p>}
+                                {errors.address && <p className="mt-1 text-sm text-red-600">{errors.address.message}</p>}
                             </div>
+                        </div>
 
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
                                 <label className={classNameTitles}>
-                                    Postal Code *
+                                    Area / Neighbourhood / Estate
                                 </label>
                                 <input
-                                    {...register('postal_code')}
-                                    className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
-                                    placeholder="Postal code"
+                                    {...register('area')}
+                                    className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                    placeholder="e.g., Lekki Phase 1, Wuse 2, GRA"
                                 />
-                                {errors.postal_code && <p className="mt-1 text-sm text-red-600">{errors.postal_code.message}</p>}
+                            </div>
+                            <div>
+                                <label className={classNameTitles}>
+                                    Nearest Landmark
+                                </label>
+                                <input
+                                    {...register('nearest_landmark')}
+                                    className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                    placeholder="e.g., Eko Hotel, Shoprite Sangotedo"
+                                />
                             </div>
                         </div>
 
@@ -717,7 +917,7 @@ export default function ListingFormPage() {
                                     {...register('bedrooms', { valueAsNumber: true })}
                                     type="number"
                                     min="1"
-                                    className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                    className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
                                 />
                                 {errors.bedrooms && <p className="mt-1 text-sm text-red-600">{errors.bedrooms.message}</p>}
                             </div>
@@ -730,7 +930,7 @@ export default function ListingFormPage() {
                                     {...register('bathrooms', { valueAsNumber: true })}
                                     type="number"
                                     min="1"
-                                    className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                    className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
                                 />
                                 {errors.bathrooms && <p className="mt-1 text-sm text-red-600">{errors.bathrooms.message}</p>}
                             </div>
@@ -743,7 +943,7 @@ export default function ListingFormPage() {
                                     {...register('toilets', { valueAsNumber: true })}
                                     type="number"
                                     min="1"
-                                    className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                    className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
                                 />
                                 {errors.toilets && <p className="mt-1 text-sm text-red-600">{errors.toilets.message}</p>}
                             </div>
@@ -758,7 +958,7 @@ export default function ListingFormPage() {
                                     })}
                                     type="number"
                                     min="1"
-                                    className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                    className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
                                 />
                             </div>
 
@@ -769,13 +969,13 @@ export default function ListingFormPage() {
                                 <input
                                     {...register('available_from')}
                                     type="date"
-                                    className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                    className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
                                 />
                                 {errors.available_from && <p className="mt-1 text-sm text-red-600">{errors.available_from.message}</p>}
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <div>
                                 <label className={classNameTitles}>
                                     Price per year *
@@ -785,14 +985,14 @@ export default function ListingFormPage() {
                                     type="number"
                                     min="1"
                                     step="0.01"
-                                    className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                    className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
                                 />
                                 {errors.price_per_year && <p className="mt-1 text-sm text-red-600">{errors.price_per_year.message}</p>}
                             </div>
 
                             <div>
                                 <label className={classNameTitles}>
-                                    Deposit Amount (20% of Annual Rent) *
+                                    Optional Deposit Amount ({formatRatePercent(financialConfig?.listingDepositRate)} of Annual Rent) *
                                 </label>
                                 <input
                                     {...register('deposit_amount', { valueAsNumber: true })}
@@ -800,11 +1000,70 @@ export default function ListingFormPage() {
                                     min="0"
                                     step="0.01"
                                     readOnly
-                                    className="w-full rounded-lg border border-gray-300 bg-gray-100 px-4 py-3 text-gray-700 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                    className="w-full rounded-lg border border-gray-300 bg-gray-100 px-4 py-2 text-gray-700 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
                                 />
                                 {errors.deposit_amount && <p className="mt-1 text-sm text-red-600">{errors.deposit_amount.message}</p>}
                             </div>
-                        </div><br />
+
+                            <div>
+                                <label className={classNameTitles}>
+                                    Service Charge (per year)
+                                </label>
+                                <input
+                                    {...register('service_charge', {
+                                        setValueAs: (value) => value === '' ? undefined : Number(value),
+                                    })}
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                    placeholder="e.g., 150000"
+                                />
+                                {errors.service_charge && <p className="mt-1 text-sm text-red-600">{errors.service_charge.message}</p>}
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <label className={classNameTitles}>
+                                    Caution Fee (5% of Annual Rent)
+                                </label>
+                                <input
+                                    {...register('caution_fee', { setValueAs: (v) => v === '' ? undefined : Number(v) })}
+                                    type="number" min="0" step="0.01"
+                                    className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                    placeholder="Defaults to 5% of annual rent"
+                                />
+                                {errors.caution_fee && <p className="mt-1 text-sm text-red-600">{errors.caution_fee.message}</p>}
+                            </div>
+                            <div>
+                                <label className={classNameTitles}>
+                                    Legal Fee (optional, max 5% of Annual Rent)
+                                </label>
+                                <input
+                                    {...register('legal_fee', { setValueAs: (v) => v === '' ? undefined : Number(v) })}
+                                    type="number" min="0" step="0.01"
+                                    className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                    placeholder="Optional"
+                                />
+                                {errors.legal_fee && <p className="mt-1 text-sm text-red-600">{errors.legal_fee.message}</p>}
+                            </div>
+                            {/* <div>
+                                <label className={classNameTitles}>
+                                    Nightly Rate (short-let)
+                                </label>
+                                <input
+                                    {...register('nightly_rate', { setValueAs: (v) => v === '' ? undefined : Number(v) })}
+                                    type="number" min="0" step="0.01"
+                                    className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                    placeholder="Optional"
+                                />
+                            </div> */}
+                        </div>
+                        <label className="flex items-center space-x-2">
+                            <input {...register('negotiable')} type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                            <span className="text-[16px] text-gray-700">Rent is negotiable?</span>
+                        </label><br />
                         <div className="space-y-5 border-t pt-6">
                             <h3 className="text-[22px] font-semibold text-gray-900">Property Ownership Verification</h3>
 
@@ -814,11 +1073,11 @@ export default function ListingFormPage() {
                                         Verification Method *
                                     </label>
                                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                        <label className="flex items-center gap-3 rounded-lg border px-4 py-3">
+                                        <label className="flex items-center gap-3 rounded-lg border px-4 py-2">
                                             <input {...register('property_verification_method')} type="radio" value="documents" className="h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500" />
                                             <span className="text-sm text-gray-800">Upload documents</span>
                                         </label>
-                                        <label className="flex items-center gap-3 rounded-lg border px-4 py-3">
+                                        <label className="flex items-center gap-3 rounded-lg border px-4 py-2">
                                             <input {...register('property_verification_method')} type="radio" value="in_person" className="h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500" />
                                             <span className="text-sm text-gray-800">In-person verification</span>
                                         </label>
@@ -827,13 +1086,13 @@ export default function ListingFormPage() {
                                 </div>
                             </div>
 
-                            <div>
+                            <div className="mt-10">
                                 <label className={classNameTitles}>
                                     Ownership Type *
                                 </label>
                                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                                     {ownershipTypeOptions.map((option) => (
-                                        <label key={option} className="flex items-center gap-3 rounded-lg border px-4 py-3">
+                                        <label key={option} className="flex items-center gap-3 rounded-lg border px-4 py-2">
                                             <input
                                                 {...register('ownership_types')}
                                                 type="checkbox"
@@ -847,13 +1106,13 @@ export default function ListingFormPage() {
                                 {errors.ownership_types && <p className="mt-1 text-sm text-red-600">{errors.ownership_types.message}</p>}
                             </div>
 
-                            <div>
+                            <div className="mt-10">
                                 <label className={classNameTitles}>
-                                    Ownership Documents {propertyVerificationMethod === 'documents' ? '*' : '(not required for in-person verification)'}
+                                    Ownership Documents {propertyVerificationMethod === 'documents' ? '(select document to be uploaded)' : '(select documents that will be presented for in-person verification)'}
                                 </label>
                                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                                     {ownershipDocumentOptions.map((option) => (
-                                        <label key={option} className="flex items-center gap-3 rounded-lg border px-4 py-3">
+                                        <label key={option} className="flex items-center gap-3 rounded-lg border px-4 py-2">
                                             <input
                                                 {...register('property_ownership_documents')}
                                                 type="checkbox"
@@ -869,7 +1128,7 @@ export default function ListingFormPage() {
                                 )}
                             </div>
 
-                            <div>
+                            <div className="mt-10">
                                 <label className={`block text-sm font-medium mb-2 ${propertyVerificationMethod === 'in_person' ? 'text-gray-400' : 'text-gray-700'}`}>
                                     <p className={classNameTitles}>
                                         Property Documents {isEditMode || propertyVerificationMethod === 'in_person' ? '(optional)' : '*'}
@@ -882,7 +1141,7 @@ export default function ListingFormPage() {
                                     onChange={handlePropertyDocumentsChange}
                                     disabled={propertyVerificationMethod === 'in_person'}
                                     required={!isEditMode && propertyVerificationMethod === 'documents'}
-                                    className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
+                                    className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
                                 />
                                 {propertyDocumentFiles.length > 0 && (
                                     <ul className="mt-3 space-y-2 text-sm text-gray-600">
@@ -909,7 +1168,7 @@ export default function ListingFormPage() {
                                         {...register('maximum_occupancy')}
                                         type="number"
                                         min="1"
-                                        className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                        className="w-full rounded-lg border border-gray-300 px-4 py-2.5 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
                                     />
                                     {errors.maximum_occupancy && <p className="mt-1 text-sm text-red-600">{errors.maximum_occupancy.message}</p>}
                                 </div>
@@ -919,16 +1178,27 @@ export default function ListingFormPage() {
                                     </label>
                                     <input
                                         {...register('minimum_rental_duration')}
-                                        className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                        className="w-full rounded-lg border border-gray-300 px-4 py-2.5 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
                                         placeholder="e.g., 6 months"
                                     />
                                     {errors.minimum_rental_duration && <p className="mt-1 text-sm text-red-600">{errors.minimum_rental_duration.message}</p>}
+                                </div>
+                                <div>
+                                    <label className={classNameTitles}>
+                                        Maximum Rental Duration
+                                    </label>
+                                    <input
+                                        {...register('maximum_rental_duration')}
+                                        className="w-full rounded-lg border border-gray-300 px-4 py-2.5 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                        placeholder="e.g., 2 years"
+                                    />
+                                    {errors.maximum_rental_duration && <p className="mt-1 text-sm text-red-600">{errors.maximum_rental_duration.message}</p>}
                                 </div>
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                 {rentalPreferenceOptions.map((option) => (
-                                    <label key={option.field} className="flex items-center gap-3 rounded-lg border px-4 py-3">
+                                    <label key={option.field} className="flex items-center gap-3 rounded-lg border px-4 py-2">
                                         <input
                                             {...register(option.field)}
                                             type="checkbox"
@@ -940,7 +1210,7 @@ export default function ListingFormPage() {
                             </div>
                         </div>
 
-                        <div className="space-y-4">
+                        <div className="mt-10 space-y-4">
                             {/* <h3 className="text-lg font-semibold text-gray-900">Features</h3> */}
                             <label className={classNameTitles}>Features</label>
 
@@ -1004,9 +1274,155 @@ export default function ListingFormPage() {
                                     <input {...register('fitted_kitchen')} type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
                                     <span className="text-sm text-gray-700">Fitted kitchen</span>
                                 </label>
+
+                                <label className="flex items-center space-x-2">
+                                    <input {...register('air_conditioning')} type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                                    <span className="text-sm text-gray-700">Air conditioning</span>
+                                </label>
+
+                                <label className="flex items-center space-x-2">
+                                    <input {...register('internet')} type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                                    <span className="text-sm text-gray-700">Internet/Fibre</span>
+                                </label>
+
+                                <label className="flex items-center space-x-2">
+                                    <input {...register('boys_quarters')} type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                                    <span className="text-sm text-gray-700">Boys quarters (BQ)</span>
+                                </label>
+
+                                <label className="flex items-center space-x-2">
+                                    <input {...register('prepaid_meter')} type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                                    <span className="text-sm text-gray-700">Prepaid meter</span>
+                                </label>
+
+                                <label className="flex items-center space-x-2">
+                                    <input {...register('gated_estate')} type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                                    <span className="text-sm text-gray-700">Gated estate</span>
+                                </label>
+
+                                <label className="flex items-center space-x-2">
+                                    <input {...register('security_guard')} type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                                    <span className="text-sm text-gray-700">Security guard</span>
+                                </label>
+
+                                <label className="flex items-center space-x-2">
+                                    <input {...register('cctv')} type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                                    <span className="text-sm text-gray-700">CCTV</span>
+                                </label>
+
+                                <label className="flex items-center space-x-2">
+                                    <input {...register('wheelchair_accessible')} type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                                    <span className="text-sm text-gray-700">Wheelchair accessible</span>
+                                </label>
                             </div>
 
-                            <div>
+                            <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+                                <div>
+                                    <label className={classNameTitles}>Furnishing Level</label>
+                                    <select
+                                        {...register('furnishing_level')}
+                                        className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                    >
+                                        <option value="">Not specified</option>
+                                        <option value="unfurnished">Unfurnished</option>
+                                        <option value="semi_furnished">Semi-furnished</option>
+                                        <option value="fully_furnished">Fully furnished</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className={classNameTitles}>Power Supply</label>
+                                    <select
+                                        {...register('power_supply')}
+                                        className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                    >
+                                        <option value="">Not specified</option>
+                                        <option value="24_hours">24-hour supply</option>
+                                        <option value="grid_with_backup">Grid + inverter/generator backup</option>
+                                        <option value="grid_only">Grid only</option>
+                                        <option value="limited">Limited supply</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className={classNameTitles}>Water Supply</label>
+                                    <select
+                                        {...register('water_supply')}
+                                        className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                    >
+                                        <option value="">Not specified</option>
+                                        <option value="constant">Constant supply</option>
+                                        <option value="borehole">Borehole</option>
+                                        <option value="public_mains">Public mains</option>
+                                        <option value="tanker">Tanker delivery</option>
+                                        <option value="irregular">Irregular supply</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-6">
+                                <div>
+                                    <label className={classNameTitles}>Floor Number</label>
+                                    <input
+                                        {...register('floor_number', { setValueAs: (v) => v === '' ? undefined : Number(v) })}
+                                        type="number" min="0"
+                                        className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                    />
+                                </div>
+                                <div>
+                                    <label className={classNameTitles}>Total Floors</label>
+                                    <input
+                                        {...register('total_floors', { setValueAs: (v) => v === '' ? undefined : Number(v) })}
+                                        type="number" min="1"
+                                        className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                    />
+                                </div>
+                                <div>
+                                    <label className={classNameTitles}>Parking Spaces</label>
+                                    <input
+                                        {...register('parking_spaces', { setValueAs: (v) => v === '' ? undefined : Number(v) })}
+                                        type="number" min="0"
+                                        className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                    />
+                                </div>
+                                <div>
+                                    <label className={classNameTitles}>Year Built</label>
+                                    <input
+                                        {...register('year_built', { setValueAs: (v) => v === '' ? undefined : Number(v) })}
+                                        type="number" min="1800"
+                                        className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+                                <div>
+                                    <label className={classNameTitles}>Pet Policy</label>
+                                    <input
+                                        {...register('pet_policy')}
+                                        className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                        placeholder="e.g., Cats and small dogs allowed"
+                                    />
+                                </div>
+                                <div>
+                                    <label className={classNameTitles}>Video Tour URL</label>
+                                    <input
+                                        {...register('video_tour_url')}
+                                        type="url"
+                                        className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                        placeholder="https://..."
+                                    />
+                                    {errors.video_tour_url && <p className="mt-1 text-sm text-red-600">{errors.video_tour_url.message}</p>}
+                                </div>
+                                <div>
+                                    <label className={classNameTitles}>Available Until</label>
+                                    <input
+                                        {...register('available_until')}
+                                        type="date"
+                                        className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="mt-10">
                                 <label className={classNameTitles}>
                                     Amenities *
                                 </label>
@@ -1016,8 +1432,8 @@ export default function ListingFormPage() {
                                             <input
                                                 type="text"
                                                 {...register(`amenities.${index}.value` as const)}
-                                                className="w-full rounded-lg border border-gray-300 px-4 py-1.5 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
-                                                placeholder={index === 0 ? 'e.g., Swimming pool, Gym, Children\'s playgorund, Nearby shopping mall etc.' : 'Amenity'}
+                                                className="w-full text-[13px] rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                                placeholder={index === 0 ? 'e.g., 24hrs Electricity, Swimming pool, Gym, Children\'s playgorund, Nearby shopping mall etc.' : 'Amenity'}
                                             />
                                             {amenityFields.length > 1 && (
                                                 <button
@@ -1052,19 +1468,19 @@ export default function ListingFormPage() {
                                                 </svg>
                                             </div>
                                             <div className="flex-1">
-                                                <h4 className="text-[20px] font-bold text-blue-900">Make Your Property Stand Out</h4>
-                                                <p className="mt-1 text-sm text-blue-700">
-                                                    Featured properties appear at the top of search results and on the home page,<br />
-                                                    This giving your property maximum visibility to potential tenants.
+                                                <h4 className="text-[16px] font-semibold text-blue-900">Make Your Property Stand Out</h4>
+                                                <p className="mt-1 text-[14px] text-blue-700">
+                                                    Featured properties appear at the top of search results and on the home page,
+                                                    This gives your property maximum visibility to potential tenants.
                                                 </p>
                                                 <div className="mt-3">
-                                                    <div className="flex items-center justify-between text-sm">
-                                                        <span className="text-blue-700">Featured Duration:</span>
-                                                        <span className="text-[16px] font-bold text-blue-900">30 days</span>
+                                                    <div className="flex items-center justify-between text-[14px]">
+                                                        <span className="text-blue-700">Featured Duration: {formatDays(financialConfig?.featuredPropertyMonthlyDurationDays)}</span>
+                                                        {/* <span className="text-[16px] font-bold text-blue-900">{formatDays(financialConfig?.featuredPropertyMonthlyDurationDays)}</span> */}
                                                     </div>
-                                                    <div className="flex items-center justify-between text-sm">
-                                                        <span className="text-blue-700">Fee:</span>
-                                                        <span className="text-[16px] font-bold text-blue-900">₦5,000</span>
+                                                    <div className="flex items-center justify-between text-[14px]">
+                                                        <span className="text-blue-700">Fee: {formatCurrencyWithSymbol(financialConfig?.featuredPropertyMonthlyFee ?? 0)}</span>
+                                                        {/* <span className="text-[16px] font-bold text-blue-900">{formatCurrencyWithSymbol(financialConfig?.featuredPropertyMonthlyFee ?? 0)}</span> */}
                                                     </div>
                                                 </div>
                                                 <div className="mt-3">
@@ -1075,8 +1491,8 @@ export default function ListingFormPage() {
                                                             {...register('featured_property')}
                                                             className="rounded border-blue-500 text-blue-600 focus:ring-blue-600"
                                                         />
-                                                        <span className="text-[16px] font-semibold text-blue-700">
-                                                            I want to feature this property (₦5,000 for 30 days)
+                                                        <span className="text-[15px] font-semibold text-blue-700">
+                                                            I want to feature this property ({formatCurrencyWithSymbol(financialConfig?.featuredPropertyMonthlyFee ?? 0)} for {formatDays(financialConfig?.featuredPropertyMonthlyDurationDays)})
                                                         </span>
                                                     </label>
                                                 </div>
@@ -1098,7 +1514,7 @@ export default function ListingFormPage() {
                                     type="file"
                                     accept="image/*"
                                     onChange={handleCoverImageChange}
-                                    className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                    className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
                                     required={!isEditMode}
                                 />
                             </div>
@@ -1113,7 +1529,7 @@ export default function ListingFormPage() {
                                     multiple
                                     onChange={handleAdditionalImagesChange}
                                     required={!isEditMode}
-                                    className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                    className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
                                 />
                                 <p className="mt-1 text-sm text-gray-500">
                                     {isEditMode
@@ -1143,14 +1559,14 @@ export default function ListingFormPage() {
                             <button
                                 type="button"
                                 onClick={() => navigate(user ? `/dashboard/landlord/${user.id}` : '/')}
-                                className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition"
+                                className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition"
                             >
                                 Cancel
                             </button>
                             <button
                                 type="submit"
                                 disabled={isSubmitting}
-                                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
                             >
                                 {isSubmitting ? (isEditMode ? 'Saving...' : 'Creating...') : (isEditMode ? 'Save Changes' : 'Create Listing')}
                             </button>

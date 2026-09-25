@@ -22,7 +22,7 @@ from core.models import (
     VerificationRequest,
     build_listing_property_document_title,
 )
-from core.financial_constants import ZERO_AMOUNT
+from core.financial_constants import CAUTION_FEE_RATE, ZERO_AMOUNT
 from core.pricing import calculate_listing_deposit_amount
 from core.profile_validation import is_valid_mobile, is_valid_nin, normalize_residence, normalize_state_of_origin
 from core.subscription_pricing import get_subscription_pricing
@@ -1297,7 +1297,9 @@ class Command(BaseCommand):
             listing.address = listing_data.get("address", "")
             listing.city = listing_data.get("city", "")
             listing.state = listing_data.get("state") or (user.residence or {}).get("state", "")
-            listing.postal_code = listing_data.get("postal_code", "")
+            listing.lga = self.seed_text(listing_data.get("lga"))
+            listing.area = self.seed_text(listing_data.get("area"))
+            listing.nearest_landmark = self.seed_text(listing_data.get("nearest_landmark"))
             listing.property_type = listing_data.get("property_type", "Apartment")
             listing.bedrooms = listing_data.get("bedrooms") or listing_data.get("bedroom") or 1
             listing.bathrooms = listing_data.get("bathrooms") or listing_data.get("bathroom") or 1
@@ -1305,9 +1307,44 @@ class Command(BaseCommand):
             listing.square_feet = listing_data.get("square_feet")
             listing.price_per_year = price_per_year
             listing.deposit_amount = self.calculate_seed_deposit_amount(price_per_year)
+            listing.service_charge = self.seed_decimal(listing_data.get("service_charge"))
+            listing.caution_fee = self.seed_decimal(
+                listing_data.get("caution_fee"),
+                default=(price_per_year * CAUTION_FEE_RATE).quantize(Decimal("0.01")),
+            )
+            listing.legal_fee = self.seed_decimal(listing_data.get("legal_fee"))
+            listing.nightly_rate = self.seed_decimal(listing_data.get("nightly_rate"))
+            listing.negotiable = self.seed_bool(listing_data.get("negotiable"), features.get("negotiable"))
+            listing.video_tour_url = self.seed_text(listing_data.get("video_tour_url"))
+            listing.year_built = self.seed_optional_int(listing_data.get("year_built"))
+            listing.floor_number = self.seed_optional_int(listing_data.get("floor_number"))
+            listing.total_floors = self.seed_optional_int(listing_data.get("total_floors"))
+            listing.parking_spaces = self.seed_optional_int(listing_data.get("parking_spaces"))
             listing.utilities_included = self.seed_bool(features.get("utilities_included"))
             listing.pet_friendly = self.seed_bool(features.get("pet_friendly"), rental_preferences.get("pets_allowed"))
             listing.furnished = self.seed_bool(features.get("furnished"))
+            listing.furnishing_level = self.seed_text(features.get("furnishing_level"), listing_data.get("furnishing_level"))
+            if not listing.furnishing_level and listing.furnished:
+                listing.furnishing_level = "fully_furnished"
+            listing.parking = self.seed_bool(features.get("parking"))
+            listing.garage = self.seed_bool(features.get("garage"))
+            listing.garden = self.seed_bool(features.get("garden"))
+            listing.lift = self.seed_bool(features.get("lift"))
+            listing.balcony = self.seed_bool(features.get("balcony"))
+            listing.smart_lock = self.seed_bool(features.get("smart_lock"))
+            listing.pop_ceiling = self.seed_bool(features.get("pop_ceiling"))
+            listing.electric_fence = self.seed_bool(features.get("electric_fence"))
+            listing.fitted_kitchen = self.seed_bool(features.get("fitted_kitchen"))
+            listing.air_conditioning = self.seed_bool(features.get("air_conditioning"))
+            listing.internet = self.seed_bool(features.get("internet"))
+            listing.boys_quarters = self.seed_bool(features.get("boys_quarters"))
+            listing.prepaid_meter = self.seed_bool(features.get("prepaid_meter"))
+            listing.gated_estate = self.seed_bool(features.get("gated_estate"))
+            listing.security_guard = self.seed_bool(features.get("security_guard"))
+            listing.cctv = self.seed_bool(features.get("cctv"))
+            listing.wheelchair_accessible = self.seed_bool(features.get("wheelchair_accessible"))
+            listing.power_supply = self.seed_text(features.get("power_supply"), listing_data.get("power_supply"))
+            listing.water_supply = self.seed_text(features.get("water_supply"), listing_data.get("water_supply"))
             listing.amenities = features.get("amenities", [])
             listing.ownership_status = ""
             listing.ownership_types = self.get_seed_list(property_verification, "ownership_types")
@@ -1330,7 +1367,9 @@ class Command(BaseCommand):
                 rental_preferences.get("minimum_rental_duration"),
                 rental_preferences.get("minimum_lease_duration"),
             )
+            listing.maximum_rental_duration = self.seed_text(rental_preferences.get("maximum_rental_duration"))
             listing.maximum_occupancy = self.seed_optional_int(rental_preferences.get("maximum_occupancy"))
+            listing.pet_policy = self.seed_text(rental_preferences.get("pet_policy"), listing_data.get("pet_policy"))
             listing.smoking_allowed = self.seed_bool(rental_preferences.get("smoking_allowed"))
             listing.commercial_activities_allowed = self.seed_bool(rental_preferences.get("commercial_activities_allowed"))
             listing.short_let_allowed = self.seed_bool(rental_preferences.get("short_let_allowed"))

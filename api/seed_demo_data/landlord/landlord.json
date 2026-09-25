@@ -115,18 +115,22 @@
                 "property_information": {
                     "title": "Modern 4 bedroom Apartment",
                     "property_type": "Apartment",
-                    "description": "A 4 bedroom flat in the heart of ikoyi, lagos",
+                    "description": "A 4 bedroom apartment in the heart of Ikoyi, Lagos.",
                     "address": "23 Gerald Road",
                     "city": "Ikoyi",
                     "state": "Lagos",
-                    "postal_code": "100021",
                     "bedroom": 4,
                     "bathroom": 4,
                     "toilets": 5,
                     "square_feet": 4000,
                     "available_from": "12/08/2026",
-                    "price_per_year": 2000,
-                    "deposit_amount": 400
+                    "price_per_year": 850000,
+                    "lga": "Eti-Osa",
+                    "area": "Ikoyi",
+                    "service_charge": 85000,
+                    "legal_fee": 42500,
+                    "year_built": 2018,
+                    "nearest_landmark": "Off Kingsway Road"
                 },
                 "property_ownership verification": {
                     "verification_method": {
@@ -162,8 +166,23 @@
                             "swimming pool",
                             "gym",
                             "parking"
-                        ]
-                    }
+                        ],
+                        "parking": true,
+                        "lift": true,
+                        "fitted_kitchen": true,
+                        "pop_ceiling": true,
+                        "air_conditioning": true,
+                        "prepaid_meter": true,
+                        "gated_estate": true,
+                        "security_guard": true,
+                        "cctv": true,
+                        "internet": true,
+                        "power_supply": "grid_with_backup",
+                        "water_supply": "borehole",
+                        "furnishing_level": "fully_furnished"
+                    },
+                    "maximum_rental_duration": "24",
+                    "pet_policy": "Small pets allowed with prior approval"
                 },
                 "feature_property": {
                     "feature_property_checkbox": true
@@ -211,7 +230,7 @@
                     "bank_name": "Opay",
                     "account_name": "Christian Odezi Aluya",
                     "account_number": "9041487757",
-                    "residential_address": "13 Adeola Odeku, Victoria Island, Lagos",
+                    "residential_address": "16 King Perekule Street, Bonny Island",
                     "identity_document": "rentdirect/apps/api/seed_demo_data/landlord/francis/documents/id/nin.pdf"
                 }
             }
@@ -265,9 +284,9 @@
             },
             "residential_information": {
                 "country": "Nigeria",
-                "state": "Lagos",
-                "city": "Ikoyi",
-                "address": "21 Glover Road, Ikoyi, Lagos",
+                "state": "Rivers",
+                "city": "Bonny",
+                "address": "16 King Perekule Street, Bonny Island",
                 "proof_of_address": [
                     "Utility Bill",
                     "Bank Statement"
@@ -293,18 +312,22 @@
                 "property_information": {
                     "title": "3 bedroom Apartment",
                     "property_type": "Apartment",
-                    "description": "A modern 3 bedroom apartment in ikoyi, lagos",
-                    "address": "23 Gerald Road",
-                    "city": "Ikoyi",
-                    "state": "Lagos",
-                    "postal_code": "100021",
+                    "description": "A modern 3 bedroom apartment on Bonny Island, Rivers State.",
+                    "address": "16 King Perekule Street",
+                    "city": "Bonny",
+                    "state": "Rivers",
                     "bedroom": 3,
                     "bathroom": 3,
                     "toilets": 4,
                     "square_feet": 3000,
                     "available_from": "12/08/2026",
-                    "price_per_year": 1500,
-                    "deposit_amount": 300
+                    "price_per_year": 500000,
+                    "lga": "Bonny",
+                    "area": "Bonny Island",
+                    "service_charge": 50000,
+                    "legal_fee": 25000,
+                    "year_built": 2018,
+                    "nearest_landmark": "Near Bonny Golf Course"
                 },
                 "property_ownership verification": {
                     "verification_method": {
@@ -340,8 +363,23 @@
                             "swimming pool",
                             "gym",
                             "parking"
-                        ]
-                    }
+                        ],
+                        "parking": true,
+                        "lift": true,
+                        "fitted_kitchen": true,
+                        "pop_ceiling": true,
+                        "air_conditioning": true,
+                        "prepaid_meter": true,
+                        "gated_estate": true,
+                        "security_guard": true,
+                        "cctv": true,
+                        "internet": true,
+                        "power_supply": "grid_with_backup",
+                        "water_supply": "borehole",
+                        "furnishing_level": "fully_furnished"
+                    },
+                    "maximum_rental_duration": "24",
+                    "pet_policy": "Small pets allowed with prior approval"
                 },
                 "feature_property": {
                     "feature_property_checkbox": true
@@ -359,7 +397,7 @@
         "registration_credentials": {
             "full_name": "Ayodele Omoniyi Mejabi",
             "email": "ayomejabi@icloud.com",
-            "password": "ifG@dbi4Ayo",
+            "password": "ifG0dbi4mi",
             "landlord": true
         },
         "login_credentials": {
@@ -471,18 +509,22 @@
                 "property_information": {
                     "title": "Spacious 4 bedroom Flat",
                     "property_type": "Flat",
-                    "description": "A stunning 4 bedroom flat in the ikoyi neighbourhood, lagos",
-                    "address": "30 Awolowo Road",
-                    "city": "Ikoyi",
+                    "description": "A stunning 4 bedroom flat in Lekki Phase 1, Lagos.",
+                    "address": "30 Admiralty Way",
+                    "city": "Lekki",
                     "state": "Lagos",
-                    "postal_code": "100021",
                     "bedroom": 4,
                     "bathroom": 4,
                     "toilets": 5,
                     "square_feet": 4000,
                     "available_from": "12/08/2026",
-                    "price_per_year": 2000,
-                    "deposit_amount": 400
+                    "price_per_year": 750000,
+                    "lga": "Eti-Osa",
+                    "area": "Lekki Phase 1",
+                    "service_charge": 75000,
+                    "legal_fee": 37500,
+                    "year_built": 2018,
+                    "nearest_landmark": "Near Elegushi Beach"
                 },
                 "property_ownership verification": {
                     "verification_method": {
@@ -518,8 +560,23 @@
                             "swimming pool",
                             "gym",
                             "parking"
-                        ]
-                    }
+                        ],
+                        "parking": true,
+                        "lift": true,
+                        "fitted_kitchen": true,
+                        "pop_ceiling": true,
+                        "air_conditioning": true,
+                        "prepaid_meter": true,
+                        "gated_estate": true,
+                        "security_guard": true,
+                        "cctv": true,
+                        "internet": true,
+                        "power_supply": "grid_with_backup",
+                        "water_supply": "borehole",
+                        "furnishing_level": "fully_furnished"
+                    },
+                    "maximum_rental_duration": "24",
+                    "pet_policy": "Small pets allowed with prior approval"
                 },
                 "feature_property": {
                     "feature_property_checkbox": true
@@ -649,18 +706,22 @@
                 "property_information": {
                     "title": "Cossy 3 bedroom Flat",
                     "property_type": "Flat",
-                    "description": "A decent 3 bedroom flat in thomson ave, ikoyi, lagos",
-                    "address": "14 Thomson Avenue, Ikoyi, Lagos",
-                    "city": "Ikoyi",
+                    "description": "A decent 3 bedroom flat in Ikeja GRA, Lagos.",
+                    "address": "14 Isaac John Street",
+                    "city": "Ikeja",
                     "state": "Lagos",
-                    "postal_code": "100021",
                     "bedroom": 3,
                     "bathroom": 3,
                     "toilets": 4,
                     "square_feet": 3000,
                     "available_from": "12/08/2026",
-                    "price_per_year": 1500,
-                    "deposit_amount": 300
+                    "price_per_year": 450000,
+                    "lga": "Ikeja",
+                    "area": "Ikeja GRA",
+                    "service_charge": 45000,
+                    "legal_fee": 22500,
+                    "year_built": 2018,
+                    "nearest_landmark": "Near Ikeja City Mall"
                 },
                 "property_ownership verification": {
                     "verification_method": {
@@ -696,8 +757,23 @@
                             "swimming pool",
                             "gym",
                             "parking"
-                        ]
-                    }
+                        ],
+                        "parking": true,
+                        "lift": true,
+                        "fitted_kitchen": true,
+                        "pop_ceiling": true,
+                        "air_conditioning": true,
+                        "prepaid_meter": true,
+                        "gated_estate": true,
+                        "security_guard": true,
+                        "cctv": true,
+                        "internet": true,
+                        "power_supply": "grid_with_backup",
+                        "water_supply": "borehole",
+                        "furnishing_level": "fully_furnished"
+                    },
+                    "maximum_rental_duration": "24",
+                    "pet_policy": "Small pets allowed with prior approval"
                 },
                 "feature_property": {
                     "feature_property_checkbox": true
@@ -706,6 +782,1749 @@
                     "cover_image": "rentdirect/apps/api/seed_demo_data/landlord/isaac/listings/01/cover_image.jpg",
                     "additional_images": [
                         "rentdirect/apps/api/seed_demo_data/landlord/isaac/listings/01/*.*"
+                    ]
+                }
+            },
+            "02": {
+                "property_information": {
+                    "title": "Comfort 3 Bedroom Flat",
+                    "property_type": "Flat",
+                    "description": "A comfortable 3 bedroom flat in Nassarawa GRA, Kano, suitable for families.",
+                    "address": "5 Murtala Mohammed Way",
+                    "city": "Kano",
+                    "state": "Kano",
+                    "lga": "Nassarawa",
+                    "area": "Nassarawa GRA",
+                    "nearest_landmark": "Near Kano Club",
+                    "bedroom": 3,
+                    "bathroom": 3,
+                    "toilets": 4,
+                    "square_feet": 1900,
+                    "available_from": "01/11/2025",
+                    "price_per_year": 400000,
+                    "service_charge": 40000,
+                    "legal_fee": 20000,
+                    "negotiable": true,
+                    "year_built": 2015,
+                    "total_floors": 3,
+                    "parking_spaces": 2
+                },
+                "property_ownership verification": {
+                    "verification_method": {
+                        "upload_documents": false,
+                        "in_person_verification": true
+                    },
+                    "ownership_types": [
+                        "Sole Owner"
+                    ],
+                    "ownership_status": [],
+                    "ownership_documents": [
+                        "Certificate of Occupancy (C of O)",
+                        "Deed of Assignment",
+                        "Governor's Consent"
+                    ],
+                    "property_document": "rentdirect/apps/api/seed_demo_data/landlord/isaac/documents/property/house_deed.pdf"
+                },
+                "rental_preferences": {
+                    "maximum_occupancy": "6",
+                    "minimum_lease_duration": "12",
+                    "maximum_rental_duration": "36",
+                    "pets_allowed": false,
+                    "pet_policy": "",
+                    "commercial_activities_allowed": false,
+                    "student_tenants_allowed": false,
+                    "expatriates_allowed": true,
+                    "smoking_allowed": false,
+                    "short_let_allowed": false,
+                    "corp_members_allowed": true,
+                    "features": {
+                        "utilities_included": false,
+                        "furnished": false,
+                        "furnishing_level": "semi_furnished",
+                        "pet_friendly": false,
+                        "amenities": [
+                            "parking",
+                            "garden"
+                        ],
+                        "parking": true,
+                        "garden": true,
+                        "fitted_kitchen": true,
+                        "pop_ceiling": true,
+                        "prepaid_meter": true,
+                        "air_conditioning": true,
+                        "internet": false,
+                        "gated_estate": true,
+                        "security_guard": true,
+                        "water_supply": "borehole",
+                        "power_supply": "grid_with_backup"
+                    }
+                },
+                "feature_property": {
+                    "feature_property_checkbox": false
+                },
+                "images": {
+                    "cover_image": "rentdirect/apps/api/seed_demo_data/landlord/isaac/listings/02/cover_image.jpg",
+                    "additional_images": [
+                        "rentdirect/apps/api/seed_demo_data/landlord/isaac/listings/02/*.*"
+                    ]
+                }
+            }
+        }
+    },
+    "ade": {
+        "registration_credentials": {
+            "full_name": "Ade Bankole Wright",
+            "email": "criyo.career+ade@gmail.com",
+            "password": "ifG0dbi4mi",
+            "landlord": true
+        },
+        "login_credentials": {
+            "email": "criyo.career+ade@gmail.com",
+            "password": "ifG0dbi4mi"
+        },
+        "verification": {
+            "landlord_identification": {
+                "type": "Individual Landlord",
+                "personal_information": {
+                    "first_name": "Ade",
+                    "middle_name": "Bankole",
+                    "last_name": "Wright",
+                    "date_of_birth": "1985-04-14",
+                    "country_of_birth": "Nigeria",
+                    "state_of_birth": "Lagos",
+                    "nationality": "Nigeria",
+                    "state_of_origin": "Lagos",
+                    "lga_of_origin": "Eti-Osa",
+                    "gender": "Male",
+                    "contact_number": "08123456701",
+                    "email": "criyo.career+ade@gmail.com",
+                    "employment_status": "Employed",
+                    "occupation": "Estate Manager",
+                    "national_identity_number": "22148392015",
+                    "bank_verification_number": "11029384756",
+                    "bank_name": "Zenith Bank",
+                    "account_name": "Ade Bankole Wright",
+                    "account_number": "2001345876",
+                    "residential_address": "12 Fola Osibo Road, Lekki Phase 1, Lagos",
+                    "identity_document": "rentdirect/apps/api/seed_demo_data/landlord/ade/documents/id/nin.pdf"
+                }
+            }
+        },
+        "profile": {
+            "photo": "api/seed_demo_data/landlord/ade/ade.webp",
+            "personal_information": {
+                "first_name": "Ade",
+                "middle_name": "Bankole",
+                "last_name": "Wright",
+                "date_of_birth": "1985-04-14",
+                "gender": "Male",
+                "nationality": "Nigeria",
+                "state_of_origin": "Lagos",
+                "lga_of_origin": "Eti-Osa",
+                "country_of_birth": "Nigeria",
+                "state_of_birth": "Lagos",
+                "contact_number": "08123456701",
+                "employment_status": "Employed",
+                "occupation": "Estate Manager",
+                "national_identity_number": "22148392015",
+                "bank_verification_number": "11029384756",
+                "bank_name": "Zenith Bank",
+                "account_name": "Ade Bankole Wright",
+                "account_number": "2001345876",
+                "identity_document": "rentdirect/apps/api/seed_demo_data/landlord/ade/documents/id/nin.pdf",
+                "preferred_contact_method": "whatsapp",
+                "phone_number": "08123456701",
+                "whatsapp_number": "+2348123456701",
+                "email": "criyo.career+ade@gmail.com",
+                "bio_about_me": "Landlord with well-kept apartments across Lekki and Ajah, focused on family-friendly homes."
+            },
+            "employment_information": {
+                "employer_name": "Wrightfield Properties",
+                "job_title": "Portfolio Manager",
+                "employment_type": "Full-time",
+                "years_employed": 6,
+                "work_email": "ade.wright@wrightfield.example.com",
+                "work_address": "10 Admiralty Way, Lekki Phase 1, Lagos",
+                "hr_contact_name": "HR Department",
+                "hr_contact_number": "+234801234567",
+                "hr_email": "hr@wrightfieldproperties.example.com"
+            },
+            "identity_and_bank_verification": {
+                "id_type": "National ID (NIN)",
+                "id_number": "22148392015",
+                "expiry_date": "",
+                "bank_name": "Zenith Bank",
+                "account_name": "Ade Bankole Wright",
+                "account_number": "2001345876"
+            },
+            "residential_information": {
+                "country": "Nigeria",
+                "state": "Lagos",
+                "city": "Lekki",
+                "address": "12 Fola Osibo Road, Lekki Phase 1, Lagos",
+                "proof_of_address": [
+                    "Utility Bill",
+                    "Bank Statement"
+                ]
+            },
+            "emergency_contact": {
+                "first_name": "Tunde",
+                "middle_name": "",
+                "last_name": "Wright",
+                "phone_number": "+2348091122334",
+                "email": "tunde.wright@example.com",
+                "relationship": "Sibling",
+                "address": "5 Admiralty Way, Lekki Phase 1, Lagos"
+            }
+        },
+        "subscription_plan": {
+            "billing_type": "monthly",
+            "plan": "platinum",
+            "subscription_status": "active"
+        },
+        "listings": {
+            "01": {
+                "property_information": {
+                    "title": "Luxury 3 Bedroom Flat",
+                    "property_type": "Flat",
+                    "description": "A well finished 3 bedroom flat with a swimming pool in a serene estate in Calabar.",
+                    "address": "8B Murtala Muhammed Highway",
+                    "city": "Calabar",
+                    "state": "Cross River",
+                    "lga": "Calabar Municipal",
+                    "area": "State Housing",
+                    "nearest_landmark": "Near Calabar Mall",
+                    "bedroom": 3,
+                    "bathroom": 3,
+                    "toilets": 4,
+                    "square_feet": 2200,
+                    "available_from": "01/11/2025",
+                    "price_per_year": 380000,
+                    "service_charge": 38000,
+                    "legal_fee": 19000,
+                    "negotiable": false,
+                    "year_built": 2020,
+                    "floor_number": 2,
+                    "total_floors": 6,
+                    "parking_spaces": 2
+                },
+                "property_ownership verification": {
+                    "verification_method": {
+                        "upload_documents": false,
+                        "in_person_verification": true
+                    },
+                    "ownership_types": [
+                        "Sole Owner"
+                    ],
+                    "ownership_status": [],
+                    "ownership_documents": [
+                        "Certificate of Occupancy (C of O)",
+                        "Deed of Assignment",
+                        "Governor's Consent"
+                    ],
+                    "property_document": "rentdirect/apps/api/seed_demo_data/landlord/ade/documents/property/house_deed.pdf"
+                },
+                "rental_preferences": {
+                    "maximum_occupancy": "6",
+                    "minimum_lease_duration": "12",
+                    "maximum_rental_duration": "36",
+                    "pets_allowed": true,
+                    "pet_policy": "Cats and small dogs welcome",
+                    "commercial_activities_allowed": false,
+                    "student_tenants_allowed": false,
+                    "expatriates_allowed": true,
+                    "smoking_allowed": false,
+                    "short_let_allowed": false,
+                    "corp_members_allowed": true,
+                    "features": {
+                        "utilities_included": false,
+                        "furnished": true,
+                        "furnishing_level": "fully_furnished",
+                        "pet_friendly": true,
+                        "amenities": [
+                            "swimming pool",
+                            "gym",
+                            "parking",
+                            "children's playground"
+                        ],
+                        "parking": true,
+                        "fitted_kitchen": true,
+                        "pop_ceiling": true,
+                        "prepaid_meter": true,
+                        "air_conditioning": true,
+                        "internet": true,
+                        "water_supply": "borehole",
+                        "lift": true,
+                        "balcony": true,
+                        "gated_estate": true,
+                        "security_guard": true,
+                        "cctv": true,
+                        "power_supply": "grid_with_backup",
+                        "smart_lock": true
+                    }
+                },
+                "feature_property": {
+                    "feature_property_checkbox": false
+                },
+                "images": {
+                    "cover_image": "rentdirect/apps/api/seed_demo_data/landlord/ade/listings/01/cover_image.jpg",
+                    "additional_images": [
+                        "rentdirect/apps/api/seed_demo_data/landlord/ade/listings/01/*.*"
+                    ]
+                }
+            },
+            "02": {
+                "property_information": {
+                    "title": "Cozy 2 Bedroom Flat",
+                    "property_type": "Flat",
+                    "description": "A clean and affordable 2 bedroom flat in Sango Ota, minutes from the flyover.",
+                    "address": "14 Idiroko Road",
+                    "city": "Sango Ota",
+                    "state": "Ogun",
+                    "lga": "Ado-Odo/Ota",
+                    "area": "Sango Ota",
+                    "nearest_landmark": "Near Sango Market",
+                    "bedroom": 2,
+                    "bathroom": 2,
+                    "toilets": 3,
+                    "square_feet": 1400,
+                    "available_from": "15/10/2025",
+                    "price_per_year": 250000,
+                    "service_charge": 25000,
+                    "legal_fee": 12500,
+                    "negotiable": false,
+                    "year_built": 2016,
+                    "total_floors": 4,
+                    "parking_spaces": 1
+                },
+                "property_ownership verification": {
+                    "verification_method": {
+                        "upload_documents": false,
+                        "in_person_verification": true
+                    },
+                    "ownership_types": [
+                        "Sole Owner"
+                    ],
+                    "ownership_status": [],
+                    "ownership_documents": [
+                        "Certificate of Occupancy (C of O)",
+                        "Deed of Assignment",
+                        "Governor's Consent"
+                    ],
+                    "property_document": "rentdirect/apps/api/seed_demo_data/landlord/ade/documents/property/house_deed.pdf"
+                },
+                "rental_preferences": {
+                    "maximum_occupancy": "4",
+                    "minimum_lease_duration": "12",
+                    "maximum_rental_duration": "24",
+                    "pets_allowed": false,
+                    "pet_policy": "",
+                    "commercial_activities_allowed": false,
+                    "student_tenants_allowed": false,
+                    "expatriates_allowed": true,
+                    "smoking_allowed": false,
+                    "short_let_allowed": false,
+                    "corp_members_allowed": true,
+                    "features": {
+                        "utilities_included": false,
+                        "furnished": false,
+                        "furnishing_level": "semi_furnished",
+                        "pet_friendly": false,
+                        "amenities": [
+                            "parking"
+                        ],
+                        "parking": true,
+                        "fitted_kitchen": true,
+                        "pop_ceiling": true,
+                        "prepaid_meter": true,
+                        "air_conditioning": true,
+                        "internet": true,
+                        "water_supply": "borehole",
+                        "gated_estate": true,
+                        "security_guard": true,
+                        "power_supply": "grid_only"
+                    }
+                },
+                "feature_property": {
+                    "feature_property_checkbox": false
+                },
+                "images": {
+                    "cover_image": "rentdirect/apps/api/seed_demo_data/landlord/ade/listings/02/cover_image.jpg",
+                    "additional_images": [
+                        "rentdirect/apps/api/seed_demo_data/landlord/ade/listings/02/*.*"
+                    ]
+                }
+            }
+        }
+    },
+    "adeola": {
+        "registration_credentials": {
+            "full_name": "Adeola Funmi Okonkwo",
+            "email": "criyo.career+adeola@gmail.com",
+            "password": "ifG0dbi4mi",
+            "landlord": true
+        },
+        "login_credentials": {
+            "email": "criyo.career+adeola@gmail.com",
+            "password": "ifG0dbi4mi"
+        },
+        "verification": {
+            "landlord_identification": {
+                "type": "Individual Landlord",
+                "personal_information": {
+                    "first_name": "Adeola",
+                    "middle_name": "Funmi",
+                    "last_name": "Okonkwo",
+                    "date_of_birth": "1988-09-02",
+                    "country_of_birth": "Nigeria",
+                    "state_of_birth": "Oyo",
+                    "nationality": "Nigeria",
+                    "state_of_origin": "Oyo",
+                    "lga_of_origin": "Ibadan North",
+                    "gender": "Female",
+                    "contact_number": "08034567812",
+                    "email": "criyo.career+adeola@gmail.com",
+                    "employment_status": "Employed",
+                    "occupation": "Pharmacist",
+                    "national_identity_number": "31057482916",
+                    "bank_verification_number": "22140938571",
+                    "bank_name": "GTBank",
+                    "account_name": "Adeola Funmi Okonkwo",
+                    "account_number": "0123456702",
+                    "residential_address": "7 Gado Nasko Road, Kubwa, Abuja",
+                    "identity_document": "rentdirect/apps/api/seed_demo_data/landlord/adeola/documents/id/nin.pdf"
+                }
+            }
+        },
+        "profile": {
+            "photo": "api/seed_demo_data/landlord/adeola/adeola.webp",
+            "personal_information": {
+                "first_name": "Adeola",
+                "middle_name": "Funmi",
+                "last_name": "Okonkwo",
+                "date_of_birth": "1988-09-02",
+                "gender": "Female",
+                "nationality": "Nigeria",
+                "state_of_origin": "Oyo",
+                "lga_of_origin": "Ibadan North",
+                "country_of_birth": "Nigeria",
+                "state_of_birth": "Oyo",
+                "contact_number": "08034567812",
+                "employment_status": "Employed",
+                "occupation": "Pharmacist",
+                "national_identity_number": "31057482916",
+                "bank_verification_number": "22140938571",
+                "bank_name": "GTBank",
+                "account_name": "Adeola Funmi Okonkwo",
+                "account_number": "0123456702",
+                "identity_document": "rentdirect/apps/api/seed_demo_data/landlord/adeola/documents/id/nin.pdf",
+                "preferred_contact_method": "whatsapp",
+                "phone_number": "08034567812",
+                "whatsapp_number": "+2348034567812",
+                "email": "criyo.career+adeola@gmail.com",
+                "bio_about_me": "Private landlord offering a tidy apartment in the heart of Yaba."
+            },
+            "employment_information": {
+                "employer_name": "MedPlus Pharmacy",
+                "job_title": "Senior Pharmacist",
+                "employment_type": "Full-time",
+                "years_employed": 6,
+                "work_email": "adeola.okonkwo@medplus.example.com",
+                "work_address": "24 Herbert Macaulay Way, Yaba, Lagos",
+                "hr_contact_name": "HR Department",
+                "hr_contact_number": "+234801234567",
+                "hr_email": "hr@medpluspharmacy.example.com"
+            },
+            "identity_and_bank_verification": {
+                "id_type": "National ID (NIN)",
+                "id_number": "31057482916",
+                "expiry_date": "",
+                "bank_name": "GTBank",
+                "account_name": "Adeola Funmi Okonkwo",
+                "account_number": "0123456702"
+            },
+            "residential_information": {
+                "country": "Nigeria",
+                "state": "Federal Capital Territory",
+                "city": "Kubwa",
+                "address": "7 Gado Nasko Road, Kubwa, Abuja",
+                "proof_of_address": [
+                    "Utility Bill",
+                    "Bank Statement"
+                ]
+            },
+            "emergency_contact": {
+                "first_name": "Biodun",
+                "middle_name": "",
+                "last_name": "Okonkwo",
+                "phone_number": "+2348091122334",
+                "email": "biodun.okonkwo@example.com",
+                "relationship": "Sibling",
+                "address": "18 Commercial Avenue, Sabo, Yaba, Lagos"
+            }
+        },
+        "subscription_plan": {
+            "billing_type": "monthly",
+            "plan": "gold",
+            "subscription_status": "active"
+        },
+        "listings": {
+            "01": {
+                "property_information": {
+                    "title": "Modern 2 Bedroom Apartment",
+                    "property_type": "Apartment",
+                    "description": "A modern 2 bedroom apartment in Kubwa, Abuja.",
+                    "address": "7 Gado Nasko Road",
+                    "city": "Kubwa",
+                    "state": "Federal Capital Territory",
+                    "lga": "Bwari",
+                    "area": "Kubwa",
+                    "nearest_landmark": "Near Kubwa Market",
+                    "bedroom": 2,
+                    "bathroom": 2,
+                    "toilets": 3,
+                    "square_feet": 1300,
+                    "available_from": "01/12/2025",
+                    "price_per_year": 280000,
+                    "service_charge": 28000,
+                    "legal_fee": 14000,
+                    "negotiable": true,
+                    "year_built": 2015,
+                    "floor_number": 1,
+                    "total_floors": 4,
+                    "parking_spaces": 1
+                },
+                "property_ownership verification": {
+                    "verification_method": {
+                        "upload_documents": false,
+                        "in_person_verification": true
+                    },
+                    "ownership_types": [
+                        "Sole Owner"
+                    ],
+                    "ownership_status": [],
+                    "ownership_documents": [
+                        "Certificate of Occupancy (C of O)",
+                        "Deed of Assignment",
+                        "Governor's Consent"
+                    ],
+                    "property_document": "rentdirect/apps/api/seed_demo_data/landlord/adeola/documents/property/house_deed.pdf"
+                },
+                "rental_preferences": {
+                    "maximum_occupancy": "4",
+                    "minimum_lease_duration": "12",
+                    "maximum_rental_duration": "24",
+                    "pets_allowed": false,
+                    "pet_policy": "",
+                    "commercial_activities_allowed": false,
+                    "student_tenants_allowed": true,
+                    "expatriates_allowed": true,
+                    "smoking_allowed": false,
+                    "short_let_allowed": false,
+                    "corp_members_allowed": true,
+                    "features": {
+                        "utilities_included": false,
+                        "furnished": false,
+                        "furnishing_level": "semi_furnished",
+                        "pet_friendly": false,
+                        "amenities": [
+                            "parking"
+                        ],
+                        "parking": true,
+                        "fitted_kitchen": true,
+                        "pop_ceiling": true,
+                        "prepaid_meter": true,
+                        "air_conditioning": true,
+                        "internet": true,
+                        "water_supply": "borehole",
+                        "balcony": true,
+                        "power_supply": "grid_only"
+                    }
+                },
+                "feature_property": {
+                    "feature_property_checkbox": false
+                },
+                "images": {
+                    "cover_image": "rentdirect/apps/api/seed_demo_data/landlord/adeola/listings/01/cover_image.jpg",
+                    "additional_images": [
+                        "rentdirect/apps/api/seed_demo_data/landlord/adeola/listings/01/*.*"
+                    ]
+                }
+            }
+        }
+    },
+    "dapo": {
+        "registration_credentials": {
+            "full_name": "Dapo Olumide Peters",
+            "email": "criyo.career+dapo@gmail.com",
+            "password": "ifG0dbi4mi",
+            "landlord": true
+        },
+        "login_credentials": {
+            "email": "criyo.career+dapo@gmail.com",
+            "password": "ifG0dbi4mi"
+        },
+        "verification": {
+            "landlord_identification": {
+                "type": "Individual Landlord",
+                "personal_information": {
+                    "first_name": "Dapo",
+                    "middle_name": "Olumide",
+                    "last_name": "Peters",
+                    "date_of_birth": "1979-11-21",
+                    "country_of_birth": "Nigeria",
+                    "state_of_birth": "Ogun",
+                    "nationality": "Nigeria",
+                    "state_of_origin": "Ogun",
+                    "lga_of_origin": "Ijebu Ode",
+                    "gender": "Male",
+                    "contact_number": "08056712349",
+                    "email": "criyo.career+dapo@gmail.com",
+                    "employment_status": "Employed",
+                    "occupation": "Civil Engineer",
+                    "national_identity_number": "12938574026",
+                    "bank_verification_number": "33409182746",
+                    "bank_name": "First Bank",
+                    "account_name": "Dapo Olumide Peters",
+                    "account_number": "3045678210",
+                    "residential_address": "11B Bourdillon Road, Ikoyi, Lagos",
+                    "identity_document": "rentdirect/apps/api/seed_demo_data/landlord/dapo/documents/id/nin.pdf"
+                }
+            }
+        },
+        "profile": {
+            "photo": "api/seed_demo_data/landlord/dapo/dapo.webp",
+            "personal_information": {
+                "first_name": "Dapo",
+                "middle_name": "Olumide",
+                "last_name": "Peters",
+                "date_of_birth": "1979-11-21",
+                "gender": "Male",
+                "nationality": "Nigeria",
+                "state_of_origin": "Ogun",
+                "lga_of_origin": "Ijebu Ode",
+                "country_of_birth": "Nigeria",
+                "state_of_birth": "Ogun",
+                "contact_number": "08056712349",
+                "employment_status": "Employed",
+                "occupation": "Civil Engineer",
+                "national_identity_number": "12938574026",
+                "bank_verification_number": "33409182746",
+                "bank_name": "First Bank",
+                "account_name": "Dapo Olumide Peters",
+                "account_number": "3045678210",
+                "identity_document": "rentdirect/apps/api/seed_demo_data/landlord/dapo/documents/id/nin.pdf",
+                "preferred_contact_method": "whatsapp",
+                "phone_number": "08056712349",
+                "whatsapp_number": "+2348056712349",
+                "email": "criyo.career+dapo@gmail.com",
+                "bio_about_me": "Experienced landlord with premium homes in Ikoyi and Victoria Island."
+            },
+            "employment_information": {
+                "employer_name": "Petersfield Construction",
+                "job_title": "Principal Engineer",
+                "employment_type": "Full-time",
+                "years_employed": 6,
+                "work_email": "dapo.peters@petersfield.example.com",
+                "work_address": "3 Raymond Njoku Street, Ikoyi, Lagos",
+                "hr_contact_name": "HR Department",
+                "hr_contact_number": "+234801234567",
+                "hr_email": "hr@petersfieldconstruction.example.com"
+            },
+            "identity_and_bank_verification": {
+                "id_type": "National ID (NIN)",
+                "id_number": "12938574026",
+                "expiry_date": "",
+                "bank_name": "First Bank",
+                "account_name": "Dapo Olumide Peters",
+                "account_number": "3045678210"
+            },
+            "residential_information": {
+                "country": "Nigeria",
+                "state": "Lagos",
+                "city": "Ikoyi",
+                "address": "11B Bourdillon Road, Ikoyi, Lagos",
+                "proof_of_address": [
+                    "Utility Bill",
+                    "Bank Statement"
+                ]
+            },
+            "emergency_contact": {
+                "first_name": "Kemi",
+                "middle_name": "",
+                "last_name": "Peters",
+                "phone_number": "+2348091122334",
+                "email": "kemi.peters@example.com",
+                "relationship": "Spouse",
+                "address": "11B Bourdillon Road, Ikoyi, Lagos"
+            }
+        },
+        "subscription_plan": {
+            "billing_type": "monthly",
+            "plan": "platinum",
+            "subscription_status": "active"
+        },
+        "listings": {
+            "01": {
+                "property_information": {
+                    "title": "Executive 4 Bedroom Duplex",
+                    "property_type": "Duplex",
+                    "description": "An executive 4 bedroom semi-detached duplex with BQ, pool and 24-hour power in Kaduna GRA.",
+                    "address": "6 Bayajida Road",
+                    "city": "Kaduna",
+                    "state": "Kaduna",
+                    "lga": "Kaduna North",
+                    "area": "Ungwan Rimi GRA",
+                    "nearest_landmark": "Near Kaduna Polo Club",
+                    "bedroom": 4,
+                    "bathroom": 4,
+                    "toilets": 5,
+                    "square_feet": 4200,
+                    "available_from": "01/01/2026",
+                    "price_per_year": 550000,
+                    "service_charge": 55000,
+                    "legal_fee": 27500,
+                    "negotiable": false,
+                    "year_built": 2021,
+                    "parking_spaces": 3,
+                    "video_tour_url": "https://example.com/tours/dapo-duplex"
+                },
+                "property_ownership verification": {
+                    "verification_method": {
+                        "upload_documents": false,
+                        "in_person_verification": true
+                    },
+                    "ownership_types": [
+                        "Sole Owner"
+                    ],
+                    "ownership_status": [],
+                    "ownership_documents": [
+                        "Certificate of Occupancy (C of O)",
+                        "Deed of Assignment",
+                        "Governor's Consent"
+                    ],
+                    "property_document": "rentdirect/apps/api/seed_demo_data/landlord/dapo/documents/property/house_deed.pdf"
+                },
+                "rental_preferences": {
+                    "maximum_occupancy": "8",
+                    "minimum_lease_duration": "12",
+                    "maximum_rental_duration": "48",
+                    "pets_allowed": true,
+                    "pet_policy": "Pets allowed with prior approval",
+                    "commercial_activities_allowed": false,
+                    "student_tenants_allowed": false,
+                    "expatriates_allowed": true,
+                    "smoking_allowed": false,
+                    "short_let_allowed": false,
+                    "corp_members_allowed": true,
+                    "features": {
+                        "utilities_included": false,
+                        "furnished": true,
+                        "furnishing_level": "fully_furnished",
+                        "pet_friendly": true,
+                        "amenities": [
+                            "swimming pool",
+                            "gym",
+                            "parking",
+                            "garden",
+                            "bq"
+                        ],
+                        "parking": true,
+                        "fitted_kitchen": true,
+                        "pop_ceiling": true,
+                        "prepaid_meter": true,
+                        "air_conditioning": true,
+                        "internet": true,
+                        "water_supply": "borehole",
+                        "garage": true,
+                        "garden": true,
+                        "boys_quarters": true,
+                        "electric_fence": true,
+                        "gated_estate": true,
+                        "security_guard": true,
+                        "cctv": true,
+                        "smart_lock": true,
+                        "power_supply": "24_hours"
+                    }
+                },
+                "feature_property": {
+                    "feature_property_checkbox": false
+                },
+                "images": {
+                    "cover_image": "rentdirect/apps/api/seed_demo_data/landlord/dapo/listings/01/cover_image.jpg",
+                    "additional_images": [
+                        "rentdirect/apps/api/seed_demo_data/landlord/dapo/listings/01/*.*"
+                    ]
+                }
+            },
+            "02": {
+                "property_information": {
+                    "title": "Premium 3 Bedroom Apartment",
+                    "property_type": "Apartment",
+                    "description": "A premium serviced 3 bedroom apartment in Warri GRA, Delta State.",
+                    "address": "21A Enerhen Road",
+                    "city": "Warri",
+                    "state": "Delta",
+                    "lga": "Warri South",
+                    "area": "GRA Warri",
+                    "nearest_landmark": "Near Delta Mall",
+                    "bedroom": 3,
+                    "bathroom": 3,
+                    "toilets": 4,
+                    "square_feet": 2500,
+                    "available_from": "15/11/2025",
+                    "price_per_year": 450000,
+                    "service_charge": 45000,
+                    "legal_fee": 22500,
+                    "negotiable": false,
+                    "year_built": 2022,
+                    "nightly_rate": 40000,
+                    "floor_number": 5,
+                    "total_floors": 12,
+                    "parking_spaces": 2
+                },
+                "property_ownership verification": {
+                    "verification_method": {
+                        "upload_documents": false,
+                        "in_person_verification": true
+                    },
+                    "ownership_types": [
+                        "Sole Owner"
+                    ],
+                    "ownership_status": [],
+                    "ownership_documents": [
+                        "Certificate of Occupancy (C of O)",
+                        "Deed of Assignment",
+                        "Governor's Consent"
+                    ],
+                    "property_document": "rentdirect/apps/api/seed_demo_data/landlord/dapo/documents/property/house_deed.pdf"
+                },
+                "rental_preferences": {
+                    "maximum_occupancy": "6",
+                    "minimum_lease_duration": "6",
+                    "maximum_rental_duration": "36",
+                    "pets_allowed": false,
+                    "pet_policy": "",
+                    "commercial_activities_allowed": false,
+                    "student_tenants_allowed": false,
+                    "expatriates_allowed": true,
+                    "smoking_allowed": false,
+                    "short_let_allowed": true,
+                    "corp_members_allowed": true,
+                    "features": {
+                        "utilities_included": false,
+                        "furnished": true,
+                        "furnishing_level": "fully_furnished",
+                        "pet_friendly": false,
+                        "amenities": [
+                            "swimming pool",
+                            "gym",
+                            "parking",
+                            "elevator",
+                            "concierge"
+                        ],
+                        "parking": true,
+                        "fitted_kitchen": true,
+                        "pop_ceiling": true,
+                        "prepaid_meter": true,
+                        "air_conditioning": true,
+                        "internet": true,
+                        "water_supply": "borehole",
+                        "lift": true,
+                        "balcony": true,
+                        "gated_estate": true,
+                        "security_guard": true,
+                        "cctv": true,
+                        "wheelchair_accessible": true,
+                        "power_supply": "24_hours"
+                    }
+                },
+                "feature_property": {
+                    "feature_property_checkbox": false
+                },
+                "images": {
+                    "cover_image": "rentdirect/apps/api/seed_demo_data/landlord/dapo/listings/02/cover_image.jpg",
+                    "additional_images": [
+                        "rentdirect/apps/api/seed_demo_data/landlord/dapo/listings/02/*.*"
+                    ]
+                }
+            }
+        }
+    },
+    "david": {
+        "registration_credentials": {
+            "full_name": "David Chukwuemeka Nwosu",
+            "email": "criyo.career+david@gmail.com",
+            "password": "ifG0dbi4mi",
+            "landlord": true
+        },
+        "login_credentials": {
+            "email": "criyo.career+david@gmail.com",
+            "password": "ifG0dbi4mi"
+        },
+        "verification": {
+            "landlord_identification": {
+                "type": "Individual Landlord",
+                "personal_information": {
+                    "first_name": "David",
+                    "middle_name": "Chukwuemeka",
+                    "last_name": "Nwosu",
+                    "date_of_birth": "1983-06-30",
+                    "country_of_birth": "Nigeria",
+                    "state_of_birth": "Anambra",
+                    "nationality": "Nigeria",
+                    "state_of_origin": "Anambra",
+                    "lga_of_origin": "Awka South",
+                    "gender": "Male",
+                    "contact_number": "07012345698",
+                    "email": "criyo.career+david@gmail.com",
+                    "employment_status": "Employed",
+                    "occupation": "Accountant",
+                    "national_identity_number": "44729103856",
+                    "bank_verification_number": "55610293847",
+                    "bank_name": "Access Bank",
+                    "account_name": "David Chukwuemeka Nwosu",
+                    "account_number": "0691234578",
+                    "residential_address": "22 Awolowo Avenue, Old Bodija, Ibadan",
+                    "identity_document": "rentdirect/apps/api/seed_demo_data/landlord/david/documents/id/nin.pdf"
+                }
+            }
+        },
+        "profile": {
+            "photo": "api/seed_demo_data/landlord/david/david.webp",
+            "personal_information": {
+                "first_name": "David",
+                "middle_name": "Chukwuemeka",
+                "last_name": "Nwosu",
+                "date_of_birth": "1983-06-30",
+                "gender": "Male",
+                "nationality": "Nigeria",
+                "state_of_origin": "Anambra",
+                "lga_of_origin": "Awka South",
+                "country_of_birth": "Nigeria",
+                "state_of_birth": "Anambra",
+                "contact_number": "07012345698",
+                "employment_status": "Employed",
+                "occupation": "Accountant",
+                "national_identity_number": "44729103856",
+                "bank_verification_number": "55610293847",
+                "bank_name": "Access Bank",
+                "account_name": "David Chukwuemeka Nwosu",
+                "account_number": "0691234578",
+                "identity_document": "rentdirect/apps/api/seed_demo_data/landlord/david/documents/id/nin.pdf",
+                "preferred_contact_method": "whatsapp",
+                "phone_number": "07012345698",
+                "whatsapp_number": "+2347012345698",
+                "email": "criyo.career+david@gmail.com",
+                "bio_about_me": "Landlord with a well maintained family flat in Ikeja GRA."
+            },
+            "employment_information": {
+                "employer_name": "Nwosu & Partners",
+                "job_title": "Senior Partner",
+                "employment_type": "Full-time",
+                "years_employed": 6,
+                "work_email": "david.nwosu@nwosupartners.example.com",
+                "work_address": "9 Oduduwa Way, Ikeja GRA, Lagos",
+                "hr_contact_name": "HR Department",
+                "hr_contact_number": "+234801234567",
+                "hr_email": "hr@nwosu&partners.example.com"
+            },
+            "identity_and_bank_verification": {
+                "id_type": "National ID (NIN)",
+                "id_number": "44729103856",
+                "expiry_date": "",
+                "bank_name": "Access Bank",
+                "account_name": "David Chukwuemeka Nwosu",
+                "account_number": "0691234578"
+            },
+            "residential_information": {
+                "country": "Nigeria",
+                "state": "Oyo",
+                "city": "Ibadan",
+                "address": "22 Awolowo Avenue, Old Bodija, Ibadan",
+                "proof_of_address": [
+                    "Utility Bill",
+                    "Bank Statement"
+                ]
+            },
+            "emergency_contact": {
+                "first_name": "Adaeze",
+                "middle_name": "",
+                "last_name": "Nwosu",
+                "phone_number": "+2348091122334",
+                "email": "adaeze.nwosu@example.com",
+                "relationship": "Spouse",
+                "address": "22 Isaac John Street, Ikeja GRA, Lagos"
+            }
+        },
+        "subscription_plan": {
+            "billing_type": "monthly",
+            "plan": "silver",
+            "subscription_status": "active"
+        },
+        "listings": {
+            "01": {
+                "property_information": {
+                    "title": "Family 3 Bedroom Flat",
+                    "property_type": "Flat",
+                    "description": "A spacious family 3 bedroom flat in the quiet Bodija neighbourhood of Ibadan.",
+                    "address": "4 Awolowo Avenue",
+                    "city": "Ibadan",
+                    "state": "Oyo",
+                    "lga": "Ibadan North",
+                    "area": "Bodija",
+                    "nearest_landmark": "Near Bodija Market",
+                    "bedroom": 3,
+                    "bathroom": 3,
+                    "toilets": 4,
+                    "square_feet": 2000,
+                    "available_from": "01/10/2025",
+                    "price_per_year": 350000,
+                    "service_charge": 35000,
+                    "legal_fee": 17500,
+                    "negotiable": true,
+                    "year_built": 2012,
+                    "total_floors": 3,
+                    "parking_spaces": 2
+                },
+                "property_ownership verification": {
+                    "verification_method": {
+                        "upload_documents": false,
+                        "in_person_verification": true
+                    },
+                    "ownership_types": [
+                        "Sole Owner"
+                    ],
+                    "ownership_status": [],
+                    "ownership_documents": [
+                        "Certificate of Occupancy (C of O)",
+                        "Deed of Assignment",
+                        "Governor's Consent"
+                    ],
+                    "property_document": "rentdirect/apps/api/seed_demo_data/landlord/david/documents/property/house_deed.pdf"
+                },
+                "rental_preferences": {
+                    "maximum_occupancy": "6",
+                    "minimum_lease_duration": "12",
+                    "maximum_rental_duration": "36",
+                    "pets_allowed": true,
+                    "pet_policy": "Dogs allowed in the compound",
+                    "commercial_activities_allowed": false,
+                    "student_tenants_allowed": false,
+                    "expatriates_allowed": true,
+                    "smoking_allowed": false,
+                    "short_let_allowed": false,
+                    "corp_members_allowed": true,
+                    "features": {
+                        "utilities_included": false,
+                        "furnished": false,
+                        "furnishing_level": "semi_furnished",
+                        "pet_friendly": true,
+                        "amenities": [
+                            "parking",
+                            "garden"
+                        ],
+                        "parking": true,
+                        "fitted_kitchen": true,
+                        "pop_ceiling": true,
+                        "prepaid_meter": true,
+                        "air_conditioning": true,
+                        "internet": true,
+                        "water_supply": "borehole",
+                        "garden": true,
+                        "gated_estate": true,
+                        "security_guard": true,
+                        "power_supply": "grid_with_backup"
+                    }
+                },
+                "feature_property": {
+                    "feature_property_checkbox": false
+                },
+                "images": {
+                    "cover_image": "rentdirect/apps/api/seed_demo_data/landlord/david/listings/01/cover_image.jpg",
+                    "additional_images": [
+                        "rentdirect/apps/api/seed_demo_data/landlord/david/listings/01/*.*"
+                    ]
+                }
+            }
+        }
+    },
+    "jarno": {
+        "registration_credentials": {
+            "full_name": "Jarno Virtanen",
+            "email": "criyo.career+jarno@gmail.com",
+            "password": "ifG0dbi4mi",
+            "landlord": true
+        },
+        "login_credentials": {
+            "email": "criyo.career+jarno@gmail.com",
+            "password": "ifG0dbi4mi"
+        },
+        "verification": {
+            "landlord_identification": {
+                "type": "Individual Landlord",
+                "personal_information": {
+                    "first_name": "Jarno",
+                    "middle_name": "",
+                    "last_name": "Virtanen",
+                    "date_of_birth": "1986-03-17",
+                    "country_of_birth": "Nigeria",
+                    "state_of_birth": "Lagos",
+                    "nationality": "Nigeria",
+                    "state_of_origin": "Lagos",
+                    "lga_of_origin": "Eti-Osa",
+                    "gender": "Male",
+                    "contact_number": "09098761234",
+                    "email": "criyo.career+jarno@gmail.com",
+                    "employment_status": "Employed",
+                    "occupation": "IT Consultant",
+                    "national_identity_number": "66291038475",
+                    "bank_verification_number": "77829304156",
+                    "bank_name": "Opay",
+                    "account_name": "Jarno Virtanen",
+                    "account_number": "8012345609",
+                    "residential_address": "45 Airport Road, GRA, Benin City",
+                    "identity_document": "rentdirect/apps/api/seed_demo_data/landlord/jarno/documents/id/nin.pdf"
+                }
+            }
+        },
+        "profile": {
+            "photo": "api/seed_demo_data/landlord/jarno/jarno.webp",
+            "personal_information": {
+                "first_name": "Jarno",
+                "middle_name": "",
+                "last_name": "Virtanen",
+                "date_of_birth": "1986-03-17",
+                "gender": "Male",
+                "nationality": "Nigeria",
+                "state_of_origin": "Lagos",
+                "lga_of_origin": "Eti-Osa",
+                "country_of_birth": "Nigeria",
+                "state_of_birth": "Lagos",
+                "contact_number": "09098761234",
+                "employment_status": "Employed",
+                "occupation": "IT Consultant",
+                "national_identity_number": "66291038475",
+                "bank_verification_number": "77829304156",
+                "bank_name": "Opay",
+                "account_name": "Jarno Virtanen",
+                "account_number": "8012345609",
+                "identity_document": "rentdirect/apps/api/seed_demo_data/landlord/jarno/documents/id/nin.pdf",
+                "preferred_contact_method": "whatsapp",
+                "phone_number": "09098761234",
+                "whatsapp_number": "+2349098761234",
+                "email": "criyo.career+jarno@gmail.com",
+                "bio_about_me": "Expat-friendly landlord with a furnished flat in central Abuja."
+            },
+            "employment_information": {
+                "employer_name": "Virtanen Consulting",
+                "job_title": "Lead Consultant",
+                "employment_type": "Full-time",
+                "years_employed": 6,
+                "work_email": "jarno@virtanen.example.com",
+                "work_address": "15 Aminu Kano Crescent, Wuse 2, Abuja",
+                "hr_contact_name": "HR Department",
+                "hr_contact_number": "+234801234567",
+                "hr_email": "hr@virtanenconsulting.example.com"
+            },
+            "identity_and_bank_verification": {
+                "id_type": "National ID (NIN)",
+                "id_number": "66291038475",
+                "expiry_date": "",
+                "bank_name": "Opay",
+                "account_name": "Jarno Virtanen",
+                "account_number": "8012345609"
+            },
+            "residential_information": {
+                "country": "Nigeria",
+                "state": "Edo",
+                "city": "Benin City",
+                "address": "45 Airport Road, GRA, Benin City",
+                "proof_of_address": [
+                    "Utility Bill",
+                    "Bank Statement"
+                ]
+            },
+            "emergency_contact": {
+                "first_name": "Mikko",
+                "middle_name": "",
+                "last_name": "Virtanen",
+                "phone_number": "+2348091122334",
+                "email": "mikko.virtanen@example.com",
+                "relationship": "Sibling",
+                "address": "45B Aminu Kano Crescent, Wuse 2, Abuja"
+            }
+        },
+        "subscription_plan": {
+            "billing_type": "monthly",
+            "plan": "gold",
+            "subscription_status": "active"
+        },
+        "listings": {
+            "01": {
+                "property_information": {
+                    "title": "Stylish 2 Bedroom Flat",
+                    "property_type": "Flat",
+                    "description": "A stylish fully furnished 2 bedroom flat in Benin City GRA, ideal for expatriates and professionals.",
+                    "address": "12B Airport Road",
+                    "city": "Benin City",
+                    "state": "Edo",
+                    "lga": "Oredo",
+                    "area": "GRA",
+                    "nearest_landmark": "Off Sapele Road",
+                    "bedroom": 2,
+                    "bathroom": 2,
+                    "toilets": 3,
+                    "square_feet": 1500,
+                    "available_from": "01/11/2025",
+                    "price_per_year": 300000,
+                    "service_charge": 30000,
+                    "legal_fee": 15000,
+                    "negotiable": false,
+                    "year_built": 2019,
+                    "nightly_rate": 35000,
+                    "floor_number": 3,
+                    "total_floors": 8,
+                    "parking_spaces": 1
+                },
+                "property_ownership verification": {
+                    "verification_method": {
+                        "upload_documents": false,
+                        "in_person_verification": true
+                    },
+                    "ownership_types": [
+                        "Sole Owner"
+                    ],
+                    "ownership_status": [],
+                    "ownership_documents": [
+                        "Certificate of Occupancy (C of O)",
+                        "Deed of Assignment",
+                        "Governor's Consent"
+                    ],
+                    "property_document": "rentdirect/apps/api/seed_demo_data/landlord/jarno/documents/property/house_deed.pdf"
+                },
+                "rental_preferences": {
+                    "maximum_occupancy": "4",
+                    "minimum_lease_duration": "6",
+                    "maximum_rental_duration": "24",
+                    "pets_allowed": false,
+                    "pet_policy": "",
+                    "commercial_activities_allowed": false,
+                    "student_tenants_allowed": false,
+                    "expatriates_allowed": true,
+                    "smoking_allowed": false,
+                    "short_let_allowed": true,
+                    "corp_members_allowed": true,
+                    "features": {
+                        "utilities_included": false,
+                        "furnished": true,
+                        "furnishing_level": "fully_furnished",
+                        "pet_friendly": false,
+                        "amenities": [
+                            "parking",
+                            "elevator"
+                        ],
+                        "parking": true,
+                        "fitted_kitchen": true,
+                        "pop_ceiling": true,
+                        "prepaid_meter": true,
+                        "air_conditioning": true,
+                        "internet": true,
+                        "water_supply": "borehole",
+                        "lift": true,
+                        "balcony": true,
+                        "security_guard": true,
+                        "cctv": true,
+                        "power_supply": "grid_with_backup"
+                    }
+                },
+                "feature_property": {
+                    "feature_property_checkbox": false
+                },
+                "images": {
+                    "cover_image": "rentdirect/apps/api/seed_demo_data/landlord/jarno/listings/01/cover_image.jpg",
+                    "additional_images": [
+                        "rentdirect/apps/api/seed_demo_data/landlord/jarno/listings/01/*.*"
+                    ]
+                }
+            }
+        }
+    },
+    "mercy": {
+        "registration_credentials": {
+            "full_name": "Mercy Efemena Akpobome",
+            "email": "criyo.career+mercy@gmail.com",
+            "password": "ifG0dbi4mi",
+            "landlord": true
+        },
+        "login_credentials": {
+            "email": "criyo.career+mercy@gmail.com",
+            "password": "ifG0dbi4mi"
+        },
+        "verification": {
+            "landlord_identification": {
+                "type": "Individual Landlord",
+                "personal_information": {
+                    "first_name": "Mercy",
+                    "middle_name": "Efemena",
+                    "last_name": "Akpobome",
+                    "date_of_birth": "1990-12-08",
+                    "country_of_birth": "Nigeria",
+                    "state_of_birth": "Delta",
+                    "nationality": "Nigeria",
+                    "state_of_origin": "Delta",
+                    "lga_of_origin": "Ethiope East",
+                    "gender": "Female",
+                    "contact_number": "08123409876",
+                    "email": "criyo.career+mercy@gmail.com",
+                    "employment_status": "Employed",
+                    "occupation": "Nurse",
+                    "national_identity_number": "88102937465",
+                    "bank_verification_number": "99201138475",
+                    "bank_name": "UBA",
+                    "account_name": "Mercy Efemena Akpobome",
+                    "account_number": "2091234876",
+                    "residential_address": "18 Evo Road, GRA Phase 2, Port Harcourt",
+                    "identity_document": "rentdirect/apps/api/seed_demo_data/landlord/mercy/documents/id/nin.pdf"
+                }
+            }
+        },
+        "profile": {
+            "photo": "api/seed_demo_data/landlord/mercy/mercy.webp",
+            "personal_information": {
+                "first_name": "Mercy",
+                "middle_name": "Efemena",
+                "last_name": "Akpobome",
+                "date_of_birth": "1990-12-08",
+                "gender": "Female",
+                "nationality": "Nigeria",
+                "state_of_origin": "Delta",
+                "lga_of_origin": "Ethiope East",
+                "country_of_birth": "Nigeria",
+                "state_of_birth": "Delta",
+                "contact_number": "08123409876",
+                "employment_status": "Employed",
+                "occupation": "Nurse",
+                "national_identity_number": "88102937465",
+                "bank_verification_number": "99201138475",
+                "bank_name": "UBA",
+                "account_name": "Mercy Efemena Akpobome",
+                "account_number": "2091234876",
+                "identity_document": "rentdirect/apps/api/seed_demo_data/landlord/mercy/documents/id/nin.pdf",
+                "preferred_contact_method": "whatsapp",
+                "phone_number": "08123409876",
+                "whatsapp_number": "+2348123409876",
+                "email": "criyo.career+mercy@gmail.com",
+                "bio_about_me": "Caring landlord with affordable flats on the mainland and Sangotedo."
+            },
+            "employment_information": {
+                "employer_name": "Lagos University Teaching Hospital",
+                "job_title": "Senior Nurse",
+                "employment_type": "Full-time",
+                "years_employed": 6,
+                "work_email": "mercy.akpobome@luth.example.com",
+                "work_address": "1 Kodesoh Street, Ojuelegba, Lagos",
+                "hr_contact_name": "HR Department",
+                "hr_contact_number": "+234801234567",
+                "hr_email": "hr@lagosuniversityteachinghospital.example.com"
+            },
+            "identity_and_bank_verification": {
+                "id_type": "National ID (NIN)",
+                "id_number": "88102937465",
+                "expiry_date": "",
+                "bank_name": "UBA",
+                "account_name": "Mercy Efemena Akpobome",
+                "account_number": "2091234876"
+            },
+            "residential_information": {
+                "country": "Nigeria",
+                "state": "Rivers",
+                "city": "Port Harcourt",
+                "address": "18 Evo Road, GRA Phase 2, Port Harcourt",
+                "proof_of_address": [
+                    "Utility Bill",
+                    "Bank Statement"
+                ]
+            },
+            "emergency_contact": {
+                "first_name": "Ese",
+                "middle_name": "",
+                "last_name": "Akpobome",
+                "phone_number": "+2348091122334",
+                "email": "ese.akpobome@example.com",
+                "relationship": "Sibling",
+                "address": "18 Adeniran Ogunsanya Street, Surulere, Lagos"
+            }
+        },
+        "subscription_plan": {
+            "billing_type": "monthly",
+            "plan": "silver",
+            "subscription_status": "active"
+        },
+        "listings": {
+            "01": {
+                "property_information": {
+                    "title": "Spacious 3 Bedroom Flat",
+                    "property_type": "Flat",
+                    "description": "A spacious 3 bedroom flat in GRA Phase 2, Port Harcourt.",
+                    "address": "25 Evo Road",
+                    "city": "Port Harcourt",
+                    "state": "Rivers",
+                    "lga": "Port Harcourt",
+                    "area": "GRA Phase 2",
+                    "nearest_landmark": "Near Port Harcourt Mall",
+                    "bedroom": 3,
+                    "bathroom": 2,
+                    "toilets": 3,
+                    "square_feet": 1800,
+                    "available_from": "01/10/2025",
+                    "price_per_year": 400000,
+                    "service_charge": 40000,
+                    "legal_fee": 20000,
+                    "negotiable": true,
+                    "year_built": 2010,
+                    "floor_number": 2,
+                    "total_floors": 4,
+                    "parking_spaces": 1
+                },
+                "property_ownership verification": {
+                    "verification_method": {
+                        "upload_documents": false,
+                        "in_person_verification": true
+                    },
+                    "ownership_types": [
+                        "Sole Owner"
+                    ],
+                    "ownership_status": [],
+                    "ownership_documents": [
+                        "Certificate of Occupancy (C of O)",
+                        "Deed of Assignment",
+                        "Governor's Consent"
+                    ],
+                    "property_document": "rentdirect/apps/api/seed_demo_data/landlord/mercy/documents/property/house_deed.pdf"
+                },
+                "rental_preferences": {
+                    "maximum_occupancy": "5",
+                    "minimum_lease_duration": "12",
+                    "maximum_rental_duration": "24",
+                    "pets_allowed": false,
+                    "pet_policy": "",
+                    "commercial_activities_allowed": false,
+                    "student_tenants_allowed": false,
+                    "expatriates_allowed": true,
+                    "smoking_allowed": false,
+                    "short_let_allowed": false,
+                    "corp_members_allowed": true,
+                    "features": {
+                        "utilities_included": false,
+                        "furnished": false,
+                        "furnishing_level": "semi_furnished",
+                        "pet_friendly": false,
+                        "amenities": [
+                            "parking"
+                        ],
+                        "parking": true,
+                        "fitted_kitchen": true,
+                        "pop_ceiling": true,
+                        "prepaid_meter": true,
+                        "air_conditioning": true,
+                        "internet": true,
+                        "water_supply": "borehole",
+                        "gated_estate": true,
+                        "power_supply": "grid_only"
+                    }
+                },
+                "feature_property": {
+                    "feature_property_checkbox": false
+                },
+                "images": {
+                    "cover_image": "rentdirect/apps/api/seed_demo_data/landlord/mercy/listings/01/cover_image.jpg",
+                    "additional_images": [
+                        "rentdirect/apps/api/seed_demo_data/landlord/mercy/listings/01/*.*"
+                    ]
+                }
+            },
+            "02": {
+                "property_information": {
+                    "title": "Compact 2 Bedroom Flat",
+                    "property_type": "Flat",
+                    "description": "A compact new-build 2 bedroom flat in Asaba, close to the airport junction.",
+                    "address": "12 Nnebisi Road",
+                    "city": "Asaba",
+                    "state": "Delta",
+                    "lga": "Oshimili South",
+                    "area": "Asaba",
+                    "nearest_landmark": "Near Asaba Mall",
+                    "bedroom": 2,
+                    "bathroom": 2,
+                    "toilets": 3,
+                    "square_feet": 1200,
+                    "available_from": "15/11/2025",
+                    "price_per_year": 280000,
+                    "service_charge": 28000,
+                    "legal_fee": 14000,
+                    "negotiable": false,
+                    "year_built": 2023,
+                    "total_floors": 2,
+                    "parking_spaces": 1
+                },
+                "property_ownership verification": {
+                    "verification_method": {
+                        "upload_documents": false,
+                        "in_person_verification": true
+                    },
+                    "ownership_types": [
+                        "Sole Owner"
+                    ],
+                    "ownership_status": [],
+                    "ownership_documents": [
+                        "Certificate of Occupancy (C of O)",
+                        "Deed of Assignment",
+                        "Governor's Consent"
+                    ],
+                    "property_document": "rentdirect/apps/api/seed_demo_data/landlord/mercy/documents/property/house_deed.pdf"
+                },
+                "rental_preferences": {
+                    "maximum_occupancy": "4",
+                    "minimum_lease_duration": "12",
+                    "maximum_rental_duration": "24",
+                    "pets_allowed": false,
+                    "pet_policy": "",
+                    "commercial_activities_allowed": false,
+                    "student_tenants_allowed": false,
+                    "expatriates_allowed": true,
+                    "smoking_allowed": false,
+                    "short_let_allowed": false,
+                    "corp_members_allowed": true,
+                    "features": {
+                        "utilities_included": false,
+                        "furnished": false,
+                        "furnishing_level": "unfurnished",
+                        "pet_friendly": false,
+                        "amenities": [
+                            "parking"
+                        ],
+                        "parking": true,
+                        "fitted_kitchen": true,
+                        "pop_ceiling": true,
+                        "prepaid_meter": true,
+                        "air_conditioning": true,
+                        "internet": true,
+                        "water_supply": "borehole",
+                        "gated_estate": true,
+                        "security_guard": true,
+                        "power_supply": "grid_with_backup"
+                    }
+                },
+                "feature_property": {
+                    "feature_property_checkbox": false
+                },
+                "images": {
+                    "cover_image": "rentdirect/apps/api/seed_demo_data/landlord/mercy/listings/02/cover_image.jpg",
+                    "additional_images": [
+                        "rentdirect/apps/api/seed_demo_data/landlord/mercy/listings/02/*.*"
+                    ]
+                }
+            }
+        }
+    },
+    "nathali": {
+        "registration_credentials": {
+            "full_name": "Nathali Adanna Eze",
+            "email": "criyo.career+nathali@gmail.com",
+            "password": "ifG0dbi4mi",
+            "landlord": true
+        },
+        "login_credentials": {
+            "email": "criyo.career+nathali@gmail.com",
+            "password": "ifG0dbi4mi"
+        },
+        "verification": {
+            "landlord_identification": {
+                "type": "Individual Landlord",
+                "personal_information": {
+                    "first_name": "Nathali",
+                    "middle_name": "Adanna",
+                    "last_name": "Eze",
+                    "date_of_birth": "1987-07-25",
+                    "country_of_birth": "Nigeria",
+                    "state_of_birth": "Enugu",
+                    "nationality": "Nigeria",
+                    "state_of_origin": "Enugu",
+                    "lga_of_origin": "Enugu North",
+                    "gender": "Female",
+                    "contact_number": "08097612345",
+                    "email": "criyo.career+nathali@gmail.com",
+                    "employment_status": "Employed",
+                    "occupation": "Architect",
+                    "national_identity_number": "55019283746",
+                    "bank_verification_number": "66102938475",
+                    "bank_name": "Stanbic IBTC",
+                    "account_name": "Nathali Adanna Eze",
+                    "account_number": "0034567812",
+                    "residential_address": "19 Mississippi Street, Maitama, Abuja",
+                    "identity_document": "rentdirect/apps/api/seed_demo_data/landlord/nathali/documents/id/nin.pdf"
+                }
+            }
+        },
+        "profile": {
+            "photo": "api/seed_demo_data/landlord/nathali/nathali.webp",
+            "personal_information": {
+                "first_name": "Nathali",
+                "middle_name": "Adanna",
+                "last_name": "Eze",
+                "date_of_birth": "1987-07-25",
+                "gender": "Female",
+                "nationality": "Nigeria",
+                "state_of_origin": "Enugu",
+                "lga_of_origin": "Enugu North",
+                "country_of_birth": "Nigeria",
+                "state_of_birth": "Enugu",
+                "contact_number": "08097612345",
+                "employment_status": "Employed",
+                "occupation": "Architect",
+                "national_identity_number": "55019283746",
+                "bank_verification_number": "66102938475",
+                "bank_name": "Stanbic IBTC",
+                "account_name": "Nathali Adanna Eze",
+                "account_number": "0034567812",
+                "identity_document": "rentdirect/apps/api/seed_demo_data/landlord/nathali/documents/id/nin.pdf",
+                "preferred_contact_method": "whatsapp",
+                "phone_number": "08097612345",
+                "whatsapp_number": "+2348097612345",
+                "email": "criyo.career+nathali@gmail.com",
+                "bio_about_me": "Landlord with an elegant terrace in the heart of Maitama."
+            },
+            "employment_information": {
+                "employer_name": "Eze Design Studio",
+                "job_title": "Principal Architect",
+                "employment_type": "Full-time",
+                "years_employed": 6,
+                "work_email": "nathali.eze@ezedesign.example.com",
+                "work_address": "7 Gana Street, Maitama, Abuja",
+                "hr_contact_name": "HR Department",
+                "hr_contact_number": "+234801234567",
+                "hr_email": "hr@ezedesignstudio.example.com"
+            },
+            "identity_and_bank_verification": {
+                "id_type": "National ID (NIN)",
+                "id_number": "55019283746",
+                "expiry_date": "",
+                "bank_name": "Stanbic IBTC",
+                "account_name": "Nathali Adanna Eze",
+                "account_number": "0034567812"
+            },
+            "residential_information": {
+                "country": "Nigeria",
+                "state": "Federal Capital Territory",
+                "city": "Maitama",
+                "address": "19 Mississippi Street, Maitama, Abuja",
+                "proof_of_address": [
+                    "Utility Bill",
+                    "Bank Statement"
+                ]
+            },
+            "emergency_contact": {
+                "first_name": "Chidera",
+                "middle_name": "",
+                "last_name": "Eze",
+                "phone_number": "+2348091122334",
+                "email": "chidera.eze@example.com",
+                "relationship": "Sibling",
+                "address": "19 Mississippi Street, Maitama, Abuja"
+            }
+        },
+        "subscription_plan": {
+            "billing_type": "monthly",
+            "plan": "platinum",
+            "subscription_status": "active"
+        },
+        "listings": {
+            "01": {
+                "property_information": {
+                    "title": "Elegant 4 Bedroom Terrace",
+                    "property_type": "Terrace",
+                    "description": "An elegant 4 bedroom terrace with BQ and private garden in Maitama.",
+                    "address": "9 Panama Street",
+                    "city": "Maitama",
+                    "state": "Federal Capital Territory",
+                    "lga": "Abuja Municipal",
+                    "area": "Maitama",
+                    "nearest_landmark": "Off Mississippi Street",
+                    "bedroom": 4,
+                    "bathroom": 4,
+                    "toilets": 5,
+                    "square_feet": 3600,
+                    "available_from": "01/12/2025",
+                    "price_per_year": 750000,
+                    "service_charge": 75000,
+                    "legal_fee": 37500,
+                    "negotiable": false,
+                    "year_built": 2020,
+                    "total_floors": 2,
+                    "parking_spaces": 2
+                },
+                "property_ownership verification": {
+                    "verification_method": {
+                        "upload_documents": false,
+                        "in_person_verification": true
+                    },
+                    "ownership_types": [
+                        "Sole Owner"
+                    ],
+                    "ownership_status": [],
+                    "ownership_documents": [
+                        "Certificate of Occupancy (C of O)",
+                        "Deed of Assignment",
+                        "Governor's Consent"
+                    ],
+                    "property_document": "rentdirect/apps/api/seed_demo_data/landlord/nathali/documents/property/house_deed.pdf"
+                },
+                "rental_preferences": {
+                    "maximum_occupancy": "8",
+                    "minimum_lease_duration": "12",
+                    "maximum_rental_duration": "48",
+                    "pets_allowed": true,
+                    "pet_policy": "Pets welcome",
+                    "commercial_activities_allowed": false,
+                    "student_tenants_allowed": false,
+                    "expatriates_allowed": true,
+                    "smoking_allowed": false,
+                    "short_let_allowed": false,
+                    "corp_members_allowed": true,
+                    "features": {
+                        "utilities_included": false,
+                        "furnished": true,
+                        "furnishing_level": "fully_furnished",
+                        "pet_friendly": true,
+                        "amenities": [
+                            "garden",
+                            "bq",
+                            "parking"
+                        ],
+                        "parking": true,
+                        "fitted_kitchen": true,
+                        "pop_ceiling": true,
+                        "prepaid_meter": true,
+                        "air_conditioning": true,
+                        "internet": true,
+                        "water_supply": "borehole",
+                        "garage": true,
+                        "garden": true,
+                        "boys_quarters": true,
+                        "gated_estate": true,
+                        "security_guard": true,
+                        "cctv": true,
+                        "power_supply": "24_hours"
+                    }
+                },
+                "feature_property": {
+                    "feature_property_checkbox": false
+                },
+                "images": {
+                    "cover_image": "rentdirect/apps/api/seed_demo_data/landlord/nathali/listings/01/cover_image.jpg",
+                    "additional_images": [
+                        "rentdirect/apps/api/seed_demo_data/landlord/nathali/listings/01/*.*"
                     ]
                 }
             }

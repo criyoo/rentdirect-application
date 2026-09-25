@@ -131,5 +131,670 @@
       "plan": "platinum",
       "subscription_status": "active"
     }
+  },
+  "mike": {
+    "registration_credentials": {
+      "full_name": "Michael Adaeze Okafor",
+      "email": "criyo.career+mike@gmail.com",
+      "password": "ifG0dbi4mi",
+      "tenant": true
+    },
+    "login_credentials": {
+      "email": "criyo.career+mike@gmail.com",
+      "password": "ifG0dbi4mi"
+    },
+    "verification": {
+      "first_name": "Michael",
+      "middle_name": "Adaeze",
+      "last_name": "Okafor",
+      "country_of_birth": "Nigeria",
+      "date_of_birth": "1987-05-19",
+      "gender": "Male",
+      "nationality": "Nigeria",
+      "state_of_origin": "Anambra",
+      "lga": "Awka South",
+      "nin": "77410293856",
+      "bvn": "88392017465",
+      "email": "criyo.career+mike@gmail.com",
+      "mobile": "+234901234567",
+      "employment_status": "Employed"
+    },
+    "profile": {
+      "personal_information": {
+        "first_name": "Michael",
+        "middle_name": "Adaeze",
+        "last_name": "Okafor",
+        "date_of_birth": "1987-05-19",
+        "gender": "Male",
+        "employment_status": "Employed",
+        "nationality": "Nigeria",
+        "state_of_origin": "Anambra",
+        "lga": "Awka South"
+      },
+      "current_residence": {
+        "country": "Nigeria",
+        "state": "Lagos",
+        "city": "Surulere",
+        "lga": "Surulere",
+        "address": "44 Bode Thomas Street, Surulere, Lagos",
+        "length_of_stay": "4",
+        "housing_status": "Rented",
+        "annual_rent": "1800000",
+        "service_charge": "150000",
+        "move_in_date": "01/03/2021",
+        "expected_move_out_date": "01/03/2026",
+        "reason_for_leaving": "Moving closer to my new office in VI"
+      },
+      "employment_info": {
+        "company_name": "Paystack",
+        "company_contact_number": "+2349061122334",
+        "industry": "Fintech",
+        "employment_type": "Full-time",
+        "employment_start_date": "2020-06-01",
+        "position_job_title": "Backend Engineer",
+        "company_website": "https://paystack.example",
+        "company_address": "126 Joel Ogunnaike Street, Ikeja GRA, Lagos",
+        "hr_contact_name": "Tolu Adeyemi",
+        "hr_email": "tolu.adeyemi@paystack.example",
+        "hr_contact_phone": "+2348091112223",
+        "employment_letter": "",
+        "staff_id": "",
+        "payslip": ""
+      },
+      "financial_information": {
+        "monthly_income_amount": "750000",
+        "monthly_expenses": "300,000",
+        "current_annual_rent": "1800000",
+        "current_service_charge": "150000",
+        "credit_commitment": "50000",
+        "outstanding_loans": "0"
+      },
+      "guarantor_details": {
+        "full_name": "Mr. Emeka Okafor",
+        "relationship": "Father",
+        "email": "emeka.okafor@example.com",
+        "mobile_number": "+2348031112233",
+        "occupation": "Retired Civil Servant",
+        "employer": "Anambra State Civil Service",
+        "residential_address": "12 Zik Avenue, Awka, Anambra",
+        "government_id": "",
+        "passport_photo": "",
+        "utility_bill": ""
+      },
+      "current_landlord_information": {
+        "full_name": "Mrs. Funke Alabi",
+        "mobile": "+2348051113344",
+        "email": "funke.alabi@example.com",
+        "address": "44 Bode Thomas Street, Surulere, Lagos",
+        "property_manager_name": "Shola Martins",
+        "property_manager_phone": "+2348051113345",
+        "property_manager_email": "shola@propertymanagement.example.com",
+        "property_manager_address": "8 Adelabu Street, Surulere"
+      },
+      "rental_history": {
+        "same_as_current_residence": true,
+        "properties": []
+      },
+      "household_information": {
+        "number_of_adults": "1",
+        "number_of_children": "0",
+        "has_pets": false,
+        "work_from_home": true,
+        "commercial_activities_at_home": false,
+        "any_smokers": false
+      },
+      "social_presence": {
+        "linkedin_profile": "https://linkedin.com/in/mike",
+        "facebook_profile": "",
+        "instagram_profile": "https://instagram.com/mike",
+        "x_twitter_profile": "",
+        "tiktok_profile": "",
+        "threads_profile": ""
+      },
+      "criminal_declaration": {
+        "convicted_of_crime": false,
+        "evicted_from_property": false,
+        "ongoing_tenancy_litigation": false,
+        "rent_arrears_history": false,
+        "legal_dispute_with_landlords": false
+      }
+    },
+    "subscription_plan": {
+      "billing_type": "monthly",
+      "plan": "gold",
+      "subscription_status": "active"
+    }
+  },
+  "sarah": {
+    "registration_credentials": {
+      "full_name": "Sarah Ngozi Ibrahim",
+      "email": "criyo.career+sarah@gmail.com",
+      "password": "ifG0dbi4mi",
+      "tenant": true
+    },
+    "login_credentials": {
+      "email": "criyo.career+sarah@gmail.com",
+      "password": "ifG0dbi4mi"
+    },
+    "verification": {
+      "first_name": "Sarah",
+      "middle_name": "Ngozi",
+      "last_name": "Ibrahim",
+      "country_of_birth": "Nigeria",
+      "date_of_birth": "1993-08-11",
+      "gender": "Female",
+      "nationality": "Nigeria",
+      "state_of_origin": "Kaduna",
+      "lga": "Kaduna North",
+      "nin": "11203948576",
+      "bvn": "23019485736",
+      "email": "criyo.career+sarah@gmail.com",
+      "mobile": "+234812345698",
+      "employment_status": "Employed"
+    },
+    "profile": {
+      "personal_information": {
+        "first_name": "Sarah",
+        "middle_name": "Ngozi",
+        "last_name": "Ibrahim",
+        "date_of_birth": "1993-08-11",
+        "gender": "Female",
+        "employment_status": "Employed",
+        "nationality": "Nigeria",
+        "state_of_origin": "Kaduna",
+        "lga": "Kaduna North"
+      },
+      "current_residence": {
+        "country": "Nigeria",
+        "state": "Lagos",
+        "city": "Ikeja",
+        "lga": "Ikeja",
+        "address": "16 Allen Avenue, Ikeja, Lagos",
+        "length_of_stay": "3",
+        "housing_status": "Rented",
+        "annual_rent": "1400000",
+        "service_charge": "120000",
+        "move_in_date": "01/07/2022",
+        "expected_move_out_date": "01/07/2026",
+        "reason_for_leaving": "Need a bigger place for my growing family"
+      },
+      "employment_info": {
+        "company_name": "Sterling Bank",
+        "company_contact_number": "+2347012233445",
+        "industry": "Banking",
+        "employment_type": "Full-time",
+        "employment_start_date": "2021-02-15",
+        "position_job_title": "Relationship Manager",
+        "company_website": "https://sterling.example",
+        "company_address": "20 Marina, Lagos Island, Lagos",
+        "hr_contact_name": "Chidinma Umeh",
+        "hr_email": "chidinma.umeh@sterling.example",
+        "hr_contact_phone": "+2348082221114",
+        "employment_letter": "",
+        "staff_id": "",
+        "payslip": ""
+      },
+      "financial_information": {
+        "monthly_income_amount": "420000",
+        "monthly_expenses": "180,000",
+        "current_annual_rent": "1400000",
+        "current_service_charge": "120000",
+        "credit_commitment": "0",
+        "outstanding_loans": "0"
+      },
+      "guarantor_details": {
+        "full_name": "Mrs. Aisha Ibrahim",
+        "relationship": "Mother",
+        "email": "aisha.ibrahim@example.com",
+        "mobile_number": "+2349022223344",
+        "occupation": "Businesswoman",
+        "employer": "Self-employed",
+        "residential_address": "5 Isa Kaita Road, Kaduna",
+        "government_id": "",
+        "passport_photo": "",
+        "utility_bill": ""
+      },
+      "current_landlord_information": {
+        "full_name": "Mr. Segun Olawale",
+        "mobile": "+2348063334455",
+        "email": "segun.olawale@example.com",
+        "address": "16 Allen Avenue, Ikeja, Lagos",
+        "property_manager_name": "Ngozi Eze",
+        "property_manager_phone": "+2348063334456",
+        "property_manager_email": "ngozi@propertymanagement.example.com",
+        "property_manager_address": "12 Opebi Road, Ikeja"
+      },
+      "rental_history": {
+        "same_as_current_residence": true,
+        "properties": []
+      },
+      "household_information": {
+        "number_of_adults": "2",
+        "number_of_children": "1",
+        "has_pets": false,
+        "work_from_home": false,
+        "commercial_activities_at_home": false,
+        "any_smokers": false
+      },
+      "social_presence": {
+        "linkedin_profile": "https://linkedin.com/in/sarah",
+        "facebook_profile": "",
+        "instagram_profile": "https://instagram.com/sarah",
+        "x_twitter_profile": "",
+        "tiktok_profile": "",
+        "threads_profile": ""
+      },
+      "criminal_declaration": {
+        "convicted_of_crime": false,
+        "evicted_from_property": false,
+        "ongoing_tenancy_litigation": false,
+        "rent_arrears_history": false,
+        "legal_dispute_with_landlords": false
+      }
+    },
+    "subscription_plan": {
+      "billing_type": "monthly",
+      "plan": "silver",
+      "subscription_status": "active"
+    }
+  },
+  "subomi": {
+    "registration_credentials": {
+      "full_name": "Subomi Adeyinka Balogun",
+      "email": "criyo.career+subomi@gmail.com",
+      "password": "ifG0dbi4mi",
+      "tenant": true
+    },
+    "login_credentials": {
+      "email": "criyo.career+subomi@gmail.com",
+      "password": "ifG0dbi4mi"
+    },
+    "verification": {
+      "first_name": "Subomi",
+      "middle_name": "Adeyinka",
+      "last_name": "Balogun",
+      "country_of_birth": "Nigeria",
+      "date_of_birth": "1995-02-27",
+      "gender": "Female",
+      "nationality": "Nigeria",
+      "state_of_origin": "Lagos",
+      "lga": "Eti-Osa",
+      "nin": "99102837465",
+      "bvn": "78293041526",
+      "email": "criyo.career+subomi@gmail.com",
+      "mobile": "+234702234567",
+      "employment_status": "Self-employed"
+    },
+    "profile": {
+      "personal_information": {
+        "first_name": "Subomi",
+        "middle_name": "Adeyinka",
+        "last_name": "Balogun",
+        "date_of_birth": "1995-02-27",
+        "gender": "Female",
+        "employment_status": "Self-employed",
+        "nationality": "Nigeria",
+        "state_of_origin": "Lagos",
+        "lga": "Eti-Osa"
+      },
+      "current_residence": {
+        "country": "Nigeria",
+        "state": "Lagos",
+        "city": "Lekki",
+        "lga": "Eti-Osa",
+        "address": "9A Nike Art Gallery Road, Lekki Phase 1, Lagos",
+        "length_of_stay": "2",
+        "housing_status": "Rented",
+        "annual_rent": "2500000",
+        "service_charge": "200000",
+        "move_in_date": "01/09/2023",
+        "expected_move_out_date": "01/09/2026",
+        "reason_for_leaving": "Relocating for a larger studio workspace"
+      },
+      "employment_info": {
+        "company_name": "Subomi Creative Studio",
+        "company_contact_number": "+2349034455667",
+        "industry": "Creative Arts",
+        "employment_type": "Self-employed",
+        "employment_start_date": "2019-01-10",
+        "position_job_title": "Creative Director",
+        "company_website": "https://subomicreative.example",
+        "company_address": "9A Nike Art Gallery Road, Lekki Phase 1, Lagos",
+        "hr_contact_name": "Kunle Adebayo",
+        "hr_email": "kunle.adebayo@subomicreative.example",
+        "hr_contact_phone": "+2349034455668",
+        "employment_letter": "",
+        "staff_id": "",
+        "payslip": ""
+      },
+      "financial_information": {
+        "monthly_income_amount": "600000",
+        "monthly_expenses": "250,000",
+        "current_annual_rent": "2500000",
+        "current_service_charge": "200000",
+        "credit_commitment": "0",
+        "outstanding_loans": "100000"
+      },
+      "guarantor_details": {
+        "full_name": "Mr. Adeyinka Balogun",
+        "relationship": "Father",
+        "email": "yinka.balogun@example.com",
+        "mobile_number": "+2348034445566",
+        "occupation": "Chartered Accountant",
+        "employer": "Balogun & Co",
+        "residential_address": "27 Awolowo Road, Ikoyi, Lagos",
+        "government_id": "",
+        "passport_photo": "",
+        "utility_bill": ""
+      },
+      "current_landlord_information": {
+        "full_name": "Mrs. Halima Yusuf",
+        "mobile": "+2348075556677",
+        "email": "halima.yusuf@example.com",
+        "address": "9A Nike Art Gallery Road, Lekki Phase 1, Lagos",
+        "property_manager_name": "Dele Fashola",
+        "property_manager_phone": "+2348075556678",
+        "property_manager_email": "dele@propertymanagement.example.com",
+        "property_manager_address": "3 Bisola Durosinmi-Etti Drive, Lekki"
+      },
+      "rental_history": {
+        "same_as_current_residence": true,
+        "properties": []
+      },
+      "household_information": {
+        "number_of_adults": "1",
+        "number_of_children": "0",
+        "has_pets": true,
+        "work_from_home": true,
+        "commercial_activities_at_home": false,
+        "any_smokers": false
+      },
+      "social_presence": {
+        "linkedin_profile": "https://linkedin.com/in/subomi",
+        "facebook_profile": "",
+        "instagram_profile": "https://instagram.com/subomi",
+        "x_twitter_profile": "",
+        "tiktok_profile": "",
+        "threads_profile": ""
+      },
+      "criminal_declaration": {
+        "convicted_of_crime": false,
+        "evicted_from_property": false,
+        "ongoing_tenancy_litigation": false,
+        "rent_arrears_history": false,
+        "legal_dispute_with_landlords": false
+      }
+    },
+    "subscription_plan": {
+      "billing_type": "monthly",
+      "plan": "platinum",
+      "subscription_status": "active"
+    }
+  },
+  "friday": {
+    "registration_credentials": {
+      "full_name": "Friday Efe Omoefe",
+      "email": "criyo.career+friday@gmail.com",
+      "password": "ifG0dbi4mi",
+      "tenant": true
+    },
+    "login_credentials": {
+      "email": "criyo.career+friday@gmail.com",
+      "password": "ifG0dbi4mi"
+    },
+    "verification": {
+      "first_name": "Friday",
+      "middle_name": "Efe",
+      "last_name": "Omoefe",
+      "country_of_birth": "Nigeria",
+      "date_of_birth": "1989-10-03",
+      "gender": "Male",
+      "nationality": "Nigeria",
+      "state_of_origin": "Delta",
+      "lga": "Uvwie",
+      "nin": "55627384019",
+      "bvn": "10293847561",
+      "email": "criyo.career+friday@gmail.com",
+      "mobile": "+234903456781",
+      "employment_status": "Employed"
+    },
+    "profile": {
+      "personal_information": {
+        "first_name": "Friday",
+        "middle_name": "Efe",
+        "last_name": "Omoefe",
+        "date_of_birth": "1989-10-03",
+        "gender": "Male",
+        "employment_status": "Employed",
+        "nationality": "Nigeria",
+        "state_of_origin": "Delta",
+        "lga": "Uvwie"
+      },
+      "current_residence": {
+        "country": "Nigeria",
+        "state": "Lagos",
+        "city": "Ajah",
+        "lga": "Eti-Osa",
+        "address": "11 Ogombo Road, Ajah, Lagos",
+        "length_of_stay": "5",
+        "housing_status": "Rented",
+        "annual_rent": "900000",
+        "service_charge": "80000",
+        "move_in_date": "01/01/2020",
+        "expected_move_out_date": "01/01/2026",
+        "reason_for_leaving": "Want a self-contained apartment closer to work"
+      },
+      "employment_info": {
+        "company_name": "Julius Berger Nigeria",
+        "company_contact_number": "+2348095566778",
+        "industry": "Construction",
+        "employment_type": "Full-time",
+        "employment_start_date": "2018-04-22",
+        "position_job_title": "Site Supervisor",
+        "company_website": "https://juliusberger.example",
+        "company_address": "10 Shettima Munguno Crescent, Utako, Abuja",
+        "hr_contact_name": "Ibrahim Musa",
+        "hr_email": "ibrahim.musa@juliusberger.example",
+        "hr_contact_phone": "+2348095566779",
+        "employment_letter": "",
+        "staff_id": "",
+        "payslip": ""
+      },
+      "financial_information": {
+        "monthly_income_amount": "380000",
+        "monthly_expenses": "150,000",
+        "current_annual_rent": "900000",
+        "current_service_charge": "80000",
+        "credit_commitment": "0",
+        "outstanding_loans": "0"
+      },
+      "guarantor_details": {
+        "full_name": "Mr. Omoefe Akpofure",
+        "relationship": "Brother",
+        "email": "omoefe.akpofure@example.com",
+        "mobile_number": "+2349056667788",
+        "occupation": "Engineer",
+        "employer": "Delta State Ministry of Works",
+        "residential_address": "4 Effurun Road, Warri, Delta",
+        "government_id": "",
+        "passport_photo": "",
+        "utility_bill": ""
+      },
+      "current_landlord_information": {
+        "full_name": "Alhaji Garba Sule",
+        "mobile": "+2348087778899",
+        "email": "garba.sule@example.com",
+        "address": "11 Ogombo Road, Ajah, Lagos",
+        "property_manager_name": "Titi Bakare",
+        "property_manager_phone": "+2348087778890",
+        "property_manager_email": "titi@propertymanagement.example.com",
+        "property_manager_address": "6 Addo Road, Ajah"
+      },
+      "rental_history": {
+        "same_as_current_residence": true,
+        "properties": []
+      },
+      "household_information": {
+        "number_of_adults": "1",
+        "number_of_children": "0",
+        "has_pets": false,
+        "work_from_home": false,
+        "commercial_activities_at_home": false,
+        "any_smokers": false
+      },
+      "social_presence": {
+        "linkedin_profile": "https://linkedin.com/in/friday",
+        "facebook_profile": "",
+        "instagram_profile": "https://instagram.com/friday",
+        "x_twitter_profile": "",
+        "tiktok_profile": "",
+        "threads_profile": ""
+      },
+      "criminal_declaration": {
+        "convicted_of_crime": false,
+        "evicted_from_property": false,
+        "ongoing_tenancy_litigation": false,
+        "rent_arrears_history": false,
+        "legal_dispute_with_landlords": false
+      }
+    },
+    "subscription_plan": {
+      "billing_type": "monthly",
+      "plan": "silver",
+      "subscription_status": "active"
+    }
+  },
+  "martha": {
+    "registration_credentials": {
+      "full_name": "Martha Ngozi Bello",
+      "email": "criyo.career+martha@gmail.com",
+      "password": "ifG0dbi4mi",
+      "tenant": true
+    },
+    "login_credentials": {
+      "email": "criyo.career+martha@gmail.com",
+      "password": "ifG0dbi4mi"
+    },
+    "verification": {
+      "first_name": "Martha",
+      "middle_name": "Ngozi",
+      "last_name": "Bello",
+      "country_of_birth": "Nigeria",
+      "date_of_birth": "1991-12-15",
+      "gender": "Female",
+      "nationality": "Nigeria",
+      "state_of_origin": "Plateau",
+      "lga": "Jos North",
+      "nin": "33485716290",
+      "bvn": "91827364501",
+      "email": "criyo.career+martha@gmail.com",
+      "mobile": "+234814567892",
+      "employment_status": "Employed"
+    },
+    "profile": {
+      "personal_information": {
+        "first_name": "Martha",
+        "middle_name": "Ngozi",
+        "last_name": "Bello",
+        "date_of_birth": "1991-12-15",
+        "gender": "Female",
+        "employment_status": "Employed",
+        "nationality": "Nigeria",
+        "state_of_origin": "Plateau",
+        "lga": "Jos North"
+      },
+      "current_residence": {
+        "country": "Nigeria",
+        "state": "Federal Capital Territory",
+        "city": "Gwarinpa",
+        "lga": "Abuja Municipal",
+        "address": "23 3rd Avenue, Gwarinpa, Abuja",
+        "length_of_stay": "6",
+        "housing_status": "Rented",
+        "annual_rent": "1600000",
+        "service_charge": "100000",
+        "move_in_date": "01/05/2019",
+        "expected_move_out_date": "01/05/2026",
+        "reason_for_leaving": "Moving to Lagos for a new job opportunity"
+      },
+      "employment_info": {
+        "company_name": "Channels Television",
+        "company_contact_number": "+2349018899001",
+        "industry": "Media",
+        "employment_type": "Full-time",
+        "employment_start_date": "2019-09-02",
+        "position_job_title": "News Producer",
+        "company_website": "https://channelstv.example",
+        "company_address": "13 Wazobia Crescent, Gwarinpa, Abuja",
+        "hr_contact_name": "Ladi Omotayo",
+        "hr_email": "ladi.omotayo@channelstv.example",
+        "hr_contact_phone": "+2349018899002",
+        "employment_letter": "",
+        "staff_id": "",
+        "payslip": ""
+      },
+      "financial_information": {
+        "monthly_income_amount": "520000",
+        "monthly_expenses": "210,000",
+        "current_annual_rent": "1600000",
+        "current_service_charge": "100000",
+        "credit_commitment": "0",
+        "outstanding_loans": "0"
+      },
+      "guarantor_details": {
+        "full_name": "Dr. Nanbel Bello",
+        "relationship": "Father",
+        "email": "nanbel.bello@example.com",
+        "mobile_number": "+2349038889900",
+        "occupation": "Medical Doctor",
+        "employer": "Jos University Teaching Hospital",
+        "residential_address": "8 Murtala Mohammed Way, Jos",
+        "government_id": "",
+        "passport_photo": "",
+        "utility_bill": ""
+      },
+      "current_landlord_information": {
+        "full_name": "Chief Emeka Anyanwu",
+        "mobile": "+2348099990011",
+        "email": "emeka.anyanwu@example.com",
+        "address": "23 3rd Avenue, Gwarinpa, Abuja",
+        "property_manager_name": "Halima Bello",
+        "property_manager_phone": "+2348099990012",
+        "property_manager_email": "halima@propertymanagement.example.com",
+        "property_manager_address": "15 5th Avenue, Gwarinpa"
+      },
+      "rental_history": {
+        "same_as_current_residence": true,
+        "properties": []
+      },
+      "household_information": {
+        "number_of_adults": "1",
+        "number_of_children": "0",
+        "has_pets": false,
+        "work_from_home": true,
+        "commercial_activities_at_home": false,
+        "any_smokers": false
+      },
+      "social_presence": {
+        "linkedin_profile": "https://linkedin.com/in/martha",
+        "facebook_profile": "",
+        "instagram_profile": "https://instagram.com/martha",
+        "x_twitter_profile": "",
+        "tiktok_profile": "",
+        "threads_profile": ""
+      },
+      "criminal_declaration": {
+        "convicted_of_crime": false,
+        "evicted_from_property": false,
+        "ongoing_tenancy_litigation": false,
+        "rent_arrears_history": false,
+        "legal_dispute_with_landlords": false
+      }
+    },
+    "subscription_plan": {
+      "billing_type": "monthly",
+      "plan": "gold",
+      "subscription_status": "active"
+    }
   }
 }

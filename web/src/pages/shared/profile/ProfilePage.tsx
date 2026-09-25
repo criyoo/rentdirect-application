@@ -1,4 +1,4 @@
-import { Link, useParams } from 'react-router-dom'
+import { Link, Navigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { HiLockClosed, HiShieldCheck } from 'react-icons/hi'
 
@@ -85,6 +85,10 @@ export default function ProfilePage() {
                 <div className="card p-6 text-gray-600">Loading profile...</div>
             </div>
         )
+    }
+
+    if (me?.role === 'tenant') {
+        return <Navigate to={`/tenants/${me.id}/profile`} replace />
     }
 
     if (isError || !me || !isOwnProfile) {

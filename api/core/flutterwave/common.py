@@ -22,45 +22,62 @@ class FlutterwaveError(ValueError):
     pass
 
 
+ACCESS_BANK_CODE = "044"
+ECOBANK_CODE = "050"
+FIDELITY_BANK_CODE = "070"
+FIRST_BANK_CODE = "011"
+FCMB_BANK_CODE = "214"
+GTBANK_CODE = "058"
+OPAY_BANK_CODE = "100004"
+OPAY_LEGACY_BANK_CODE = "999992"
+PALMPAY_BANK_CODE = "100033"
+MONIEPOINT_BANK_CODE = "50515"
+MONIEPOINT_NIBSS_BANK_CODE = "090405"
+PROVIDUS_BANK_CODE = "101"
+STERLING_BANK_CODE = "232"
+UBA_BANK_CODE = "033"
+WEMA_BANK_CODE = "035"
+ZENITH_BANK_CODE = "057"
+
 NIGERIAN_PAYOUT_BANK_CODES_BY_NAME = {
-    "accessbank": "044",
-    "ecobank": "050",
-    "fidelitybank": "070",
-    "firstbank": "011",
-    "firstbankofnigeria": "011",
-    "firstcitymonumentbank": "214",
-    "firstcitymonumentbankplc": "214",
-    "fcmb": "214",
-    "gtbank": "058",
-    "guarantytrustbank": "058",
-    "opay": "100004",
-    "paycom": "100004",
-    "opaydigitalservices": "100004",
-    "palmpay": "100033",
-    "moniepoint": "50515",
-    "moniepointmfb": "50515",
-    "moniepointmicrofinancebank": "50515",
-    "providus": "101",
-    "providusbank": "101",
-    "providusbankplc": "101",
-    "sterlingbank": "232",
-    "uba": "033",
-    "unitedbankforafrica": "033",
-    "wemabank": "035",
-    "zenithbank": "057",
+    "accessbank": ACCESS_BANK_CODE,
+    "ecobank": ECOBANK_CODE,
+    "fidelitybank": FIDELITY_BANK_CODE,
+    "firstbank": FIRST_BANK_CODE,
+    "firstbankofnigeria": FIRST_BANK_CODE,
+    "firstcitymonumentbank": FCMB_BANK_CODE,
+    "firstcitymonumentbankplc": FCMB_BANK_CODE,
+    "fcmb": FCMB_BANK_CODE,
+    "gtbank": GTBANK_CODE,
+    "guarantytrustbank": GTBANK_CODE,
+    "opay": OPAY_BANK_CODE,
+    "paycom": OPAY_BANK_CODE,
+    "opaydigitalservices": OPAY_BANK_CODE,
+    "palmpay": PALMPAY_BANK_CODE,
+    "moniepoint": MONIEPOINT_BANK_CODE,
+    "moniepointmfb": MONIEPOINT_BANK_CODE,
+    "moniepointmicrofinancebank": MONIEPOINT_BANK_CODE,
+    "providus": PROVIDUS_BANK_CODE,
+    "providusbank": PROVIDUS_BANK_CODE,
+    "providusbankplc": PROVIDUS_BANK_CODE,
+    "sterlingbank": STERLING_BANK_CODE,
+    "uba": UBA_BANK_CODE,
+    "unitedbankforafrica": UBA_BANK_CODE,
+    "wemabank": WEMA_BANK_CODE,
+    "zenithbank": ZENITH_BANK_CODE,
 }
 
 NIGERIAN_PAYOUT_BANK_CODE_CANDIDATES_BY_NAME = {
-    "opay": ("100004", "999992"),
-    "paycom": ("100004", "999992"),
-    "opaydigitalservices": ("100004", "999992"),
-    "palmpay": ("100033",),
-    "moniepoint": ("50515", "090405"),
-    "moniepointmfb": ("50515", "090405"),
-    "moniepointmicrofinancebank": ("50515", "090405"),
-    "firstcitymonumentbank": ("214",),
-    "firstcitymonumentbankplc": ("214",),
-    "fcmb": ("214",),
+    "opay": (OPAY_BANK_CODE, OPAY_LEGACY_BANK_CODE),
+    "paycom": (OPAY_BANK_CODE, OPAY_LEGACY_BANK_CODE),
+    "opaydigitalservices": (OPAY_BANK_CODE, OPAY_LEGACY_BANK_CODE),
+    "palmpay": (PALMPAY_BANK_CODE,),
+    "moniepoint": (MONIEPOINT_BANK_CODE, MONIEPOINT_NIBSS_BANK_CODE),
+    "moniepointmfb": (MONIEPOINT_BANK_CODE, MONIEPOINT_NIBSS_BANK_CODE),
+    "moniepointmicrofinancebank": (MONIEPOINT_BANK_CODE, MONIEPOINT_NIBSS_BANK_CODE),
+    "firstcitymonumentbank": (FCMB_BANK_CODE,),
+    "firstcitymonumentbankplc": (FCMB_BANK_CODE,),
+    "fcmb": (FCMB_BANK_CODE,),
 }
 
 
@@ -87,14 +104,20 @@ def nigerian_payout_bank_code_candidates(bank_name: str, bank_code: str = "") ->
     return list(dict.fromkeys(candidate for candidate in candidates if candidate))
 
 
+COLLECTION_SUBACCOUNT_BANK_CODE_CANDIDATES = {
+    OPAY_BANK_CODE: (OPAY_BANK_CODE, OPAY_LEGACY_BANK_CODE),
+    OPAY_LEGACY_BANK_CODE: (OPAY_LEGACY_BANK_CODE, OPAY_BANK_CODE),
+    MONIEPOINT_BANK_CODE: (MONIEPOINT_BANK_CODE, MONIEPOINT_NIBSS_BANK_CODE),
+    MONIEPOINT_NIBSS_BANK_CODE: (MONIEPOINT_NIBSS_BANK_CODE, MONIEPOINT_BANK_CODE),
+}
+
+
 def collection_subaccount_bank_code_candidates(bank_code: str) -> list[str]:
     normalized_bank_code = str(bank_code or "").strip()
-    known_candidates = {
-        "100004": ("100004", "999992"),
-        "999992": ("999992", "100004"),
-        "50515": ("50515", "090405"),
-        "090405": ("090405", "50515"),
-    }.get(normalized_bank_code, (normalized_bank_code,))
+    known_candidates = COLLECTION_SUBACCOUNT_BANK_CODE_CANDIDATES.get(
+        normalized_bank_code,
+        (normalized_bank_code,),
+    )
     return list(dict.fromkeys(candidate for candidate in known_candidates if candidate))
 
 

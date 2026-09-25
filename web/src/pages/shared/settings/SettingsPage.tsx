@@ -471,7 +471,7 @@ export default function SettingsPage() {
 
     return (
         <div className="container-modern py-8">
-            <div className="mb-5">
+            <div className="mb-6">
                 <DashboardBackButton fallbackTo={dashboardPath} />
             </div>
 
@@ -479,15 +479,14 @@ export default function SettingsPage() {
                 <div>
                     <p className="text-sm font-medium uppercase tracking-[0.2em] text-blue-600">Dashboard Settings</p>
                     <h1 className="text-3xl font-bold text-gray-900">Manage your account</h1>
-                    <p className="mt-2 text-gray-600">Changes are saved only after OTP verification.</p>
+                    <p className="mt-1 text-gray-600">Changes are saved only after OTP verification.</p>
                 </div>
                 <div className="flex flex-wrap gap-3">
-                    <DashboardBackButton to={dashboardPath} label="Back to Dashboard" />
-                    <Link to={`/profile/${me.id}`} className="btn btn-primary">Open Profile Page</Link>
+                    <Link to={me.role === 'tenant' ? `/tenants/${me.id}/profile?edit=1` : '/landlord/verification'} className="btn btn-primary">Open Profile Page</Link>
                 </div>
             </div>
 
-            <div className="mt-8 grid items-stretch gap-6 md:grid-cols-2">
+            <div className="mt-2 grid items-stretch gap-6 md:grid-cols-2">
                 <section className="card flex h-full flex-col p-6 md:col-span-2">
                     <div className="mb-6">
                         <h2 className="text-2xl font-bold text-gray-900">Biodata</h2>

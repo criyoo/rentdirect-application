@@ -4,6 +4,7 @@ import { HiCheckCircle, HiClock } from 'react-icons/hi'
 import { Link, useParams } from 'react-router-dom'
 
 import { useAuth } from '@/hooks/useAuth'
+import { formatRatePercent, useFinancialConfig } from '@/hooks/useFinancialConfig'
 import { api, resolveMediaUrl } from '@/lib/api'
 import { hasPlatinumAccess, hasSilverAccess, SubscriptionPaymentRecord } from '@/lib/subscriptions'
 import { Booking, RentalProgressStep } from '@/types'
@@ -41,6 +42,7 @@ export default function RentalProgressPage() {
     const { bookingId } = useParams()
     const { user } = useAuth()
     const queryClient = useQueryClient()
+    const { data: financialConfig } = useFinancialConfig()
     const [selectedStepKeys, setSelectedStepKeys] = useState<string[]>([])
     const [selectedStepResponses, setSelectedStepResponses] = useState<Record<string, string>>({})
 
@@ -342,7 +344,7 @@ export default function RentalProgressPage() {
                                                     ) : (
                                                         <p className="mt-2 text-sm text-gray-500">
                                                             {blockedByDepositPayment
-                                                                ? 'Available after payment of the 20% deposit or full rental amount (including all fees).'
+                                                                ? `Available after payment of the ${formatRatePercent(financialConfig?.listingDepositRate)} deposit or full rental amount (including all fees).`
                                                                 : blockedByFullRentalPayment
                                                                     ? 'Available after full rental payment (including all fees).'
                                                                     : unlocked

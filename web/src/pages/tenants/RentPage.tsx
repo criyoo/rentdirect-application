@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { useAuth } from '@/hooks/useAuth'
+import { formatDays, formatRatePercent, useFinancialConfig } from '@/hooks/useFinancialConfig'
 import { useAppPopup } from '@/contexts/AppPopupContext'
 import { api, resolveMediaUrl } from '@/lib/api'
 import { HostedCheckoutPayload, launchHostedCheckout } from '@/lib/payments'
@@ -164,6 +165,7 @@ export default function RentPage() {
         enabled: user?.role === 'tenant',
         queryFn: async () => (await api.get<{ is_verified?: boolean }>('/users/me')).data,
     })
+    const { data: financialConfig } = useFinancialConfig()
     const { data: subscriptionPaymentResponse, isLoading: isSubscriptionLoading } = useQuery({
         queryKey: ['subscription-payments', 'rent', user?.id],
         enabled: user?.role === 'tenant',
@@ -197,9 +199,10 @@ export default function RentPage() {
         refundableSecurityDeposit,
         administrationFee,
         administrationFeeVat,
+        optionalDepositAmount,
         totalAmount,
         remainingBalance,
-    } = calculateRentBreakdown(annualRent, paidAmount)
+    } = calculateRentBreakdown(annualRent, paidAmount, financialConfig)
     const isFullyPaid = !showCancelledPaymentState && remainingBalance <= 0
     const canPayInitialDeposit = Boolean(booking && paidAmount <= 0 && depositAmount > 0 && depositAmount < remainingBalance)
     const isInitialDepositSelection = paidAmount === 0 && paymentAmount === depositAmount
@@ -655,8 +658,8 @@ export default function RentPage() {
                                     <div className="flex-1">
                                         <h3 className="font-semibold text-lg">{listing.title}</h3>
                                         <p className="text-gray-600">{listing.address || listing.state}</p>
-                                        {(listing.city || listing.postal_code) && (
-                                            <p className="text-gray-600">{listing.city}, {listing.postal_code}</p>
+                                        {(listing.city || listing.lga) && (
+                                            <p className="text-gray-600">{[listing.city, listing.lga].filter(Boolean).join(', ')}</p>
                                         )}
                                         <div className="flex space-x-4 mt-2 text-sm text-gray-500">
                                             <span>{listing.bedrooms} bedrooms</span>
@@ -677,11 +680,11 @@ export default function RentPage() {
                                     <div className="rounded-xl bg-blue-50 border border-blue-100 p-4">
                                         <div className="flex items-center justify-between">
                                             <span className="font-medium text-blue-900">Rental Deposit (Optional)</span>
-                                            <span className="font-semibold text-blue-900">{formatCurrencyWithSymbol(depositAmount)}</span>
+                                            <span className="font-semibold text-blue-900">{formatCurrencyWithSymbol(optionalDepositAmount)}</span>
                                         </div>
                                         <p className="mt-2 text-sm text-blue-800">
-                                            The 20% deposit amount is inclusive in the rental amount.<br />
-                                            This enables the landlord to take the property of the market.
+                                            The {formatRatePercent(financialConfig?.listingDepositRate)} deposit amount is inclusive in the rental amount.<br />
+                                            The property is removed from public search for a maximum of {formatDays(financialConfig?.listingDepositHoldDays)} pending full rental payment.
                                         </p>
                                     </div>
                                     <div className="flex justify-between items-center py-2 border-b">
@@ -689,7 +692,7 @@ export default function RentPage() {
                                         <span className="font-semibold">{formatCurrencyWithSymbol(refundableSecurityDeposit)}</span>
                                     </div>
                                     <div className="flex justify-between items-center py-2 border-b">
-                                        <span className="text-gray-600">Administration Fee:</span>
+                                        <span className="text-gray-600">Rentdirect Fee:</span>
                                         <span className="font-semibold">{formatCurrencyWithSymbol(administrationFee)}</span>
                                     </div>
                                     <div className="flex justify-between items-center py-2 border-b">
@@ -786,7 +789,7 @@ export default function RentPage() {
                                                     onClick={() => selectPaymentAmount(depositAmount)}
                                                     className={`rounded-lg border px-4 py-3 text-left text-sm transition ${paymentAmount === depositAmount ? 'border-blue-600 bg-blue-50 text-blue-900' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'}`}
                                                 >
-                                                    <span className="block font-semibold">Pay 20% Deposit</span>
+                                                    <span className="block font-semibold">Pay {formatRatePercent(financialConfig?.listingDepositRate)} Deposit</span>
                                                     <span>{formatCurrencyWithSymbol(depositAmount)}</span>
                                                 </button>
                                             )}
@@ -809,7 +812,7 @@ export default function RentPage() {
                                             className="w-full rounded-lg border border-gray-200 bg-gray-100 px-4 py-3 text-gray-600"
                                         />
                                         <p className="mt-2 text-sm text-gray-500">
-                                            Choose either the 20% deposit or the full remaining balance of {formatCurrencyWithSymbol(remainingBalance)}.
+                                            Choose either the {formatRatePercent(financialConfig?.listingDepositRate)} deposit or the full remaining balance of {formatCurrencyWithSymbol(remainingBalance)}.
                                         </p>
                                     </div>
 
@@ -852,7 +855,7 @@ export default function RentPage() {
                                             )}
                                             {paymentReviewAdministrationFeeVat > 0 && (
                                                 <div className="flex justify-between text-blue-900">
-                                                    <span>VAT (7.5% on Administration Fee)</span>
+                                                    <span>VAT ({formatRatePercent(financialConfig?.administrationFeeVatRate)} on Administration Fee)</span>
                                                     <span className="font-medium">{formatCurrencyWithSymbol(paymentReviewAdministrationFeeVat)}</span>
                                                 </div>
                                             )}
@@ -953,24 +956,22 @@ export default function RentPage() {
                             <div className="h-full bg-white rounded-2xl p-12 shadow-lg border top-6 flex flex-col">
                                 <h2 className="text-xl font-semibold mb-2">Payment Summary</h2>
 
-                                <div className="space-y-3 mb-6">
-                                    <div className="flex justify-between">
+                                <div className="mt-4 space-y-3 mb-6">
+                                    <div className="mt-3 flex justify-between">
                                         <span className="text-gray-600">Rent:</span>
                                         <span>{formatCurrencyWithSymbol(normalizedAnnualRent)}</span>
                                     </div>
-                                    <div className="flex justify-between">
+                                    <div className="mt-6 flex justify-between">
                                         <span className="text-gray-600">Refundable Security Deposit:</span>
                                         <span>{formatCurrencyWithSymbol(refundableSecurityDeposit)}</span>
                                     </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-gray-600">Administration Fee:</span>
+                                    <div className="mt-6 flex justify-between">
+                                        <span className="text-gray-600">Rentdirect Fee:</span>
                                         <span>{formatCurrencyWithSymbol(administrationFee)}</span>
                                     </div>
-                                    <div className="rounded-xl bg-blue-50 border border-blue-100 px-4 py-3 text-[0.95rem] text-blue-800">
-                                        Deposit Amount: {formatCurrencyWithSymbol(depositAmount)}<br />
-                                        <div className="text-xs text-blue-800">
-                                            (part of the {formatCurrencyWithSymbol(normalizedAnnualRent)} annual rent)
-                                        </div>
+                                    <div className="mt-6 flex justify-between">
+                                        <span className="text-gray-600">VAT ({formatRatePercent(financialConfig?.administrationFeeVatRate)}):</span>
+                                        <span>{formatCurrencyWithSymbol(administrationFeeVat)}</span>
                                     </div>
                                     <div className="border-t pt-3">
                                         <div className="flex justify-between font-semibold text-lg">
@@ -978,6 +979,12 @@ export default function RentPage() {
                                             <span>{formatCurrencyWithSymbol(totalAmount)}</span>
                                         </div>
                                     </div>
+                                    {/* <div className="mt-16 rounded-xl bg-blue-50 border border-blue-100 px-4 py-3 text-[0.95rem] text-blue-800">
+                                        Optional Deposit Amount: {formatCurrencyWithSymbol(optionalDepositAmount)}<br />
+                                        <div className="text-xs text-blue-800">
+                                            The {formatRatePercent(financialConfig?.listingDepositRate)} deposit is part of the {formatCurrencyWithSymbol(normalizedAnnualRent)} annual rent, the property is removed from public search for a maximum of {formatDays(financialConfig?.listingDepositHoldDays)} once deposit is paid pending full rental payment.
+                                        </div>
+                                    </div> */}
                                     {booking && (
                                         <>
                                             <div className="border-t pt-3">
@@ -1169,18 +1176,17 @@ export default function RentPage() {
                     )}
                     <div className="mt-4 p-4 bg-blue-50 rounded-lg text-center">
                         <h4 className="font-semibold text-blue-900 mb-2">What's Included:</h4>
-                        <ul className="text-sm text-blue-800 space-y-1">
+                        <ul className="text-[14px] text-blue-800 space-y-1">
                             <li>Annual rent</li>
                             <li>Refundable security deposit</li>
+                            <p className="mt-4 text-[16px] font-semibold text-indigo-800">15% Rentdirect fee covers the following:</p>
                             <li>Administration fee</li>
                             <li>Legal fee</li>
                             <li>Verification fee</li>
-                            <li>Lease agreement support</li>
                             <li>Viewing fee</li>
-                            <li>Tenant support</li>
+                            <li>Lease agreement fee</li>
+                            <li>Tenant & Landlord support</li>
                         </ul>
-                        <br />
-                        <p className="text-[14px] font-semibold text-lime-600">10% flat fee covers admin, legal, verification, viewing & agreement costs</p>
                     </div>
                 </div>
             </div>

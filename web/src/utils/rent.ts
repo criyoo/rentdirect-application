@@ -1,18 +1,22 @@
-const REFUNDABLE_SECURITY_RATE = 0.1
-const ADMINISTRATION_FEE_RATE = 0.1
-const ADMINISTRATION_FEE_VAT_RATE = 0.075
+export interface RentRates {
+    refundableSecurityDepositRate: number
+    administrationFeeRate: number
+    administrationFeeVatRate: number
+    listingDepositRate: number
+}
 
 function roundCurrency(value: number): number {
     return Math.round((value + Number.EPSILON) * 100) / 100
 }
 
-export function calculateRentBreakdown(annualRent: number, paidAmount = 0) {
+export function calculateRentBreakdown(annualRent: number, paidAmount = 0, rates?: RentRates) {
     const normalizedAnnualRent = Number(annualRent || 0)
     const normalizedPaidAmount = Number(paidAmount || 0)
-    const refundableSecurityDeposit = roundCurrency(normalizedAnnualRent * REFUNDABLE_SECURITY_RATE)
-    const administrationFee = roundCurrency(normalizedAnnualRent * ADMINISTRATION_FEE_RATE)
-    const administrationFeeVat = roundCurrency(administrationFee * ADMINISTRATION_FEE_VAT_RATE)
+    const refundableSecurityDeposit = roundCurrency(normalizedAnnualRent * (rates?.refundableSecurityDepositRate ?? 0))
+    const administrationFee = roundCurrency(normalizedAnnualRent * (rates?.administrationFeeRate ?? 0))
+    const administrationFeeVat = roundCurrency(administrationFee * (rates?.administrationFeeVatRate ?? 0))
     const depositAmount = roundCurrency(refundableSecurityDeposit + administrationFee + administrationFeeVat)
+    const optionalDepositAmount = roundCurrency(normalizedAnnualRent * (rates?.listingDepositRate ?? 0))
     const totalAmount = roundCurrency(normalizedAnnualRent + depositAmount)
     const remainingBalance = roundCurrency(Math.max(totalAmount - normalizedPaidAmount, 0))
 
@@ -22,6 +26,7 @@ export function calculateRentBreakdown(annualRent: number, paidAmount = 0) {
         administrationFee,
         administrationFeeVat,
         depositAmount,
+        optionalDepositAmount,
         totalAmount,
         paidAmount: roundCurrency(normalizedPaidAmount),
         remainingBalance,

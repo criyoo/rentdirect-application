@@ -4,6 +4,7 @@ import { api } from '@/lib/api'
 import { LandlordPublicProfile, Listing, NearestAmenitiesResponse, RentalProgress, Review } from '@/types'
 import { useEffect, useState, useRef } from 'react'
 import { useAuth } from '@/hooks/useAuth'
+import { formatRatePercent, useFinancialConfig } from '@/hooks/useFinancialConfig'
 import { resolveMediaUrl } from '@/lib/api'
 import { formatCurrencyWithSymbol } from '@/utils/currency'
 import ReviewModal from '@/components/ReviewModal'
@@ -98,6 +99,7 @@ export default function ListingDetailPage() {
         enabled: !!id,
         queryFn: async () => (await api.get<Listing>(`/listings/${id}`)).data
     })
+    const { data: financialConfig } = useFinancialConfig()
     const isLandlordUser = user?.role === 'landlord'
     const isListingLandlord = isLandlordUser && !!listing && listing.landlord_id === user?.id
     const { data: tenantProfile, isLoading: isTenantProfileLoading } = useQuery({
@@ -367,7 +369,7 @@ export default function ListingDetailPage() {
         ? !canSeeCityState
             ? listing.state || 'State not provided'
             : canSeePreciseLocation
-                ? [listing.address, listing.city, listing.state, listing.postal_code].filter(Boolean).join(', ')
+                ? [listing.address, listing.city, listing.lga, listing.state].filter(Boolean).join(', ')
                 : [listing.city, listing.state].filter(Boolean).join(', ') || listing.state || 'State not provided'
         : ''
     const mapLocationQuery = listing
@@ -682,7 +684,7 @@ export default function ListingDetailPage() {
                                 {listing.deposit_amount && (
                                     <div className="pt-2 border-t border-gray-100">
                                         <div className="flex items-center justify-between">
-                                            <span className="text-[16px] text-blue-600">Optional<br />20% Deposit:</span>
+                                            <span className="text-[16px] text-blue-600">Optional<br />{formatRatePercent(financialConfig?.listingDepositRate)} Deposit:</span>
                                             <span className="font-medium text-[16px] text-blue-600"><br />{formatCurrencyWithSymbol(listing.deposit_amount)}</span>
                                         </div>
                                     </div>

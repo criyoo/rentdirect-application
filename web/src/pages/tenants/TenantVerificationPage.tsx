@@ -276,11 +276,14 @@ export default function TenantVerificationPage() {
         if (!verificationDraftStorageKey) return
 
         const storedDraft = readFormDraft<Partial<VerificationFormValues> & { hasAcceptedLegalConsent?: boolean }>(verificationDraftStorageKey)
-        reset({
-            ...defaultValues,
-            ...(storedDraft || {}),
-            employment_status: storedDraft?.employment_status || defaultValues.employment_status,
-        })
+        const mergedValues = { ...defaultValues }
+            ; (Object.keys(defaultValues) as (keyof VerificationFormValues)[]).forEach((fieldName) => {
+                const draftValue = storedDraft?.[fieldName]
+                if (typeof draftValue === 'string' ? draftValue.trim() : draftValue) {
+                    mergedValues[fieldName] = draftValue as string
+                }
+            })
+        reset(mergedValues)
         setHasAcceptedLegalConsent(Boolean(storedDraft?.hasAcceptedLegalConsent))
         setHydratedDraftStorageKey(verificationDraftStorageKey)
     }, [defaultValues, reset, verificationDraftStorageKey])

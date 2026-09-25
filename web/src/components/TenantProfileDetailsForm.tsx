@@ -502,11 +502,12 @@ function SameAsLandlordCheckbox({ register, name }: { register: any; name: strin
     )
 }
 
-function SelectInput({ register, name, options, placeholder, error }: { register: any; name: string; options: string[]; placeholder?: string; error?: string }) {
+function SelectInput({ register, name, options, placeholder, error, disabled = false }: { register: any; name: string; options: string[]; placeholder?: string; error?: string; disabled?: boolean }) {
     return (
         <select
             {...register(name)}
-            className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${error ? 'border-red-300' : 'border-gray-300'}`}
+            disabled={disabled}
+            className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${error ? 'border-red-300' : disabled ? 'border-gray-200 bg-gray-100 text-gray-500' : 'border-gray-300'}`}
         >
             {placeholder && <option value="">{placeholder}</option>}
             {options.map(o => <option key={o} value={o}>{o}</option>)}
@@ -776,6 +777,7 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [submitError, setSubmitError] = useState('')
     const [supportingDocuments, setSupportingDocuments] = useState<SupportingDocument[]>([{ file: null, name: '' }])
+    const [guarantorIdDocuments, setGuarantorIdDocuments] = useState<SupportingDocument[]>([{ file: null, name: '' }])
     const [profilePhoto, setProfilePhoto] = useState<File | null>(null)
     const [profilePhotoPreview, setProfilePhotoPreview] = useState('/placeholder.jpg')
     const [hydratedDraftStorageKey, setHydratedDraftStorageKey] = useState<string | null>(null)
@@ -812,6 +814,7 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
         && verificationProfileDefaults.lga
         && verificationProfileDefaults.employment_status,
     )
+    const personalInfoLocked = Boolean(existingProfile) || hasVerificationProfileDefaults
 
     const {
         register,
@@ -942,8 +945,10 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
         const inMemoryDraft = extractDirtyFormValues(dirtyFieldsRef.current, getValues())
         const draftValues = mergeTenantProfileValues(storedDraft || {}, inMemoryDraft)
         const mergedValues = mergeTenantProfileValues(baseValues, draftValues)
-        if (!mergedValues.employment_status && baseValues.employment_status) {
-            mergedValues.employment_status = baseValues.employment_status
+        for (const fieldName of ['first_name', 'middle_name', 'last_name', 'date_of_birth', 'gender', 'nationality', 'state_of_origin', 'lga', 'employment_status'] as const) {
+            if (!mergedValues[fieldName] && baseValues[fieldName]) {
+                mergedValues[fieldName] = baseValues[fieldName]
+            }
         }
         reset(mergedValues)
         setHydratedDraftStorageKey(tenantProfileDraftStorageKey)
@@ -1095,6 +1100,16 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                 throw new Error('Enter a name for each supporting document.')
             }
 
+            const guarantorIdIncomplete = guarantorIdDocuments.some(({ file, name }) => file && !name.trim())
+            if (guarantorIdIncomplete) {
+                throw new Error('Enter the guarantor ID document type (e.g. NIN, International Passport).')
+            }
+            allFiles.push(
+                ...guarantorIdDocuments.flatMap(({ file, name }) =>
+                    file ? [{ file, name: `Guarantor ID - ${name.trim()}` }] : [],
+                ),
+            )
+
             if (profilePhoto) {
                 const formData = new FormData()
                 formData.append('file', profilePhoto)
@@ -1213,42 +1228,42 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
 
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <InputRow label="First Name" error={errors.first_name?.message}>
-                                <TextInput register={register} name="first_name" placeholder="First name" error={errors.first_name?.message} />
+                                <TextInput register={register} name="first_name" placeholder="First name" error={errors.first_name?.message} disabled={personalInfoLocked} />
                             </InputRow>
                             <InputRow label="Middle Name" error={errors.middle_name?.message}>
-                                <TextInput register={register} name="middle_name" placeholder="Middle name" error={errors.middle_name?.message} />
+                                <TextInput register={register} name="middle_name" placeholder="Middle name" error={errors.middle_name?.message} disabled={personalInfoLocked} />
                             </InputRow>
                             <InputRow label="Last Name" error={errors.last_name?.message}>
-                                <TextInput register={register} name="last_name" placeholder="Last name" error={errors.last_name?.message} />
+                                <TextInput register={register} name="last_name" placeholder="Last name" error={errors.last_name?.message} disabled={personalInfoLocked} />
                             </InputRow>
                         </div>
                         <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
                             <InputRow label="Date of Birth" error={errors.date_of_birth?.message}>
-                                <TextInput register={register} name="date_of_birth" type="date" error={errors.date_of_birth?.message} />
+                                <TextInput register={register} name="date_of_birth" type="date" error={errors.date_of_birth?.message} disabled={personalInfoLocked} />
                             </InputRow>
                             <InputRow label="Gender" error={errors.gender?.message}>
-                                <SelectInput register={register} name="gender" options={genderOptions} placeholder="Select gender" error={errors.gender?.message} />
+                                <SelectInput register={register} name="gender" options={genderOptions} placeholder="Select gender" error={errors.gender?.message} disabled={personalInfoLocked} />
                             </InputRow>
                             <InputRow label="Employment Status" error={errors.employment_status?.message}>
-                                <SelectInput register={register} name="employment_status" options={employmentOptions} placeholder="Select employment status" error={errors.employment_status?.message} />
+                                <SelectInput register={register} name="employment_status" options={employmentOptions} placeholder="Select employment status" error={errors.employment_status?.message} disabled={personalInfoLocked} />
                             </InputRow>
                         </div>
                         <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
                             <InputRow label="Nationality" error={errors.nationality?.message}>
-                                <SelectInput register={register} name="nationality" options={[...worldCountryOptions]} placeholder="Select nationality" error={errors.nationality?.message} />
+                                <SelectInput register={register} name="nationality" options={[...worldCountryOptions]} placeholder="Select nationality" error={errors.nationality?.message} disabled={personalInfoLocked} />
                             </InputRow>
                             <InputRow label="State of Origin" error={errors.state_of_origin?.message}>
                                 {nationalityIsNigeria ? (
-                                    <SelectInput register={register} name="state_of_origin" options={nigerianStates} placeholder="Select state" error={errors.state_of_origin?.message} />
+                                    <SelectInput register={register} name="state_of_origin" options={nigerianStates} placeholder="Select state" error={errors.state_of_origin?.message} disabled={personalInfoLocked} />
                                 ) : (
-                                    <TextInput register={register} name="state_of_origin" placeholder="State of origin" error={errors.state_of_origin?.message} />
+                                    <TextInput register={register} name="state_of_origin" placeholder="State of origin" error={errors.state_of_origin?.message} disabled={personalInfoLocked} />
                                 )}
                             </InputRow>
                             <InputRow label="LGA" error={errors.lga?.message}>
                                 {nationalityIsNigeria ? (
-                                    <SelectInput register={register} name="lga" options={stateOfOriginOptions} placeholder={stateOfOrigin ? 'Select LGA' : 'Select state first'} error={errors.lga?.message} />
+                                    <SelectInput register={register} name="lga" options={stateOfOriginOptions} placeholder={stateOfOrigin ? 'Select LGA' : 'Select state first'} error={errors.lga?.message} disabled={personalInfoLocked} />
                                 ) : (
-                                    <TextInput register={register} name="lga" placeholder="Local Government Area" error={errors.lga?.message} />
+                                    <TextInput register={register} name="lga" placeholder="Local Government Area" error={errors.lga?.message} disabled={personalInfoLocked} />
                                 )}
                             </InputRow>
                         </div>
@@ -1753,6 +1768,51 @@ export default function TenantProfileDetailsForm({ onSaved }: TenantProfileDetai
                                     className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.guarantor_details?.residential_address ? 'border-red-300' : 'border-gray-300'}`}
                                 />
                             </InputRow>
+                        </div>
+
+                        <div className="mt-5">
+                            <p className="text-sm font-medium text-gray-700">Guarantor ID Document</p>
+                            <p className="mt-1 text-sm text-gray-500">Upload a valid means of identification for the guarantor e.g. NIN, International Passport, Driver&apos;s License or Voter&apos;s Card.</p>
+                            <div className="mt-3 space-y-3">
+                                {guarantorIdDocuments.map((document, index) => (
+                                    <div key={index} className="flex flex-col gap-3 rounded-lg border border-gray-200 p-3 md:flex-row md:items-center">
+                                        <input
+                                            type="file"
+                                            accept=".pdf,.jpg,.jpeg,.png"
+                                            onChange={(event) => {
+                                                const file = event.target.files?.[0] || null
+                                                setGuarantorIdDocuments((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, file } : item))
+                                            }}
+                                            className="block w-full text-sm text-gray-500 file:mr-3 file:rounded-full file:border-0 file:bg-blue-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-blue-700 hover:file:bg-blue-100 md:flex-1"
+                                        />
+                                        <input
+                                            type="text"
+                                            value={document.name}
+                                            onChange={(event) => setGuarantorIdDocuments((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value } : item))}
+                                            placeholder="Document type e.g. NIN, Passport"
+                                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 md:flex-1"
+                                        />
+                                        {guarantorIdDocuments.length > 1 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setGuarantorIdDocuments((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                                                className="text-sm text-red-600 hover:text-red-700"
+                                            >
+                                                Remove
+                                            </button>
+                                        )}
+                                        {index === guarantorIdDocuments.length - 1 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setGuarantorIdDocuments((current) => [...current, { file: null, name: '' }])}
+                                                className="whitespace-nowrap text-sm font-medium text-blue-600 hover:text-blue-700"
+                                            >
+                                                + Add document
+                                            </button>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     </SectionCard>
 

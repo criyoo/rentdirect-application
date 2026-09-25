@@ -6,7 +6,7 @@ from django.db.models import OuterRef, Prefetch, Subquery
 from django.utils.html import format_html, format_html_join
 from django.utils import timezone
 
-from .models import AdminUser, AppUser, Booking, Document, Feedback, Favourite, FeaturedPayment, Landlord, LandlordProfile, Listing, ListingImage, Message, Payment, PaymentSettlement, Review, SubscriptionPayment, SubscriptionPaymentMethod, SubscriptionVATPayment, Tenant, TenantProfile, VerificationRequest, infer_listing_rental_status, sync_listing_status_from_rental_progress
+from .models import AdminUser, AppUser, Booking, Document, Feedback, Favourite, FeaturedPayment, Landlord, LandlordProfile, Listing, ListingImage, Message, Payment, PaymentSettlement, Review, SubscriptionPayment, SubscriptionVATPayment, Tenant, TenantProfile, VerificationRequest, infer_listing_rental_status, sync_listing_status_from_rental_progress
 
 
 PREFERRED_CONTACT_METHOD_CHOICES = (
@@ -1265,11 +1265,11 @@ class PaymentSettlementAdmin(admin.ModelAdmin):
 
 @admin.register(SubscriptionPayment)
 class SubscriptionPaymentAdmin(admin.ModelAdmin):
-    list_display = ("id", "user", "role", "plan_code", "billing_cycle", "subscription_fee_amount", "subscription_vat_amount", "total_amount", "currency", "status", "provider", "recurring_enabled", "billing_reason", "expires_at", "payment_date", "created_at")
+    list_display = ("id", "user", "role", "plan_code", "billing_cycle", "subscription_fee_amount", "subscription_vat_amount", "total_amount", "currency", "payment_method_label", "status", "provider", "recurring_enabled", "billing_reason", "expires_at", "payment_date", "created_at")
     list_filter = ("role", "plan_code", "billing_cycle", "status", "provider", "currency", "recurring_enabled", "billing_reason", "created_at")
     search_fields = ("transaction_id", "provider_charge_id", "user__email", "user__name", "payment_method__provider_payment_method_id")
     list_editable = ("status",)
-    autocomplete_fields = ("user", "payment_method", "renewed_from")
+    autocomplete_fields = ("user", "renewed_from")
     readonly_fields = ("transaction_id", "provider_charge_id", "cashier_url", "provider_payload", "webhook_data", "created_at", "updated_at")
 
     @admin.display(ordering="amount", description="Subscription Fee")
@@ -1279,6 +1279,14 @@ class SubscriptionPaymentAdmin(admin.ModelAdmin):
     @admin.display(ordering="vat_amount", description="VAT on Subscription Fee")
     def subscription_vat_amount(self, obj):
         return obj.vat_amount
+
+    @admin.display(description="Method")
+    def payment_method_label(self, obj):
+        payload = obj.provider_payload if isinstance(obj.provider_payload, dict) else {}
+        method_type = str(payload.get("payment_method_type") or "").strip()
+        if not method_type and obj.payment_method_id and obj.payment_method:
+            method_type = str(obj.payment_method.payment_type or "").strip()
+        return method_type.replace("_", " ").title() or "-"
 
 
 @admin.register(SubscriptionVATPayment)
@@ -1298,15 +1306,6 @@ class SubscriptionVATPaymentAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
-
-
-@admin.register(SubscriptionPaymentMethod)
-class SubscriptionPaymentMethodAdmin(admin.ModelAdmin):
-    list_display = ("id", "user", "provider", "payment_type", "status", "card_network", "card_last4", "card_expiry_month", "card_expiry_year", "created_at")
-    list_filter = ("provider", "payment_type", "status", "card_network", "created_at")
-    search_fields = ("provider_customer_id", "provider_payment_method_id", "user__email", "user__name", "card_last4")
-    autocomplete_fields = ("user",)
-    readonly_fields = ("provider_customer_id", "provider_payment_method_id", "provider_payload", "created_at", "updated_at")
 
 
 @admin.register(TenantProfile)

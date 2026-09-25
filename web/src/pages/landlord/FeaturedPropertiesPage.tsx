@@ -6,8 +6,7 @@ import { useAppPopup } from '@/contexts/AppPopupContext'
 import DashboardBackButton from '@/components/DashboardBackButton'
 import { formatCurrencyWithSymbol } from '@/utils/currency'
 
-interface FeaturedPayment
-{
+interface FeaturedPayment {
     id: string
     listing_id: string
     amount: number | string
@@ -19,8 +18,7 @@ interface FeaturedPayment
     featured_duration_days?: number
 }
 
-interface Listing
-{
+interface Listing {
     id: string
     title: string
     city: string
@@ -29,14 +27,7 @@ interface Listing
     featured: boolean
 }
 
-const PRICING = {
-    30: 5000,   // ₦5,000 for 30 days
-    60: 9500,   // ₦9,500 for 60 days
-    90: 13500   // ₦13,500 for 90 days
-}
-
-export default function FeaturedPropertiesPage()
-{
+export default function FeaturedPropertiesPage() {
     const navigate = useNavigate()
     const { confirm } = useAppPopup()
     const [listings, setListings] = useState<Listing[]>([])
@@ -46,71 +37,55 @@ export default function FeaturedPropertiesPage()
     const [featuredDuration, setFeaturedDuration] = useState(30)
     const [currentUserId, setCurrentUserId] = useState<string | null>(null)
 
-    useEffect(() =>
-    {
-        const init = async () =>
-        {
-            try
-            {
+    useEffect(() => {
+        const init = async () => {
+            try {
                 const meRes = await fetch(`${getApiUrl()}/users/me`, { credentials: 'include' })
-                if (meRes.ok)
-                {
+                if (meRes.ok) {
                     const me = await meRes.json()
                     setCurrentUserId(me.id)
                     await fetchListings(me.id)
                 }
-            } finally
-            {
+            } finally {
                 await fetchFeaturedPayments()
             }
         }
         init()
     }, [])
 
-    const fetchListings = async (landlordId: string) =>
-    {
-        try
-        {
+    const fetchListings = async (landlordId: string) => {
+        try {
             const response = await fetch(`${getApiUrl()}/dashboard/landlord/${landlordId}/listings`, {
                 credentials: 'include',
             })
-            if (response.ok)
-            {
+            if (response.ok) {
                 const data = await response.json()
                 setListings(data)
             }
-        } catch (error)
-        {
+        } catch (error) {
             console.error('Error fetching listings:', error)
         }
     }
 
-    const fetchFeaturedPayments = async () =>
-    {
-        try
-        {
+    const fetchFeaturedPayments = async () => {
+        try {
             // This would be a new endpoint to get featured payments for the current user
             const response = await fetch(`${getApiUrl()}/featured/payments`, {
                 credentials: 'include',
             })
-            if (response.ok)
-            {
+            if (response.ok) {
                 const data = await response.json()
                 setFeaturedPayments(data)
             }
-        } catch (error)
-        {
+        } catch (error) {
             console.error('Error fetching featured payments:', error)
-        } finally
-        {
+        } finally {
             setLoading(false)
         }
     }
 
-    const requestFeaturedStatus = async (listingId: string) =>
-    {
-        try
-        {
+    const requestFeaturedStatus = async (listingId: string) => {
+        try {
             const response = await fetch(`${getApiUrl()}/featured/request`, {
                 method: 'POST',
                 headers: {
@@ -123,66 +98,53 @@ export default function FeaturedPropertiesPage()
                 })
             })
 
-            if (response.ok)
-            {
+            if (response.ok) {
                 const payment = await response.json()
-                 alert(`Featured property request created! Payment required: ${formatCurrencyWithSymbol(payment.amount)}`)
+                alert(`Featured property request created! Payment required: ${formatCurrencyWithSymbol(payment.amount)}`)
                 fetchFeaturedPayments()
-            } else
-            {
+            } else {
                 const error = await response.json()
                 alert(`Error: ${error.detail}`)
             }
-        } catch (error)
-        {
+        } catch (error) {
             console.error('Error requesting featured status:', error)
             alert('Error requesting featured status')
         }
     }
 
-    const processPayment = async (paymentId: string) =>
-    {
+    const processPayment = async (paymentId: string) => {
         navigate(`/dashboard/featured-properties/pay/${paymentId}`)
     }
 
-    const unfeatureProperty = async (listingId: string) =>
-    {
-        if (!(await confirm('Are you sure you want to remove featured status from this property?')))
-        {
+    const unfeatureProperty = async (listingId: string) => {
+        if (!(await confirm('Are you sure you want to remove featured status from this property?'))) {
             return
         }
 
-        try
-        {
+        try {
             const response = await fetch(`${getApiUrl()}/featured/${listingId}/unfeature`, {
                 method: 'DELETE',
                 credentials: 'include',
             })
 
-            if (response.ok)
-            {
+            if (response.ok) {
                 alert('Property unfeatured successfully')
-                if (currentUserId)
-                {
+                if (currentUserId) {
                     fetchListings(currentUserId)
                 }
                 fetchFeaturedPayments()
-            } else
-            {
+            } else {
                 const error = await response.json()
                 alert(`Error: ${error.detail}`)
             }
-        } catch (error)
-        {
+        } catch (error) {
             console.error('Error unfeaturing property:', error)
             alert('Error unfeaturing property')
         }
     }
 
-    const handleDurationChange = async (paymentId: string, duration: number) =>
-    {
-        try
-        {
+    const handleDurationChange = async (paymentId: string, duration: number) => {
+        try {
             const response = await fetch(`${getApiUrl()}/featured/payments/${paymentId}/update-duration`, {
                 method: 'PUT',
                 headers: {
@@ -192,24 +154,20 @@ export default function FeaturedPropertiesPage()
                 body: JSON.stringify({ featured_duration_days: duration })
             });
 
-            if (response.ok)
-            {
+            if (response.ok) {
                 alert('Featured duration updated successfully');
                 fetchFeaturedPayments();
-            } else
-            {
+            } else {
                 const error = await response.json();
                 alert(`Error updating duration: ${error.detail}`);
             }
-        } catch (error)
-        {
+        } catch (error) {
             console.error('Error updating duration:', error);
             alert('Error updating duration');
         }
     };
 
-    if (loading)
-    {
+    if (loading) {
         return <div className="p-6">Loading...</div>
     }
 
@@ -267,7 +225,7 @@ export default function FeaturedPropertiesPage()
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                             <div className="flex items-center space-x-2">
-                                                 <span className="font-medium">{formatCurrencyWithSymbol(payment.amount)}</span>
+                                                <span className="font-medium">{formatCurrencyWithSymbol(payment.amount)}</span>
                                                 {payment.status === 'pending' && (
                                                     <select
                                                         value={payment.featured_duration_days || 30}
@@ -372,7 +330,7 @@ export default function FeaturedPropertiesPage()
                                     )}
                                     <h5 className="font-semibold text-gray-700">{listing.title}</h5>
                                     <p className="text-gray-600 text-sm">{listing.city}</p>
-                                     <p className="text-gray-900 font-medium">{formatCurrencyWithSymbol(Number(listing.price_per_year || 0))}/year</p>
+                                    <p className="text-gray-900 font-medium">{formatCurrencyWithSymbol(Number(listing.price_per_year || 0))}/year</p>
 
                                     <div className="mt-3">
                                         <button

@@ -157,7 +157,7 @@ export interface Listing {
     address: string
     city: string
     state?: string
-    postal_code: string
+    lga?: string
     latitude?: number
     longitude?: number
     distance_km?: number | null
@@ -169,6 +169,11 @@ export interface Listing {
     square_feet?: number
     price_per_year: number
     deposit_amount?: number
+    service_charge?: number | null
+    caution_fee?: number | null
+    legal_fee?: number | null
+    nightly_rate?: number | null
+    negotiable?: boolean
     utilities_included: boolean
     pet_friendly: boolean
     parking?: boolean
@@ -181,6 +186,25 @@ export interface Listing {
     electric_fence?: boolean
     fitted_kitchen?: boolean
     furnished: boolean
+    furnishing_level?: string
+    air_conditioning?: boolean
+    internet?: boolean
+    boys_quarters?: boolean
+    prepaid_meter?: boolean
+    gated_estate?: boolean
+    security_guard?: boolean
+    cctv?: boolean
+    wheelchair_accessible?: boolean
+    power_supply?: string
+    water_supply?: string
+    floor_number?: number | null
+    total_floors?: number | null
+    parking_spaces?: number | null
+    year_built?: number | null
+    pet_policy?: string
+    video_tour_url?: string
+    area?: string
+    nearest_landmark?: string
     amenities?: string[]
     ownership_status?: string
     ownership_types?: string[]
@@ -202,13 +226,16 @@ export interface Listing {
     property_document_verification_status?: string
     physical_property_status?: string
     minimum_rental_duration?: string
+    maximum_rental_duration?: string
     maximum_occupancy?: number | null
     smoking_allowed?: boolean
+    party_allowed?: boolean
     commercial_activities_allowed?: boolean
     short_let_allowed?: boolean
     student_tenants_allowed?: boolean
     expatriates_allowed?: boolean
     available_from?: string
+    available_until?: string
     status: string
     cover_image_url?: string
     image_urls?: string[]
@@ -365,4 +392,18 @@ export interface NearestAmenitiesResponse {
     longitude?: number
     radius_km?: number | null
     amenities: Record<string, NearestAmenity[]>
+}
+
+export interface AiChatMessage {
+    role: 'user' | 'assistant'
+    content: string
+}
+
+export interface AiChatResponse {
+    reply: string
+    listings: Listing[]
+    filters: Partial<SearchFilters>
+    total_count?: number
+    mode?: 'ai' | 'limited'
+    session_id?: string | null
 }

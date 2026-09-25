@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import ListingCard from '@/components/ListingCard'
+import AiSearchChat from '@/components/AiSearchChat'
 import { Listing, SearchFilters } from '@/types'
 import { api } from '@/lib/api'
 import { useAuth } from '@/hooks/useAuth'
@@ -65,6 +66,7 @@ export default function SearchPage() {
     const initialLatitude = numberParam(searchParams.get('latitude'))
     const initialLongitude = numberParam(searchParams.get('longitude'))
     const [listings, setListings] = useState<Listing[]>([])
+    const [aiTotalCount, setAiTotalCount] = useState<number | null>(null)
     const [loading, setLoading] = useState(false)
     const [locationStatus, setLocationStatus] = useState('')
     const [selectedCityOption, setSelectedCityOption] = useState(searchParams.get('city') || '')
@@ -221,10 +223,12 @@ export default function SearchPage() {
 
             const response = await api.get<Listing[] | { results?: Listing[] }>(endpoint)
             setListings(normalizeResults(response.data))
+            setAiTotalCount(null)
             syncSearchParams(searchFilters)
         } catch (error) {
             console.error('Error searching listings:', error)
             setListings([])
+            setAiTotalCount(null)
         } finally {
             setLoading(false)
         }
@@ -379,6 +383,33 @@ export default function SearchPage() {
         searchListings(clearedFilters)
     }
 
+    const handleAiListings = (aiListings: Listing[], aiFilters?: Partial<SearchFilters>, totalCount?: number) => {
+        setListings(aiListings)
+        if (aiFilters && Object.values(aiFilters).some((v) => v !== undefined && v !== '')) {
+            // Reflect Sally's filters in the form and URL so the page state matches the chat.
+            const merged: SearchFilters = {
+                ...filters,
+                query: aiFilters.query ?? '',
+                city: aiFilters.city ?? '',
+                state: aiFilters.state ?? '',
+                min_price: aiFilters.min_price,
+                max_price: aiFilters.max_price,
+                bedrooms: aiFilters.bedrooms,
+                bathrooms: aiFilters.bathrooms,
+                toilets: aiFilters.toilets,
+                property_type: aiFilters.property_type ?? '',
+                pet_friendly: aiFilters.pet_friendly === true,
+                furnished: aiFilters.furnished === true,
+                utilities_included: aiFilters.utilities_included === true,
+            }
+            setFilters(merged)
+            syncSearchParams(merged)
+        }
+        if (typeof totalCount === 'number') setAiTotalCount(totalCount)
+        else setAiTotalCount(null)
+        document.getElementById('search-results')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+
     // Check if a listing is in user's favourites
     const isFavourite = (listingId: string | number) => {
         return favourites?.some(f => f.id === listingId) || false
@@ -401,7 +432,7 @@ export default function SearchPage() {
 
                     {/* Search Form */}
                     <form onSubmit={handleSubmit} className="mb-0 rounded-2xl border border-white/30 bg-white/95 p-6 shadow-2xl shadow-indigo-950/25 backdrop-blur sm:p-8">
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                             {/* Search Query */}
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Search</label>
@@ -457,10 +488,6 @@ export default function SearchPage() {
                                     ) : null}
                                 </div>
                             </div>
-                        </div>
-                        <br />
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-3">
                             {/* Property Type */}
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Property Type</label>
@@ -475,7 +502,10 @@ export default function SearchPage() {
                                     ))}
                                 </select>
                             </div>
+                        </div>
+                        <br />
 
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
                             {/* Bedrooms */}
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Bedrooms</label>
@@ -520,34 +550,28 @@ export default function SearchPage() {
                                     ))}
                                 </select>
                             </div>
-                        </div>
 
-                        <div className="flex justify-end mt-6">
-                            <div className="w-full md:w-96">
-                                {/* Price Range */}
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1 text-right">
-                                        Price Range (₦/year)
-                                    </label>
-
-                                    <div className="flex space-x-3">
-                                        <input
-                                            type="number"
-                                            placeholder="Min"
-                                            className="w-1/2 px-3 py-2 border rounded-md"
-                                        />
-
-                                        <input
-                                            type="number"
-                                            placeholder="Max"
-                                            className="w-1/2 px-3 py-2 border rounded-md"
-                                        />
-                                    </div>
-                                </div>
+                            {/* Price Range */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">₦ (min)</label>
+                                <input
+                                    type="number"
+                                    placeholder="Min"
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">₦ (max)</label>
+                                <input
+                                    type="number"
+                                    placeholder="Max"
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                                {/* </div> */}
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-2">
                             {/* Amenities */}
                             <div className="flex items-center space-x-4 lg:col-span-2">
                                 <label className="flex items-center">
@@ -580,13 +604,13 @@ export default function SearchPage() {
                             </div>
 
                             {canUseLocationFeatures ? (
-                                <>
-                                    <div>
+                                <div className="flex flex-wrap items-start gap-3 lg:col-span-2 lg:justify-end">
+                                    <div className="w-40">
                                         <label className="block text-sm font-medium text-gray-700 mb-1">Radius</label>
                                         <select
                                             value={filters.radius_km || ''}
                                             onChange={(e) => handleFilterChange('radius_km', e.target.value ? Number(e.target.value) : undefined)}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            className="w-full px-2 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                                         >
                                             <option value="">Any distance</option>
                                             {radiusOptions.map((radius) => (
@@ -595,12 +619,12 @@ export default function SearchPage() {
                                         </select>
                                     </div>
 
-                                    <div className="flex min-h-[76px] flex-col justify-start gap-2 lg:pt-6">
+                                    <div className="flex min-h-[76px] w-40 flex-col justify-start gap-2 lg:pt-6">
                                         <div className="flex gap-2">
                                             <button
                                                 type="button"
                                                 onClick={handleUseCurrentLocation}
-                                                className={`flex-1 px-3 py-2 text-sm font-medium border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${locationButtonActive
+                                                className={`flex-1 px-1 py-2 text-sm font-medium border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${locationButtonActive
                                                     ? 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700'
                                                     : 'border-blue-200 text-blue-700 hover:bg-blue-50'
                                                     }`}
@@ -611,7 +635,7 @@ export default function SearchPage() {
                                                 <button
                                                     type="button"
                                                     onClick={handleClearLocation}
-                                                    className="px-3 py-2 text-sm font-medium text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                    className="px-1 py-2 text-sm font-medium text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
                                                 >
                                                     Clear
                                                 </button>
@@ -621,7 +645,7 @@ export default function SearchPage() {
                                             {locationStatus || 'Location status'}
                                         </p>
                                     </div>
-                                </>
+                                </div>
                             ) : (
                                 <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 lg:col-span-2">
                                     {isSubscriptionLoading
@@ -639,7 +663,7 @@ export default function SearchPage() {
                             )}
                         </div>
 
-                        <div className="flex justify-between items-center mt-8">
+                        <div className="flex justify-between items-center">
                             <button
                                 type="button"
                                 onClick={clearFilters}
@@ -659,11 +683,18 @@ export default function SearchPage() {
             </section>
 
             <div className="container-modern py-8">
+                {/* AI assistant chat — sits at the top of the property images */}
+                <div className="mb-8">
+                    <AiSearchChat onListingsFound={handleAiListings} />
+                </div>
+
                 {/* Results */}
-                <div className="mb-0">
+                <div className="mb-0" id="search-results">
                     <div className="flex justify-between items-center">
                         <h2 className="text-xl font-semibold text-gray-900">
-                            {loading ? 'Searching...' : `${listings.length} Properties Found`}
+                            {loading
+                                ? 'Searching...'
+                                : `${aiTotalCount ?? listings.length} Properties Found`}
                         </h2>
                         {canUseLocationFeatures ? (
                             <Link

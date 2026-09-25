@@ -45,8 +45,8 @@ from .models import (
     TenantProfile,
     VerificationRequest,
 )
-from .financial_constants import ZERO_AMOUNT
-from .pricing import calculate_booking_total, calculate_listing_deposit_amount, calculate_remaining_balance, resolve_booking_total
+from .financial_constants import CAUTION_FEE_RATE, LEGAL_FEE_MAX_RATE, ZERO_AMOUNT
+from .pricing import calculate_booking_total, calculate_listing_deposit_amount, calculate_remaining_balance, quantize_money, resolve_booking_total
 from .subscription_access import user_has_completed_tenant_profile, user_has_silver_access
 from .tenant_scoring import build_tenant_screening_summary
 from .location_services import decimal_from_float, resolve_city_state_coordinates
@@ -345,7 +345,9 @@ class ListingSerializer(serializers.ModelSerializer):
             "address",
             "city",
             "state",
-            "postal_code",
+            "lga",
+            "area",
+            "nearest_landmark",
             "latitude",
             "longitude",
             "distance_km",
@@ -357,6 +359,11 @@ class ListingSerializer(serializers.ModelSerializer):
             "square_feet",
             "price_per_year",
             "deposit_amount",
+            "service_charge",
+            "caution_fee",
+            "legal_fee",
+            "nightly_rate",
+            "negotiable",
             "utilities_included",
             "pet_friendly",
             "parking",
@@ -369,6 +376,23 @@ class ListingSerializer(serializers.ModelSerializer):
             "electric_fence",
             "fitted_kitchen",
             "furnished",
+            "furnishing_level",
+            "air_conditioning",
+            "internet",
+            "boys_quarters",
+            "prepaid_meter",
+            "gated_estate",
+            "security_guard",
+            "cctv",
+            "wheelchair_accessible",
+            "power_supply",
+            "water_supply",
+            "floor_number",
+            "total_floors",
+            "parking_spaces",
+            "year_built",
+            "pet_policy",
+            "video_tour_url",
             "amenities",
             "ownership_status",
             "ownership_types",
@@ -379,6 +403,7 @@ class ListingSerializer(serializers.ModelSerializer):
             "physical_property_status",
             "property_verification_method",
             "minimum_rental_duration",
+            "maximum_rental_duration",
             "maximum_occupancy",
             "smoking_allowed",
             "commercial_activities_allowed",
@@ -386,6 +411,7 @@ class ListingSerializer(serializers.ModelSerializer):
             "student_tenants_allowed",
             "expatriates_allowed",
             "available_from",
+            "available_until",
             "status",
             "featured",
             "featured_until",
@@ -430,6 +456,10 @@ class ListingSerializer(serializers.ModelSerializer):
         if attrs.get("maximum_occupancy") is not None and attrs.get("maximum_occupancy", 1) <= 0:
             raise serializers.ValidationError({"maximum_occupancy": "Maximum occupancy must be positive"})
 
+        furnishing_level = attrs.get("furnishing_level")
+        if furnishing_level:
+            attrs["furnished"] = furnishing_level != "unfurnished"
+
         existing_latitude = getattr(self.instance, "latitude", None)
         existing_longitude = getattr(self.instance, "longitude", None)
         location_changed = "city" in attrs or "state" in attrs
@@ -446,6 +476,16 @@ class ListingSerializer(serializers.ModelSerializer):
         price_for_deposit = price_per_year or getattr(self.instance, "price_per_year", None)
         if price_for_deposit is not None:
             attrs["deposit_amount"] = self.calculate_deposit_amount(price_for_deposit)
+            # Caution fee defaults to 5% of annual rent on new listings unless set.
+            if self.instance is None and attrs.get("caution_fee") is None:
+                attrs["caution_fee"] = quantize_money(Decimal(price_for_deposit) * CAUTION_FEE_RATE)
+            legal_fee = attrs.get("legal_fee")
+            if legal_fee is not None:
+                legal_cap = quantize_money(Decimal(price_for_deposit) * LEGAL_FEE_MAX_RATE)
+                if legal_fee > legal_cap:
+                    raise serializers.ValidationError(
+                        {"legal_fee": "Legal fee cannot exceed 5% of the annual rent."}
+                    )
 
         request = self.context.get("request")
         if (
@@ -460,7 +500,7 @@ class ListingSerializer(serializers.ModelSerializer):
                 "address": "Address",
                 "city": "City",
                 "state": "State",
-                "postal_code": "Postal code",
+                "lga": "Local Government Area (LGA)",
                 "property_type": "Property type",
                 "minimum_rental_duration": "Minimum rental duration",
             }
@@ -603,22 +643,23 @@ class ListingSerializer(serializers.ModelSerializer):
         is_tenant = is_authenticated and user.role == AppUser.Role.TENANT
 
         tenant_has_paid_for_listing = is_tenant and self._tenant_has_paid_for_listing(user, instance)
+        has_paid_subscription = is_authenticated and user_has_silver_access(user)
         can_view_precise_location = is_admin or is_listing_owner or tenant_has_paid_for_listing
-        can_view_city_state = is_authenticated and user.role in {
-            AppUser.Role.TENANT,
-            AppUser.Role.LANDLORD,
-            AppUser.Role.ADMIN,
-        }
+        can_view_city_state = (
+            is_admin or is_listing_owner or has_paid_subscription or tenant_has_paid_for_listing
+        )
 
         if not can_view_city_state:
             data["address"] = ""
             data["city"] = ""
-            data["postal_code"] = ""
+            data["lga"] = ""
+            data["area"] = ""
+            data["nearest_landmark"] = ""
             data["latitude"] = None
             data["longitude"] = None
         elif not can_view_precise_location:
             data["address"] = ""
-            data["postal_code"] = ""
+            data["nearest_landmark"] = ""
             data["latitude"] = None
             data["longitude"] = None
         if not (is_admin or is_listing_owner):
@@ -628,6 +669,8 @@ class ListingSerializer(serializers.ModelSerializer):
             data["property_documents"] = []
             data["property_document_submission"] = None
             data.pop("landlord_email", None)
+        if instance.price_per_year is not None:
+            data["deposit_amount"] = str(self.calculate_deposit_amount(instance.price_per_year))
         return data
 
     @transaction.atomic
@@ -674,6 +717,83 @@ class ListingSerializer(serializers.ModelSerializer):
 
         self._apply_property_document_submission(instance, property_verification_method)
         return instance
+
+
+class PublicAiListingSerializer(serializers.ModelSerializer):
+    """Minimal public listing shape for the unauthenticated AI chat endpoint.
+
+    Deliberately excludes personal data (landlord email), ownership and document
+    metadata, document file URLs, precise coordinates, and internal statuses.
+    """
+
+    landlord_name = serializers.CharField(source="landlord.name", read_only=True)
+    cover_image_url = serializers.CharField(read_only=True)
+    image_urls = serializers.ListField(child=serializers.CharField(), read_only=True)
+    amenities = AmenitiesField(read_only=True)
+    verified = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Listing
+        fields = [
+            "id",
+            "title",
+            "description",
+            "state",
+            "property_type",
+            "bedrooms",
+            "bathrooms",
+            "toilets",
+            "square_feet",
+            "price_per_year",
+            "deposit_amount",
+            "service_charge",
+            "caution_fee",
+            "legal_fee",
+            "nightly_rate",
+            "negotiable",
+            "utilities_included",
+            "pet_friendly",
+            "pet_policy",
+            "parking",
+            "parking_spaces",
+            "furnished",
+            "furnishing_level",
+            "air_conditioning",
+            "internet",
+            "boys_quarters",
+            "prepaid_meter",
+            "gated_estate",
+            "security_guard",
+            "cctv",
+            "wheelchair_accessible",
+            "power_supply",
+            "water_supply",
+            "floor_number",
+            "total_floors",
+            "year_built",
+            "video_tour_url",
+            "amenities",
+            "minimum_rental_duration",
+            "maximum_rental_duration",
+            "maximum_occupancy",
+            "smoking_allowed",
+            "short_let_allowed",
+            "student_tenants_allowed",
+            "available_from",
+            "available_until",
+            "featured",
+            "verified",
+            "cover_image_url",
+            "image_urls",
+            "landlord_name",
+        ]
+        read_only_fields = fields
+
+    def get_verified(self, obj) -> bool:
+        return (
+            obj.physical_property_status == "verified"
+            or obj.property_document_verification_status == "verified"
+        )
 
 
 class DocumentSerializer(serializers.ModelSerializer):

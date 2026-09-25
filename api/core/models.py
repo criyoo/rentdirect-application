@@ -9,13 +9,12 @@ from django.utils import timezone
 
 from .financial_constants import (
     ACCOUNT_FREEZE_FEE_PERCENTAGE,
+    DEPOSIT_LISTING_HOLD_DAYS,
     FEATURED_PROPERTY_MONTHLY_DURATION_DAYS,
     LISTING_DEPOSIT_RATE,
     LISTING_TOTAL_MULTIPLIER,
 )
 from .pricing import calculate_deposit_amount, resolve_booking_total
-
-DEPOSIT_LISTING_HOLD_DAYS = 3
 
 
 def _file_extension(filename: str) -> str:
@@ -553,7 +552,9 @@ class Listing(models.Model):
     address = models.CharField(max_length=255)
     city = models.CharField(max_length=120)
     state = models.CharField(max_length=120, blank=True, default="")
-    postal_code = models.CharField(max_length=40, blank=True, default="")
+    lga = models.CharField(max_length=120, blank=True, default="")
+    area = models.CharField(max_length=120, blank=True, default="")
+    nearest_landmark = models.CharField(max_length=160, blank=True, default="")
     latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     property_type = models.CharField(max_length=80)
@@ -563,6 +564,11 @@ class Listing(models.Model):
     square_feet = models.PositiveIntegerField(null=True, blank=True)
     price_per_year = models.DecimalField(max_digits=12, decimal_places=2)
     deposit_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    service_charge = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    caution_fee = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    legal_fee = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    nightly_rate = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    negotiable = models.BooleanField(default=False)
     utilities_included = models.BooleanField(default=False)
     pet_friendly = models.BooleanField(default=False)
     parking = models.BooleanField(default=False)
@@ -575,6 +581,53 @@ class Listing(models.Model):
     electric_fence = models.BooleanField(default=False)
     fitted_kitchen = models.BooleanField(default=False)
     furnished = models.BooleanField(default=False)
+    furnishing_level = models.CharField(
+        max_length=20,
+        choices=[
+            ("unfurnished", "Unfurnished"),
+            ("semi_furnished", "Semi-furnished"),
+            ("fully_furnished", "Fully furnished"),
+        ],
+        blank=True,
+        default="",
+    )
+    air_conditioning = models.BooleanField(default=False)
+    internet = models.BooleanField(default=False)
+    boys_quarters = models.BooleanField(default=False)
+    prepaid_meter = models.BooleanField(default=False)
+    gated_estate = models.BooleanField(default=False)
+    security_guard = models.BooleanField(default=False)
+    cctv = models.BooleanField(default=False)
+    wheelchair_accessible = models.BooleanField(default=False)
+    power_supply = models.CharField(
+        max_length=20,
+        choices=[
+            ("24_hours", "24-hour supply"),
+            ("grid_with_backup", "Grid + inverter/generator backup"),
+            ("grid_only", "Grid only"),
+            ("limited", "Limited supply"),
+        ],
+        blank=True,
+        default="",
+    )
+    water_supply = models.CharField(
+        max_length=20,
+        choices=[
+            ("constant", "Constant supply"),
+            ("borehole", "Borehole"),
+            ("public_mains", "Public mains"),
+            ("tanker", "Tanker delivery"),
+            ("irregular", "Irregular supply"),
+        ],
+        blank=True,
+        default="",
+    )
+    floor_number = models.PositiveSmallIntegerField(null=True, blank=True)
+    total_floors = models.PositiveSmallIntegerField(null=True, blank=True)
+    parking_spaces = models.PositiveSmallIntegerField(null=True, blank=True)
+    year_built = models.PositiveSmallIntegerField(null=True, blank=True)
+    pet_policy = models.CharField(max_length=120, blank=True, default="")
+    video_tour_url = models.URLField(max_length=300, blank=True, default="")
     amenities = models.JSONField(default=list, blank=True)
     ownership_status = models.CharField(max_length=80, blank=True, default="")
     ownership_types = models.JSONField(default=list, blank=True)
@@ -592,6 +645,7 @@ class Listing(models.Model):
         default="unverified",
     )
     minimum_rental_duration = models.CharField(max_length=80, blank=True, default="")
+    maximum_rental_duration = models.CharField(max_length=80, blank=True, default="")
     maximum_occupancy = models.PositiveSmallIntegerField(null=True, blank=True)
     smoking_allowed = models.BooleanField(default=False)
     commercial_activities_allowed = models.BooleanField(default=False)
@@ -599,6 +653,7 @@ class Listing(models.Model):
     student_tenants_allowed = models.BooleanField(default=False)
     expatriates_allowed = models.BooleanField(default=False)
     available_from = models.DateField(null=True, blank=True)
+    available_until = models.DateField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.AVAILABLE)
     featured = models.BooleanField(default=False)
     featured_until = models.DateTimeField(null=True, blank=True)
@@ -927,6 +982,10 @@ class Payment(models.Model):
     created_at = models.DateTimeField(default=timezone.now, editable=False)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        verbose_name = "Rental Payment"
+        verbose_name_plural = "Rental Payments"
+
 
 class PaymentSettlement(models.Model):
     class Purpose(models.TextChoices):
@@ -963,6 +1022,8 @@ class PaymentSettlement(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        verbose_name = "Rentals Payments Settlement"
+        verbose_name_plural = "Rentals Payments Settlements"
         constraints = [
             models.UniqueConstraint(fields=["payment", "purpose"], name="core_payment_settlement_unique"),
         ]

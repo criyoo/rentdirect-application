@@ -332,6 +332,30 @@ EMAIL_TIMEOUT = env_int("EMAIL_TIMEOUT", 30)
 
 SUBSCRIPTION_RENEWAL_WATCH_INTERVAL_SECONDS = env_int("SUBSCRIPTION_RENEWAL_WATCH_INTERVAL_SECONDS", 3600)
 
+# AI chat assistant (OpenAI-compatible endpoint: OpenRouter, Ollama, Gemini OpenAI-compat, etc.)
+# Setting OPENROUTER_API_KEY alone enables the free NVIDIA Nemotron model via OpenRouter.
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
+AI_CHAT_BASE_URL = os.environ.get("AI_CHAT_BASE_URL", "").strip().rstrip("/") or (
+    "https://openrouter.ai/api/v1" if OPENROUTER_API_KEY else ""
+)
+AI_CHAT_API_KEY = os.environ.get("AI_CHAT_API_KEY", "").strip() or OPENROUTER_API_KEY
+AI_CHAT_MODEL = os.environ.get("AI_CHAT_MODEL", "").strip() or (
+    "nvidia/nemotron-3-ultra-550b-a55b:free" if OPENROUTER_API_KEY else ""
+)
+# Comma-separated backup models tried in order when the primary model errors (e.g. provider overload).
+AI_CHAT_FALLBACK_MODELS = [
+    m.strip() for m in os.environ.get("AI_CHAT_FALLBACK_MODELS", "").split(",") if m.strip()
+] or (
+    ["meta-llama/llama-3.3-70b-instruct:free", "openai/gpt-oss-120b:free"] if OPENROUTER_API_KEY else []
+)
+AI_CHAT_REASONING = env_bool("AI_CHAT_REASONING", True)
+AI_CHAT_TIMEOUT_SECONDS = env_int("AI_CHAT_TIMEOUT_SECONDS", 45)
+AI_CHAT_MAX_TOOL_ROUNDS = env_int("AI_CHAT_MAX_TOOL_ROUNDS", 4)
+AI_CHAT_SEARCH_LIMIT = env_int("AI_CHAT_SEARCH_LIMIT", 12)
+AI_CHAT_MAX_MESSAGES = env_int("AI_CHAT_MAX_MESSAGES", 20)
+AI_CHAT_MAX_MESSAGE_CHARS = env_int("AI_CHAT_MAX_MESSAGE_CHARS", 2000)
+AI_CHAT_SESSION_TTL_SECONDS = env_int("AI_CHAT_SESSION_TTL_SECONDS", 7200)
+
 FLUTTERWAVE_PAYOUT_RELEASE_WATCH_INTERVAL_SECONDS = env_int("FLUTTERWAVE_PAYOUT_RELEASE_WATCH_INTERVAL_SECONDS", 300)
 FLUTTERWAVE_API_VERSION = os.environ.get("FLUTTERWAVE_API_VERSION", "v3").strip().lower()
 FLUTTERWAVE_PUBLIC_KEY = os.environ.get("FLUTTERWAVE_PUBLIC_KEY", "").strip()

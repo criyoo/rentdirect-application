@@ -64,7 +64,7 @@ Yes. Once verified, you can create and manage multiple properties from your land
 
 ### How much does it cost to feature a property?
 
-Featuring a property costs ₦5,000 for 30 days. Standard listings are free.
+Featuring a property costs ₦500 for 30 days. Standard listings require a Silver plan or higher.
 
 ### How do I screen a tenant?
 

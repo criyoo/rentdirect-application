@@ -53,8 +53,8 @@ export default function LegalConsentCheckbox({ id, documents, checked, onChange,
                         ))}
                     </div>
 
-                    <p className="mt-3 pl-8 text-xs leading-5 text-slate-500">
-                        Please open and review the document(s) before checking the box. You can revisit them at any time before submitting.
+                    <p className="mt-3 pl-8 text-sm leading-5 text-slate-700">
+                        Please open and review each document before checking the box. You can revisit them at any time before submitting.
                     </p>
                     {error && <p id={`${id}-error`} className="mt-2 pl-8 text-sm font-medium text-red-700">{error}</p>}
                 </div>

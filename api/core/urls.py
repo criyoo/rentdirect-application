@@ -1,6 +1,7 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from .ai_chat import AiChatViewSet
 from .views import (
     AdminViewSet,
     AuthViewSet,
@@ -20,6 +21,7 @@ from .views import (
     SupportChatMessageViewSet,
     TenantVerificationRequestViewSet,
     UserViewSet,
+    financial_config,
     health,
     homepage_video,
 )
@@ -42,6 +44,7 @@ router.register("messages", MessageViewSet, basename="messages")
 router.register("community-chat/messages", CommunityChatMessageViewSet, basename="community-chat-messages")
 router.register("support-chat/messages", SupportChatMessageViewSet, basename="support-chat-messages")
 router.register("dashboard", DashboardViewSet, basename="dashboard")
+router.register("chat", AiChatViewSet, basename="chat")
 router.register("admin", AdminViewSet, basename="admin")
 
 subscription_payment_detail = SubscriptionPaymentViewSet.as_view({"get": "retrieve"})
@@ -55,6 +58,7 @@ featured_listing_unfeature = FeaturedViewSet.as_view({"delete": "unfeature"})
 urlpatterns = [
     path("health", health),
     path("health/ready", health),
+    path("v1/config/financial", financial_config),
     path("v1/homepage-video", homepage_video),
     path("v1/subscriptions/payments/<uuid:pk>", subscription_payment_detail),
     path("v1/subscriptions/<uuid:pk>/flutterwave/checkout", subscription_payment_checkout),
