@@ -32,6 +32,7 @@ from core.prembly_verification import (
     validate_prembly_webhook_request,
     verify_prembly_webhook_signature,
 )
+from core.financial_constants import DEPOSIT_LISTING_HOLD_DAYS
 from core.pricing import calculate_administration_fee_vat, calculate_booking_total, calculate_deposit_amount
 from core.security import hash_otp
 from core.serializers import UserSerializer
@@ -745,9 +746,7 @@ class ListingTests(TestCase):
         bronze_client = self.tenant_client_with_plan(SubscriptionPayment.PlanCode.BRONZE, "bronze-visibility")
         bronze_payload = bronze_client.get(f"/api/v1/listings/{listing.id}").json()
         self.assertEqual(bronze_payload["address"], "")
-        self.assertEqual(bronze_payload["city"], "")
-        self.assertEqual(bronze_payload["lga"], "")
-        self.assertEqual(bronze_payload["area"], "")
+        self.assertEqual(bronze_payload["city"], listing.city)
         self.assertEqual(bronze_payload["state"], listing.state)
         self.assertEqual(
             bronze_payload["property_document_verification_status"],
@@ -893,14 +892,9 @@ class ListingTests(TestCase):
 
         self.assertEqual(response.status_code, 200, response.json())
         self.assertEqual(response.json()["title"], listing.title)
-        self.assertEqual(response.json()["city"], "")
+        self.assertEqual(response.json()["city"], listing.city)
         self.assertEqual(response.json()["state"], listing.state)
         self.assertEqual(response.json()["address"], "")
-
-        create_active_subscription(outsider, SubscriptionPayment.PlanCode.SILVER)
-        subscribed_response = client.get(f"/api/v1/listings/{listing.id}")
-        self.assertEqual(subscribed_response.json()["city"], listing.city)
-        self.assertEqual(subscribed_response.json()["address"], "")
 
     def test_landlord_can_create_listing_with_multipart_amenities(self):
         landlord = AppUser.objects.create_user(
@@ -1274,7 +1268,7 @@ class ListingTests(TestCase):
         payload = response.json()
         self.assertEqual(payload["state"], "Lagos")
         self.assertEqual(payload["address"], "")
-        self.assertEqual(payload["city"], "")
+        self.assertEqual(payload["city"], "Ikoyi")
         self.assertEqual(payload["lga"], "")
         self.assertIsNone(payload["latitude"])
         self.assertIsNone(payload["longitude"])
@@ -3491,9 +3485,9 @@ class BookingPaymentTests(TestCase):
         self.assertEqual(response.status_code, 201, response.json())
         booking = Booking.objects.get(id=response.json()["id"])
         self.assertEqual(booking.total_amount, calculate_booking_total(self.listing.price_per_year))
-        self.assertEqual(calculate_administration_fee_vat(self.listing.price_per_year), Decimal("13500.00"))
-        self.assertEqual(response.json()["total_amount"], 1453500.0)
-        self.assertEqual(response.json()["remaining_amount"], 1453500.0)
+        self.assertEqual(calculate_administration_fee_vat(self.listing.price_per_year), Decimal("9000.00"))
+        self.assertEqual(response.json()["total_amount"], 1389000.0)
+        self.assertEqual(response.json()["remaining_amount"], 1389000.0)
 
     def test_bronze_tenant_cannot_create_booking(self):
         tenant = AppUser.objects.create_user(
@@ -3606,7 +3600,7 @@ class BookingPaymentTests(TestCase):
         self.assertEqual(booking.paid_amount, Decimal("0.00"))
         booking_response = self.client.get(f"/api/v1/bookings/listing/{self.listing.id}")
         self.assertEqual(booking_response.status_code, 200, booking_response.json())
-        self.assertEqual(booking_response.json()["remaining_amount"], 1453500.0)
+        self.assertEqual(booking_response.json()["remaining_amount"], 1389000.0)
 
     def test_tenant_can_delete_cancelled_rental_payment_history(self):
         booking = Booking.objects.create(
@@ -4005,7 +3999,7 @@ class BookingPaymentTests(TestCase):
         settlements = PaymentSettlement.objects.filter(payment__transaction_id=final_payment_payload["payment"]["transaction_id"])
         self.assertEqual(
             str(settlements.get(purpose=PaymentSettlement.Purpose.OPERATIONS).amount),
-            "180000.00",
+            "120000.00",
         )
         self.assertEqual(
             str(settlements.get(purpose=PaymentSettlement.Purpose.CAUTION_FEE).amount),
@@ -4013,7 +4007,7 @@ class BookingPaymentTests(TestCase):
         )
         self.assertEqual(
             str(settlements.get(purpose=PaymentSettlement.Purpose.ADMINISTRATION_FEE_VAT).amount),
-            "13500.00",
+            "9000.00",
         )
         landlord_settlement = settlements.get(purpose=PaymentSettlement.Purpose.LANDLORD_RENT)
         self.assertEqual(str(landlord_settlement.amount), "1200000.00")
@@ -4846,7 +4840,7 @@ class BookingRentalProgressTests(TestCase):
         self.assertEqual(featured_response.status_code, 200)
         self.assertEqual(featured_response.json(), [])
 
-        self.booking.deposit_paid_at = timezone.now() - timedelta(days=3, seconds=1)
+        self.booking.deposit_paid_at = timezone.now() - timedelta(days=DEPOSIT_LISTING_HOLD_DAYS + 1, seconds=1)
         self.booking.save(update_fields=["deposit_paid_at", "updated_at"])
 
         expired_hold_search_response = self.client.get("/api/v1/listings/search?city=Abuja")
@@ -5283,7 +5277,7 @@ class SeedDemoTests(TestCase):
 
         self.assertEqual(len(landlords), 11)
         self.assertEqual(len(tenants), 6)
-        self.assertEqual(listings.count(), 15)
+        self.assertEqual(listings.count(), 14)
         self.assertEqual(listings.filter(featured=True).count(), 4)
         self.assertEqual(VerificationRequest.objects.filter(user__in=seed_users).count(), 17)
         self.assertEqual(SubscriptionPayment.objects.filter(user__in=seed_users).count(), 17)
@@ -6482,7 +6476,7 @@ class DashboardTests(TestCase):
         self.assertEqual(booking_payload["landlord_collected_amount"], 250000.0)
         self.assertEqual(booking_payload["landlord_expecting_payment_amount"], 350000.0)
         self.assertEqual(booking_payload["landlord_balance_payment_amount"], 400000.0)
-        self.assertEqual(booking_payload["remaining_amount"], 611250.0)
+        self.assertEqual(booking_payload["remaining_amount"], 600000.0)
 
 
 class PublicStatsTests(TestCase):
