@@ -926,6 +926,92 @@ class TenantProfile(models.Model):
         return f"TenantProfile({self.user.email})"
 
 
+class TenantSearchRequirement(models.Model):
+    """Optional property-search preferences saved by a tenant.
+
+    Sally (the AI assistant) queries this to score available listings and
+    recommend the best matches for the tenant.
+    """
+
+    FURNISHING_LEVEL_CHOICES = [
+        ("unfurnished", "Unfurnished"),
+        ("semi_furnished", "Semi-furnished"),
+        ("fully_furnished", "Fully furnished"),
+    ]
+    POWER_SUPPLY_CHOICES = [
+        ("24_hours", "24-hour supply"),
+        ("grid_with_backup", "Grid + inverter/generator backup"),
+        ("grid_only", "Grid only"),
+        ("limited", "Limited supply"),
+    ]
+    WATER_SUPPLY_CHOICES = [
+        ("constant", "Constant supply"),
+        ("borehole", "Borehole"),
+        ("public_mains", "Public mains"),
+        ("tanker", "Tanker delivery"),
+        ("irregular", "Irregular supply"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.OneToOneField(AppUser, on_delete=models.CASCADE, related_name="search_requirement")
+
+    # Location preferences
+    preferred_state = models.CharField(max_length=120, blank=True, default="")
+    preferred_city = models.CharField(max_length=120, blank=True, default="")
+    preferred_lga = models.CharField(max_length=120, blank=True, default="")
+    preferred_areas = models.CharField(max_length=255, blank=True, default="")
+
+    # Budget
+    min_budget = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    max_budget = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    max_nightly_budget = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+
+    # Property specification
+    property_type = models.CharField(max_length=80, blank=True, default="")
+    min_bedrooms = models.PositiveSmallIntegerField(null=True, blank=True)
+    max_bedrooms = models.PositiveSmallIntegerField(null=True, blank=True)
+    min_bathrooms = models.PositiveSmallIntegerField(null=True, blank=True)
+    min_toilets = models.PositiveSmallIntegerField(null=True, blank=True)
+    furnishing_level = models.CharField(max_length=20, choices=FURNISHING_LEVEL_CHOICES, blank=True, default="")
+    power_supply = models.CharField(max_length=20, choices=POWER_SUPPLY_CHOICES, blank=True, default="")
+    water_supply = models.CharField(max_length=20, choices=WATER_SUPPLY_CHOICES, blank=True, default="")
+
+    # Required features — a checked flag means the listing must provide it
+    pet_friendly = models.BooleanField(default=False)
+    furnished = models.BooleanField(default=False)
+    utilities_included = models.BooleanField(default=False)
+    parking = models.BooleanField(default=False)
+    garage = models.BooleanField(default=False)
+    garden = models.BooleanField(default=False)
+    lift = models.BooleanField(default=False)
+    balcony = models.BooleanField(default=False)
+    fitted_kitchen = models.BooleanField(default=False)
+    air_conditioning = models.BooleanField(default=False)
+    internet = models.BooleanField(default=False)
+    boys_quarters = models.BooleanField(default=False)
+    prepaid_meter = models.BooleanField(default=False)
+    gated_estate = models.BooleanField(default=False)
+    security_guard = models.BooleanField(default=False)
+    cctv = models.BooleanField(default=False)
+    wheelchair_accessible = models.BooleanField(default=False)
+    smoking_allowed = models.BooleanField(default=False)
+    short_let_allowed = models.BooleanField(default=False)
+    student_tenants_allowed = models.BooleanField(default=False)
+    expatriates_allowed = models.BooleanField(default=False)
+    commercial_activities_allowed = models.BooleanField(default=False)
+    negotiable = models.BooleanField(default=False)
+
+    preferred_amenities = models.JSONField(default=list, blank=True)
+    move_in_date = models.DateField(null=True, blank=True)
+    occupants = models.PositiveSmallIntegerField(null=True, blank=True)
+    notes = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return f"TenantSearchRequirement({self.user.email})"
+
+
 class Booking(models.Model):
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"

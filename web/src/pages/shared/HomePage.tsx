@@ -255,8 +255,8 @@ export default function HomePage() {
             </section>
 
             {/* Features Section */}
-            <section className="section bg-white">
-                <div className="container-modern">
+            <section className="section bg-white max-w-12xl">
+                <div className="container-modern ">
                     <div className="text-center mb-12">
                         <h2 className="text-2xl md:text-4xl font-bold text-blue-700 mb-4">
                             Why Choose RentDirect?
@@ -269,14 +269,14 @@ export default function HomePage() {
                         </p>
                     </div>
 
-                    <div className="grid-modern grid-cols-1 md:grid-cols-6 lg:grid-cols6 gap-3">
+                    <div className="grid-modern grid-cols-1 md:grid-cols-5 lg:grid-cols6 gap-4">
                         <div className="card p-8 text-center hover:shadow-6xl transition-all duration-600">
                             <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center mx-auto mb-4">
                                 <HiCurrencyDollar className="w-6 h-6 text-emerald-600" />
                             </div>
                             <h3 className={classNameUSP}>Cost Effecfive</h3>
                             <p className="text-blue-600">
-                                Connect directly with landlords and skip the 20–30% agent commission.
+                                Avoid scams, connect directly with landlords and skip unending fees.
                             </p>
                         </div>
 
@@ -286,7 +286,7 @@ export default function HomePage() {
                             </div>
                             <h3 className={classNameUSP}>In-App Chat</h3>
                             <p className="text-blue-600">
-                                Negotiate, ask questions, and arrange viewings through our secure messenger.
+                                Chat and arrange viewings through our secure chat messenger.
                             </p>
                         </div>
 
@@ -296,7 +296,7 @@ export default function HomePage() {
                             </div>
                             <h3 className={classNameUSP}>AI Assistant</h3>
                             <p className="text-blue-600">
-                                Use our AI assistant to find what you need and track every transaction including rental progress and payments.
+                                Use Sally, our AI assistant to find what you need, track rental progress and transactions.
                             </p>
                         </div>
 
@@ -314,19 +314,9 @@ export default function HomePage() {
                             <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center mx-auto mb-4">
                                 <HiLocationMarker className="w-6 h-6 text-purple-600" />
                             </div>
-                            <h3 className={classNameUSP}>Seamless Payments</h3>
+                            <h3 className={classNameUSP}>Seamless Process</h3>
                             <p className="text-blue-600">
-                                Pay annual rent, deposits, and caution fees securely within the platform.
-                            </p>
-                        </div>
-
-                        <div className="card p-8 text-center hover:shadow-6xl transition-all duration-200">
-                            <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center mx-auto mb-4">
-                                <HiShieldCheck className="w-6 h-6 text-blue-600" />
-                            </div>
-                            <h3 className={classNameUSP}>Quality Experience</h3>
-                            <p className="text-blue-600">
-                                Avoid scams and deal with high quality & verified Landlords and Tenants
+                                All processes are seamless and payments done through secure channel within the platform.
                             </p>
                         </div>
                     </div>

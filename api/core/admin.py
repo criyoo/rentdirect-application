@@ -6,7 +6,7 @@ from django.db.models import OuterRef, Prefetch, Subquery
 from django.utils.html import format_html, format_html_join
 from django.utils import timezone
 
-from .models import AdminUser, AppUser, Booking, Document, Feedback, Favourite, FeaturedPayment, Landlord, LandlordProfile, Listing, ListingImage, Message, Payment, PaymentSettlement, Review, SubscriptionPayment, SubscriptionVATPayment, Tenant, TenantProfile, VerificationRequest, infer_listing_rental_status, sync_listing_status_from_rental_progress
+from .models import AdminUser, AppUser, Booking, Document, Feedback, Favourite, FeaturedPayment, Landlord, LandlordProfile, Listing, ListingImage, Message, Payment, PaymentSettlement, Review, SubscriptionPayment, SubscriptionVATPayment, Tenant, TenantProfile, TenantSearchRequirement, VerificationRequest, infer_listing_rental_status, sync_listing_status_from_rental_progress
 
 
 PREFERRED_CONTACT_METHOD_CHOICES = (
@@ -1314,6 +1314,14 @@ class TenantProfileAdmin(admin.ModelAdmin):
     list_filter = ("status", "employment_status", "gender", "submitted_at")
     search_fields = ("user__email", "first_name", "last_name", "state_of_origin")
     readonly_fields = ("submitted_at", "updated_at")
+
+
+@admin.register(TenantSearchRequirement)
+class TenantSearchRequirementAdmin(admin.ModelAdmin):
+    list_display = ("user", "preferred_state", "preferred_city", "property_type", "max_budget", "updated_at")
+    list_filter = ("preferred_state", "property_type", "furnishing_level")
+    search_fields = ("user__email", "preferred_city", "preferred_state", "preferred_areas")
+    readonly_fields = ("created_at", "updated_at")
 
 
 admin.site.register(Review)

@@ -21,6 +21,7 @@ import ChatThreadPage from './pages/shared/messages/ChatThreadPage'
 import TenantVerificationPage from './pages/tenants/TenantVerificationPage'
 import ProfilePage from './pages/shared/profile/ProfilePage'
 import FavouritesPage from './pages/tenants/FavouritesPage'
+import PropertySearchRequirementPage from './pages/tenants/PropertySearchRequirementPage'
 import RentPage from './pages/tenants/RentPage'
 import RentalProgressPage from './pages/tenants/RentalProgressPage'
 import ContactLandlordPage from './pages/tenants/ContactLandlordPage'
@@ -188,6 +189,11 @@ function App() {
                                         </ProtectedRoute>
                                     } />
                                     <Route path="/favourites" element={<FavouritesPage />} />
+                                    <Route path="/search-requirement" element={
+                                        <ProtectedRoute requiredRoles={['tenant']}>
+                                            <PropertySearchRequirementPage />
+                                        </ProtectedRoute>
+                                    } />
                                     <Route path="/rent/:id" element={<RentPage />} />
                                     <Route path="/rental-progress/:bookingId" element={
                                         <ProtectedRoute requiredRoles={['tenant', 'landlord']}>

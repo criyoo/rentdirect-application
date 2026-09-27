@@ -55,6 +55,7 @@ from .models import (
     SubscriptionVATPayment,
     SupportChatMessage,
     TenantProfile,
+    TenantSearchRequirement,
     VerificationRequest,
 )
 from .flutterwave import (
@@ -179,11 +180,13 @@ from .serializers import (
     SubscriptionPaymentMethodSerializer,
     SupportChatMessageSerializer,
     TenantProfileSerializer,
+    TenantSearchRequirementSerializer,
     UserSerializer,
     VerifyRegistrationSerializer,
     VerificationRequestSerializer,
 )
 from .subscription_pricing import get_subscription_pricing
+from .property_matching import top_matches_for_requirement
 
 User = get_user_model()
 OPEN_PAYMENT_STATUSES = {"pending", "processing"}
@@ -3557,6 +3560,54 @@ class UserViewSet(viewsets.GenericViewSet):
         if mobile_warning:
             response_data["mobile_warning"] = mobile_warning
         return Response(response_data)
+
+    @action(detail=False, methods=["get", "put"], url_path="me/search-requirement")
+    def search_requirement(self, request):
+        requirement = TenantSearchRequirement.objects.filter(user=request.user).first()
+        if request.method == "GET":
+            if not requirement:
+                return Response({"detail": "No search requirement found."}, status=404)
+            return Response(TenantSearchRequirementSerializer(requirement).data)
+
+        if request.user.role != AppUser.Role.TENANT:
+            raise PermissionDenied("Only tenant accounts can save a property search requirement.")
+        created = requirement is None
+        serializer = (
+            TenantSearchRequirementSerializer(requirement, data=request.data, partial=True)
+            if requirement
+            else TenantSearchRequirementSerializer(data=request.data)
+        )
+        serializer.is_valid(raise_exception=True)
+        requirement = serializer.save() if requirement else serializer.save(user=request.user)
+        return Response(
+            TenantSearchRequirementSerializer(requirement).data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+    @action(detail=False, methods=["get"], url_path="me/search-requirement/matches")
+    def search_requirement_matches(self, request):
+        requirement = TenantSearchRequirement.objects.filter(user=request.user).first()
+        if not requirement:
+            return Response({"detail": "No search requirement found."}, status=404)
+        try:
+            limit = int(request.query_params.get("limit") or 3)
+        except (TypeError, ValueError):
+            limit = 3
+        result = top_matches_for_requirement(requirement, limit=min(24, max(1, limit)))
+        return Response(
+            {
+                "matches": [
+                    {
+                        "listing": ListingSerializer(match["listing"], context={"request": request}).data,
+                        "match_score": match["match_score"],
+                        "match_reasons": match["match_reasons"],
+                    }
+                    for match in result["matches"]
+                ],
+                "in_location_count": result["in_location_count"],
+                "outside_location_count": result["outside_location_count"],
+            }
+        )
 
     @action(detail=False, methods=["get"], url_path="tenants/(?P<tenant_id>[^/.]+)/profile")
     def tenant_profile_detail(self, request, tenant_id=None):

@@ -407,3 +407,57 @@ export interface AiChatResponse {
     mode?: 'ai' | 'limited'
     session_id?: string | null
 }
+
+export interface TenantSearchRequirement {
+    id?: string
+    preferred_state?: string
+    preferred_city?: string
+    preferred_lga?: string
+    preferred_areas?: string
+    min_budget?: number | null
+    max_budget?: number | null
+    max_nightly_budget?: number | null
+    property_type?: string
+    min_bedrooms?: number | null
+    max_bedrooms?: number | null
+    min_bathrooms?: number | null
+    min_toilets?: number | null
+    furnishing_level?: string
+    power_supply?: string
+    water_supply?: string
+    pet_friendly?: boolean
+    furnished?: boolean
+    utilities_included?: boolean
+    parking?: boolean
+    garage?: boolean
+    garden?: boolean
+    lift?: boolean
+    balcony?: boolean
+    fitted_kitchen?: boolean
+    air_conditioning?: boolean
+    internet?: boolean
+    boys_quarters?: boolean
+    prepaid_meter?: boolean
+    gated_estate?: boolean
+    security_guard?: boolean
+    cctv?: boolean
+    wheelchair_accessible?: boolean
+    smoking_allowed?: boolean
+    short_let_allowed?: boolean
+    student_tenants_allowed?: boolean
+    expatriates_allowed?: boolean
+    commercial_activities_allowed?: boolean
+    negotiable?: boolean
+    preferred_amenities?: string[]
+    move_in_date?: string | null
+    occupants?: number | null
+    notes?: string
+    created_at?: string
+    updated_at?: string
+}
+
+export interface SearchRequirementMatch {
+    listing: Listing
+    match_score: number
+    match_reasons: string[]
+}

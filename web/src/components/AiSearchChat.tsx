@@ -17,7 +17,6 @@ export default function AiSearchChat({ onListingsFound }: AiSearchChatProps) {
     const [input, setInput] = useState('')
     const [loading, setLoading] = useState(false)
     const [streaming, setStreaming] = useState(false)
-    const [limitedMode, setLimitedMode] = useState(false)
     const scrollRef = useRef<HTMLDivElement>(null)
     const sessionIdRef = useRef<string | null>(null)
 
@@ -95,7 +94,6 @@ export default function AiSearchChat({ onListingsFound }: AiSearchChatProps) {
                     } else if (event.type === 'done') {
                         if (event.session_id) sessionIdRef.current = event.session_id
                         patchAssistantMessage(replyIndex, () => event.reply || 'Here is what I found.')
-                        setLimitedMode(event.mode === 'limited')
                         const hasSearch = Object.values(event.filters || {}).some(
                             (v) => v !== undefined && v !== '',
                         )
@@ -139,11 +137,6 @@ export default function AiSearchChat({ onListingsFound }: AiSearchChatProps) {
                     <p className="text-sm text-indigo-200">
                         Your RentDirect AI assistant — ask me to find properties, compare prices, or answer any questions
                     </p>
-                    {limitedMode ? (
-                        <p className="text-xs text-amber-200">
-                            Limited mode — I can still search and quote live data, but replies may be less conversational.
-                        </p>
-                    ) : null}
                 </div>
             </div>
 

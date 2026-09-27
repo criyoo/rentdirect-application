@@ -43,6 +43,7 @@ from .models import (
     SupportChatMessage,
     sync_listing_status_from_rental_progress,
     TenantProfile,
+    TenantSearchRequirement,
     VerificationRequest,
 )
 from .financial_constants import REFUNDABLE_CAUTION_FEE_RATE, LEGAL_FEE_MAX_RATE, ZERO_AMOUNT
@@ -1579,3 +1580,47 @@ class TenantProfileSerializer(serializers.ModelSerializer):
             docs = Document.objects.filter(id__in=doc_ids, owner=instance.user)
             instance.supporting_documents.add(*docs)
         return instance
+
+
+class TenantSearchRequirementSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TenantSearchRequirement
+        fields = [
+            "id", "created_at", "updated_at",
+            "preferred_state", "preferred_city", "preferred_lga", "preferred_areas",
+            "min_budget", "max_budget", "max_nightly_budget",
+            "property_type", "min_bedrooms", "max_bedrooms", "min_bathrooms", "min_toilets",
+            "furnishing_level", "power_supply", "water_supply",
+            "pet_friendly", "furnished", "utilities_included", "parking", "garage",
+            "garden", "lift", "balcony", "fitted_kitchen", "air_conditioning",
+            "internet", "boys_quarters", "prepaid_meter", "gated_estate",
+            "security_guard", "cctv", "wheelchair_accessible", "smoking_allowed",
+            "short_let_allowed", "student_tenants_allowed", "expatriates_allowed",
+            "commercial_activities_allowed", "negotiable",
+            "preferred_amenities", "move_in_date", "occupants", "notes",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+    def validate_preferred_amenities(self, value):
+        if not isinstance(value, list):
+            raise serializers.ValidationError("Provide a list of amenity names.")
+        return [str(item).strip() for item in value if str(item).strip()][:20]
+
+    def validate(self, attrs):
+        min_budget = attrs.get("min_budget")
+        max_budget = attrs.get("max_budget")
+        if min_budget is None and self.instance:
+            min_budget = self.instance.min_budget
+        if max_budget is None and self.instance:
+            max_budget = self.instance.max_budget
+        if min_budget is not None and max_budget is not None and min_budget > max_budget:
+            raise serializers.ValidationError({"min_budget": "Minimum budget cannot exceed maximum budget."})
+        min_bedrooms = attrs.get("min_bedrooms")
+        max_bedrooms = attrs.get("max_bedrooms")
+        if min_bedrooms is None and self.instance:
+            min_bedrooms = self.instance.min_bedrooms
+        if max_bedrooms is None and self.instance:
+            max_bedrooms = self.instance.max_bedrooms
+        if min_bedrooms is not None and max_bedrooms is not None and min_bedrooms > max_bedrooms:
+            raise serializers.ValidationError({"min_bedrooms": "Minimum bedrooms cannot exceed maximum bedrooms."})
+        return attrs

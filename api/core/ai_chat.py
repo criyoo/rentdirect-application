@@ -1,7 +1,6 @@
 import json
 import logging
 import re
-import time
 import uuid
 from decimal import Decimal, InvalidOperation
 
@@ -16,7 +15,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from .ai_knowledge import site_content_for_text, site_content_for_topic
+from .ai_knowledge import site_content_for_topic
 from .financial_constants import (
     ADMINISTRATION_FEE_RATE,
     ADMINISTRATION_FEE_VAT_RATE,
@@ -27,8 +26,15 @@ from .financial_constants import (
     REFUNDABLE_CAUTION_FEE_RATE,
 )
 from .location_services import CITY_COORDINATES, STATE_COORDINATES
-from .models import Listing, deposit_secured_booking_queryset
+from .models import AppUser, Listing, TenantSearchRequirement, deposit_secured_booking_queryset
 from .permissions import AllowAnyUnlessFrozen
+from .property_matching import (
+    TOP_MATCH_LIMIT,
+    requirement_search_filters_without_location,
+    requirement_summary,
+    requirement_to_search_filters,
+    top_matches_for_requirement,
+)
 from .pricing import (
     calculate_administration_fee,
     calculate_administration_fee_vat,
@@ -58,6 +64,7 @@ RULES:
 10. Reply in plain text only — the chat UI does not render markdown. Do not use **, __, #, `, or other markdown syntax.
 11. Sound like a helpful human, not a brochure. Use contractions, vary sentence length, acknowledge what the user just said, and be honest when something isn't available ("I don't see any 3-bed flats in Lekki right now, but there are 2-bed ones"). End with at most one short natural follow-up — never a menu of options.
 12. Listings carry trust and cost data you can use: a verified flag, reviews/ratings, neighbourhood/area and landmark, fees (service charge, caution fee, legal fee), nightly rate for short-lets, furnishing level, power/water supply, and security features. For "best rated", "most popular", "cheapest", or "verified only" requests use the sort/verified_only filters. When asked what a property costs to move in, call get_property_details — it returns estimated_move_in_cost_ngn and fees_breakdown_ngn.
+13. Signed-in tenants can save a Property Search Requirement (preferred location, budget, bedrooms, must-have features) from their dashboard. When a tenant asks to match properties to their requirement, recommends properties "for me", or refers to saved preferences, call match_search_requirement — it returns the top 3 listings each with a match_score (0-100) and match reasons; mention the scores in your reply. Matches are restricted to the tenant's saved location; when the result's outside_location_count is above 0, tell the tenant that many other properties matching their requirement were found outside their location and ask if they want to see them — if yes, call search_properties with the provided search_filters_without_location. If it returns found=false with reason 'no_requirement', tell the tenant to fill in the Property Search Requirement page in their dashboard. If reason is 'not_signed_in_tenant', ask them to sign in with a tenant account. Use get_saved_search_requirement to read the saved fields when the user asks what they saved or wants to refine a search from it — its fields map directly onto search_properties filters.
 """
 
 TOOL_LIST = [
@@ -172,6 +179,41 @@ TOOL_LIST = [
                 "limit, payment methods, and what each plan unlocks."
             ),
             "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_saved_search_requirement",
+            "description": (
+                "Get the signed-in tenant's saved property search requirement (preferred location, "
+                "budget, bedrooms, furnishing and must-have features). Use when the user asks what "
+                "they saved or wants to search based on their saved requirement."
+            ),
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "match_search_requirement",
+            "description": (
+                "Score available listings against the signed-in tenant's saved property search "
+                "requirement. Returns the top matching properties, each with a match_score "
+                "(0-100) and the reasons it matched."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "limit": {
+                        "type": "integer",
+                        "description": (
+                            "Number of top matches to return — default 3, use a higher number "
+                            "when the tenant asks for more recommendations."
+                        ),
+                    },
+                },
+            },
         },
     },
     {
@@ -610,7 +652,116 @@ def get_pricing_and_fees_tool(_arguments: dict) -> dict:
     }
 
 
-def _execute_tool(name: str, arguments: dict) -> dict:
+def _tenant_search_requirement(user):
+    """Return the signed-in tenant's saved requirement, or None."""
+    if not getattr(user, "is_authenticated", False):
+        return None
+    if getattr(user, "role", None) != AppUser.Role.TENANT:
+        return None
+    requirement = getattr(user, "search_requirement", None)
+    if requirement is not None:
+        return requirement
+    return TenantSearchRequirement.objects.filter(user=user).first()
+
+
+def _no_requirement_result(user) -> dict:
+    if not getattr(user, "is_authenticated", False) or getattr(user, "role", None) != AppUser.Role.TENANT:
+        return {
+            "found": False,
+            "reason": "not_signed_in_tenant",
+            "message": "This feature needs a signed-in tenant account.",
+        }
+    return {
+        "found": False,
+        "reason": "no_requirement",
+        "message": (
+            "The tenant has not saved a property search requirement yet — they can set one "
+            "on the Property Search Requirement page in their dashboard."
+        ),
+    }
+
+
+def get_saved_search_requirement_tool(user) -> dict:
+    requirement = _tenant_search_requirement(user)
+    if requirement is None:
+        return _no_requirement_result(user)
+    return {
+        "found": True,
+        "requirement": requirement_summary(requirement),
+        "as_search_filters": requirement_to_search_filters(requirement),
+    }
+
+
+def match_search_requirement_tool(user, limit=None) -> dict:
+    """Score available listings against the tenant's saved requirement; top N.
+
+    Saved location fields are a hard filter — only in-location listings are
+    recommended. ``outside_location_count`` reports how many listings elsewhere
+    still satisfy the rest of the requirement so the assistant can offer them.
+    """
+    requirement = _tenant_search_requirement(user)
+    if requirement is None:
+        return _no_requirement_result(user)
+    try:
+        limit = int(limit or TOP_MATCH_LIMIT)
+    except (TypeError, ValueError):
+        limit = TOP_MATCH_LIMIT
+    result = top_matches_for_requirement(requirement, limit=min(24, max(1, limit)))
+    matches = result["matches"]
+    outside_count = int(result["outside_location_count"])
+    base = {
+        "listings": [],
+        "listing_objects": [],
+        "filters": {"saved_search_requirement": True},
+        "total_count": 0,
+        "in_location_count": int(result["in_location_count"]),
+        "outside_location_count": outside_count,
+        "search_filters_without_location": requirement_search_filters_without_location(requirement),
+    }
+    if not matches and outside_count == 0:
+        return {
+            **base,
+            "found": False,
+            "reason": "empty_requirement",
+            "message": (
+                "The saved search requirement has no criteria to match on — ask the tenant "
+                "to fill in some preferences on the Property Search Requirement page."
+            ),
+        }
+    listings = []
+    for match in matches:
+        summary = _listing_summary(match["listing"])
+        summary["match_score"] = match["match_score"]
+        summary["match_reasons"] = match["match_reasons"]
+        listings.append(summary)
+    note = "Top recommendations ranked by match score against the saved requirement, restricted to the tenant's saved location."
+    if outside_count:
+        note += (
+            f" {outside_count} other properties matching the requirement exist outside the saved "
+            "location — mention this and ask if they want to see them. If yes, call "
+            "search_properties with search_filters_without_location."
+        )
+    return {
+        **base,
+        "found": True,
+        "total_count": len(listings),
+        "returned_count": len(listings),
+        "listings": listings,
+        "listing_objects": [match["listing"] for match in matches],
+        "matches": [
+            {
+                "listing_id": summary["id"],
+                "title": summary["title"],
+                "match_score": summary["match_score"],
+                "match_reasons": summary["match_reasons"],
+            }
+            for summary in listings
+        ],
+        "note": note,
+    }
+
+
+def _execute_tool(name: str, arguments: dict, user=None) -> dict:
     if name == "search_properties":
         return search_properties_tool(arguments)
     if name == "get_property_details":
@@ -619,6 +770,10 @@ def _execute_tool(name: str, arguments: dict) -> dict:
         return get_listing_stats_tool(arguments)
     if name == "get_pricing_and_fees":
         return get_pricing_and_fees_tool(arguments)
+    if name == "get_saved_search_requirement":
+        return get_saved_search_requirement_tool(user)
+    if name == "match_search_requirement":
+        return match_search_requirement_tool(user, limit=arguments.get("limit"))
     if name == "get_marketplace_info":
         return site_content_for_topic(str(arguments.get("topic") or ""))
     return {"error": f"Unknown tool: {name}"}
@@ -653,7 +808,10 @@ def _chat_models() -> list:
     return models
 
 
-def _chat_completion(messages: list) -> dict:
+_CHAT_HTTP = requests.Session()
+
+
+def _chat_headers() -> dict:
     base_url = settings.AI_CHAT_BASE_URL.rstrip("/")
     headers = {"Content-Type": "application/json"}
     if getattr(settings, "AI_CHAT_API_KEY", ""):
@@ -661,22 +819,41 @@ def _chat_completion(messages: list) -> dict:
     if "openrouter.ai" in base_url:
         headers["HTTP-Referer"] = getattr(settings, "WEB_PUBLIC_URL", "")
         headers["X-Title"] = "RentDirect"
+    return headers
+
+
+def _chat_payload(messages: list) -> dict:
     payload = {
         "messages": messages,
         "tools": TOOL_LIST,
         "tool_choice": "auto",
-        "temperature": 0.2,
+        "temperature": 0.3,
+        "max_tokens": max(256, int(getattr(settings, "AI_CHAT_MAX_OUTPUT_TOKENS", 800))),
     }
+    openrouter = "openrouter.ai" in settings.AI_CHAT_BASE_URL
     if getattr(settings, "AI_CHAT_REASONING", False):
         payload["reasoning"] = {"enabled": True}
+    elif openrouter:
+        # Reasoning models chain a long hidden trace before visible output —
+        # explicitly disable so the assistant replies promptly.
+        payload["reasoning"] = {"enabled": False}
+        payload["provider"] = {"sort": "latency"}
+    return payload
+
+
+def _chat_completion(messages: list) -> dict:
+    base_url = settings.AI_CHAT_BASE_URL.rstrip("/")
+    headers = _chat_headers()
+    payload = _chat_payload(messages)
+    timeout = getattr(settings, "AI_CHAT_TIMEOUT_SECONDS", 45)
     last_error = None
     for model in _chat_models():
         try:
-            response = requests.post(
+            response = _CHAT_HTTP.post(
                 f"{base_url}/chat/completions",
                 json={**payload, "model": model},
                 headers=headers,
-                timeout=getattr(settings, "AI_CHAT_TIMEOUT_SECONDS", 45),
+                timeout=timeout,
             )
             response.raise_for_status()
             data = response.json()
@@ -689,29 +866,6 @@ def _chat_completion(messages: list) -> dict:
     if last_error is not None:
         raise last_error
     raise RuntimeError("No AI chat models configured.")
-
-
-def _chat_payload(messages: list) -> dict:
-    payload = {
-        "messages": messages,
-        "tools": TOOL_LIST,
-        "tool_choice": "auto",
-        "temperature": 0.3,
-    }
-    if getattr(settings, "AI_CHAT_REASONING", False):
-        payload["reasoning"] = {"enabled": True}
-    return payload
-
-
-def _chat_headers() -> dict:
-    base_url = settings.AI_CHAT_BASE_URL.rstrip("/")
-    headers = {"Content-Type": "application/json"}
-    if getattr(settings, "AI_CHAT_API_KEY", ""):
-        headers["Authorization"] = f"Bearer {settings.AI_CHAT_API_KEY}"
-    if "openrouter.ai" in base_url:
-        headers["HTTP-Referer"] = getattr(settings, "WEB_PUBLIC_URL", "")
-        headers["X-Title"] = "RentDirect"
-    return headers
 
 
 def _iter_chat_completion(messages: list):
@@ -731,7 +885,7 @@ def _iter_chat_completion(messages: list):
         tool_calls_acc: dict[int, dict] = {}
         reasoning = None
         try:
-            with requests.post(
+            with _CHAT_HTTP.post(
                 f"{base_url}/chat/completions",
                 json={**payload, "model": model},
                 headers=headers,
@@ -815,14 +969,6 @@ def _save_chat_session(session_id: str, session: dict) -> None:
 
 def _sse(payload: dict) -> str:
     return f"data: {json.dumps(payload, default=str)}\n\n"
-
-
-def _stream_text_events(text: str, chunk_size: int = 4, delay: float = 0.02):
-    """Stream generated fallback text in small chunks so it types like the LLM path."""
-    for index in range(0, len(text), chunk_size):
-        yield _sse({"type": "delta", "text": text[index:index + chunk_size]})
-        if delay:
-            time.sleep(delay)
 
 
 # Popular neighbourhoods/areas missing from CITY_COORDINATES — map them to
@@ -1060,7 +1206,28 @@ def _merge_search_filters(prior_filters: dict | None, new_filters: dict, normali
         or not _REFINEMENT_RE.search(normalized)
     ):
         return dict(new_filters or {})
-    return {**dict(prior_filters), **dict(new_filters or {})}
+    merged = {**dict(prior_filters), **dict(new_filters or {})}
+    # A new one-sided price bound replaces the stale opposite bound when keeping
+    # both would pin an impossible band ("above ₦2m" after "under ₦1m"), but a
+    # valid band is kept ("above ₦1m" then "under ₦3m" → ₦1–3m).
+    try:
+        if (
+            "min_price" in new_filters
+            and "max_price" not in new_filters
+            and "max_price" in merged
+            and float(merged["min_price"]) >= float(merged["max_price"])
+        ):
+            merged.pop("max_price")
+        elif (
+            "max_price" in new_filters
+            and "min_price" not in new_filters
+            and "min_price" in merged
+            and float(merged["max_price"]) <= float(merged["min_price"])
+        ):
+            merged.pop("min_price")
+    except (TypeError, ValueError):
+        pass
+    return merged
 
 
 def _is_browse_question(normalized: str) -> bool:
@@ -1074,14 +1241,6 @@ def _is_browse_question(normalized: str) -> bool:
 _PRICING_QUESTION_RE = re.compile(
     r"\b(?:fee|fees|cost|price|pricing|subscribe|subscription|plan|charge|deposit|how much|payment|pay)\b"
 )
-_GREETING_RE = re.compile(
-    r"^(?:hi|hello|hey|hiya|yo|good\s+(?:morning|afternoon|evening)|howdy)\b"
-)
-_THANKS_RE = re.compile(
-    r"^(?:thank|thanks|thank you|appreciated|appreciate|cheers|nice|great|awesome|perfect)\b"
-)
-
-
 def _factual_intent(normalized: str) -> str | None:
     """Map a factual question to the tool that owns the data, or None for narrative chat."""
     if _is_count_question(normalized):
@@ -1093,222 +1252,6 @@ def _factual_intent(normalized: str) -> str | None:
     return None
 
 
-def _plan_prices_line(role: str, plans: dict) -> str:
-    return ", ".join(
-        f"{plan.title()} at ₦{amounts['monthly_ngn']:,.0f}/month or ₦{amounts['yearly_ngn']:,.0f}/year"
-        if amounts["monthly_ngn"]
-        else f"{plan.title()} is free"
-        for plan, amounts in plans.get(role, {}).items()
-    )
-
-
-def _pricing_reply(normalized: str, user_messages: list | None = None) -> str:
-    """Build a fallback pricing answer scoped to what was actually asked."""
-    pricing = get_pricing_and_fees_tool({})
-    plans = pricing["subscription_plans"]
-    charges = pricing["rental_charges"]
-
-    wants_subscription = bool(
-        re.search(r"subscri|plan|bronze|silver|gold|platinum", normalized)
-    )
-    wants_rental_fees = bool(
-        re.search(r"deposit|admin|vat|service fee|checkout|rental", normalized)
-    )
-
-    # Role scope: from this message, else carry it over from earlier user turns
-    # (e.g. "I asked only for subscription fees" after a tenant question).
-    asks_tenant = "tenant" in normalized
-    asks_landlord = "landlord" in normalized
-    if not asks_tenant and not asks_landlord:
-        for earlier in user_messages or []:
-            if earlier.get("role") != "user":
-                continue
-            text = str(earlier.get("content") or "").lower()
-            if "tenant" in text:
-                asks_tenant = True
-            if "landlord" in text:
-                asks_landlord = True
-
-    parts = []
-    if wants_subscription or not wants_rental_fees:
-        if asks_landlord and not asks_tenant:
-            parts.append(f"For landlords, {_plan_prices_line('landlord', plans)}.")
-            parts.append(pricing["plan_requirements"]["landlord"])
-        elif asks_tenant and not asks_landlord:
-            parts.append(f"For tenants, {_plan_prices_line('tenant', plans)}.")
-            parts.append(pricing["plan_requirements"]["tenant"])
-        else:
-            parts.append(f"For tenants, {_plan_prices_line('tenant', plans)}.")
-            parts.append(f"For landlords, {_plan_prices_line('landlord', plans)}.")
-            parts.append(
-                f"{pricing['plan_requirements']['tenant']} "
-                f"{pricing['plan_requirements']['landlord']}"
-            )
-        vat = pricing["subscription_vat_percent"]
-        if vat:
-            parts.append(f"Paid plans add {vat:g}% VAT.")
-    if wants_rental_fees:
-        parts.append(
-            f"When you rent, there's a "
-            f"{charges['administration_fee_percent_of_annual_rent']:g}% administration fee "
-            f"(plus {charges['vat_on_administration_fee_percent']:g}% VAT on it) and a "
-            f"{charges['refundable_caution_fee_percent']:g}% refundable caution fee — "
-            "you'll see the full breakdown before paying."
-        )
-    reply = " ".join(parts)
-    if re.search(r"\b(?:only|just|asked)\b", normalized):
-        reply = f"Ah, fair enough — just that bit then: {reply}"
-    return reply
-
-
-def _fallback_chat(user_messages: list, prior_filters: dict | None = None) -> dict:
-    """Rule-based assistant used when no AI provider is configured/reachable."""
-    last_user_message = next(
-        (m["content"] for m in reversed(user_messages) if m.get("role") == "user"),
-        "",
-    )
-    normalized = re.sub(r"\s+", " ", last_user_message.lower()).strip()
-    if _GREETING_RE.match(normalized):
-        return {
-            "reply": (
-                "Hi there! I'm Sally — happy to help you find a place or answer anything about "
-                "RentDirect. What are you looking for?"
-            ),
-            "listings": [],
-            "listing_objects": [],
-            "filters": {},
-        }
-    if _THANKS_RE.match(normalized):
-        return {
-            "reply": "You're welcome! Anything else you'd like to check — more properties, fees, or how things work?",
-            "listings": [],
-            "listing_objects": [],
-            "filters": {},
-        }
-    filters = _fallback_filters(last_user_message)
-    if _is_count_question(normalized):
-        # Count questions are a fresh scope — never merge prior filters.
-        non_location = {k: v for k, v in filters.items() if k not in ("state", "city")}
-        if non_location:
-            # e.g. "how many 3 bedroom flats are listed" — count the matching search.
-            result = search_properties_tool(filters)
-            total = result["total_count"]
-            noun = "property" if total == 1 else "properties"
-            label_parts = []
-            if filters.get("bedrooms"):
-                label_parts.append(f"{filters['bedrooms']}-bedroom")
-            if filters.get("property_type"):
-                label_parts.append(str(filters["property_type"]).replace("-", " "))
-            what = f"{' '.join(label_parts)} {noun}" if label_parts else noun
-            where_bits = [str(v) for v in (filters.get("city"), filters.get("state")) if v]
-            where = f" in {', '.join(where_bits)}" if where_bits else " on RentDirect"
-            reply = f"Right now there {'is' if total == 1 else 'are'} {total} {what} listed{where}."
-            if total:
-                reply += " Want me to show them to you?"
-            return {
-                "reply": reply,
-                "listings": result["listings"],
-                "listing_objects": result["listing_objects"],
-                "filters": result["filters"],
-                "total_count": result["total_count"],
-            }
-        stats = get_listing_stats_tool(
-            {k: filters[k] for k in ("state", "city") if filters.get(k)}
-        )
-        total = stats["total_available"]
-        noun = "property" if total == 1 else "properties"
-        scope = stats["scope"]
-        in_where = f" in {scope.get('city') or scope.get('state')}" if scope else ""
-        reply = f"Right now there {'is' if total == 1 else 'are'} {total} {noun} listed{in_where}."
-        if not scope:
-            top_states = [row["state"] for row in stats["by_state"][:3]]
-            if top_states:
-                reply += f" Most of them are in {', '.join(top_states)}."
-            reply = reply.replace("listed.", "listed on RentDirect.")
-        elif stats["by_city"] and scope.get("state"):
-            cities = ", ".join(row["city"] for row in stats["by_city"])
-            reply += f" Cities with listings there: {cities}."
-        if total:
-            reply += " Tell me a location, budget, or bedroom count and I'll pull up the ones that fit."
-        return {"reply": reply, "listings": [], "listing_objects": [], "filters": {}}
-    if filters:
-        # Refinements keep earlier constraints ("only furnished", "cheaper ones").
-        filters = _merge_search_filters(prior_filters, filters, normalized)
-        result = search_properties_tool(filters)
-        count = result["total_count"]
-        if count:
-            label_parts = []
-            if filters.get("bedrooms"):
-                label_parts.append(f"{filters['bedrooms']}-bedroom")
-            if filters.get("property_type"):
-                label_parts.append(str(filters["property_type"]).replace("-", " "))
-            noun = "property" if count == 1 else "properties"
-            what = f"{' '.join(label_parts)} {noun}" if label_parts else noun
-            where_bits = [str(v) for v in (filters.get("city"), filters.get("state")) if v]
-            where = f" in {', '.join(where_bits)}" if where_bits else ""
-            reply = (
-                f"I found {count} {what}{where} — "
-                f"{'it is' if count == 1 else 'they are'} in the results below. "
-                "Want me to narrow it down by budget or features?"
-            )
-        else:
-            reply = (
-                "Hmm, nothing matches that right now — try widening the location or budget "
-                "and I'll take another look."
-            )
-        return {
-            "reply": reply,
-            "listings": result["listings"],
-            "listing_objects": result["listing_objects"],
-            "filters": result["filters"],
-            "total_count": result["total_count"],
-        }
-    if _PRICING_QUESTION_RE.search(normalized):
-        return {
-            "reply": _pricing_reply(normalized, user_messages),
-            "listings": [],
-            "listing_objects": [],
-            "filters": {},
-        }
-    if _is_browse_question(normalized):
-        result = search_properties_tool(_merge_search_filters(prior_filters, {}, normalized))
-        total = result["total_count"]
-        if total:
-            noun = "property" if total == 1 else "properties"
-            reply = (
-                f"Here's what we've got — {total} {noun} listed right now"
-                f"{', the latest are below' if total > 1 else ', it is below'}. "
-                "Tell me a location or budget and I'll narrow it down for you."
-            )
-        else:
-            reply = "Looks like there aren't any listings right now — worth checking back soon, new ones come in."
-        return {
-            "reply": reply,
-            "listings": result["listings"],
-            "listing_objects": result["listing_objects"],
-            "filters": result["filters"],
-            "total_count": result["total_count"],
-        }
-    info_text = site_content_for_text(last_user_message)
-    if info_text:
-        return {
-            "reply": info_text,
-            "listings": [],
-            "listing_objects": [],
-            "filters": {},
-        }
-    return {
-        "reply": (
-            "I can help you find a rental — just tell me the location, bedrooms, and budget, "
-            "like \"2 bedroom flat in Lagos under ₦2m\". Or ask me anything about how "
-            "RentDirect works, fees, or verification."
-        ),
-        "listings": [],
-        "listing_objects": [],
-        "filters": {},
-    }
-
-
 def _record_search_result(result: dict, collected: dict, filters: dict) -> int:
     """Collect listing ids and applied filters from a search_properties result."""
     filters.update(result.get("filters") or {})
@@ -1317,11 +1260,11 @@ def _record_search_result(result: dict, collected: dict, filters: dict) -> int:
     return int(result.get("total_count") or 0)
 
 
-def _inject_grounding_tool(conversation: list, tool_name: str, arguments: dict) -> dict:
+def _inject_grounding_tool(conversation: list, tool_name: str, arguments: dict, user=None) -> dict:
     """Run a data tool server-side and inject the result so the reply can only
     phrase real facts — used when the model answered a factual question without
     calling any tool."""
-    result = _execute_tool(tool_name, arguments)
+    result = _execute_tool(tool_name, arguments, user=user)
     conversation.append(
         {
             "role": "assistant",
@@ -1348,13 +1291,25 @@ def _inject_grounding_tool(conversation: list, tool_name: str, arguments: dict) 
     return result
 
 
-def run_ai_chat(user_messages: list, prior_filters: dict | None = None) -> dict:
-    """Run the LLM tool-calling loop. Falls back to keyword search without a provider."""
+_UNAVAILABLE_REPLY = "Sorry, I hit a snag answering that. Please try again."
+
+
+def _unavailable_result() -> dict:
+    """Returned when no AI provider is configured or the whole model chain fails."""
+    return {
+        "reply": _UNAVAILABLE_REPLY,
+        "listings": [],
+        "listing_objects": [],
+        "filters": {},
+        "total_count": 0,
+        "mode": "error",
+    }
+
+
+def run_ai_chat(user_messages: list, prior_filters: dict | None = None, user=None) -> dict:
+    """Run the LLM tool-calling loop; degrade to an error result if the provider fails."""
     if not _provider_ready():
-        result = _fallback_chat(user_messages, prior_filters)
-        result["mode"] = "limited"
-        result["total_count"] = int(result.get("total_count") or 0)
-        return result
+        return _unavailable_result()
 
     conversation = [{"role": "system", "content": SYSTEM_PROMPT}, *user_messages]
     collected: dict[str, dict] = {}
@@ -1387,7 +1342,7 @@ def run_ai_chat(user_messages: list, prior_filters: dict | None = None) -> dict:
                         arguments = _merge_search_filters(prior_filters, extracted, norm_text)
                     elif intent == "get_listing_stats":
                         arguments = {k: extracted[k] for k in ("state", "city") if extracted.get(k)}
-                    result = _inject_grounding_tool(conversation, intent, arguments)
+                    result = _inject_grounding_tool(conversation, intent, arguments, user=user)
                     if intent == "search_properties":
                         total_count = _record_search_result(result, collected, filters)
                     tool_ran = True
@@ -1410,8 +1365,8 @@ def run_ai_chat(user_messages: list, prior_filters: dict | None = None) -> dict:
                     arguments = json.loads(function.get("arguments") or "{}")
                 except json.JSONDecodeError:
                     arguments = {}
-                result = _execute_tool(name, arguments)
-                if name == "search_properties":
+                result = _execute_tool(name, arguments, user=user)
+                if name in ("search_properties", "match_search_requirement"):
                     total_count = _record_search_result(result, collected, filters)
                 conversation.append(
                     {
@@ -1424,11 +1379,8 @@ def run_ai_chat(user_messages: list, prior_filters: dict | None = None) -> dict:
                     }
                 )
     except Exception:
-        logger.exception("AI chat provider call failed; using fallback assistant.")
-        result = _fallback_chat(user_messages, prior_filters)
-        result["mode"] = "limited"
-        result["total_count"] = int(result.get("total_count") or 0)
-        return result
+        logger.exception("AI chat provider call failed.")
+        return _unavailable_result()
 
     reply = _plain_text(reply)
     if not reply:
@@ -1462,7 +1414,7 @@ def _stream_completion_events(conversation: list):
         return stop.value
 
 
-def iter_ai_chat_events(user_messages: list, prior_filters: dict, session_id: str, final: dict):
+def iter_ai_chat_events(user_messages: list, prior_filters: dict, session_id: str, final: dict, user=None):
     """SSE event generator: streams the assistant reply live, then a done event.
 
     Fills ``final`` with reply/filters so the caller can persist session state.
@@ -1488,10 +1440,7 @@ def iter_ai_chat_events(user_messages: list, prior_filters: dict, session_id: st
         )
 
     if not _provider_ready():
-        result = _fallback_chat(user_messages, prior_filters)
-        reply = result["reply"]
-        yield from _stream_text_events(reply)
-        yield done(reply, result, "limited")
+        yield done(_UNAVAILABLE_REPLY, {}, "error")
         return
 
     conversation = [{"role": "system", "content": SYSTEM_PROMPT}, *user_messages]
@@ -1528,7 +1477,7 @@ def iter_ai_chat_events(user_messages: list, prior_filters: dict, session_id: st
                         arguments = _merge_search_filters(prior_filters, extracted, norm_text)
                     elif intent == "get_listing_stats":
                         arguments = {k: extracted[k] for k in ("state", "city") if extracted.get(k)}
-                    result = _inject_grounding_tool(conversation, intent, arguments)
+                    result = _inject_grounding_tool(conversation, intent, arguments, user=user)
                     if intent == "search_properties":
                         total_count = _record_search_result(result, collected, filters)
                         yield _sse(
@@ -1546,6 +1495,7 @@ def iter_ai_chat_events(user_messages: list, prior_filters: dict, session_id: st
                 reply = (message.get("content") or "").strip()
                 break
             tool_ran = True
+            yield _sse({"type": "delta", "text": "One moment — let me check that.\n\n"})
             assistant_message = {
                 "role": "assistant",
                 "content": message.get("content") or "",
@@ -1561,8 +1511,8 @@ def iter_ai_chat_events(user_messages: list, prior_filters: dict, session_id: st
                     arguments = json.loads(function.get("arguments") or "{}")
                 except json.JSONDecodeError:
                     arguments = {}
-                result = _execute_tool(name, arguments)
-                if name == "search_properties":
+                result = _execute_tool(name, arguments, user=user)
+                if name in ("search_properties", "match_search_requirement"):
                     total_count = _record_search_result(result, collected, filters)
                     yield _sse(
                         {
@@ -1585,12 +1535,9 @@ def iter_ai_chat_events(user_messages: list, prior_filters: dict, session_id: st
                     }
                 )
     except Exception:
-        logger.exception("AI chat stream failed; using fallback assistant.")
+        logger.exception("AI chat stream failed.")
         yield _sse({"type": "segment"})
-        result = _fallback_chat(user_messages, prior_filters)
-        reply = result["reply"]
-        yield from _stream_text_events(reply)
-        yield done(reply, result, "limited")
+        yield done(_UNAVAILABLE_REPLY, {}, "error")
         return
 
     reply = _plain_text(reply)
@@ -1685,7 +1632,7 @@ class AiChatViewSet(viewsets.ViewSet):
 
     def create(self, request):
         session_id, session, user_messages = _resolve_chat_context(request.data)
-        result = run_ai_chat(user_messages, prior_filters=session.get("filters"))
+        result = run_ai_chat(user_messages, prior_filters=session.get("filters"), user=request.user)
         self._persist_session(
             session_id, session, user_messages, result["reply"], result.get("filters") or {}
         )
@@ -1712,17 +1659,17 @@ class AiChatViewSet(viewsets.ViewSet):
 
         def events():
             try:
-                yield from iter_ai_chat_events(user_messages, prior_filters, session_id, final)
+                yield from iter_ai_chat_events(user_messages, prior_filters, session_id, final, user=request.user)
             except Exception:
                 logger.exception("AI chat stream failed unexpectedly.")
                 yield _sse(
                     {
                         "type": "done",
-                        "reply": "Sorry, I hit a snag answering that. Please try again.",
+                        "reply": _UNAVAILABLE_REPLY,
                         "listings": [],
                         "filters": {},
                         "total_count": 0,
-                        "mode": "limited",
+                        "mode": "error",
                         "session_id": session_id,
                     }
                 )

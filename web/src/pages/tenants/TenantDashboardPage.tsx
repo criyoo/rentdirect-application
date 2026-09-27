@@ -5,6 +5,7 @@ import {
     HiCash,
     HiChat,
     HiCheckCircle,
+    HiClipboardList,
     HiClock,
     HiCog,
     HiDocumentText,
@@ -146,18 +147,19 @@ export default function TenantDashboardPage() {
     const outstandingBalance = activeBookings.reduce((sum, booking) => sum + getBookingFinancials(booking).remainingAmount, 0)
     const tenantFirstName = user?.name?.trim().split(/\s+/)[0] || 'Tenant'
     const dashboardActions = [
-        { to: '/search', label: 'Search', Icon: HiSearch, colorClass: 'text-blue-600' },
+        // { to: '/search', label: 'Search', Icon: HiSearch, colorClass: 'text-blue-600' },
+        { to: '/billing', label: 'Billing', Icon: HiCash, colorClass: 'text-emerald-600' },
+        { to: '/enquiries', label:  user?.role === 'tenant' ? 'Landlord Enquiries' : 'Tenant Enquiries', Icon: HiChat, colorClass: 'text-green-600' },
+        { to: '/community-chat', label: 'Community Chat', Icon: HiUserGroup, colorClass: 'text-indigo-600' },
+        { to: '/complaint', label: 'Complaint', Icon: HiExclamationCircle, colorClass: 'text-red-700' },
         { to: '/favourites', label: 'Favourites', Icon: HiHeart, colorClass: 'text-red-600' },
-        { to: '/enquiries', label: 'Chat / Enquiries', Icon: HiChat, colorClass: 'text-green-600' },
+        { to: '/feedback', label: 'Feedback', Icon: HiDocumentText, colorClass: 'text-cyan-600' },
+        { to: '/issues', label: 'Issues', Icon: HiQuestionMarkCircle, colorClass: 'text-amber-600' },
         { to: '/verify', label: 'Verification', Icon: HiShieldCheck, colorClass: 'text-purple-600' },
         { to: user ? `/tenants/${user.id}/profile` : '#', label: 'Profile', Icon: HiUser, colorClass: 'text-orange-600' },
-        { to: '/billing', label: 'Billing', Icon: HiCash, colorClass: 'text-emerald-600' },
-        { to: '/complaint', label: 'Complaint', Icon: HiExclamationCircle, colorClass: 'text-red-700' },
-        { to: '/support', label: 'Support', Icon: HiSupport, colorClass: 'text-blue-700' },
-        { to: '/issues', label: 'Issues', Icon: HiQuestionMarkCircle, colorClass: 'text-amber-600' },
-        { to: '/community-chat', label: 'Community Chat', Icon: HiUserGroup, colorClass: 'text-indigo-600' },
-        { to: '/feedback', label: 'Feedback', Icon: HiDocumentText, colorClass: 'text-cyan-600' },
+        { to: '/search-requirement', label: 'Search Requirements', Icon: HiClipboardList, colorClass: 'text-teal-600' },
         { to: '/dashboard/settings', label: 'Settings', Icon: HiCog, colorClass: 'text-slate-600' },
+        { to: '/support', label: 'Support', Icon: HiSupport, colorClass: 'text-blue-700' },
     ]
 
     const cancelPayment = useMutation({

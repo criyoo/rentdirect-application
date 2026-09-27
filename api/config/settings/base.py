@@ -342,14 +342,23 @@ AI_CHAT_API_KEY = os.environ.get("AI_CHAT_API_KEY", "").strip() or OPENROUTER_AP
 AI_CHAT_MODEL = os.environ.get("AI_CHAT_MODEL", "").strip() or (
     "nvidia/nemotron-3-ultra-550b-a55b:free" if OPENROUTER_API_KEY else ""
 )
-# Comma-separated backup models tried in order when the primary model errors (e.g. provider overload).
+# Comma-separated backup models tried in order when the primary model errors
+# (throttling, provider overload, or downtime). Defaults are OpenRouter free-tier
+# text models with ≥1M context and tool-call support — refresh from
+# https://openrouter.ai/models?max_output_price=0&input_modalities=text&max_price=0&context=1000000
 AI_CHAT_FALLBACK_MODELS = [
     m.strip() for m in os.environ.get("AI_CHAT_FALLBACK_MODELS", "").split(",") if m.strip()
 ] or (
-    ["meta-llama/llama-3.3-70b-instruct:free", "openai/gpt-oss-120b:free"] if OPENROUTER_API_KEY else []
+    [
+        "nvidia/nemotron-3.5-lightning:free",
+        "thinkingmachines/inkling:free",
+        "thinkingmachines/inkling-small:free",
+        "stealth/space-bunny-alpha",
+    ] if OPENROUTER_API_KEY else []
 )
-AI_CHAT_REASONING = env_bool("AI_CHAT_REASONING", True)
+AI_CHAT_REASONING = env_bool("AI_CHAT_REASONING", False)
 AI_CHAT_TIMEOUT_SECONDS = env_int("AI_CHAT_TIMEOUT_SECONDS", 45)
+AI_CHAT_MAX_OUTPUT_TOKENS = env_int("AI_CHAT_MAX_OUTPUT_TOKENS", 800)
 AI_CHAT_MAX_TOOL_ROUNDS = env_int("AI_CHAT_MAX_TOOL_ROUNDS", 4)
 AI_CHAT_SEARCH_LIMIT = env_int("AI_CHAT_SEARCH_LIMIT", 12)
 AI_CHAT_MAX_MESSAGES = env_int("AI_CHAT_MAX_MESSAGES", 20)
