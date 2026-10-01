@@ -26,7 +26,7 @@ from .financial_constants import (
     REFUNDABLE_CAUTION_FEE_RATE,
 )
 from .location_services import CITY_COORDINATES, STATE_COORDINATES
-from .models import AppUser, Listing, TenantSearchRequirement, deposit_secured_booking_queryset
+from .models import AppUser, Listing, TenantSearchRequirement
 from .permissions import AllowAnyUnlessFrozen
 from .property_matching import (
     TOP_MATCH_LIMIT,
@@ -244,12 +244,11 @@ TOOL_LIST = [
 
 
 def _public_listings_queryset():
-    qs = (
+    return (
         Listing.objects.select_related("landlord")
-        .prefetch_related("images")
-        .filter(status=Listing.Status.AVAILABLE)
+        .prefetch_related("images", "bookings")
+        .filter(status=Listing.Status.AVAILABLE, is_hidden=False)
     )
-    return qs.exclude(id__in=deposit_secured_booking_queryset().values("listing_id"))
 
 
 def _to_decimal(value):

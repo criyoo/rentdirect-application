@@ -64,9 +64,9 @@ export default function AgentLandingPage() {
                         <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700">
                             <HiClipboardCheck className="h-7 w-7" />
                         </div>
-                        <h2 className="mt-4 text-lg font-semibold text-gray-900">Increase your earnings through referals</h2>
+                        <h2 className="mt-4 text-lg font-semibold text-gray-900">Increase your earnings through referrals</h2>
                         <p className="mt-2 text-sm leading-6 text-gray-600">
-                            Earn additionally up to N10,000 when other PIO use your code to sign up and completes a property verification
+                            Earn additionally up to N10,000 when other PIOs use your code to sign up and complete a property verification
                         </p>
                     </div>
                 </div>

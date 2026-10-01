@@ -11,7 +11,7 @@ from decimal import Decimal
 from django.db.models import Q
 from django.utils import timezone
 
-from .models import Listing, deposit_secured_booking_queryset
+from .models import Listing
 
 TOP_MATCH_LIMIT = 3
 
@@ -60,12 +60,11 @@ def _location_term_matches(requirement_value: str, *listing_values) -> bool:
 
 
 def public_listings_queryset():
-    qs = (
+    return (
         Listing.objects.select_related("landlord")
-        .prefetch_related("images")
-        .filter(status=Listing.Status.AVAILABLE)
+        .prefetch_related("images", "bookings")
+        .filter(status=Listing.Status.AVAILABLE, is_hidden=False)
     )
-    return qs.exclude(id__in=deposit_secured_booking_queryset().values("listing_id"))
 
 
 def _location_filter_q(requirement) -> Q | None:

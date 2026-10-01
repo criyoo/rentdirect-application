@@ -413,21 +413,52 @@ def infer_listing_rental_status(listing) -> str:
     if listing.status in {Listing.Status.DRAFT, Listing.Status.ARCHIVED}:
         return listing.status
 
+    inactive_statuses = {Booking.Status.CANCELLED, Booking.Status.COMPLETED}
     prefetched_bookings = getattr(listing, "_prefetched_objects_cache", {}).get("bookings")
     if prefetched_bookings is None:
-        bookings = listing.bookings.exclude(status=Booking.Status.CANCELLED)
+        bookings = listing.bookings.exclude(status__in=inactive_statuses)
     else:
         bookings = [
             booking
             for booking in prefetched_bookings
-            if booking.status != Booking.Status.CANCELLED
+            if booking.status not in inactive_statuses
         ]
 
-    if any(booking_progress_step_completed_by_any_party(booking, "tenant_collected_house_key") for booking in bookings):
+    if any(
+        booking_progress_step_completed(
+            normalize_booking_progress(getattr(booking, "tenant_rental_progress", {})),
+            "tenant_collected_house_key",
+        )
+        for booking in bookings
+    ):
         return Listing.Status.RENTED
-    if any(booking_progress_step_completed_by_any_party(booking, "tenancy_agreement_signed") for booking in bookings):
-        return Listing.Status.PROCESSING
     return listing.status
+
+
+def listing_rental_badge(listing) -> str:
+    today = timezone.now().date()
+    inactive_statuses = {Booking.Status.CANCELLED, Booking.Status.COMPLETED}
+    prefetched_bookings = getattr(listing, "_prefetched_objects_cache", {}).get("bookings")
+    if prefetched_bookings is None:
+        bookings = (
+            listing.bookings
+            .exclude(status__in=inactive_statuses)
+            .filter(end_date__gte=today)
+        )
+    else:
+        bookings = [
+            booking
+            for booking in prefetched_bookings
+            if booking.status not in inactive_statuses
+            and booking.end_date is not None
+            and booking.end_date >= today
+        ]
+
+    if any(booking_has_paid_full_rental_amount(booking) for booking in bookings):
+        return "rented"
+    if any(booking_has_paid_rental_deposit(booking) for booking in bookings):
+        return "let_agreed"
+    return ""
 
 
 def sync_listing_status_from_rental_progress(listing) -> str:
@@ -578,6 +609,11 @@ class Listing(models.Model):
         DRAFT = "draft", "Draft"
         ARCHIVED = "archived", "Archived"
 
+    class Category(models.TextChoices):
+        RESIDENTIAL = "residential", "Residential"
+        COMMERCIAL = "commercial", "Commercial"
+        SHORTLET = "shortlet", "Shortlet"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     landlord = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name="listings")
     title = models.CharField(max_length=220)
@@ -689,6 +725,30 @@ class Listing(models.Model):
     expatriates_allowed = models.BooleanField(default=False)
     available_from = models.DateField(null=True, blank=True)
     available_until = models.DateField(null=True, blank=True)
+    category = models.CharField(
+        max_length=20,
+        choices=Category.choices,
+        default=Category.RESIDENTIAL,
+        db_index=True,
+    )
+    is_hidden = models.BooleanField(default=False)
+    shortlet_lister_role = models.CharField(
+        max_length=30,
+        choices=[
+            ("owner", "Owner"),
+            ("tenant", "Tenant"),
+            ("property_manager", "Property manager"),
+            ("agent", "Agent"),
+            ("other", "Other"),
+        ],
+        blank=True,
+        default="",
+    )
+    shortlet_check_in_time = models.TimeField(null=True, blank=True)
+    shortlet_check_out_time = models.TimeField(null=True, blank=True)
+    minimum_stay_nights = models.PositiveSmallIntegerField(null=True, blank=True)
+    maximum_stay_nights = models.PositiveSmallIntegerField(null=True, blank=True)
+    cleaning_fee = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.AVAILABLE)
     featured = models.BooleanField(default=False)
     featured_until = models.DateTimeField(null=True, blank=True)

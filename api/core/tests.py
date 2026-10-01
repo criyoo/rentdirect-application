@@ -29,16 +29,15 @@ from core.flutterwave import FlutterwaveError
 from core.inspection_checklist import INSPECTION_CHECKLIST_SCHEMA
 from core.models import AgentProfile, AgentReferralEarning, AppUser, Booking, BvnVerificationRecord, CacVerificationRecord, CommunityChatMessage, Document, Feedback, FeaturedPayment, InspectionRequest, Listing, ListingImage, Message, NinVerificationRecord, Payment, PaymentSettlement, PendingRegistration, PropertyInspection, Review, ServicePayment, SubscriptionPayment, SubscriptionPaymentMethod, SubscriptionVATPayment, SupportChatMessage, TenancyAgreement, TenantProfile, VerificationRequest
 from core.referrals import award_referral_earning, generate_unique_referral_code, resolve_referrer
-from core.payment_queue import TASK_PROCESS_READY_PAYOUTS, TASK_RECONCILE_PENDING_PAYMENTS, enqueue_payment_task
+from core.payment_queue import TASK_PROCESS_READY_PAYOUTS, TASK_RECONCILE_PENDING_PAYMENTS, TASK_SEND_RENEWAL_REMINDERS, enqueue_payment_task
 from core.prembly_verification import (
     PremblyWebhookVerificationError,
     validate_prembly_webhook_request,
     verify_prembly_webhook_signature,
 )
-from core.financial_constants import DEPOSIT_LISTING_HOLD_DAYS
 from core.pricing import calculate_administration_fee_vat, calculate_booking_total, calculate_deposit_amount
 from core.security import hash_otp
-from core.serializers import UserSerializer
+from core.serializers import ListingSerializer, UserSerializer
 from core.subscription_pricing import get_subscription_pricing
 from core.tenant_scoring import build_tenant_screening_summary
 
@@ -1423,6 +1422,232 @@ class ListingTests(TestCase):
         self.assertEqual(listing.square_feet, 3200)
         self.assertEqual(str(listing.price_per_year), "5000000.00")
         self.assertEqual(listing.amenities, ["gym", "parking"])
+
+    @staticmethod
+    def _lifecycle_users(suffix="lifecycle"):
+        landlord = AppUser.objects.create_user(
+            email=f"{suffix}-landlord@example.com",
+            password="password-123",
+            name="Lifecycle Landlord",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+        )
+        tenant = AppUser.objects.create_user(
+            email=f"{suffix}-tenant@example.com",
+            password="password-123",
+            name="Lifecycle Tenant",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        return landlord, tenant
+
+    @staticmethod
+    def _lifecycle_listing(landlord, **overrides):
+        defaults = {
+            "landlord": landlord,
+            "title": "Lifecycle Listing",
+            "description": "Lifecycle listing description",
+            "address": "10 Lifecycle Street",
+            "city": "Abuja",
+            "property_type": "Apartment",
+            "bedrooms": 2,
+            "bathrooms": 2,
+            "price_per_year": 2000000,
+        }
+        defaults.update(overrides)
+        return Listing.objects.create(**defaults)
+
+    def test_listing_rental_badge_reflects_deposit_and_full_payment(self):
+        landlord, tenant = self._lifecycle_users("badge")
+        listing = self._lifecycle_listing(landlord)
+        booking = Booking.objects.create(
+            tenant=tenant,
+            listing=listing,
+            start_date=date.today(),
+            end_date=date.today() + timedelta(days=365),
+            total_amount=calculate_booking_total(listing.price_per_year),
+        )
+
+        self.assertEqual(ListingSerializer(listing).data["rental_badge"], "")
+
+        booking.paid_amount = calculate_deposit_amount(listing.price_per_year)
+        booking.save(update_fields=["paid_amount", "updated_at"])
+        self.assertEqual(ListingSerializer(listing).data["rental_badge"], "let_agreed")
+
+        booking.paid_amount = booking.total_amount
+        booking.save(update_fields=["paid_amount", "updated_at"])
+        self.assertEqual(ListingSerializer(listing).data["rental_badge"], "rented")
+
+        # Completed tenancies no longer keep the badge.
+        booking.status = Booking.Status.COMPLETED
+        booking.save(update_fields=["status", "updated_at"])
+        self.assertEqual(ListingSerializer(listing).data["rental_badge"], "")
+
+        # An expired booking also no longer keeps the badge.
+        booking.status = Booking.Status.ACTIVE
+        booking.end_date = date.today() - timedelta(days=1)
+        booking.save(update_fields=["status", "end_date", "updated_at"])
+        self.assertEqual(ListingSerializer(listing).data["rental_badge"], "")
+
+    def test_hidden_listing_excluded_from_public_search_and_featured(self):
+        landlord, _tenant = self._lifecycle_users("hidden")
+        listing = self._lifecycle_listing(landlord, featured=True, is_hidden=True)
+
+        search_response = self.client.get("/api/v1/listings/search")
+        self.assertEqual(search_response.status_code, 200)
+        search_payload = search_response.json()
+        search_results = (
+            search_payload["results"] if isinstance(search_payload, dict) and "results" in search_payload else search_payload
+        )
+        self.assertEqual(search_results, [])
+        self.assertEqual(self.client.get("/api/v1/featured/listings").json(), [])
+
+        public_retrieve = self.client.get(f"/api/v1/listings/{listing.id}")
+        self.assertEqual(public_retrieve.status_code, 404)
+
+    def test_owner_landlord_list_includes_own_hidden_listings(self):
+        landlord, _tenant = self._lifecycle_users("ownerlist")
+        hidden_listing = self._lifecycle_listing(landlord, title="Owner Hidden", is_hidden=True)
+        visible_listing = self._lifecycle_listing(landlord, title="Owner Visible")
+
+        owner_client = APIClient()
+        owner_client.force_authenticate(user=landlord)
+        response = owner_client.get(f"/api/v1/listings?landlord_id={landlord.id}")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        results = payload["results"] if isinstance(payload, dict) and "results" in payload else payload
+        self.assertEqual(
+            {item["id"] for item in results},
+            {str(hidden_listing.id), str(visible_listing.id)},
+        )
+
+        outsider = AppUser.objects.create_user(
+            email="ownerlist-outsider@example.com",
+            password="password-123",
+            name="Outsider Landlord",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+        )
+        outsider_client = APIClient()
+        outsider_client.force_authenticate(user=outsider)
+        outsider_response = outsider_client.get(f"/api/v1/listings?landlord_id={landlord.id}")
+        self.assertEqual(outsider_response.status_code, 200)
+        outsider_payload = outsider_response.json()
+        outsider_results = (
+            outsider_payload["results"] if isinstance(outsider_payload, dict) and "results" in outsider_payload else outsider_payload
+        )
+        self.assertEqual(len(outsider_results), 1)
+        self.assertEqual(outsider_results[0]["title"], "Owner Visible")
+
+    def test_listing_visibility_endpoint_owner_only(self):
+        landlord, _tenant = self._lifecycle_users("visibility")
+        other_landlord = AppUser.objects.create_user(
+            email="visibility-other@example.com",
+            password="password-123",
+            name="Other Landlord",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+        )
+        listing = self._lifecycle_listing(landlord)
+
+        owner_client = APIClient()
+        owner_client.force_authenticate(user=landlord)
+        hide_response = owner_client.post(
+            f"/api/v1/listings/{listing.id}/visibility", {"is_hidden": True}, format="json"
+        )
+        self.assertEqual(hide_response.status_code, 200, hide_response.json())
+        self.assertTrue(hide_response.json()["is_hidden"])
+        listing.refresh_from_db()
+        self.assertTrue(listing.is_hidden)
+
+        search_response = self.client.get("/api/v1/listings/search")
+        search_payload = search_response.json()
+        search_results = (
+            search_payload["results"] if isinstance(search_payload, dict) and "results" in search_payload else search_payload
+        )
+        self.assertEqual(search_results, [])
+        self.assertEqual(self.client.get(f"/api/v1/listings/{listing.id}").status_code, 404)
+
+        unhide_response = owner_client.post(
+            f"/api/v1/listings/{listing.id}/visibility", {"is_hidden": False}, format="json"
+        )
+        self.assertEqual(unhide_response.status_code, 200, unhide_response.json())
+        self.assertFalse(unhide_response.json()["is_hidden"])
+
+        other_client = APIClient()
+        other_client.force_authenticate(user=other_landlord)
+        forbidden_response = other_client.post(
+            f"/api/v1/listings/{listing.id}/visibility", {"is_hidden": True}, format="json"
+        )
+        self.assertEqual(forbidden_response.status_code, 403)
+        listing.refresh_from_db()
+        self.assertFalse(listing.is_hidden)
+
+    def test_listing_search_and_featured_filter_by_category(self):
+        landlord, _tenant = self._lifecycle_users("category")
+        self._lifecycle_listing(landlord, title="Home", category=Listing.Category.RESIDENTIAL)
+        self._lifecycle_listing(landlord, title="Office Block", property_type="Office", category=Listing.Category.COMMERCIAL, featured=True)
+
+        search_response = self.client.get("/api/v1/listings/search?category=commercial")
+        self.assertEqual(search_response.status_code, 200)
+        search_payload = search_response.json()
+        search_results = (
+            search_payload["results"] if isinstance(search_payload, dict) and "results" in search_payload else search_payload
+        )
+        self.assertEqual(len(search_results), 1)
+        self.assertEqual(search_results[0]["title"], "Office Block")
+
+        featured_response = self.client.get("/api/v1/featured/listings?category=residential")
+        self.assertEqual(featured_response.status_code, 200)
+        self.assertEqual(featured_response.json(), [])
+        featured_commercial = self.client.get("/api/v1/featured/listings?category=commercial")
+        self.assertEqual(featured_commercial.status_code, 200)
+        self.assertEqual(len(featured_commercial.json()), 1)
+        self.assertEqual(featured_commercial.json()[0]["title"], "Office Block")
+
+    def test_shortlet_listing_requires_shortlet_fields(self):
+        base_payload = {
+            "title": "Shortlet Flat",
+            "description": "Short stay flat",
+            "address": "5 Shortlet Avenue",
+            "city": "Lagos",
+            "state": "Lagos",
+            "property_type": "Apartment",
+            "bedrooms": 1,
+            "bathrooms": 1,
+            "price_per_year": 3000000,
+            "category": "shortlet",
+        }
+
+        serializer = ListingSerializer(data=base_payload)
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("nightly_rate", serializer.errors)
+        self.assertIn("shortlet_lister_role", serializer.errors)
+        self.assertIn("minimum_stay_nights", serializer.errors)
+
+        serializer = ListingSerializer(
+            data={
+                **base_payload,
+                "nightly_rate": "45000.00",
+                "shortlet_lister_role": "owner",
+                "minimum_stay_nights": 2,
+                "maximum_stay_nights": 1,
+            }
+        )
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("maximum_stay_nights", serializer.errors)
+
+        serializer = ListingSerializer(
+            data={
+                **base_payload,
+                "nightly_rate": "45000.00",
+                "shortlet_lister_role": "owner",
+                "minimum_stay_nights": 2,
+                "maximum_stay_nights": 14,
+                "cleaning_fee": "15000.00",
+            }
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
 
 
 class UserSerializerValidationTests(TestCase):
@@ -3282,6 +3507,14 @@ class PaymentQueueTests(TestCase):
         self.assertEqual(result, {"status": "ok", "result": reconcile_mock.return_value})
         reconcile_mock.assert_called_once_with()
 
+    @override_settings(PAYMENT_QUEUE_BACKEND="sync")
+    @patch("core.payment_queue.call_command")
+    def test_sync_queue_backend_runs_renewal_reminder_task_inline(self, call_command_mock):
+        result = enqueue_payment_task(TASK_SEND_RENEWAL_REMINDERS, {"source": "test"})
+
+        self.assertEqual(result, {"status": "ok"})
+        call_command_mock.assert_called_once_with("send_renewal_reminders")
+
     @patch("core.views.query_transaction")
     def test_reconciliation_completes_pending_subscription_payment(self, query_transaction_mock):
         from core.views import reconcile_pending_customer_payments
@@ -5015,7 +5248,7 @@ class BookingRentalProgressTests(TestCase):
         )
 
         self.listing.refresh_from_db()
-        self.assertEqual(self.listing.status, Listing.Status.PROCESSING)
+        self.assertEqual(self.listing.status, Listing.Status.AVAILABLE)
 
         save_rental_progress_steps(
             self,
@@ -5031,6 +5264,8 @@ class BookingRentalProgressTests(TestCase):
 
         self.listing.refresh_from_db()
         self.assertEqual(self.listing.status, Listing.Status.RENTED)
+        self.booking.refresh_from_db()
+        self.assertEqual(self.booking.status, Booking.Status.ACTIVE)
 
     def test_rental_progress_steps_must_be_completed_in_order(self):
         client = APIClient()
@@ -5112,7 +5347,7 @@ class BookingRentalProgressTests(TestCase):
         self.assertTrue(tenant_steps["tenant_paid_deposit"]["completed"])
         self.assertTrue(tenant_steps["tenant_paid_deposit"]["counterpart_completed"])
 
-    def test_listing_is_hidden_from_public_search_and_featured_after_deposit_payment(self):
+    def test_paid_listing_remains_public_until_tenant_key_confirmation(self):
         self.listing.featured = True
         self.listing.save(update_fields=["featured", "updated_at"])
 
@@ -5134,24 +5369,14 @@ class BookingRentalProgressTests(TestCase):
         self.assertEqual(search_response.status_code, 200)
         search_payload = search_response.json()
         search_results = search_payload["results"] if isinstance(search_payload, dict) and "results" in search_payload else search_payload
-        self.assertEqual(search_results, [])
+        self.assertEqual(len(search_results), 1)
+        self.assertEqual(search_results[0]["rental_badge"], "let_agreed")
 
         featured_response = self.client.get("/api/v1/featured/listings")
         self.assertEqual(featured_response.status_code, 200)
-        self.assertEqual(featured_response.json(), [])
+        self.assertEqual(len(featured_response.json()), 1)
+        self.assertEqual(featured_response.json()[0]["rental_badge"], "let_agreed")
 
-        self.booking.deposit_paid_at = timezone.now() - timedelta(days=DEPOSIT_LISTING_HOLD_DAYS + 1, seconds=1)
-        self.booking.save(update_fields=["deposit_paid_at", "updated_at"])
-
-        expired_hold_search_response = self.client.get("/api/v1/listings/search?city=Abuja")
-        self.assertEqual(expired_hold_search_response.status_code, 200)
-        expired_hold_search_payload = expired_hold_search_response.json()
-        expired_hold_search_results = (
-            expired_hold_search_payload["results"]
-            if isinstance(expired_hold_search_payload, dict) and "results" in expired_hold_search_payload
-            else expired_hold_search_payload
-        )
-        self.assertEqual(len(expired_hold_search_results), 1)
         public_landlord_listings_response = self.client.get(f"/api/v1/listings?landlord_id={self.landlord.id}")
         self.assertEqual(public_landlord_listings_response.status_code, 200)
         public_landlord_listings_payload = public_landlord_listings_response.json()
@@ -5175,32 +5400,74 @@ class BookingRentalProgressTests(TestCase):
             if isinstance(full_payment_search_payload, dict) and "results" in full_payment_search_payload
             else full_payment_search_payload
         )
-        self.assertEqual(full_payment_search_results, [])
-        self.assertEqual(self.client.get("/api/v1/featured/listings").json(), [])
-
-        self.booking.end_date = timezone.localdate() - timedelta(days=1)
-        self.booking.save(update_fields=["end_date", "updated_at"])
-
-        rent_completed_search_response = self.client.get("/api/v1/listings/search?city=Abuja")
-        self.assertEqual(rent_completed_search_response.status_code, 200)
-        rent_completed_search_payload = rent_completed_search_response.json()
-        rent_completed_search_results = (
-            rent_completed_search_payload["results"]
-            if isinstance(rent_completed_search_payload, dict) and "results" in rent_completed_search_payload
-            else rent_completed_search_payload
-        )
-        self.assertEqual(len(rent_completed_search_results), 1)
+        self.assertEqual(len(full_payment_search_results), 1)
+        self.assertEqual(full_payment_search_results[0]["rental_badge"], "rented")
         self.assertEqual(len(self.client.get("/api/v1/featured/listings").json()), 1)
 
-        self.booking.status = Booking.Status.CANCELLED
-        self.booking.save(update_fields=["status", "updated_at"])
+        tenant_client = APIClient()
+        tenant_client.force_authenticate(user=self.tenant)
+        save_rental_progress_steps(
+            self,
+            tenant_client,
+            self.booking.id,
+            step_keys=[
+                "viewing_appointment_booked",
+                "house_viewed",
+                "tenancy_agreement_signed",
+                "tenant_paid_deposit",
+                "tenant_paid_rent_in_full",
+                "check_in_inventory_completed",
+                "tenant_collected_house_key",
+            ],
+        )
 
-        relisted_response = self.client.get("/api/v1/listings/search?city=Abuja")
-        self.assertEqual(relisted_response.status_code, 200)
-        relisted_payload = relisted_response.json()
-        relisted_results = relisted_payload["results"] if isinstance(relisted_payload, dict) and "results" in relisted_payload else relisted_payload
-        self.assertEqual(len(relisted_results), 1)
-        self.assertEqual(relisted_results[0]["id"], str(self.listing.id))
+        self.listing.refresh_from_db()
+        self.assertEqual(self.listing.status, Listing.Status.RENTED)
+        self.booking.refresh_from_db()
+        self.assertEqual(self.booking.status, Booking.Status.ACTIVE)
+
+        rented_search_response = self.client.get("/api/v1/listings/search?city=Abuja")
+        self.assertEqual(rented_search_response.status_code, 200)
+        rented_search_payload = rented_search_response.json()
+        rented_search_results = (
+            rented_search_payload["results"]
+            if isinstance(rented_search_payload, dict) and "results" in rented_search_payload
+            else rented_search_payload
+        )
+        self.assertEqual(rented_search_results, [])
+        self.assertEqual(self.client.get("/api/v1/featured/listings").json(), [])
+
+    def test_landlord_only_key_confirmation_does_not_rent_or_hide_listing(self):
+        landlord_client = APIClient()
+        landlord_client.force_authenticate(user=self.landlord)
+        save_rental_progress_steps(
+            self,
+            landlord_client,
+            self.booking.id,
+            step_keys=[
+                "viewing_appointment_booked",
+                "house_viewed",
+                "tenancy_agreement_signed",
+                "deposit_payment_notification_received",
+                "rental_payment_notification_received",
+                "check_in_inventory_completed",
+                "tenant_collected_house_key",
+            ],
+        )
+
+        self.listing.refresh_from_db()
+        self.assertEqual(self.listing.status, Listing.Status.AVAILABLE)
+        self.booking.refresh_from_db()
+        self.assertEqual(self.booking.status, Booking.Status.PENDING)
+
+        search_response = self.client.get("/api/v1/listings/search?city=Abuja")
+        self.assertEqual(search_response.status_code, 200)
+        search_payload = search_response.json()
+        search_results = (
+            search_payload["results"] if isinstance(search_payload, dict) and "results" in search_payload else search_payload
+        )
+        self.assertEqual(len(search_results), 1)
+        self.assertEqual(search_results[0]["id"], str(self.listing.id))
 
 
 class TenancyAgreementTests(TestCase):
@@ -8620,6 +8887,7 @@ class RenewalReminderCommandTests(TestCase):
             end_date=date.today() + timedelta(days=60),
             status=Booking.Status.CONFIRMED,
             total_amount=calculate_booking_total(listing.price_per_year),
+            tenant_rental_progress={"tenant_collected_house_key": timezone.now().isoformat()},
         )
 
         call_command("send_renewal_reminders")
@@ -8629,6 +8897,212 @@ class RenewalReminderCommandTests(TestCase):
         self.assertIsNotNone(booking.renewal_reminder_sent_at)
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn("tenancy renewal reminder", mail.outbox[0].subject.lower())
+        self.assertEqual(set(mail.outbox[0].to), {tenant.email, landlord.email})
+        self.assertEqual(mail.outbox[0].cc, [settings.RENT_RENEWAL_EMAIL])
+
+    @override_settings(
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        RENT_RENEWAL_WHATSAPP_NUMBER="+2348000000000",
+    )
+    @patch("core.management.commands.send_renewal_reminders.send_whatsapp_message")
+    @patch("core.management.commands.send_renewal_reminders.send_whatsapp_alert_for_user")
+    def test_command_notifies_tenant_landlord_and_internal_contacts(self, alert_mock, message_mock):
+        tenant = AppUser.objects.create_user(
+            email="renewal-whatsapp-tenant@example.com",
+            password="password-123",
+            name="Renewal WhatsApp Tenant",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+            whatsapp_number="+2348111111111",
+        )
+        landlord = AppUser.objects.create_user(
+            email="renewal-whatsapp-landlord@example.com",
+            password="password-123",
+            name="Renewal WhatsApp Landlord",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+            whatsapp_number="+2348222222222",
+        )
+        listing = Listing.objects.create(
+            landlord=landlord,
+            title="Renewal WhatsApp Listing",
+            description="Renewal whatsapp test",
+            address="20 Renewal Close",
+            city="Lagos",
+            property_type="Apartment",
+            bedrooms=1,
+            bathrooms=1,
+            price_per_year=1800000,
+        )
+        booking = Booking.objects.create(
+            tenant=tenant,
+            listing=listing,
+            start_date=date.today() - timedelta(days=200),
+            end_date=date.today() + timedelta(days=45),
+            status=Booking.Status.ACTIVE,
+            total_amount=calculate_booking_total(listing.price_per_year),
+            tenant_rental_progress={"tenant_collected_house_key": timezone.now().isoformat()},
+        )
+
+        call_command("send_renewal_reminders")
+        call_command("send_renewal_reminders")
+
+        self.assertEqual(len(mail.outbox), 1)
+        reminder_email = mail.outbox[0]
+        self.assertIn("tenancy renewal reminder", reminder_email.subject.lower())
+        self.assertEqual(set(reminder_email.to), {tenant.email, landlord.email})
+        self.assertEqual(reminder_email.cc, [settings.RENT_RENEWAL_EMAIL])
+        self.assertIn("re-listing", reminder_email.body.lower())
+        self.assertEqual(alert_mock.call_count, 2)
+        self.assertEqual(
+            {call.args[0].id for call in alert_mock.call_args_list},
+            {tenant.id, landlord.id},
+        )
+        message_mock.assert_called_once()
+        self.assertEqual(message_mock.call_args.args[0], "+2348000000000")
+
+        booking.refresh_from_db()
+        self.assertIsNotNone(booking.renewal_reminder_sent_at)
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_command_skips_bookings_without_tenant_key_confirmation(self):
+        tenant = AppUser.objects.create_user(
+            email="renewal-unconfirmed-tenant@example.com",
+            password="password-123",
+            name="Unconfirmed Tenant",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        landlord = AppUser.objects.create_user(
+            email="renewal-unconfirmed-landlord@example.com",
+            password="password-123",
+            name="Unconfirmed Landlord",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+        )
+        listing = Listing.objects.create(
+            landlord=landlord,
+            title="Unconfirmed Listing",
+            description="No key confirmation",
+            address="7 Pending Street",
+            city="Abuja",
+            property_type="Apartment",
+            bedrooms=2,
+            bathrooms=2,
+            price_per_year=2000000,
+        )
+        booking = Booking.objects.create(
+            tenant=tenant,
+            listing=listing,
+            start_date=date.today() - timedelta(days=180),
+            end_date=date.today() + timedelta(days=30),
+            status=Booking.Status.CONFIRMED,
+            total_amount=calculate_booking_total(listing.price_per_year),
+            landlord_rental_progress={"tenant_collected_house_key": timezone.now().isoformat()},
+        )
+
+        call_command("send_renewal_reminders")
+
+        booking.refresh_from_db()
+        self.assertIsNone(booking.renewal_reminder_sent_at)
+        self.assertEqual(len(mail.outbox), 0)
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_command_completes_expired_tenancies_and_relists(self):
+        tenant = AppUser.objects.create_user(
+            email="expired-tenant@example.com",
+            password="password-123",
+            name="Expired Tenant",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        landlord = AppUser.objects.create_user(
+            email="expired-landlord@example.com",
+            password="password-123",
+            name="Expired Landlord",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+        )
+        listing = Listing.objects.create(
+            landlord=landlord,
+            title="Expired Rental",
+            description="Expired tenancy test",
+            address="30 Expiry Road",
+            city="Abuja",
+            property_type="Apartment",
+            bedrooms=2,
+            bathrooms=2,
+            price_per_year=1500000,
+            status=Listing.Status.RENTED,
+        )
+        hidden_listing = Listing.objects.create(
+            landlord=landlord,
+            title="Hidden Expired Rental",
+            description="Manually hidden listing",
+            address="31 Expiry Road",
+            city="Abuja",
+            property_type="Flat",
+            bedrooms=1,
+            bathrooms=1,
+            price_per_year=900000,
+            status=Listing.Status.RENTED,
+            is_hidden=True,
+        )
+        booking = Booking.objects.create(
+            tenant=tenant,
+            listing=listing,
+            start_date=date.today() - timedelta(days=400),
+            end_date=date.today() + timedelta(days=30),
+            status=Booking.Status.ACTIVE,
+            total_amount=calculate_booking_total(listing.price_per_year),
+            tenant_rental_progress={"tenant_collected_house_key": timezone.now().isoformat()},
+        )
+        hidden_booking = Booking.objects.create(
+            tenant=tenant,
+            listing=hidden_listing,
+            start_date=date.today() - timedelta(days=400),
+            end_date=date.today() + timedelta(days=30),
+            status=Booking.Status.ACTIVE,
+            total_amount=calculate_booking_total(hidden_listing.price_per_year),
+            tenant_rental_progress={"tenant_collected_house_key": timezone.now().isoformat()},
+        )
+
+        # Key-confirmed rented listings stay out of public search before expiry.
+        search_response = self.client.get("/api/v1/listings/search?city=Abuja")
+        self.assertEqual(search_response.status_code, 200)
+        search_payload = search_response.json()
+        search_results = search_payload["results"] if isinstance(search_payload, dict) and "results" in search_payload else search_payload
+        self.assertEqual(search_results, [])
+
+        # Move both bookings past their end dates, then run the scheduled command.
+        yesterday = date.today() - timedelta(days=1)
+        booking.end_date = yesterday
+        booking.save(update_fields=["end_date", "updated_at"])
+        hidden_booking.end_date = yesterday
+        hidden_booking.save(update_fields=["end_date", "updated_at"])
+
+        call_command("send_renewal_reminders")
+
+        booking.refresh_from_db()
+        listing.refresh_from_db()
+        self.assertEqual(booking.status, Booking.Status.COMPLETED)
+        self.assertEqual(listing.status, Listing.Status.AVAILABLE)
+        self.assertFalse(listing.is_hidden)
+
+        hidden_booking.refresh_from_db()
+        hidden_listing.refresh_from_db()
+        self.assertEqual(hidden_booking.status, Booking.Status.COMPLETED)
+        self.assertEqual(hidden_listing.status, Listing.Status.AVAILABLE)
+        self.assertTrue(hidden_listing.is_hidden)
+
+        # The re-listed property returns to public search; the manually hidden one does not.
+        search_response = self.client.get("/api/v1/listings/search?city=Abuja")
+        self.assertEqual(search_response.status_code, 200)
+        search_payload = search_response.json()
+        search_results = search_payload["results"] if isinstance(search_payload, dict) and "results" in search_payload else search_payload
+        self.assertEqual(len(search_results), 1)
+        self.assertEqual(search_results[0]["id"], str(listing.id))
+        self.assertEqual(search_results[0]["rental_badge"], "")
 
 
 def build_complete_inspection_responses(**overrides):

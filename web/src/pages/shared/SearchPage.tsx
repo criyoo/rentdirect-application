@@ -53,6 +53,7 @@ function filterSearchParams(searchFilters: SearchFilters) {
     if (searchFilters.bedrooms !== undefined) params.set('bedrooms', searchFilters.bedrooms.toString())
     if (searchFilters.bathrooms !== undefined) params.set('bathrooms', searchFilters.bathrooms.toString())
     if (searchFilters.toilets !== undefined) params.set('toilets', searchFilters.toilets.toString())
+    if (searchFilters.category) params.set('category', searchFilters.category)
     if (searchFilters.property_type) params.set('property_type', searchFilters.property_type)
     if (searchFilters.pet_friendly) params.set('pet_friendly', 'true')
     if (searchFilters.furnished) params.set('furnished', 'true')
@@ -84,6 +85,7 @@ export default function SearchPage() {
         bathrooms: searchParams.get('bathrooms') ? Number(searchParams.get('bathrooms')) : undefined,
         toilets: searchParams.get('toilets') ? Number(searchParams.get('toilets')) : undefined,
         property_type: searchParams.get('property_type') || '',
+        category: searchParams.get('category') || '',
         pet_friendly: searchParams.get('pet_friendly') === 'true',
         furnished: searchParams.get('furnished') === 'true',
         utilities_included: searchParams.get('utilities_included') === 'true'
@@ -109,7 +111,13 @@ export default function SearchPage() {
         enabled: user?.role === 'tenant'
     })
 
-    const propertyTypes = ['flat', 'apartment', 'house', 'studio', 'penthouse', 'villa', 'townhouse']
+    const propertyTypesByCategory: Record<string, string[]> = {
+        '': ['Flat', 'Apartment', 'House', 'Studio', 'Penthouse', 'Villa', 'Townhouse'],
+        residential: ['Flat', 'Duplex', 'Apartment', 'House', 'Studio', 'Townhouse', 'Condo'],
+        commercial: ['Office', 'Shop', 'Retail Space', 'Warehouse', 'Commercial Property', 'Industrial Property'],
+        shortlet: ['Serviced Apartment', 'Apartment', 'Studio', 'Duplex', 'House', 'Villa'],
+    }
+    const propertyTypes = propertyTypesByCategory[filters.category || ''] || propertyTypesByCategory['']
     const bedroomOptions = [1, 2, 3, 4, 5, 6]
     const bathroomOptions = [1, 2, 3, 4, 5, 6]
     const toiletOptions = [1, 2, 3, 4, 5, 6]
@@ -209,6 +217,7 @@ export default function SearchPage() {
                 if (searchFilters.bedrooms) params.append('bedrooms', searchFilters.bedrooms.toString())
                 if (searchFilters.bathrooms) params.append('bathrooms', searchFilters.bathrooms.toString())
                 if (searchFilters.toilets) params.append('toilets', searchFilters.toilets.toString())
+                if (searchFilters.category) params.append('category', searchFilters.category)
                 if (searchFilters.property_type) params.append('property_type', searchFilters.property_type)
                 // Only send boolean parameters if they are true
                 if (searchFilters.pet_friendly === true) params.append('pet_friendly', 'true')
@@ -236,6 +245,13 @@ export default function SearchPage() {
 
     const handleFilterChange = (key: keyof SearchFilters, value: any) => {
         const newFilters = { ...filters, [key]: value }
+        if (key === 'category' && newFilters.property_type) {
+            const selectedType = newFilters.property_type
+            const options = propertyTypesByCategory[newFilters.category || ''] || propertyTypesByCategory['']
+            if (!options.some((type) => type.toLowerCase() === selectedType.toLowerCase())) {
+                newFilters.property_type = ''
+            }
+        }
         setFilters(newFilters)
     }
 
@@ -372,6 +388,7 @@ export default function SearchPage() {
             bathrooms: undefined,
             toilets: undefined,
             property_type: '',
+            category: '',
             pet_friendly: false,
             furnished: false,
             utilities_included: false
@@ -398,6 +415,7 @@ export default function SearchPage() {
                 bathrooms: aiFilters.bathrooms,
                 toilets: aiFilters.toilets,
                 property_type: aiFilters.property_type ?? '',
+                category: aiFilters.category ?? '',
                 pet_friendly: aiFilters.pet_friendly === true,
                 furnished: aiFilters.furnished === true,
                 utilities_included: aiFilters.utilities_included === true,
@@ -431,7 +449,7 @@ export default function SearchPage() {
 
                     {/* Search Form */}
                     <form onSubmit={handleSubmit} className="mb-0 rounded-2xl border border-white/30 bg-white/95 p-6 shadow-2xl shadow-indigo-950/25 backdrop-blur sm:p-8">
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
                             {/* Search Query */}
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Search</label>
@@ -487,6 +505,21 @@ export default function SearchPage() {
                                     ) : null}
                                 </div>
                             </div>
+                            {/* Property Category */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Property category</label>
+                                <select
+                                    value={filters.category || ''}
+                                    onChange={(e) => handleFilterChange('category', e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                                    <option value="">All</option>
+                                    <option value="residential">Residential</option>
+                                    <option value="commercial">Commercial</option>
+                                    <option value="shortlet">Shortlet</option>
+                                </select>
+                            </div>
+
                             {/* Property Type */}
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Property Type</label>
@@ -497,7 +530,7 @@ export default function SearchPage() {
                                 >
                                     <option value="">All Types</option>
                                     {propertyTypes.map((type) => (
-                                        <option key={type} value={type}>{type.charAt(0).toUpperCase() + type.slice(1)}</option>
+                                        <option key={type} value={type}>{type}</option>
                                     ))}
                                 </select>
                             </div>

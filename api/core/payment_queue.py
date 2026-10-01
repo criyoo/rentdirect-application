@@ -15,6 +15,7 @@ TASK_PROCESS_BOOKING_PAYOUTS = "process_booking_payouts"
 TASK_PROCESS_READY_PAYOUTS = "process_ready_payouts"
 TASK_PROCESS_SUBSCRIPTION_RENEWALS = "process_subscription_renewals"
 TASK_RECONCILE_PENDING_PAYMENTS = "reconcile_pending_payments"
+TASK_SEND_RENEWAL_REMINDERS = "send_renewal_reminders"
 
 SUPPORTED_PAYMENT_TASKS = {
     TASK_FLUTTERWAVE_WEBHOOK,
@@ -22,6 +23,7 @@ SUPPORTED_PAYMENT_TASKS = {
     TASK_PROCESS_READY_PAYOUTS,
     TASK_PROCESS_SUBSCRIPTION_RENEWALS,
     TASK_RECONCILE_PENDING_PAYMENTS,
+    TASK_SEND_RENEWAL_REMINDERS,
 }
 
 
@@ -78,6 +80,10 @@ def enqueue_subscription_renewals(*, source: str = "manual") -> None:
 
 def enqueue_pending_payment_reconciliation(*, source: str = "manual") -> None:
     enqueue_payment_task(TASK_RECONCILE_PENDING_PAYMENTS, {"source": source})
+
+
+def enqueue_send_renewal_reminders(*, source: str = "manual") -> None:
+    enqueue_payment_task(TASK_SEND_RENEWAL_REMINDERS, {"source": source})
 
 
 def redis_connection():
@@ -228,6 +234,10 @@ def execute_payment_task(task: str, payload: dict[str, Any] | None = None):
 
         return {"status": "ok", "result": reconcile_pending_customer_payments()}
 
+    if task == TASK_SEND_RENEWAL_REMINDERS:
+        call_command("send_renewal_reminders")
+        return {"status": "ok"}
+
     raise PaymentQueueError(f"Unsupported payment queue task: {task}")
 
 
@@ -238,9 +248,14 @@ def watch_scheduled_payment_tasks(*, once: bool = False) -> None:
         int(getattr(settings, "PAYMENT_QUEUE_RECONCILIATION_INTERVAL_SECONDS", 300)),
         60,
     )
+    tenancy_renewal_reminder_interval = max(
+        int(getattr(settings, "PAYMENT_QUEUE_TENANCY_RENEWAL_REMINDER_INTERVAL_SECONDS", 3600)),
+        60,
+    )
     last_payout_run = 0.0
     last_renewal_run = 0.0
     last_reconciliation_run = 0.0
+    last_tenancy_renewal_reminder_run = 0.0
 
     while True:
         now = time.monotonic()
@@ -262,6 +277,12 @@ def watch_scheduled_payment_tasks(*, once: bool = False) -> None:
             except Exception:
                 logger.exception("Failed to enqueue pending-payment reconciliation task.")
             last_reconciliation_run = now
+        if now - last_tenancy_renewal_reminder_run >= tenancy_renewal_reminder_interval:
+            try:
+                enqueue_send_renewal_reminders(source="payment_queue_scheduler")
+            except Exception:
+                logger.exception("Failed to enqueue scheduled tenancy-renewal-reminder task.")
+            last_tenancy_renewal_reminder_run = now
         if once:
             return
-        time.sleep(min(30, payout_interval, renewal_interval, reconciliation_interval))
+        time.sleep(min(30, payout_interval, renewal_interval, reconciliation_interval, tenancy_renewal_reminder_interval))

@@ -507,7 +507,7 @@ export default function LandlordDashboardPage() {
                                     </div>
                                     <div>
                                         <h4 className="text-[16px] font-semibold text-gray-900 mb-1">Access to Verified Tenants</h4>
-                                        <p className="text-sm text-gray-600">Connect directly with verified tenants even before rental discussion commence</p>
+                                        <p className="text-sm text-gray-600">Connect directly with verified tenants even before rental discussions commence</p>
                                     </div>
                                 </div>
                             </div>
@@ -543,7 +543,7 @@ export default function LandlordDashboardPage() {
                                     </div>
                                     <div>
                                         <h4 className="text-[16px] font-semibold text-gray-900 mb-1">Better tenant matching</h4>
-                                        <p className="text-sm text-gray-600">Landlords can see tenants verification score and choose which tenants match their needs</p>
+                                        <p className="text-sm text-gray-600">Landlords can see tenants' verification scores and choose which tenants match their needs</p>
                                     </div>
                                 </div>
                             </div>
@@ -555,7 +555,7 @@ export default function LandlordDashboardPage() {
                                     </div>
                                     <div>
                                         <h4 className="text-[16px] font-semibold text-gray-900 mb-1">Direct Tenant Communication</h4>
-                                        <p className="text-sm text-gray-600">Landlords communicate directly with verified potential tenants without any middle man</p>
+                                        <p className="text-sm text-gray-600">Landlords communicate directly with verified potential tenants without any middleman</p>
                                     </div>
                                 </div>
                             </div>
@@ -567,7 +567,7 @@ export default function LandlordDashboardPage() {
                                     </div>
                                     <div>
                                         <h4 className="text-[16px] font-semibold text-gray-900 mb-1">Secure and faster rent collection</h4>
-                                        <p className="text-sm text-gray-600">Initial payment are made through the platform and support payment tracking, reciepts to reduce payment dispute</p>
+                                        <p className="text-sm text-gray-600">Initial payments are made through the platform and support payment tracking, receipts to reduce payment disputes</p>
                                     </div>
                                 </div>
                             </div>
@@ -579,7 +579,7 @@ export default function LandlordDashboardPage() {
                                     </div>
                                     <div>
                                         <h4 className="text-[16px] font-semibold text-gray-900 mb-1">Property Marketing</h4>
-                                        <p className="text-sm text-gray-600">Landlord gain wider audience reach, better property visibility & quality applicant from rentdirect marketing campaigns</p>
+                                        <p className="text-sm text-gray-600">Landlords gain wider audience reach, better property visibility & quality applicants from RentDirect marketing campaigns</p>
                                     </div>
                                 </div>
                             </div>
@@ -591,7 +591,7 @@ export default function LandlordDashboardPage() {
                                     </div>
                                     <div>
                                         <h4 className="text-[16px] font-semibold text-gray-900 mb-1">Reduced Administrative Work</h4>
-                                        <p className="text-sm text-gray-600">Tenantc verification, Payment records, renewal reminders, lease generation etc are automated</p>
+                                        <p className="text-sm text-gray-600">Tenant verification, payment records, renewal reminders, lease generation etc are automated</p>
                                     </div>
                                 </div>
                             </div>

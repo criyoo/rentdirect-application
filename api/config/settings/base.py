@@ -192,6 +192,10 @@ PAYMENT_QUEUE_RECONCILIATION_INTERVAL_SECONDS = env_int(
     "PAYMENT_QUEUE_RECONCILIATION_INTERVAL_SECONDS",
     300,
 )
+PAYMENT_QUEUE_TENANCY_RENEWAL_REMINDER_INTERVAL_SECONDS = env_int(
+    "PAYMENT_QUEUE_TENANCY_RENEWAL_REMINDER_INTERVAL_SECONDS",
+    3600,
+)
 
 AUTH_USER_MODEL = "core.AppUser"
 AUTH_PASSWORD_VALIDATORS = [
@@ -321,6 +325,8 @@ MAX_UPLOAD_SIZE_MB = env_int("MAX_UPLOAD_SIZE_MB", 12)
 
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "noreply@rentdirect.homes")
 SERVER_EMAIL = os.environ.get("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
+RENT_RENEWAL_EMAIL = os.environ.get("RENT_RENEWAL_EMAIL", "rent-renewal@rentdirect.homes").strip()
+RENT_RENEWAL_WHATSAPP_NUMBER = os.environ.get("RENT_RENEWAL_WHATSAPP_NUMBER", "").strip()
 EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
 EMAIL_HOST = os.environ.get("EMAIL_HOST", "smtpout.secureserver.net")
 EMAIL_PORT = env_int("EMAIL_PORT", 587)
