@@ -15,6 +15,8 @@ from decimal import Decimal, InvalidOperation
 from django.conf import settings
 from django.db.models import Count, Q, Sum
 
+from .pricing import quantize_money
+
 REFERRAL_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 REFERRAL_CODE_LENGTH = 8
 REFERRAL_TREE_MAX_DEPTH = 5
@@ -160,7 +162,7 @@ def build_referral_tree(user) -> dict:
                 and node_profile.verification_status == AgentProfile.VerificationStatus.VERIFIED
             ),
             "properties_inspected": int(counts.get(node_user.id, 0)),
-            "earned_from_referral": str(earnings_by_referred.get(node_user.id, Decimal("0"))),
+            "earned_from_referral": str(quantize_money(earnings_by_referred.get(node_user.id, Decimal("0")))),
             "children": [],
         }
         if depth >= REFERRAL_TREE_MAX_DEPTH:
@@ -200,8 +202,8 @@ def build_referral_tree(user) -> dict:
         ),
         "metrics": {
             "total_referrals": len(children_map.get(user.id, [])),
-            "total_referral_earned": str(totals["total"] or Decimal("0")),
-            "total_referral_paid": str(totals["paid"] or Decimal("0")),
+            "total_referral_earned": str(quantize_money(totals["total"] or Decimal("0"))),
+            "total_referral_paid": str(quantize_money(totals["paid"] or Decimal("0"))),
             "referral_earning_per_inspection": str(referral_earning_amount()),
             "referral_earning_cap": str(referral_earning_cap()),
         },
@@ -209,7 +211,7 @@ def build_referral_tree(user) -> dict:
             {
                 "id": str(earning.id),
                 "referred_name": earning.referred.name,
-                "amount": str(earning.amount),
+                "amount": str(quantize_money(earning.amount)),
                 "payout_status": earning.payout_status,
                 "created_at": earning.created_at.isoformat(),
             }
