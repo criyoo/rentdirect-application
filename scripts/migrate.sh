@@ -73,12 +73,18 @@ build_task_overrides() {
   local command="$1"
   local environment_json
 
-  environment_json='[{"name":"MIGRATE_ON_STARTUP","value":"'"${MIGRATE_ON_STARTUP}"'"},{"name":"SEED_DEMO_ACCOUNTS","value":"'"${SEED_DEMO_ACCOUNTS}"'"}]'
+  environment_json='[{"name":"MIGRATE_ON_STARTUP","value":"'"${MIGRATE_ON_STARTUP}"'"},{"name":"SEED_DEMO_ACCOUNTS","value":"'"${SEED_DEMO_ACCOUNTS}"'"}'
+
+  if [ -n "${DB_DIRECT_ENDPOINT:-}" ] && [ "${DB_DIRECT_ENDPOINT}" != "None" ]; then
+    environment_json="${environment_json},"'{"name":"POSTGRES_HOST","value":"'"$(json_escape "${DB_DIRECT_ENDPOINT}")"'"}'
+  fi
 
   if [ "${ENSURE_SUPERUSER_AFTER_MIGRATION}" = "1" ]; then
     [ -n "${ADMIN_PASSWORD}" ] || fail "ADMIN_PASSWORD is required when ENSURE_SUPERUSER_AFTER_MIGRATION=1"
-    environment_json="$(printf '[{"name":"MIGRATE_ON_STARTUP","value":"'"${MIGRATE_ON_STARTUP}"'"},{"name":"SEED_DEMO_ACCOUNTS","value":"'"${SEED_DEMO_ACCOUNTS}"'"},{"name":"DJANGO_SUPERUSER_EMAIL","value":"%s"},{"name":"DJANGO_SUPERUSER_PASSWORD","value":"%s"},{"name":"DJANGO_SUPERUSER_NAME","value":"%s"}]' "$(json_escape "${ADMIN_EMAIL}")" "$(json_escape "${ADMIN_PASSWORD}")" "$(json_escape "${ADMIN_NAME}")")"
+    environment_json="${environment_json},"'{"name":"DJANGO_SUPERUSER_EMAIL","value":"'"$(json_escape "${ADMIN_EMAIL}")"'"},{"name":"DJANGO_SUPERUSER_PASSWORD","value":"'"$(json_escape "${ADMIN_PASSWORD}")"'"},{"name":"DJANGO_SUPERUSER_NAME","value":"'"$(json_escape "${ADMIN_NAME}")"'"}'
   fi
+
+  environment_json="${environment_json}]"
 
   printf '{"containerOverrides":[{"name":"migration","command":["sh","-lc","%s"],"environment":%s}]}' "$(json_escape "${command}")" "${environment_json}"
 }
@@ -285,26 +291,34 @@ run_ecs_task() {
 has_pending_migrations() {
   local overrides
   local task_id
+  local attempt
 
   overrides="$(build_task_overrides "set -eu; python manage.py showmigrations --plan --no-color > /tmp/migration-plan.txt; cat /tmp/migration-plan.txt; if grep -q '^\\[ \\]' /tmp/migration-plan.txt; then exit 10; fi")"
 
-  run_ecs_task "Checking for pending Django migrations" "${overrides}"
-  task_id="${LAST_TASK_ARN##*/}"
+  for attempt in 1 2; do
+    run_ecs_task "Checking for pending Django migrations" "${overrides}"
+    task_id="${LAST_TASK_ARN##*/}"
 
-  case "${LAST_TASK_EXIT_CODE}" in
-    0)
-      echo "No pending Django migrations detected."
-      return 1
-      ;;
-    10)
-      echo "Pending Django migrations detected."
-      return 0
-      ;;
-    *)
-      print_task_logs "${task_id}"
-      fail "Migration check task failed with exit code ${LAST_TASK_EXIT_CODE}. Stopped reason: ${LAST_TASK_STOPPED_REASON}. Container reason: ${LAST_TASK_CONTAINER_REASON}"
-      ;;
-  esac
+    case "${LAST_TASK_EXIT_CODE}" in
+      0)
+        echo "No pending Django migrations detected."
+        return 1
+        ;;
+      10)
+        echo "Pending Django migrations detected."
+        return 0
+        ;;
+      *)
+        if [ "${attempt}" -lt 2 ]; then
+          echo "Migration check task exited ${LAST_TASK_EXIT_CODE}; retrying in 30 seconds..." >&2
+          sleep 30
+          continue
+        fi
+        print_task_logs "${task_id}"
+        fail "Migration check task failed with exit code ${LAST_TASK_EXIT_CODE}. Stopped reason: ${LAST_TASK_STOPPED_REASON}. Container reason: ${LAST_TASK_CONTAINER_REASON}"
+        ;;
+    esac
+  done
 }
 
 resolve_service_network_value() {
@@ -321,12 +335,16 @@ resolve_service_network_value() {
 ensure_db_available() {
   local db_instance_identifier="${DB_INSTANCE_IDENTIFIER:-${NAME_PREFIX}-postgres}"
   local db_status
+  local db_info
 
-  db_status="$(aws_with_auth rds describe-db-instances \
+  db_info="$(aws_with_auth rds describe-db-instances \
     --region "${REGION}" \
     --db-instance-identifier "${db_instance_identifier}" \
-    --query 'DBInstances[0].DBInstanceStatus' \
+    --query 'DBInstances[0].[DBInstanceStatus,Endpoint.Address]' \
     --output text)"
+
+  db_status="$(printf '%s' "${db_info}" | cut -f1)"
+  DB_DIRECT_ENDPOINT="$(printf '%s' "${db_info}" | cut -f2 -s)"
 
   [ -n "${db_status}" ] && [ "${db_status}" != "None" ] || fail "Could not resolve RDS instance ${db_instance_identifier}."
 
@@ -369,6 +387,7 @@ TASK_DEFINITION="${MIGRATION_TASK_DEFINITION:-${NAME_PREFIX}-migration}"
 MIGRATION_LOG_GROUP="${MIGRATION_LOG_GROUP:-/ecs/${NAME_PREFIX}/migration}"
 API_SERVICE_NAME="${NAME_PREFIX}-api"
 
+DB_DIRECT_ENDPOINT=""
 LAST_TASK_ARN=""
 LAST_TASK_EXIT_CODE=""
 LAST_TASK_STOPPED_REASON=""
