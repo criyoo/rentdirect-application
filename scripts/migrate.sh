@@ -21,6 +21,7 @@ ADMIN_EMAIL="${ADMIN_EMAIL:-admin@rentdirect.homes}"
 ADMIN_PASSWORD="${ADMIN_PASSWORD:-}"
 ADMIN_NAME="${ADMIN_NAME:-Admin}"
 MIGRATION_START_DB_INSTANCE="${MIGRATION_START_DB_INSTANCE:-0}"
+MIGRATION_RESOURCE_INIT_MAX_ATTEMPTS="${MIGRATION_RESOURCE_INIT_MAX_ATTEMPTS:-10}"
 DEPLOY_IMAGE_URI="${DEPLOY_IMAGE_URI:-}"
 RUN_TASK_DEFINITION_ARN="${RUN_TASK_DEFINITION_ARN:-}"
 
@@ -295,7 +296,7 @@ has_pending_migrations() {
 
   overrides="$(build_task_overrides "set -eu; python manage.py showmigrations --plan --no-color > /tmp/migration-plan.txt; cat /tmp/migration-plan.txt; if grep -q '^\\[ \\]' /tmp/migration-plan.txt; then exit 10; fi")"
 
-  for attempt in 1 2; do
+  for ((attempt = 1; attempt <= MIGRATION_RESOURCE_INIT_MAX_ATTEMPTS; attempt++)); do
     run_ecs_task "Checking for pending Django migrations" "${overrides}"
     task_id="${LAST_TASK_ARN##*/}"
 
@@ -309,6 +310,11 @@ has_pending_migrations() {
         return 0
         ;;
       *)
+        if [[ "${LAST_TASK_STOPPED_REASON}" == *ResourceInitializationError* ]] && [ "${attempt}" -lt "${MIGRATION_RESOURCE_INIT_MAX_ATTEMPTS}" ]; then
+          echo "Migration task resource initialization failed; retrying in 30 seconds (attempt ${attempt}/${MIGRATION_RESOURCE_INIT_MAX_ATTEMPTS})..." >&2
+          sleep 30
+          continue
+        fi
         if [ "${attempt}" -lt 2 ]; then
           echo "Migration check task exited ${LAST_TASK_EXIT_CODE}; retrying in 30 seconds..." >&2
           sleep 30
@@ -392,6 +398,13 @@ LAST_TASK_ARN=""
 LAST_TASK_EXIT_CODE=""
 LAST_TASK_STOPPED_REASON=""
 LAST_TASK_CONTAINER_REASON=""
+
+case "${MIGRATION_RESOURCE_INIT_MAX_ATTEMPTS}" in
+  ''|*[!0-9]*)
+    fail "MIGRATION_RESOURCE_INIT_MAX_ATTEMPTS must be a positive integer, got '${MIGRATION_RESOURCE_INIT_MAX_ATTEMPTS}'."
+    ;;
+esac
+[ "${MIGRATION_RESOURCE_INIT_MAX_ATTEMPTS}" -ge 1 ] || fail "MIGRATION_RESOURCE_INIT_MAX_ATTEMPTS must be at least 1."
 
 ensure_db_available
 
