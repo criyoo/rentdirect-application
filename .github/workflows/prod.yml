@@ -202,7 +202,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Deploy Web
-        run: BUILD_WEB=0 INSTALL_DEPS=0 bash scripts/deploy/web.sh $${{ vars.ENVIRONMENT }}
+        run: BUILD_WEB=0 INSTALL_DEPS=0 bash scripts/deploy/web.sh ${{ vars.ENVIRONMENT }}
 
 
   detect-api-changes:
