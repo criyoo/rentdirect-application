@@ -322,6 +322,89 @@ def send_rentdirect_internal_transfer_notification(
     msg.send(fail_silently=False)
 
 
+def send_inspection_request_notification(agent, listing, inspection_request) -> list:
+    """Notify a PIO about a new in-person inspection request near them.
+
+    Sends email always; WhatsApp when the PIO has a WhatsApp number configured.
+    Returns the list of channels that were sent.
+    """
+    from .inspection_requests import accept_window_hours, submission_deadline_hours
+
+    agent_name = agent.name or "Officer"
+    property_location = ", ".join(part for part in [listing.address, listing.city, listing.state] if part)
+    accept_hours = accept_window_hours()
+    submit_hours = submission_deadline_hours()
+    expires_display = timezone.localtime(inspection_request.expires_at).strftime("%d %b %Y %H:%M")
+
+    subject = f"New inspection request near you — {listing.title}"
+    text_body = (
+        f"Hello {agent_name},\n\n"
+        f"A new property on RentDirect requires a physical inspection and you are one of the PIOs closest to it.\n\n"
+        f"Property: {listing.title}\n"
+        f"Location: {property_location}\n\n"
+        f"Requests are first-come-first-served. Accept within {accept_hours} hours (by {expires_display}).\n"
+        f"Once accepted, you have {submit_hours} hours to inspect the property and submit your report.\n\n"
+        "Open your PIO dashboard to accept the request.\n\n"
+        "RentDirect Team"
+    )
+    html_body = _render_email_template(
+        title="New inspection request",
+        heading="New Inspection Request",
+        body_html=(
+            f"<p>Hello <strong>{escape(agent_name)}</strong>,</p>"
+            "<p>A new property on RentDirect requires a physical inspection and you are one of the "
+            "Property Inspection Officers closest to it.</p>"
+            "<table style='width:100%;border-collapse:collapse;margin:16px 0;'>"
+            f"<tr><td style='padding:8px;border-bottom:1px solid #ddd;color:#666;'>Property</td>"
+            f"<td style='padding:8px;border-bottom:1px solid #ddd;'>{escape(listing.title)}</td></tr>"
+            f"<tr><td style='padding:8px;border-bottom:1px solid #ddd;color:#666;'>Location</td>"
+            f"<td style='padding:8px;border-bottom:1px solid #ddd;'>{escape(property_location)}</td></tr>"
+            f"<tr><td style='padding:8px;border-bottom:1px solid #ddd;color:#666;'>Accept by</td>"
+            f"<td style='padding:8px;border-bottom:1px solid #ddd;font-weight:bold;'>{escape(expires_display)}</td></tr>"
+            f"<tr><td style='padding:8px;color:#666;'>Submit report within</td>"
+            f"<td style='padding:8px;font-weight:bold;'>{submit_hours} hours of accepting</td></tr>"
+            "</table>"
+            "<p>Requests are <strong>first-come-first-served</strong> — once another PIO accepts, "
+            "the request is deactivated on your dashboard.</p>"
+            "<p><em>RentDirect Team</em></p>"
+        ),
+    )
+    channels: list = []
+    try:
+        email = EmailMultiAlternatives(
+            subject=subject,
+            body=text_body,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=[agent.email],
+            reply_to=[RENTDIRECT_INFO_EMAIL],
+        )
+        email.attach_alternative(html_body, "text/html")
+        email.send(fail_silently=False)
+        channels.append("email")
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).exception("Failed to send inspection request email to %s", agent.email)
+
+    whatsapp_number = (
+        getattr(getattr(agent, "agent_profile", None), "whatsapp_number", "")
+        or getattr(agent, "whatsapp_number", "")
+        or ""
+    )
+    if whatsapp_number:
+        sent = send_whatsapp_message(
+            whatsapp_number,
+            (
+                f"RentDirect: New inspection request near you — {listing.title}, {property_location}. "
+                f"First-come-first-served: accept within {accept_hours}h (by {expires_display}); "
+                f"report due {submit_hours}h after accepting. Open your PIO dashboard to accept."
+            ),
+        )
+        if sent:
+            channels.append("whatsapp")
+    return channels
+
+
 def _render_email_template(*, title: str, heading: str, body_html: str) -> str:
     """Render a minimal HTML email template."""
     return (

@@ -27,7 +27,7 @@ from core import flutterwave
 from core.management.commands.seed_demo_data import Command as SeedDemoDataCommand
 from core.flutterwave import FlutterwaveError
 from core.inspection_checklist import INSPECTION_CHECKLIST_SCHEMA
-from core.models import AgentProfile, AgentReferralEarning, AppUser, Booking, BvnVerificationRecord, CacVerificationRecord, CommunityChatMessage, Document, Feedback, FeaturedPayment, Listing, ListingImage, Message, NinVerificationRecord, Payment, PaymentSettlement, PendingRegistration, PropertyInspection, Review, ServicePayment, SubscriptionPayment, SubscriptionPaymentMethod, SubscriptionVATPayment, SupportChatMessage, TenancyAgreement, TenantProfile, VerificationRequest
+from core.models import AgentProfile, AgentReferralEarning, AppUser, Booking, BvnVerificationRecord, CacVerificationRecord, CommunityChatMessage, Document, Feedback, FeaturedPayment, InspectionRequest, Listing, ListingImage, Message, NinVerificationRecord, Payment, PaymentSettlement, PendingRegistration, PropertyInspection, Review, ServicePayment, SubscriptionPayment, SubscriptionPaymentMethod, SubscriptionVATPayment, SupportChatMessage, TenancyAgreement, TenantProfile, VerificationRequest
 from core.referrals import award_referral_earning, generate_unique_referral_code, resolve_referrer
 from core.payment_queue import TASK_PROCESS_READY_PAYOUTS, TASK_RECONCILE_PENDING_PAYMENTS, enqueue_payment_task
 from core.prembly_verification import (
@@ -9729,3 +9729,225 @@ class AgentReferralTests(TestCase):
         self.client.force_authenticate(user=tenant)
         response = self.client.get("/api/v1/agents/referrals")
         self.assertEqual(response.status_code, 403)
+
+
+class InspectionRequestTests(TestCase):
+    def setUp(self):
+        self.landlord = AppUser.objects.create_user(
+            email="insp-req-landlord@example.com",
+            password="password-123",
+            name="Request Landlord",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+        )
+        self.listing = Listing.objects.create(
+            landlord=self.landlord,
+            title="Request Listing",
+            description="Listing awaiting physical inspection",
+            address="15 Inspection Close",
+            city="Lagos",
+            state="Lagos",
+            property_type="Apartment",
+            bedrooms=2,
+            bathrooms=2,
+            price_per_year=1800000,
+            physical_property_status="pending",
+            property_document_submission={"in_person_verification_requested": True},
+        )
+        self.client = APIClient()
+
+    def _verified_agent(self, email, *, city="Lagos", state="Lagos", whatsapp_number=""):
+        agent = AppUser.objects.create_user(
+            email=email,
+            password="password-123",
+            name=email.split("@")[0].title(),
+            role=AppUser.Role.AGENT,
+            email_verified=True,
+        )
+        AgentProfile.objects.create(
+            user=agent,
+            first_name="PIO",
+            last_name="Officer",
+            date_of_birth=date(1992, 4, 10),
+            city=city,
+            state_of_origin=state,
+            whatsapp_number=whatsapp_number,
+            verification_status=AgentProfile.VerificationStatus.VERIFIED,
+        )
+        ServicePayment.objects.create(
+            user=agent,
+            purpose=ServicePayment.Purpose.AGENT_VERIFICATION,
+            amount=Decimal("500.00"),
+            status=ServicePayment.Status.COMPLETED,
+            transaction_id=f"SVCTEST{uuid.uuid4().hex[:16].upper()}",
+            payment_date=timezone.now(),
+        )
+        return agent
+
+    def _claim(self, agent):
+        client = APIClient()
+        client.force_authenticate(user=agent)
+        return client.post(
+            "/api/v1/agent-inspections/claim",
+            {"listing_id": str(self.listing.id)},
+            format="json",
+        )
+
+    def test_listing_creation_notifies_nearest_agents(self):
+        make_landlord_listing_ready(self.landlord)
+        VerificationRequest.objects.create(
+            user=self.landlord,
+            status=VerificationRequest.Status.APPROVED,
+            identity_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
+        )
+        near_agent = self._verified_agent("near-pio@example.com", city="Lagos")
+        self._verified_agent("far-pio@example.com", city="Abuja", state="FCT")
+
+        client = APIClient()
+        client.force_authenticate(user=self.landlord)
+        gif = (
+            b"GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff!\xf9\x04\x00"
+            b"\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;"
+        )
+        response = client.post(
+            "/api/v1/listings",
+            {
+                "title": "Nearby Inspection Listing",
+                "description": "A listing that triggers PIO notifications",
+                "address": "10 Close Street",
+                "city": "Lagos",
+                "state": "Lagos",
+                "lga": "Eti-Osa",
+                "property_type": "Apartment",
+                "bedrooms": 2,
+                "bathrooms": 2,
+                "toilets": 2,
+                "price_per_year": "1800000",
+                "amenities": ["parking"],
+                "ownership_types": ["Sole Owner"],
+                "property_verification_method": "in_person",
+                "minimum_rental_duration": "6 months",
+                "maximum_occupancy": "3",
+                "available_from": "2026-08-01",
+                "cover_image": SimpleUploadedFile("cover.gif", gif, content_type="image/gif"),
+                "images": SimpleUploadedFile("room.gif", gif, content_type="image/gif"),
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 201, response.json())
+        listing = Listing.objects.get(title="Nearby Inspection Listing")
+        requests = InspectionRequest.objects.filter(listing=listing)
+        self.assertEqual(requests.count(), 1)
+        self.assertEqual(requests.get().agent, near_agent)
+        self.assertEqual(requests.get().status, InspectionRequest.Status.PENDING)
+        self.assertIn("email", requests.get().notified_channels)
+        self.assertTrue(
+            any(message.to == [near_agent.email] for message in mail.outbox),
+            "expected a request email to the nearest PIO",
+        )
+
+    def test_accept_request_marks_other_requests_taken(self):
+        first = self._verified_agent("first-pio@example.com")
+        second = self._verified_agent("second-pio@example.com")
+        from core.inspection_requests import notify_agents_for_listing
+
+        notify_agents_for_listing(self.listing)
+        self.assertEqual(InspectionRequest.objects.filter(listing=self.listing).count(), 2)
+
+        response = self._claim(first)
+        self.assertEqual(response.status_code, 201, response.json())
+        self.assertEqual(
+            InspectionRequest.objects.get(listing=self.listing, agent=first).status,
+            InspectionRequest.Status.ACCEPTED,
+        )
+        self.assertEqual(
+            InspectionRequest.objects.get(listing=self.listing, agent=second).status,
+            InspectionRequest.Status.TAKEN,
+        )
+
+        blocked = self._claim(second)
+        self.assertEqual(blocked.status_code, 400)
+
+        dashboard_client = APIClient()
+        dashboard_client.force_authenticate(user=second)
+        dashboard = dashboard_client.get("/api/v1/agents/dashboard")
+        self.assertEqual(dashboard.status_code, 200)
+        requests_payload = dashboard.json()["inspection_requests"]
+        taken = next(item for item in requests_payload if item["listing"]["id"] == str(self.listing.id))
+        self.assertEqual(taken["status"], "taken")
+        self.assertEqual(taken["status_display"], "Request Accepted")
+
+    def test_expired_request_cannot_be_accepted(self):
+        agent = self._verified_agent("late-pio@example.com")
+        from core.inspection_requests import notify_agents_for_listing
+
+        notify_agents_for_listing(self.listing)
+        request_obj = InspectionRequest.objects.get(listing=self.listing, agent=agent)
+        request_obj.expires_at = timezone.now() - timedelta(hours=1)
+        request_obj.save(update_fields=["expires_at", "updated_at"])
+
+        response = self._claim(agent)
+        self.assertEqual(response.status_code, 400)
+        request_obj.refresh_from_db()
+        self.assertEqual(request_obj.status, InspectionRequest.Status.EXPIRED)
+        self.assertFalse(PropertyInspection.objects.exists())
+
+    def test_agent_without_request_blocked_while_requests_active(self):
+        notified = self._verified_agent("notified-pio@example.com")
+        outsider = self._verified_agent("outsider-pio@example.com", city="Abuja", state="FCT")
+        from core.inspection_requests import notify_agents_for_listing
+
+        notify_agents_for_listing(self.listing, exclude_agent_ids={outsider.id})
+        self.assertTrue(
+            InspectionRequest.objects.filter(listing=self.listing, agent=notified, status="pending").exists()
+        )
+
+        response = self._claim(outsider)
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(PropertyInspection.objects.exists())
+
+    def test_timed_out_inspection_is_reassigned(self):
+        first = self._verified_agent("slow-pio@example.com")
+        second = self._verified_agent("next-pio@example.com", whatsapp_number="08031112222")
+        from core.inspection_requests import notify_agents_for_listing, process_inspection_timeouts
+
+        notify_agents_for_listing(self.listing)
+        response = self._claim(first)
+        self.assertEqual(response.status_code, 201, response.json())
+        inspection = PropertyInspection.objects.get(listing=self.listing)
+        inspection.claimed_at = timezone.now() - timedelta(hours=49)
+        inspection.save(update_fields=["claimed_at", "updated_at"])
+
+        result = process_inspection_timeouts()
+
+        self.assertEqual(result["reassigned_inspections"], 1)
+        self.assertFalse(PropertyInspection.objects.filter(pk=inspection.pk).exists())
+        round_two = InspectionRequest.objects.filter(listing=self.listing, round=2)
+        self.assertTrue(round_two.filter(agent=second).exists())
+        self.assertFalse(round_two.filter(agent=first).exists())
+        self.assertTrue(
+            any(message.to == [second.email] for message in mail.outbox),
+            "expected reassignment email to the next PIO",
+        )
+
+        # The listing can be claimed again through the new request round.
+        reclaim = self._claim(second)
+        self.assertEqual(reclaim.status_code, 201, reclaim.json())
+
+    def test_dashboard_includes_inspection_requests(self):
+        agent = self._verified_agent("dash-pio@example.com")
+        from core.inspection_requests import notify_agents_for_listing
+
+        notify_agents_for_listing(self.listing)
+        self.client.force_authenticate(user=agent)
+        response = self.client.get("/api/v1/agents/dashboard")
+        self.assertEqual(response.status_code, 200)
+        requests_payload = response.json()["inspection_requests"]
+        self.assertEqual(len(requests_payload), 1)
+        self.assertEqual(requests_payload[0]["status"], "pending")
+        self.assertEqual(requests_payload[0]["listing"]["id"], str(self.listing.id))
+        self.assertIn(
+            str(self.listing.id),
+            [listing["id"] for listing in response.json()["available_inspections"]],
+        )

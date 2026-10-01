@@ -1733,6 +1733,39 @@ class PropertyInspection(models.Model):
         super().save(*args, **kwargs)
 
 
+class InspectionRequest(models.Model):
+    """In-person verification request offered to the PIOs closest to a listing."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        ACCEPTED = "accepted", "Accepted"
+        TAKEN = "taken", "Request Accepted"
+        EXPIRED = "expired", "Expired"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    listing = models.ForeignKey(Listing, on_delete=models.CASCADE, related_name="inspection_requests")
+    agent = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name="inspection_requests")
+    round = models.PositiveIntegerField(default=1)
+    status = models.CharField(max_length=30, choices=Status.choices, default=Status.PENDING)
+    notified_channels = models.JSONField(default=list, blank=True)
+    expires_at = models.DateTimeField()
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Inspection Request"
+        verbose_name_plural = "Inspection Requests"
+        constraints = [
+            models.UniqueConstraint(fields=["listing", "agent", "round"], name="core_inspreq_unique_agent_round"),
+        ]
+        indexes = [
+            models.Index(fields=["agent", "status", "-created_at"], name="core_inspreq_agent_idx"),
+            models.Index(fields=["listing", "status"], name="core_inspreq_listing_idx"),
+            models.Index(fields=["status", "expires_at"], name="core_inspreq_expiry_idx"),
+        ]
+
+
 class AgentReferralEarning(models.Model):
     """Referral bonus earned by a PIO for a referred PIO's submitted inspection."""
 

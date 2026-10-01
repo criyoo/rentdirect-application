@@ -52,6 +52,7 @@ from .models import (
     Listing,
     Message,
     Payment,
+    InspectionRequest,
     PaymentSettlement,
     PendingRegistration,
     PropertyInspection,
@@ -202,6 +203,11 @@ from .inspection_checklist import (
     validate_inspection_responses,
 )
 from .inspection_reports import build_inspection_report_pdf
+from .inspection_requests import (
+    mark_requests_resolved,
+    notify_agents_for_listing,
+    process_inspection_timeouts,
+)
 from .referrals import award_referral_earning, build_referral_tree, resolve_referrer
 from .serializers import (
     AGENT_PROFILE_REQUIRED_FIELDS,
@@ -214,6 +220,7 @@ from .serializers import (
     FeedbackSerializer,
     FavouriteSerializer,
     FeaturedPaymentSerializer,
+    InspectionRequestSerializer,
     ListingSerializer,
     LoginSerializer,
     MessageSerializer,
@@ -3325,6 +3332,14 @@ def complete_service_payment(payment: ServicePayment, *, webhook_data=None) -> S
             physical_property_status=VerificationRequest.VerificationProgressStatus.PENDING,
             updated_at=timezone.now(),
         )
+        listing = Listing.objects.filter(pk=payment.listing_id).first()
+        if listing is not None:
+            try:
+                notify_agents_for_listing(listing)
+            except Exception:
+                logger.exception(
+                    "Failed to notify PIOs for paid in-person verification on listing %s", listing.id
+                )
     return payment
 
 
@@ -7079,18 +7094,46 @@ class AgentViewSet(viewsets.ViewSet):
             .order_by("-created_at")
         )
         if profile.verification_status == AgentProfile.VerificationStatus.VERIFIED:
+            now = timezone.now()
             available_listings = (
                 Listing.objects.filter(
                     physical_property_status=VerificationRequest.VerificationProgressStatus.PENDING,
                     property_document_submission__in_person_verification_requested=True,
                 )
                 .exclude(inspection__isnull=False)
+                .exclude(
+                    inspection_requests__status=InspectionRequest.Status.PENDING,
+                    inspection_requests__expires_at__gt=now,
+                )
+                .exclude(
+                    inspection_requests__status=InspectionRequest.Status.ACCEPTED,
+                )
                 .select_related("landlord")
                 .prefetch_related("images")
                 .order_by("-created_at")
             )
+            offered_listings = (
+                Listing.objects.filter(
+                    physical_property_status=VerificationRequest.VerificationProgressStatus.PENDING,
+                    property_document_submission__in_person_verification_requested=True,
+                    inspection_requests__agent=request.user,
+                    inspection_requests__status=InspectionRequest.Status.PENDING,
+                    inspection_requests__expires_at__gt=now,
+                )
+                .exclude(inspection__isnull=False)
+                .select_related("landlord")
+                .prefetch_related("images")
+                .order_by("-created_at")
+            )
+            available_listings = (available_listings | offered_listings).distinct()
         else:
             available_listings = Listing.objects.none()
+        inspection_requests = (
+            InspectionRequest.objects.filter(agent=request.user)
+            .select_related("listing", "listing__landlord")
+            .prefetch_related("listing__images")
+            .order_by("-created_at")[:20]
+        )
         submitted = own_inspections.filter(status=PropertyInspection.Status.SUBMITTED)
         totals = submitted.aggregate(
             total_earned=Sum("earning_amount"),
@@ -7109,6 +7152,9 @@ class AgentViewSet(viewsets.ViewSet):
                 ),
                 "available_inspections": AgentInspectionListingSerializer(
                     available_listings, many=True, context={"request": request}
+                ).data,
+                "inspection_requests": InspectionRequestSerializer(
+                    inspection_requests, many=True, context={"request": request}
                 ).data,
                 "inspections": PropertyInspectionSerializer(
                     own_inspections, many=True, context={"request": request}
@@ -7170,6 +7216,25 @@ class AgentInspectionViewSet(viewsets.GenericViewSet, mixins.ListModelMixin, mix
         if listing.physical_property_status != VerificationRequest.VerificationProgressStatus.PENDING:
             raise ValidationError("This listing is not awaiting a physical inspection.")
 
+        own_request = (
+            InspectionRequest.objects.filter(listing=listing, agent=request.user)
+            .order_by("-created_at")
+            .first()
+        )
+        if own_request is not None:
+            if own_request.status == InspectionRequest.Status.PENDING and own_request.expires_at <= timezone.now():
+                own_request.status = InspectionRequest.Status.EXPIRED
+                own_request.save(update_fields=["status", "updated_at"])
+                raise ValidationError("This inspection request has expired.")
+            if own_request.status != InspectionRequest.Status.PENDING:
+                raise ValidationError("This inspection request is no longer available.")
+        elif listing.inspection_requests.filter(
+            status=InspectionRequest.Status.PENDING, expires_at__gt=timezone.now()
+        ).exists():
+            raise PermissionDenied(
+                "This inspection was offered to the PIOs closest to the property."
+            )
+
         earning_amount = decimal_setting("AGENT_INSPECTION_EARNING_NGN", "0.00")
         try:
             with transaction.atomic():
@@ -7178,6 +7243,7 @@ class AgentInspectionViewSet(viewsets.GenericViewSet, mixins.ListModelMixin, mix
                     agent=request.user,
                     earning_amount=earning_amount,
                 )
+                mark_requests_resolved(listing, accepted_agent=request.user)
         except IntegrityError:
             raise ValidationError("This listing already has an inspection assigned.")
         return Response(

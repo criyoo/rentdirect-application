@@ -1,6 +1,7 @@
 from django.core.management.base import BaseCommand
 
 from core.models import Booking
+from core.inspection_requests import process_inspection_timeouts
 from core.views import (
     booking_is_fully_paid,
     booking_payout_balance_available,
@@ -40,10 +41,13 @@ class Command(BaseCommand):
             trigger_booking_payouts_if_ready(booking)
 
         refunds_processed = process_due_tenant_refunds()
+        inspection_timeouts = process_inspection_timeouts()
 
         self.stdout.write(
             self.style.SUCCESS(
                 f"Checked {checked_count} booking(s); processed {ready_count} payout-ready booking(s); "
-                f"processed {refunds_processed} due tenant refund(s)."
+                f"processed {refunds_processed} due tenant refund(s); "
+                f"expired {inspection_timeouts['expired_requests']} inspection request(s); "
+                f"reassigned {inspection_timeouts['reassigned_inspections']} timed-out inspection(s)."
             )
         )

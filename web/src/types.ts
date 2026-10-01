@@ -646,6 +646,7 @@ export interface PropertyInspection {
     payout_status_display?: string
     payout_reference?: string
     claimed_at?: string
+    submission_deadline?: string | null
     submitted_at?: string | null
     signed_off_at?: string | null
     paid_out_at?: string | null
@@ -653,10 +654,24 @@ export interface PropertyInspection {
     updated_at: string
 }
 
+export interface InspectionRequest {
+    id: string
+    listing: Listing
+    status: 'pending' | 'accepted' | 'taken' | 'expired'
+    status_display?: string
+    round: number
+    notified_channels?: string[]
+    expires_at: string
+    accepted_at?: string | null
+    is_expired: boolean
+    created_at: string
+}
+
 export interface AgentDashboard {
     profile: AgentProfile
     verification_payment?: ServicePayment | null
     available_inspections: Listing[]
+    inspection_requests?: InspectionRequest[]
     inspections: PropertyInspection[]
     metrics: {
         properties_inspected: number

@@ -67,6 +67,20 @@ export default function AgentDashboardPage() {
     const isVerified = profile?.verification_status === 'verified'
     const verificationPaymentRequired = Boolean(profile?.verification_payment_required)
 
+    const availableListingIds = new Set((dashboard?.available_inspections || []).map((listing) => listing.id))
+    const requestsByListing = new Map(
+        (dashboard?.inspection_requests || []).map((request) => [request.listing?.id, request] as const),
+    )
+    const inactiveRequests = (dashboard?.inspection_requests || []).filter(
+        (request) => !availableListingIds.has(request.listing?.id),
+    )
+
+    const hoursLeft = (expiresAt?: string) => {
+        if (!expiresAt) return null
+        const ms = new Date(expiresAt).getTime() - Date.now()
+        return ms <= 0 ? 0 : Math.ceil(ms / 3_600_000)
+    }
+
     const verificationBanner = () => {
         if (isVerified) return null
         if (!verificationPaymentRequired) {
@@ -154,53 +168,107 @@ export default function AgentDashboardPage() {
                     </div>
                     {isLoading ? (
                         <div className="card p-6 text-center text-gray-600">Loading inspection requests…</div>
-                    ) : (dashboard?.available_inspections?.length ?? 0) > 0 ? (
+                    ) : (dashboard?.available_inspections?.length ?? 0) + inactiveRequests.length > 0 ? (
                         <div className="grid gap-4">
-                            {dashboard!.available_inspections.map((listing) => (
-                                <div key={listing.id} className="card p-6">
-                                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-                                        <Link
-                                            to={`/listings/${listing.id}`}
-                                            className="block h-28 w-full shrink-0 overflow-hidden rounded-lg bg-gray-100 sm:w-36"
-                                        >
-                                            <img
-                                                src={resolveMediaUrl(listing.cover_image_url)}
-                                                alt={listing.title}
-                                                loading="lazy"
-                                                decoding="async"
-                                                className="h-full w-full object-cover"
-                                                onError={(event) => {
-                                                    event.currentTarget.src = '/placeholder.jpg'
-                                                }}
-                                            />
-                                        </Link>
-                                        <div className="min-w-0 flex-1">
-                                            <h3 className="text-lg font-semibold text-gray-900">{listing.title}</h3>
-                                            <p className="text-sm text-gray-600">
-                                                {[listing.address, listing.city, listing.state].filter(Boolean).join(', ')}
-                                            </p>
-                                            <p className="mt-1 text-sm text-gray-500">
-                                                {listing.property_type} • Landlord: {listing.landlord_name || '—'}
-                                            </p>
-                                        </div>
-                                        <div className="shrink-0">
-                                            <button
-                                                type="button"
-                                                disabled={!isVerified || claimInspection.isPending}
-                                                onClick={() => claimInspection.mutate(listing.id)}
-                                                className="btn btn-primary px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                            {dashboard!.available_inspections.map((listing) => {
+                                const request = requestsByListing.get(listing.id)
+                                const remaining = request ? hoursLeft(request.expires_at) : null
+                                return (
+                                    <div key={listing.id} className="card p-6">
+                                        <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                                            <Link
+                                                to={`/listings/${listing.id}`}
+                                                className="block h-28 w-full shrink-0 overflow-hidden rounded-lg bg-gray-100 sm:w-36"
                                             >
-                                                {claimInspection.isPending ? 'Claiming…' : 'Claim Inspection'}
-                                            </button>
-                                            {!isVerified && (
-                                                <p className="mt-2 max-w-[180px] text-xs text-gray-500">
-                                                    Verify your account to claim inspections.
+                                                <img
+                                                    src={resolveMediaUrl(listing.cover_image_url)}
+                                                    alt={listing.title}
+                                                    loading="lazy"
+                                                    decoding="async"
+                                                    className="h-full w-full object-cover"
+                                                    onError={(event) => {
+                                                        event.currentTarget.src = '/placeholder.jpg'
+                                                    }}
+                                                />
+                                            </Link>
+                                            <div className="min-w-0 flex-1">
+                                                <h3 className="text-lg font-semibold text-gray-900">{listing.title}</h3>
+                                                <p className="text-sm text-gray-600">
+                                                    {[listing.address, listing.city, listing.state].filter(Boolean).join(', ')}
                                                 </p>
-                                            )}
+                                                <p className="mt-1 text-sm text-gray-500">
+                                                    {listing.property_type} • Landlord: {listing.landlord_name || '—'}
+                                                </p>
+                                                {request && remaining !== null && (
+                                                    <p className="mt-1 text-xs font-medium text-amber-700">
+                                                        First-come-first-served — accept within {remaining}h
+                                                    </p>
+                                                )}
+                                            </div>
+                                            <div className="shrink-0">
+                                                <button
+                                                    type="button"
+                                                    disabled={!isVerified || claimInspection.isPending}
+                                                    onClick={() => claimInspection.mutate(listing.id)}
+                                                    className="btn btn-primary px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                                                >
+                                                    {claimInspection.isPending ? 'Accepting…' : 'Accept Request'}
+                                                </button>
+                                                {!isVerified && (
+                                                    <p className="mt-2 max-w-[180px] text-xs text-gray-500">
+                                                        Verify your account to claim inspections.
+                                                    </p>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            ))}
+                                )
+                            })}
+                            {inactiveRequests.map((request) => {
+                                const listing = request.listing
+                                const label =
+                                    request.status === 'accepted'
+                                        ? 'Accepted by you'
+                                        : request.status === 'taken'
+                                            ? 'Request Accepted'
+                                            : 'Request Expired'
+                                return (
+                                    <div key={request.id} className="card p-6 opacity-60 grayscale">
+                                        <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                                            <div className="block h-28 w-full shrink-0 overflow-hidden rounded-lg bg-gray-100 sm:w-36">
+                                                <img
+                                                    src={resolveMediaUrl(listing.cover_image_url)}
+                                                    alt={listing.title}
+                                                    loading="lazy"
+                                                    decoding="async"
+                                                    className="h-full w-full object-cover"
+                                                    onError={(event) => {
+                                                        event.currentTarget.src = '/placeholder.jpg'
+                                                    }}
+                                                />
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <h3 className="text-lg font-semibold text-gray-900">{listing.title}</h3>
+                                                <p className="text-sm text-gray-600">
+                                                    {[listing.address, listing.city, listing.state].filter(Boolean).join(', ')}
+                                                </p>
+                                                <p className="mt-1 text-sm text-gray-500">
+                                                    {listing.property_type} • Landlord: {listing.landlord_name || '—'}
+                                                </p>
+                                            </div>
+                                            <div className="shrink-0">
+                                                <button
+                                                    type="button"
+                                                    disabled
+                                                    className="btn btn-outline px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                                                >
+                                                    {label}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )
+                            })}
                         </div>
                     ) : (
                         <div className="card p-6 text-center text-gray-600">
@@ -245,8 +313,14 @@ export default function AgentDashboardPage() {
                                                     <p className="font-semibold text-gray-900">{inspection.claimed_at ? new Date(inspection.claimed_at).toLocaleDateString() : '—'}</p>
                                                 </div>
                                                 <div>
-                                                    <p className="text-gray-500">Submitted</p>
-                                                    <p className="font-semibold text-gray-900">{inspection.submitted_at ? new Date(inspection.submitted_at).toLocaleDateString() : '—'}</p>
+                                                    <p className="text-gray-500">{inspection.submission_deadline ? 'Submit by' : 'Submitted'}</p>
+                                                    <p className={`font-semibold ${inspection.submission_deadline && new Date(inspection.submission_deadline).getTime() - Date.now() < 6 * 3_600_000 ? 'text-red-600' : 'text-gray-900'}`}>
+                                                        {inspection.submission_deadline
+                                                            ? new Date(inspection.submission_deadline).toLocaleString()
+                                                            : inspection.submitted_at
+                                                                ? new Date(inspection.submitted_at).toLocaleDateString()
+                                                                : '—'}
+                                                    </p>
                                                 </div>
                                             </div>
                                         </div>

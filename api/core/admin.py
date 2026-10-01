@@ -6,7 +6,7 @@ from django.db.models import OuterRef, Prefetch, Subquery
 from django.utils.html import format_html, format_html_join
 from django.utils import timezone
 
-from .models import AdminUser, Agent, AgentProfile, AgentReferralEarning, AppUser, Booking, Document, Feedback, Favourite, FeaturedPayment, Landlord, LandlordProfile, Listing, ListingImage, Message, Payment, PaymentSettlement, PropertyInspection, RepresentativeKyc, Review, ServicePayment, SubscriptionPayment, SubscriptionVATPayment, Tenant, TenantProfile, TenantRefund, TenantSearchRequirement, VerificationRequest, infer_listing_rental_status, sync_listing_status_from_rental_progress
+from .models import AdminUser, Agent, AgentProfile, AgentReferralEarning, AppUser, Booking, Document, Feedback, Favourite, FeaturedPayment, Landlord, LandlordProfile, Listing, ListingImage, Message, Payment, PaymentSettlement, PropertyInspection, InspectionRequest, RepresentativeKyc, Review, ServicePayment, SubscriptionPayment, SubscriptionVATPayment, Tenant, TenantProfile, TenantRefund, TenantSearchRequirement, VerificationRequest, infer_listing_rental_status, sync_listing_status_from_rental_progress
 
 
 PREFERRED_CONTACT_METHOD_CHOICES = (
@@ -1441,6 +1441,14 @@ class ServicePaymentAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         return super().get_queryset(request).select_related("user", "booking", "booking__listing")
+
+
+@admin.register(InspectionRequest)
+class InspectionRequestAdmin(admin.ModelAdmin):
+    list_display = ("listing", "agent", "status", "round", "expires_at", "accepted_at", "created_at")
+    list_filter = ("status", "created_at")
+    search_fields = ("listing__title", "agent__email", "agent__name")
+    readonly_fields = ("created_at", "updated_at")
 
 
 @admin.register(PropertyInspection)

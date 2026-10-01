@@ -41,6 +41,7 @@ from .models import (
     Payment,
     PaymentSettlement,
     PropertyInspection,
+    InspectionRequest,
     RepresentativeKyc,
     Review,
     ServicePayment,
@@ -753,6 +754,17 @@ class ListingSerializer(serializers.ModelSerializer):
             listing.save(update_fields=["authorization_letter", "representative_kyc", "updated_at"])
 
         self._apply_property_document_submission(listing, property_verification_method)
+        if property_verification_method == self.PROPERTY_VERIFICATION_METHOD_IN_PERSON:
+            try:
+                from .inspection_requests import notify_agents_for_listing
+
+                notify_agents_for_listing(listing)
+            except Exception:
+                import logging
+
+                logging.getLogger(__name__).exception(
+                    "Failed to create inspection requests for listing %s", listing.id
+                )
         return listing
 
     @transaction.atomic
@@ -2057,7 +2069,33 @@ class AgentProfileSerializer(serializers.ModelSerializer):
         return profile
 
 
+class InspectionRequestSerializer(serializers.ModelSerializer):
+    listing = AgentInspectionListingSerializer(read_only=True)
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    is_expired = serializers.SerializerMethodField()
+
+    class Meta:
+        model = InspectionRequest
+        fields = [
+            "id",
+            "listing",
+            "status",
+            "status_display",
+            "round",
+            "notified_channels",
+            "expires_at",
+            "accepted_at",
+            "is_expired",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+    def get_is_expired(self, obj) -> bool:
+        return obj.status == obj.Status.PENDING and obj.expires_at <= timezone.now()
+
+
 class PropertyInspectionSerializer(serializers.ModelSerializer):
+    submission_deadline = serializers.SerializerMethodField()
     listing_id = serializers.UUIDField(source="listing.id", read_only=True)
     listing_title = serializers.CharField(source="listing.title", read_only=True)
     listing_address = serializers.CharField(source="listing.address", read_only=True)
@@ -2099,6 +2137,7 @@ class PropertyInspectionSerializer(serializers.ModelSerializer):
             "payout_status_display",
             "payout_reference",
             "claimed_at",
+            "submission_deadline",
             "submitted_at",
             "signed_off_at",
             "paid_out_at",
@@ -2126,12 +2165,20 @@ class PropertyInspectionSerializer(serializers.ModelSerializer):
             "payout_status_display",
             "payout_reference",
             "claimed_at",
+            "submission_deadline",
             "submitted_at",
             "signed_off_at",
             "paid_out_at",
             "created_at",
             "updated_at",
         ]
+
+    def get_submission_deadline(self, obj):
+        if obj.status == PropertyInspection.Status.SUBMITTED:
+            return None
+        from .inspection_requests import inspection_submission_deadline
+
+        return inspection_submission_deadline(obj)
 
     def validate_responses(self, value):
         return validate_inspection_responses(value, require_complete=False)

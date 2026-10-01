@@ -289,8 +289,13 @@ export default function ListingFormPage() {
                 ownership_type: selectedOwnershipTypes.find((type) => !ownerOnlyOwnershipTypes.includes(type)) || '',
                 return_url: isEditMode ? `/listings/${id}/edit` : '/listings/new',
             })).data,
-        onSuccess: () => refetchRepresentativeKycs(),
-        onError: (error) => setSubmissionError(extractApiErrorMessage(error, 'Failed to generate the representative KYC link.')),
+        onSuccess: (kyc) => {
+            refetchRepresentativeKycs()
+            if (kyc.kyc_url) {
+                navigate(kyc.kyc_url)
+            }
+        },
+        onError: (error) => setSubmissionError(extractApiErrorMessage(error, 'Failed to open the representative KYC form.')),
     })
 
     // A stored city that isn't in the state's list is treated as an "Other" entry.
@@ -1112,8 +1117,7 @@ export default function ListingFormPage() {
                                 <div className="mt-10 rounded-2xl border border-amber-200 bg-amber-50 p-5">
                                     <h4 className="text-base font-semibold text-gray-900">Property Representative Requirements</h4>
                                     <p className="mt-2 text-sm text-gray-700">
-                                        Because the selected ownership type is not 'Sole Owner' or 'Joint Owner', the landlord's
-                                        representative must provide a letter of authorization from the property owner and complete a
+                                        Property owner representatives must provide a letter of authorization from the property owner and complete a
                                         KYC verification before this listing can be submitted.
                                     </p>
 
@@ -1136,15 +1140,18 @@ export default function ListingFormPage() {
 
                                     <div className="mt-4">
                                         <label className={classNameTitles}>
-                                            Representative KYC Link *
+                                            Representative KYC *
                                         </label>
+                                        <p className="mb-2 text-xs text-gray-600">
+                                            Click below to open the KYC form for the representative. You can also copy the link to share it.
+                                        </p>
                                         <button
                                             type="button"
                                             onClick={() => generateKycLink.mutate()}
                                             disabled={generateKycLink.isPending}
                                             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition disabled:cursor-not-allowed disabled:opacity-50"
                                         >
-                                            {generateKycLink.isPending ? 'Generating...' : 'Generate representative KYC link'}
+                                            {generateKycLink.isPending ? 'Opening...' : 'Complete Representative KYC'}
                                         </button>
 
                                         {(representativeKycs || []).length > 0 && (
@@ -1177,6 +1184,15 @@ export default function ListingFormPage() {
                                                             >
                                                                 Copy link
                                                             </button>
+                                                            {kyc.status === 'pending' && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => navigate(kyc.kyc_url)}
+                                                                    className="rounded border border-blue-300 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50"
+                                                                >
+                                                                    Complete Representative KYC
+                                                                </button>
+                                                            )}
                                                             {(kyc.status === 'submitted' || kyc.status === 'verified') && (
                                                                 <label className="flex items-center gap-1 text-xs font-medium text-gray-700">
                                                                     <input
