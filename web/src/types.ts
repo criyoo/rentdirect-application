@@ -164,6 +164,15 @@ export interface Listing {
     distance_km?: number | null
     location_source?: string | null
     property_type: string
+    category: 'residential' | 'commercial' | 'shortlet'
+    rental_badge?: 'let_agreed' | 'rented' | ''
+    is_hidden: boolean
+    shortlet_lister_role?: string
+    shortlet_check_in_time?: string | null
+    shortlet_check_out_time?: string | null
+    minimum_stay_nights?: number | null
+    maximum_stay_nights?: number | null
+    cleaning_fee?: number | null
     bedrooms: number
     bathrooms: number
     toilets?: number
@@ -394,6 +403,7 @@ export interface SearchFilters {
     bathrooms?: number
     toilets?: number
     property_type?: string
+    category?: string
     pet_friendly?: boolean
     furnished?: boolean
     utilities_included?: boolean

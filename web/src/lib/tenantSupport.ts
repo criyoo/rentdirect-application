@@ -87,7 +87,7 @@ export const landlordSupportFaqs = [
     },
     {
         question: 'How do I complete landlord verification?',
-        answer: 'Open Verification from your dashboard, select Individual or Corporate Landlord, complete the required identity information, upload the requested identification documents, review every legal document, and click I have read & consent before submitting.',
+        answer: 'Open Verification from your dashboard, select Residential or Commercial Landlord, complete the required identity information, upload the requested identification documents, review every legal document, and click I have read & consent before submitting.',
     },
     {
         question: 'How do I verify property ownership?',

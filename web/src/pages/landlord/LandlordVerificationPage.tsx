@@ -882,9 +882,9 @@ export default function LandlordVerificationPage() {
                                     disabled={isTrackSelectionLocked}
                                 />
                                 <span>
-                                    <span className={`block font-semibold ${selectedVerificationType === 'individual' ? 'text-blue-700' : 'text-gray-900'}`}>Individual Landlord</span>
+                                    <span className={`block font-semibold ${selectedVerificationType === 'individual' ? 'text-blue-700' : 'text-gray-900'}`}>Residential Landlord</span>
                                     <span className={`mt-1 block text-sm ${selectedVerificationType === 'individual' ? 'text-blue-600' : 'text-gray-600'}`}>
-                                        Verify as a person who owns or directly manages property.
+                                        Verify as a person who owns or directly manages residential property.
                                     </span>
                                 </span>
                             </label>
@@ -898,9 +898,9 @@ export default function LandlordVerificationPage() {
                                     disabled={isTrackSelectionLocked}
                                 />
                                 <span>
-                                    <span className={`block font-semibold ${selectedVerificationType === 'corporate' ? 'text-purple-700' : 'text-gray-900'}`}>Corporate Landlord</span>
+                                    <span className={`block font-semibold ${selectedVerificationType === 'corporate' ? 'text-purple-700' : 'text-gray-900'}`}>Commercial Landlord</span>
                                     <span className={`mt-1 block text-sm ${selectedVerificationType === 'corporate' ? 'text-purple-600' : 'text-gray-600'}`}>
-                                        Verify as a registered company or corporate property manager.
+                                        Verify as a registered company or commercial property manager.
                                     </span>
                                 </span>
                             </label>
@@ -909,7 +909,7 @@ export default function LandlordVerificationPage() {
                             <div className="mt-5 rounded-xl bg-white px-4 py-3">
                                 <p className="text-sm font-medium text-blue-900">Selected track</p>
                                 <p className="text-[20px] font-semibold text-blue-950">
-                                    {selectedVerificationType === 'corporate' ? 'Corporate Landlord' : 'Individual Landlord'}
+                                    {selectedVerificationType === 'corporate' ? 'Commercial Landlord' : 'Residential Landlord'}
                                 </p>
                             </div>
                         )}
@@ -930,9 +930,9 @@ export default function LandlordVerificationPage() {
                             {isVerificationLocked
                                 ? 'Identification Verified'
                                 : selectedVerificationType === 'corporate'
-                                    ? 'Verify Corporate Landlord Identity'
+                                    ? 'Verify Commercial Landlord Identity'
                                     : selectedVerificationType === 'individual'
-                                        ? 'Verify Individual Landlord Identity'
+                                        ? 'Verify Residential Landlord Identity'
                                         : 'Verify Identity'}
                         </button>
                     </section>
@@ -942,8 +942,8 @@ export default function LandlordVerificationPage() {
                             {!verificationType
                                 ? 'Landlord Identification'
                                 : verificationType === 'corporate'
-                                    ? 'Corporate Landlord'
-                                    : 'Individual Landlord'}
+                                    ? 'Commercial Landlord'
+                                    : 'Residential Landlord'}
                         </h2>
                         {submitStatusMessage && (
                             <div className="mb-5 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-700">
@@ -958,7 +958,7 @@ export default function LandlordVerificationPage() {
                         <fieldset disabled={isVerificationLocked} className={lockedFormClassName}>
                             {!verificationType ? (
                                 <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-center text-gray-600">
-                                    Select identification type and complete the.
+                                    Select identification type and complete the form.
                                 </div>
                             ) : verificationType === 'individual' ? (
                                 <div className="space-y-8">
@@ -966,7 +966,7 @@ export default function LandlordVerificationPage() {
                                         <label className="form-label text-xl font-semibold">Personal Information</label>
                                         <div className="grid gap-4 md:grid-cols-3">
                                             <div>
-                                                <label className={formLabelDefault}>Firstname</label>
+                                                <label className={formLabelDefault}>First Name</label>
                                                 <input className="form-input" name="first_name" value={individualForm.first_name} onChange={handleIndividualChange} />
                                                 {fieldErrors.first_name && <p className="form-error">{fieldErrors.first_name}</p>}
                                             </div>
@@ -975,7 +975,7 @@ export default function LandlordVerificationPage() {
                                                 <input className="form-input" name="middle_name" value={individualForm.middle_name} onChange={handleIndividualChange} />
                                             </div>
                                             <div>
-                                                <label className={formLabelDefault}>Lastname</label>
+                                                <label className={formLabelDefault}>Last Name</label>
                                                 <input className="form-input" name="last_name" value={individualForm.last_name} onChange={handleIndividualChange} />
                                                 {fieldErrors.last_name && <p className="form-error">{fieldErrors.last_name}</p>}
                                             </div>
@@ -1385,7 +1385,7 @@ export default function LandlordVerificationPage() {
                                                 <h2 className="text-lg font-semibold text-gray-900">Upload Identification Documents</h2>
                                                 <p className="mt-1 text-sm text-gray-600">
                                                     Upload government-issued ID<br />
-                                                    (e.g. NIN Card or Int'l passport for individual Landlords or CAC documents for Corporate Landlords)
+                                                    (e.g. NIN Card or Int'l passport for Residential Landlords or CAC documents for Commercial Landlords)
                                                 </p>
                                             </div>
                                             {existingIdentificationDocuments.length > 0 && (

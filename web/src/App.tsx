@@ -36,6 +36,7 @@ import TenantProfilePage from './pages/tenants/TenantProfilePage'
 import BillingPage from './pages/shared/billing/BillingPage'
 import SubscriptionPaymentPage from './pages/shared/billing/SubscriptionPaymentPage'
 import ListingFormPage from './pages/landlord/ListingFormPage'
+import NewListingPage from './pages/landlord/NewListingPage'
 import FeaturedPropertiesPage from './pages/landlord/FeaturedPropertiesPage'
 import FeaturedPropertyPaymentPage from './pages/landlord/FeaturedPropertyPaymentPage'
 import SettingsPage from './pages/shared/settings/SettingsPage'
@@ -140,6 +141,11 @@ function App() {
                                     <Route path="/search" element={<SearchPage />} />
                                     <Route path="/search/location-analytics" element={<LocationAnalyticsPage />} />
                                     <Route path="/listings/new" element={
+                                        <ProtectedRoute requiredRoles={['landlord', 'admin']}>
+                                            <NewListingPage />
+                                        </ProtectedRoute>
+                                    } />
+                                    <Route path="/listings/new/:category" element={
                                         <ProtectedRoute requiredRoles={['landlord', 'admin']}>
                                             <ListingFormPage />
                                         </ProtectedRoute>

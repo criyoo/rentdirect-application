@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api, getApiUrl } from '@/lib/api'
 import { Listing } from '@/types'
 import ListingCard from '@/components/ListingCard'
+import ListingCategoryTabs from '@/components/ListingCategoryTabs'
 import RegistrationOptionsModal from '@/components/RegistrationOptionsModal'
 import { SUBSCRIPTIONS_ENABLED } from '@/lib/featureFlags'
 import { Link } from 'react-router-dom'
@@ -62,6 +63,7 @@ const subscriptionPlans = [
 export default function HomePage() {
     const { user } = useAuth()
     const [showRegistrationOptions, setShowRegistrationOptions] = useState(false)
+    const [featuredCategory, setFeaturedCategory] = useState<'residential' | 'commercial' | 'shortlet'>('residential')
     const heroVideoRef = useRef<HTMLVideoElement | null>(null)
     const { data: featured } = useQuery({
         queryKey: ['listings', 'featured'],
@@ -77,6 +79,8 @@ export default function HomePage() {
         queryFn: async () => (await api.get<{ properties: number; landlords: number; tenants: number }>('/users/public-stats')).data
     })
     const favouriteIds = new Set(favourites.map((listing) => listing.id))
+    const featuredCategoryLabels = { residential: 'residential', commercial: 'commercial', shortlet: 'shortlet' } as const
+    const featuredForCategory = (featured || []).filter((listing: Listing) => (listing.category || 'residential') === featuredCategory)
 
     const classNameUSP = "text-lg font-semibold text-gray-900 mb-3"
 
@@ -226,9 +230,13 @@ export default function HomePage() {
                         </p>
                     </div>
 
-                    {featured && featured.length > 0 ? (
+                    <div className="mb-6 flex justify-center">
+                        <ListingCategoryTabs value={featuredCategory} onChange={setFeaturedCategory} />
+                    </div>
+
+                    {featuredForCategory.length > 0 ? (
                         <div className="grid-modern grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-4">
-                            {featured.map((listing: Listing) => (
+                            {featuredForCategory.map((listing: Listing) => (
                                 <div key={listing.id} className="animate-fade-in">
                                     <ListingCard listing={listing} isFavourite={favouriteIds.has(listing.id)} />
                                 </div>
@@ -239,7 +247,9 @@ export default function HomePage() {
                             <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
                                 <HiHome className="w-8 h-8 text-gray-400" />
                             </div>
-                            <h3 className="text-lg font-medium text-gray-900 mb-2">No featured properties yet</h3>
+                            <h3 className="text-lg font-medium text-gray-900 mb-2">
+                                No featured {featuredCategoryLabels[featuredCategory]} properties yet
+                            </h3>
                             <p className="text-gray-600 mb-6">Check back soon for amazing properties!</p>
                             <Link to="/search" className="btn btn-primary">
                                 Browse All Properties
@@ -279,7 +289,7 @@ export default function HomePage() {
                             <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center mx-auto mb-4">
                                 <HiCurrencyDollar className="w-6 h-6 text-emerald-600" />
                             </div>
-                            <h3 className={classNameUSP}>Cost Effecfive</h3>
+                            <h3 className={classNameUSP}>Cost Effective</h3>
                             <p className="text-blue-600">
                                 Avoid scams, connect directly with landlords and skip unending fees.
                             </p>

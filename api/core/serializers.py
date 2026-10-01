@@ -34,6 +34,7 @@ from .models import (
     get_booking_progress_field_name,
     get_booking_progress_steps,
     listing_has_deposit_secured_booking,
+    listing_rental_badge,
     Listing,
     ListingImage,
     Message,
@@ -371,6 +372,7 @@ class ListingSerializer(serializers.ModelSerializer):
     property_documents = serializers.SerializerMethodField()
     distance_km = serializers.SerializerMethodField()
     location_source = serializers.SerializerMethodField()
+    rental_badge = serializers.SerializerMethodField()
     property_verification_method = serializers.ChoiceField(
         choices=[PROPERTY_VERIFICATION_METHOD_DOCUMENTS, PROPERTY_VERIFICATION_METHOD_IN_PERSON],
         write_only=True,
@@ -394,6 +396,15 @@ class ListingSerializer(serializers.ModelSerializer):
             "distance_km",
             "location_source",
             "property_type",
+            "category",
+            "rental_badge",
+            "is_hidden",
+            "shortlet_lister_role",
+            "shortlet_check_in_time",
+            "shortlet_check_out_time",
+            "minimum_stay_nights",
+            "maximum_stay_nights",
+            "cleaning_fee",
             "bedrooms",
             "bathrooms",
             "toilets",
@@ -520,6 +531,35 @@ class ListingSerializer(serializers.ModelSerializer):
             if self.instance is None and attrs.get("caution_fee") is None:
                 attrs["caution_fee"] = quantize_money(Decimal(price_for_deposit) * REFUNDABLE_CAUTION_FEE_RATE)
 
+        category = attrs.get("category") or getattr(self.instance, "category", None) or Listing.Category.RESIDENTIAL
+        if category == Listing.Category.SHORTLET:
+            shortlet_errors = {}
+            nightly_rate = attrs.get("nightly_rate", getattr(self.instance, "nightly_rate", None))
+            if nightly_rate is None or Decimal(str(nightly_rate)) <= 0:
+                shortlet_errors["nightly_rate"] = "A nightly rate greater than zero is required for shortlet listings."
+            shortlet_lister_role = attrs.get(
+                "shortlet_lister_role", getattr(self.instance, "shortlet_lister_role", "")
+            )
+            if not str(shortlet_lister_role or "").strip():
+                shortlet_errors["shortlet_lister_role"] = "Lister role is required for shortlet listings."
+            minimum_stay_nights = attrs.get(
+                "minimum_stay_nights", getattr(self.instance, "minimum_stay_nights", None)
+            )
+            if minimum_stay_nights is None or minimum_stay_nights <= 0:
+                shortlet_errors["minimum_stay_nights"] = "Minimum stay nights is required for shortlet listings."
+            maximum_stay_nights = attrs.get(
+                "maximum_stay_nights", getattr(self.instance, "maximum_stay_nights", None)
+            )
+            if (
+                maximum_stay_nights is not None
+                and minimum_stay_nights is not None
+                and minimum_stay_nights > 0
+                and maximum_stay_nights < minimum_stay_nights
+            ):
+                shortlet_errors["maximum_stay_nights"] = "Maximum stay nights cannot be less than minimum stay nights."
+            if shortlet_errors:
+                raise serializers.ValidationError(shortlet_errors)
+
         request = self.context.get("request")
         if (
             request
@@ -612,6 +652,9 @@ class ListingSerializer(serializers.ModelSerializer):
 
     def get_location_source(self, obj):
         return getattr(obj, "_location_source", None)
+
+    def get_rental_badge(self, obj):
+        return listing_rental_badge(obj)
 
     def _tenant_has_paid_for_listing(self, user, listing):
         cache_key = "_request_user_paid_listing_ids"
@@ -731,6 +774,7 @@ class ListingSerializer(serializers.ModelSerializer):
         validated_data.setdefault("amenities", [])
         validated_data.setdefault("ownership_types", [])
         validated_data.setdefault("property_ownership_documents", [])
+        validated_data["is_hidden"] = False
         listing = Listing.objects.create(landlord=request.user, **validated_data)
         cover = request.FILES.get("cover_image")
         if cover:
@@ -1268,6 +1312,16 @@ class RentalProgressUpdateSerializer(serializers.Serializer):
                 selected_value=value,
             )
         sync_listing_status_from_rental_progress(booking.listing)
+        if (
+            request.user.role == AppUser.Role.TENANT
+            and booking.status in {Booking.Status.PENDING, Booking.Status.CONFIRMED}
+            and booking_progress_step_completed(
+                normalize_booking_progress(booking.tenant_rental_progress),
+                "tenant_collected_house_key",
+            )
+        ):
+            booking.status = Booking.Status.ACTIVE
+            booking.save(update_fields=["status", "updated_at"])
         return booking
 
 

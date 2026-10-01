@@ -4,7 +4,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { resolveMediaUrl } from '@/lib/api'
-import { HiHeart, HiOutlineHeart, HiLocationMarker, HiHome, HiViewGrid } from 'react-icons/hi'
+import { HiHeart, HiOutlineHeart, HiLocationMarker, HiHome, HiViewGrid, HiEyeOff, HiEye } from 'react-icons/hi'
 import { formatCurrencyWithSymbol } from '@/utils/currency'
 
 interface ListingCardProps {
@@ -16,6 +16,8 @@ export default function ListingCard({ listing, isFavourite = false }: ListingCar
     const { user } = useAuth()
     const queryClient = useQueryClient()
     const canManageFavourites = user?.role === 'tenant'
+    const isOwnerLandlord = user?.role === 'landlord' && String(user.id) === String(listing.landlord_id)
+    const isShortlet = listing.category === 'shortlet'
     const locationLabel = listing.address?.trim()
         ? [listing.address, listing.city, listing.state].filter(Boolean).join(', ')
         : [listing.city, listing.state].filter(Boolean).join(', ') || listing.state || 'State not provided'
@@ -64,6 +66,22 @@ export default function ListingCard({ listing, isFavourite = false }: ListingCar
         },
     })
 
+    const toggleVisibility = useMutation({
+        mutationFn: async () => {
+            await api.post(`/listings/${listing.id}/visibility`, { is_hidden: !listing.is_hidden })
+        },
+        onError: (error) => {
+            alert(`Failed to ${listing.is_hidden ? 'show' : 'hide'} listing: ${error.message}`)
+        },
+        onSettled: () => {
+            queryClient.invalidateQueries({ queryKey: ['listings'] })
+            queryClient.invalidateQueries({ queryKey: ['listings', 'featured'] })
+            queryClient.invalidateQueries({ queryKey: ['listing', listing.id] })
+            queryClient.invalidateQueries({ queryKey: ['landlord', 'properties', listing.landlord_id] })
+            queryClient.invalidateQueries({ queryKey: ['dashboard', 'landlord', 'listings', listing.landlord_id] })
+        },
+    })
+
     const handleFavouriteClick = (e: React.MouseEvent) => {
         e.preventDefault()
         e.stopPropagation()
@@ -72,6 +90,12 @@ export default function ListingCard({ listing, isFavourite = false }: ListingCar
         } else {
             alert('Please log in to add favourites')
         }
+    }
+
+    const handleVisibilityClick = (e: React.MouseEvent) => {
+        e.preventDefault()
+        e.stopPropagation()
+        toggleVisibility.mutate()
     }
 
     return (
@@ -95,6 +119,7 @@ export default function ListingCard({ listing, isFavourite = false }: ListingCar
                         <button
                             onClick={handleFavouriteClick}
                             disabled={toggleFavourite.isPending}
+                            aria-label={isFavourite ? 'Remove from favourites' : 'Add to favourites'}
                             className="absolute top-3 right-3 p-2 bg-white/90 backdrop-blur-sm rounded-full shadow-lg hover:bg-white transition-all duration-200 group-hover:scale-110"
                         >
                             {toggleFavourite.isPending ? (
@@ -107,15 +132,49 @@ export default function ListingCard({ listing, isFavourite = false }: ListingCar
                         </button>
                     )}
 
-                    {/* Featured Badge */}
-                    {listing.featured && (
-                        <div className="absolute top-3 left-3">
+                    {/* Owner Visibility Control */}
+                    {isOwnerLandlord && (
+                        <button
+                            onClick={handleVisibilityClick}
+                            disabled={toggleVisibility.isPending}
+                            aria-label={listing.is_hidden ? 'Show listing' : 'Hide listing'}
+                            className="absolute top-3 right-3 inline-flex items-center gap-1 rounded-full bg-white/90 px-3 py-1.5 text-xs font-semibold text-gray-800 backdrop-blur-sm shadow-lg hover:bg-white transition-all duration-200 disabled:opacity-60"
+                        >
+                            {toggleVisibility.isPending ? (
+                                <div className="h-3.5 w-3.5 border-2 border-gray-500 border-t-transparent rounded-full animate-spin"></div>
+                            ) : listing.is_hidden ? (
+                                <HiEye className="h-3.5 w-3.5" />
+                            ) : (
+                                <HiEyeOff className="h-3.5 w-3.5" />
+                            )}
+                            {listing.is_hidden ? 'Show listing' : 'Hide listing'}
+                        </button>
+                    )}
+
+                    {/* Status Badges */}
+                    <div className="absolute top-3 left-3 flex flex-col items-start gap-1.5">
+                        {listing.featured && (
                             <span className="badge badge-primary">
                                 <HiHome className="w-3 h-3 mr-1" />
                                 Featured
                             </span>
-                        </div>
-                    )}
+                        )}
+                        {listing.rental_badge === 'let_agreed' && (
+                            <span className="badge bg-amber-500 text-white">
+                                Let Agreed
+                            </span>
+                        )}
+                        {listing.rental_badge === 'rented' && (
+                            <span className="badge bg-emerald-600 text-white">
+                                Rented
+                            </span>
+                        )}
+                        {isOwnerLandlord && listing.is_hidden && (
+                            <span className="badge bg-slate-700 text-white">
+                                Hidden
+                            </span>
+                        )}
+                    </div>
 
                     {/* Property Type Badge */}
                     <div className="absolute bottom-3 left-3">
@@ -167,7 +226,9 @@ export default function ListingCard({ listing, isFavourite = false }: ListingCar
                     {/* Price */}
                     <div className="text-center mt-auto">
                         <div className="text-[16px] text-blue-600">
-                            {formatCurrencyWithSymbol(listing.price_per_year)} / year
+                            {isShortlet && listing.nightly_rate != null
+                                ? `${formatCurrencyWithSymbol(listing.nightly_rate)} / night`
+                                : `${formatCurrencyWithSymbol(listing.price_per_year)} / year`}
                         </div>
                     </div>
                 </div>

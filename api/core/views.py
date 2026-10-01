@@ -44,7 +44,6 @@ from .models import (
     complete_booking_progress_step,
     Booking,
     CommunityChatMessage,
-    deposit_secured_booking_queryset,
     Document,
     Feedback,
     Favourite,
@@ -1048,10 +1047,6 @@ def build_service_checkout(payment: ServicePayment) -> dict:
         customer_phone=user.mobile,
         webhook_url=build_flutterwave_webhook_url(),
     )
-
-
-def exclude_deposit_secured_listings(queryset):
-    return queryset.exclude(id__in=deposit_secured_booking_queryset().values("listing_id"))
 
 
 def subtract_calendar_months(value, months: int):
@@ -3810,7 +3805,7 @@ class UserViewSet(viewsets.GenericViewSet):
     def public_stats(self, request):
         return Response(
             {
-                "properties": exclude_deposit_secured_listings(Listing.objects.filter(status=Listing.Status.AVAILABLE)).count(),
+                "properties": Listing.objects.filter(status=Listing.Status.AVAILABLE, is_hidden=False).count(),
                 "landlords": User.objects.filter(role="landlord").count(),
                 "tenants": User.objects.filter(role="tenant").count(),
             }
@@ -4304,21 +4299,24 @@ class ListingViewSet(viewsets.ModelViewSet):
     parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     def get_permissions(self):
-        if self.action in {"create", "update", "partial_update", "destroy"}:
+        if self.action in {"create", "update", "partial_update", "destroy", "visibility"}:
             return [IsLandlordOrAdmin()]
         return [AllowAny()]
 
     def get_queryset(self):
-        qs = Listing.objects.select_related("landlord").prefetch_related("images", "property_documents")
-        if (
-            self.action == "retrieve"
-            and getattr(self.request.user, "is_authenticated", False)
-            and self.request.user.role == AppUser.Role.LANDLORD
-        ):
-            public_listing_ids = exclude_deposit_secured_listings(
-                Listing.objects.filter(status=Listing.Status.AVAILABLE)
-            ).values("id")
-            qs = qs.filter(Q(landlord=self.request.user) | Q(id__in=public_listing_ids))
+        qs = Listing.objects.select_related("landlord").prefetch_related("images", "property_documents", "bookings")
+        if self.action == "retrieve":
+            user = self.request.user
+            is_admin = getattr(user, "is_authenticated", False) and user.role == AppUser.Role.ADMIN
+            is_landlord = getattr(user, "is_authenticated", False) and user.role == AppUser.Role.LANDLORD
+            if is_landlord:
+                public_listing_ids = (
+                    Listing.objects.filter(status=Listing.Status.AVAILABLE, is_hidden=False)
+                    .values("id")
+                )
+                qs = qs.filter(Q(landlord=user) | Q(id__in=public_listing_ids))
+            elif not is_admin:
+                qs = qs.filter(status=Listing.Status.AVAILABLE, is_hidden=False)
         landlord_id = self.request.query_params.get("landlord_id")
         if landlord_id:
             qs = qs.filter(landlord_id=landlord_id)
@@ -4331,11 +4329,9 @@ class ListingViewSet(viewsets.ModelViewSet):
                 )
             )
             if not can_manage_requested_landlord:
-                qs = qs.filter(status=Listing.Status.AVAILABLE)
-                qs = exclude_deposit_secured_listings(qs)
+                qs = qs.filter(status=Listing.Status.AVAILABLE, is_hidden=False)
         elif self.action in {"list", "search", "nearby", "cities", "featured_listings", "location_analytics"}:
-            qs = qs.filter(status=Listing.Status.AVAILABLE)
-            qs = exclude_deposit_secured_listings(qs)
+            qs = qs.filter(status=Listing.Status.AVAILABLE, is_hidden=False)
         featured = self.request.query_params.get("featured")
         if featured is not None:
             qs = qs.filter(featured=str(featured).lower() == "true")
@@ -4366,6 +4362,18 @@ class ListingViewSet(viewsets.ModelViewSet):
             raise PermissionDenied("Forbidden")
         instance.status = Listing.Status.ARCHIVED
         instance.save(update_fields=["status", "updated_at"])
+
+    @action(detail=True, methods=["post"], url_path="visibility")
+    def visibility(self, request, pk=None):
+        listing = self.get_object()
+        if request.user.role != AppUser.Role.ADMIN and listing.landlord_id != request.user.id:
+            raise PermissionDenied("Forbidden")
+        is_hidden = request.data.get("is_hidden")
+        if not isinstance(is_hidden, bool):
+            raise ValidationError({"is_hidden": "Provide a boolean value."})
+        listing.is_hidden = is_hidden
+        listing.save(update_fields=["is_hidden", "updated_at"])
+        return Response(self.get_serializer(listing).data)
 
     @action(detail=False, methods=["get", "post"], url_path="representative-kyc")
     def representative_kyc(self, request):
@@ -4563,6 +4571,7 @@ class ListingViewSet(viewsets.ModelViewSet):
         bathrooms = request.query_params.get("bathrooms")
         toilets = request.query_params.get("toilets")
         property_type = request.query_params.get("property_type")
+        category = request.query_params.get("category")
         distance_params = self._distance_query_params(request)
         if distance_params and not self._can_access_location_features(request):
             raise PermissionDenied("Distance and map-based property search is available from the Silver plan.")
@@ -4595,6 +4604,8 @@ class ListingViewSet(viewsets.ModelViewSet):
             qs = qs.filter(toilets=toilets)
         if property_type:
             qs = qs.filter(property_type__iexact=property_type)
+        if category:
+            qs = qs.filter(category=category)
         if distance_params:
             qs = self._filter_by_distance(qs, latitude, longitude, radius_km)
         page = self.paginate_queryset(qs)
@@ -6342,9 +6353,14 @@ class FeaturedViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
 
     @action(detail=False, methods=["get"], url_path="listings", permission_classes=[AllowAny])
     def listings(self, request):
-        qs = exclude_deposit_secured_listings(
-            Listing.objects.filter(featured=True, status=Listing.Status.AVAILABLE)
-        ).prefetch_related("images").order_by("-updated_at")
+        qs = (
+            Listing.objects.filter(featured=True, status=Listing.Status.AVAILABLE, is_hidden=False)
+            .prefetch_related("images", "bookings")
+            .order_by("-updated_at")
+        )
+        category = request.query_params.get("category")
+        if category:
+            qs = qs.filter(category=category)
         return Response(ListingSerializer(qs, many=True, context={"request": request}).data)
 
 

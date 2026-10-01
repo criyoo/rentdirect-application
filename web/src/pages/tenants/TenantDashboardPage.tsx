@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
@@ -26,6 +26,8 @@ import {
 import { useAuth } from '@/hooks/useAuth'
 import { useAppPopup } from '@/contexts/AppPopupContext'
 import DashboardBackButton from '@/components/DashboardBackButton'
+import ListingCard from '@/components/ListingCard'
+import ListingCategoryTabs from '@/components/ListingCategoryTabs'
 import { api, resolveMediaUrl } from '@/lib/api'
 import { SUBSCRIPTIONS_ENABLED } from '@/lib/featureFlags'
 import { hasBronzeAccess, SubscriptionPaymentRecord } from '@/lib/subscriptions'
@@ -88,10 +90,12 @@ export default function TenantDashboardPage() {
         navigate(location.pathname, { replace: true, state: {} })
         void alert(notice, { variant: 'info' })
     }, [alert, location.pathname, location.state, navigate])
+    const [featuredCategory, setFeaturedCategory] = useState<'residential' | 'commercial' | 'shortlet'>('residential')
     const { data: featured } = useQuery({
         queryKey: ['listings', 'featured'],
         queryFn: async () => (await api.get<Listing[]>('/featured/listings')).data
     })
+    const featuredForCategory = (featured || []).filter((listing) => (listing.category || 'residential') === featuredCategory)
     const { data: bookings = [] } = useQuery({
         queryKey: ['bookings', 'tenant', user?.id],
         enabled: !!user,
@@ -461,56 +465,14 @@ export default function TenantDashboardPage() {
                         </Link>
                     </div>
 
-                    {featured && featured.length > 0 ? (
+                    <div className="mb-6">
+                        <ListingCategoryTabs value={featuredCategory} onChange={setFeaturedCategory} />
+                    </div>
+
+                    {featuredForCategory.length > 0 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {featured.map((property) => (
-                                <div key={property.id} className="card card-hover group">
-                                    <div className="relative aspect-[4/3] overflow-hidden">
-                                        <img
-                                            src={resolveMediaUrl(property.cover_image_url)}
-                                            alt={property.title}
-                                            loading="lazy"
-                                            decoding="async"
-                                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                            onError={(e) => {
-                                                e.currentTarget.src = '/placeholder.jpg'
-                                            }}
-                                        />
-
-                                        {property.featured && (
-                                            <div className="absolute top-3 left-3">
-                                                <span className="badge badge-primary">
-                                                    <HiStar className="w-3 h-3 mr-1" />
-                                                    Featured
-                                                </span>
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div className="p-2 text-center">
-                                        <h3 className="text-base font-semibold text-gray-900 mb-0.5 line-clamp-1 group-hover:text-blue-600 transition-colors duration-200">
-                                            {property.title}
-                                        </h3>
-                                        <p className="text-gray-600 text-[14px] mb-0.5">{property.city}, {property.state}</p>
-                                        <div className="text-[16px] font-semibold text-blue-600 mb-0.5">
-                                            {formatCurrencyWithSymbol(Number(property.price_per_year))}/year
-                                        </div>
-
-                                        <div className="flex items-center justify-center space-x-3 mb-1 text-gray-600">
-                                            <div className="flex items-center space-x-1">
-                                                <HiHome className="w-4 h-4" />
-                                                <span className="text-[14px] font-medium">{property.bedrooms} bed</span>
-                                            </div>
-                                            <div className="flex items-center space-x-1">
-                                                <HiViewGrid className="w-4 h-4" />
-                                                <span className="text-[14px] font-medium">{property.bathrooms} bath</span>
-                                            </div>
-                                        </div>
-
-                                        <Link to={`/listings/${property.id}`} className="btn btn-primary w-full py-1.5 text-sm">
-                                            View Property
-                                        </Link>
-                                    </div>
-                                </div>
+                            {featuredForCategory.map((property) => (
+                                <ListingCard key={property.id} listing={property} />
                             ))}
                         </div>
                     ) : (
@@ -518,7 +480,9 @@ export default function TenantDashboardPage() {
                             <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                                 <HiStar className="w-8 h-8 text-gray-400" />
                             </div>
-                            <h3 className="text-lg font-medium text-gray-900 mb-2">No featured properties</h3>
+                            <h3 className="text-lg font-medium text-gray-900 mb-2">
+                                No featured {featuredCategory} properties
+                            </h3>
                             <p className="text-gray-600 mb-6">Check back soon for amazing properties.</p>
                             <Link to="/search" className="btn btn-primary">
                                 Browse All Properties
@@ -558,7 +522,7 @@ export default function TenantDashboardPage() {
                                     </div>
                                     <div>
                                         <h4 className="text-[16px] font-semibold text-gray-900 mb-1">Prevent rental fraud</h4>
-                                        <p className="text-xs text-gray-600">Get verify landlords and properties and avoid scams</p>
+                                        <p className="text-xs text-gray-600">Get verified landlords and properties and avoid scams</p>
                                     </div>
                                 </div>
                             </div>
@@ -663,7 +627,7 @@ export default function TenantDashboardPage() {
                                     </div>
                                     <div>
                                         <h4 className="text-[16px] font-semibold text-gray-900 mb-1">Better dispute resolution</h4>
-                                        <p className="text-xs text-gray-600">Platform keps record of agreements, payments, messages, and inventory checks etc.</p>
+                                        <p className="text-xs text-gray-600">Platform keeps records of agreements, payments, messages, and inventory checks etc.</p>
                                     </div>
                                 </div>
                             </div>

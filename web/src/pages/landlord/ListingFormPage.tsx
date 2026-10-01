@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useForm, useFieldArray } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -20,7 +20,37 @@ const optionalPositiveNumber = z.number().min(1, 'Value must be positive').optio
 const requiredPositiveNumber = (message: string) =>
     z.number({ error: message }).min(1, message)
 
+const LISTING_CATEGORIES = ['residential', 'commercial', 'shortlet'] as const
+type ListingCategory = (typeof LISTING_CATEGORIES)[number]
+
+const categoryLabels: Record<ListingCategory, string> = {
+    residential: 'Residential',
+    commercial: 'Commercial',
+    shortlet: 'Shortlet',
+}
+
+const categorySubtitles: Record<ListingCategory, string> = {
+    residential: 'For long-term homes rented on a yearly basis — flats, duplexes and family houses.',
+    commercial: 'For business premises such as offices, shops and warehouses.',
+    shortlet: 'For furnished stays booked per night — serviced apartments and holiday-style rentals.',
+}
+
+const propertyTypeOptionsByCategory: Record<ListingCategory, string[]> = {
+    residential: ['Flat', 'Duplex', 'Apartment', 'House', 'Studio', 'Townhouse', 'Condo'],
+    commercial: ['Office', 'Shop', 'Retail Space', 'Warehouse', 'Commercial Property', 'Industrial Property'],
+    shortlet: ['Serviced Apartment', 'Apartment', 'Studio', 'Duplex', 'House', 'Villa'],
+}
+
+const shortletListerRoleOptions = [
+    { value: 'owner', label: 'Owner' },
+    { value: 'tenant', label: 'Tenant' },
+    { value: 'property_manager', label: 'Property manager' },
+    { value: 'agent', label: 'Agent' },
+    { value: 'other', label: 'Other' },
+] as const
+
 const schema = z.object({
+    category: z.enum(LISTING_CATEGORIES),
     title: z.string().min(1, 'Title is required'),
     description: z.string().min(1, 'Description is required'),
     address: z.string().min(1, 'Address is required'),
@@ -32,11 +62,17 @@ const schema = z.object({
     bathrooms: requiredPositiveNumber('At least 1 bathroom required'),
     toilets: requiredPositiveNumber('At least 1 toilet required'),
     square_feet: optionalPositiveNumber,
-    price_per_year: requiredPositiveNumber('Price is required'),
-    deposit_amount: requiredPositiveNumber('Deposit amount is required'),
+    price_per_year: optionalPositiveNumber,
+    deposit_amount: optionalPositiveNumber,
     service_charge: optionalPositiveNumber,
     caution_fee: optionalPositiveNumber,
     nightly_rate: optionalPositiveNumber,
+    shortlet_lister_role: z.string().optional(),
+    shortlet_check_in_time: z.string().optional(),
+    shortlet_check_out_time: z.string().optional(),
+    minimum_stay_nights: optionalPositiveNumber,
+    maximum_stay_nights: optionalPositiveNumber,
+    cleaning_fee: optionalPositiveNumber,
     negotiable: z.boolean(),
     area: z.string().optional(),
     nearest_landmark: z.string().optional(),
@@ -74,7 +110,7 @@ const schema = z.object({
     property_ownership_documents: z.array(z.string()),
     property_verification_method: z.enum(['documents', 'in_person']),
     representative_kyc_id: z.string().optional(),
-    minimum_rental_duration: z.string().min(1, 'Minimum rental duration is required'),
+    minimum_rental_duration: z.string().optional(),
     maximum_rental_duration: z.string().optional(),
     maximum_occupancy: z.string().min(1, 'Maximum occupancy is required'),
     smoking_allowed: z.boolean(),
@@ -95,6 +131,59 @@ const schema = z.object({
             path: ['amenities'],
             message: 'Add at least one amenity',
         })
+    }
+
+    if (data.category === 'shortlet') {
+        if (!data.nightly_rate || data.nightly_rate <= 0) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['nightly_rate'],
+                message: 'Nightly rate is required',
+            })
+        }
+        if (!data.shortlet_lister_role?.trim()) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['shortlet_lister_role'],
+                message: 'Select who is listing this shortlet',
+            })
+        }
+        if (!data.minimum_stay_nights || data.minimum_stay_nights < 1) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['minimum_stay_nights'],
+                message: 'Minimum stay in nights is required',
+            })
+        }
+        if (data.minimum_stay_nights && data.maximum_stay_nights && data.maximum_stay_nights < data.minimum_stay_nights) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['maximum_stay_nights'],
+                message: 'Maximum stay must be at least the minimum stay',
+            })
+        }
+    } else {
+        if (!data.minimum_rental_duration?.trim()) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['minimum_rental_duration'],
+                message: 'Minimum rental duration is required',
+            })
+        }
+        if (!data.price_per_year || data.price_per_year <= 0) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['price_per_year'],
+                message: 'Price is required',
+            })
+        }
+        if (!data.deposit_amount || data.deposit_amount <= 0) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['deposit_amount'],
+                message: 'Deposit amount is required',
+            })
+        }
     }
 })
 
@@ -175,10 +264,13 @@ function formatVerificationRequirementStatus(status?: string) {
 
 export default function ListingFormPage() {
     const navigate = useNavigate()
-    const { id } = useParams()
+    const { id, category: routeCategory } = useParams()
     const { user } = useAuth()
     const { alert: popupAlert } = useAppPopup()
     const isEditMode = Boolean(id)
+    const routeListingCategory: ListingCategory | null = LISTING_CATEGORIES.includes(routeCategory as ListingCategory)
+        ? (routeCategory as ListingCategory)
+        : null
     const [coverImage, setCoverImage] = useState<File | null>(null)
     const [additionalImages, setAdditionalImages] = useState<File[]>([])
     const [authorizationLetter, setAuthorizationLetter] = useState<File | null>(null)
@@ -188,8 +280,11 @@ export default function ListingFormPage() {
     const [legalConsentError, setLegalConsentError] = useState('')
     const [submissionError, setSubmissionError] = useState('')
     const listingDraftStorageKey = useMemo(
-        () => buildFormDraftKey(`listing-${isEditMode ? `edit:${id}` : 'new'}`, user?.id || user?.email),
-        [id, isEditMode, user?.email, user?.id],
+        () => buildFormDraftKey(
+            `listing-${isEditMode ? `edit:${id}` : `new:${routeListingCategory ?? 'unknown'}`}`,
+            user?.id || user?.email,
+        ),
+        [id, isEditMode, routeListingCategory, user?.email, user?.id],
     )
     const [hydratedDraftStorageKey, setHydratedDraftStorageKey] = useState<string | null>(null)
     const [draftPersistenceEnabled, setDraftPersistenceEnabled] = useState(true)
@@ -206,6 +301,7 @@ export default function ListingFormPage() {
     } = useForm<ListingFormValues>({
         resolver: zodResolver(schema),
         defaultValues: {
+            category: routeListingCategory ?? 'residential',
             title: '',
             description: '',
             address: '',
@@ -287,7 +383,7 @@ export default function ListingFormPage() {
             (await api.post<RepresentativeKyc>('/listings/representative-kyc', {
                 listing_id: isEditMode ? id : null,
                 ownership_type: selectedOwnershipTypes.find((type) => !ownerOnlyOwnershipTypes.includes(type)) || '',
-                return_url: isEditMode ? `/listings/${id}/edit` : '/listings/new',
+                return_url: isEditMode ? `/listings/${id}/edit` : `/listings/new/${routeListingCategory ?? 'residential'}`,
             })).data,
         onSuccess: (kyc) => {
             refetchRepresentativeKycs()
@@ -337,6 +433,24 @@ export default function ListingFormPage() {
         enabled: isEditMode,
     })
 
+    const listingCategory: ListingCategory = isEditMode
+        ? (listing?.category ?? 'residential')
+        : (routeListingCategory ?? 'residential')
+    const isShortlet = listingCategory === 'shortlet'
+
+    useEffect(() => {
+        if (!isEditMode && !routeListingCategory) {
+            navigate('/listings/new', { replace: true })
+        }
+    }, [isEditMode, routeListingCategory, navigate])
+
+    useEffect(() => {
+        setValue('category', listingCategory)
+        if (isShortlet) {
+            setValue('short_let_allowed', true)
+        }
+    }, [isShortlet, listingCategory, setValue])
+
     const shouldLoadCurrentUser = !isEditMode && user?.role === 'landlord'
     const { data: currentUser, isLoading: isCurrentUserLoading } = useQuery({
         queryKey: ['users', 'me', 'listing-form'],
@@ -378,6 +492,7 @@ export default function ListingFormPage() {
         }
 
         const listingDefaults = {
+            category: (listing.category || 'residential') as ListingCategory,
             title: listing.title,
             description: listing.description,
             address: listing.address,
@@ -423,6 +538,12 @@ export default function ListingFormPage() {
             available_until: listing.available_until || '',
             caution_fee: listing.caution_fee ? Number(listing.caution_fee) : undefined,
             nightly_rate: listing.nightly_rate ? Number(listing.nightly_rate) : undefined,
+            shortlet_lister_role: listing.shortlet_lister_role || '',
+            shortlet_check_in_time: listing.shortlet_check_in_time || '',
+            shortlet_check_out_time: listing.shortlet_check_out_time || '',
+            minimum_stay_nights: listing.minimum_stay_nights ?? undefined,
+            maximum_stay_nights: listing.maximum_stay_nights ?? undefined,
+            cleaning_fee: listing.cleaning_fee ? Number(listing.cleaning_fee) : undefined,
             floor_number: listing.floor_number ?? undefined,
             total_floors: listing.total_floors ?? undefined,
             parking_spaces: listing.parking_spaces ?? undefined,
@@ -477,6 +598,7 @@ export default function ListingFormPage() {
 
     const buildFormData = (data: ListingFormValues) => {
         const formData = new FormData()
+        formData.append('category', data.category)
         formData.append('title', data.title)
         formData.append('description', data.description)
         formData.append('address', data.address)
@@ -487,28 +609,30 @@ export default function ListingFormPage() {
         formData.append('bedrooms', data.bedrooms.toString())
         formData.append('bathrooms', data.bathrooms.toString())
         formData.append('toilets', data.toilets.toString())
-        formData.append('price_per_year', data.price_per_year.toString())
+        if (Number.isFinite(data.price_per_year)) {
+            formData.append('price_per_year', data.price_per_year!.toString())
+        }
 
         if (data.square_feet) {
             formData.append('square_feet', data.square_feet.toString())
         }
         if (Number.isFinite(data.deposit_amount)) {
-            formData.append('deposit_amount', data.deposit_amount.toString())
+            formData.append('deposit_amount', data.deposit_amount!.toString())
         }
         if (data.service_charge) {
             formData.append('service_charge', data.service_charge.toString())
         }
-        for (const feeField of ['caution_fee', 'nightly_rate'] as const) {
+        for (const feeField of ['caution_fee', 'nightly_rate', 'cleaning_fee'] as const) {
             if (data[feeField]) {
-                formData.append(feeField, data[feeField].toString())
+                formData.append(feeField, data[feeField]!.toString())
             }
         }
-        for (const numField of ['floor_number', 'total_floors', 'parking_spaces', 'year_built'] as const) {
+        for (const numField of ['floor_number', 'total_floors', 'parking_spaces', 'year_built', 'minimum_stay_nights', 'maximum_stay_nights'] as const) {
             if (data[numField]) {
-                formData.append(numField, data[numField].toString())
+                formData.append(numField, data[numField]!.toString())
             }
         }
-        for (const textField of ['area', 'nearest_landmark', 'furnishing_level', 'power_supply', 'water_supply', 'pet_policy', 'video_tour_url', 'available_until'] as const) {
+        for (const textField of ['area', 'nearest_landmark', 'furnishing_level', 'power_supply', 'water_supply', 'pet_policy', 'video_tour_url', 'available_until', 'shortlet_lister_role', 'shortlet_check_in_time', 'shortlet_check_out_time'] as const) {
             if (data[textField]) {
                 formData.append(textField, data[textField])
             }
@@ -536,13 +660,13 @@ export default function ListingFormPage() {
 
         formData.append('furnished', data.furnished.toString())
         formData.append('property_verification_method', data.property_verification_method)
-        formData.append('minimum_rental_duration', data.minimum_rental_duration)
+        formData.append('minimum_rental_duration', data.minimum_rental_duration || '')
         formData.append('maximum_rental_duration', data.maximum_rental_duration || '')
         formData.append('maximum_occupancy', data.maximum_occupancy)
         formData.append('smoking_allowed', data.smoking_allowed.toString())
         formData.append('party_allowed', data.party_allowed.toString())
         formData.append('commercial_activities_allowed', data.commercial_activities_allowed.toString())
-        formData.append('short_let_allowed', data.short_let_allowed.toString())
+        formData.append('short_let_allowed', (isShortlet || data.short_let_allowed).toString())
         formData.append('student_tenants_allowed', data.student_tenants_allowed.toString())
         formData.append('expatriates_allowed', data.expatriates_allowed.toString())
 
@@ -608,7 +732,25 @@ export default function ListingFormPage() {
         setIsSubmitting(true)
 
         try {
-            const formData = buildFormData(data)
+            const submissionData = isShortlet
+                ? (() => {
+                    const derivedAnnualPrice = Number((Number(data.nightly_rate) * 365).toFixed(2))
+                    const derivedDeposit = Number((derivedAnnualPrice * (financialConfig?.listingDepositRate ?? 0.2)).toFixed(2))
+                    return {
+                        ...data,
+                        price_per_year: derivedAnnualPrice,
+                        deposit_amount: derivedDeposit,
+                        minimum_rental_duration: data.minimum_stay_nights
+                            ? `${data.minimum_stay_nights} ${data.minimum_stay_nights === 1 ? 'night' : 'nights'}`
+                            : '',
+                        maximum_rental_duration: data.maximum_stay_nights
+                            ? `${data.maximum_stay_nights} ${data.maximum_stay_nights === 1 ? 'night' : 'nights'}`
+                            : '',
+                        short_let_allowed: true,
+                    }
+                })()
+                : data
+            const formData = buildFormData(submissionData)
             const endpoint = isEditMode ? `${getApiUrl()}/listings/${id}` : `${getApiUrl()}/listings`
             const method = isEditMode ? 'PATCH' : 'POST'
 
@@ -726,6 +868,10 @@ export default function ListingFormPage() {
 
     const classNameTitles = "block text-[15px] font-semibold text-gray-700 mb-2"
 
+    if (!isEditMode && !routeListingCategory) {
+        return <div className="p-6">Loading...</div>
+    }
+
     if (isEditMode && isListingLoading) {
         return <div className="p-6">Loading listing...</div>
     }
@@ -770,9 +916,25 @@ export default function ListingFormPage() {
         <div className="min-h-screen bg-gray-90 py-10">
             <div className="max-w-6xl mx-auto px-4">
                 <div className="bg-white rounded-lg shadow-lg p-8">
-                    <h1 className="text-3xl font-bold text-gray-900 mb-8">
-                        {isEditMode ? 'Edit Listing' : 'Create New Listing'}
-                    </h1>
+                    {!isEditMode && (
+                        <DashboardBackButton to="/listings/new" label="Back" className="mb-6" />
+                    )}
+                    <div className="mb-8">
+                        <h1 className="text-3xl font-bold text-gray-900">
+                            {isEditMode ? 'Edit Listing' : `Create ${categoryLabels[listingCategory]} Listing`}
+                        </h1>
+                        {!isEditMode && (
+                            <div className="mt-2 flex flex-wrap items-center gap-3">
+                                <p className="text-sm text-gray-600">{categorySubtitles[listingCategory]}</p>
+                                <Link
+                                    to="/listings/new"
+                                    className="text-sm font-semibold text-blue-600 hover:text-blue-800 hover:underline"
+                                >
+                                    Change category
+                                </Link>
+                            </div>
+                        )}
+                    </div>
                     <h3 className="text-[21px] font-semibold text-gray-900">Property Information</h3><br />
 
                     {submissionError && (
@@ -804,19 +966,9 @@ export default function ListingFormPage() {
                                     className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
                                 >
                                     <option value="">Select property type</option>
-                                    <option value="Flat">Flat</option>
-                                    <option value="Duplex">Duplex</option>
-                                    <option value="Apartment">Apartment</option>
-                                    <option value="House">House</option>
-                                    <option value="Studio">Studio</option>
-                                    <option value="Townhouse">Townhouse</option>
-                                    <option value="Condo">Condo</option>
-                                    <option value="Office">Office</option>
-                                    <option value="Shop">Shop</option>
-                                    <option value="Retail Space">Retail Space</option>
-                                    <option value="Warehouse">Warehouse</option>
-                                    <option value="Commercial Property">Commercial Property</option>
-                                    <option value="Industrial Property">Industrial Property</option>
+                                    {propertyTypeOptionsByCategory[listingCategory].map((type) => (
+                                        <option key={type} value={type}>{type}</option>
+                                    ))}
                                 </select>
                                 {errors.property_type && <p className="mt-1 text-sm text-red-600">{errors.property_type.message}</p>}
                             </div>
@@ -1022,39 +1174,47 @@ export default function ListingFormPage() {
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                            <div>
-                                <label className={classNameTitles}>
-                                    Price per year *
-                                </label>
-                                <input
-                                    {...register('price_per_year', { valueAsNumber: true })}
-                                    type="number"
-                                    min="1"
-                                    step="0.01"
-                                    className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
-                                />
-                                {errors.price_per_year && <p className="mt-1 text-sm text-red-600">{errors.price_per_year.message}</p>}
-                            </div>
+                            {!isShortlet && (
+                                <div>
+                                    <label className={classNameTitles}>
+                                        Price per year *
+                                    </label>
+                                    <input
+                                        {...register('price_per_year', {
+                                            setValueAs: (value) => value === '' ? undefined : Number(value),
+                                        })}
+                                        type="number"
+                                        min="1"
+                                        step="0.01"
+                                        className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                    />
+                                    {errors.price_per_year && <p className="mt-1 text-sm text-red-600">{errors.price_per_year.message}</p>}
+                                </div>
+                            )}
+
+                            {!isShortlet && (
+                                <div>
+                                    <label className={classNameTitles}>
+                                        Deposit ({formatRatePercent(financialConfig?.listingDepositRate)} of Annual Rent) *
+                                    </label>
+                                    <input
+                                        {...register('deposit_amount', {
+                                            setValueAs: (value) => value === '' ? undefined : Number(value),
+                                        })}
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        readOnly
+                                        placeholder="Optional"
+                                        className="w-full rounded-lg border border-gray-300 bg-gray-100 px-4 py-2 text-gray-700 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                    />
+                                    {errors.deposit_amount && <p className="mt-1 text-sm text-red-600">{errors.deposit_amount.message}</p>}
+                                </div>
+                            )}
 
                             <div>
                                 <label className={classNameTitles}>
-                                    Deposit ({formatRatePercent(financialConfig?.listingDepositRate)} of Annual Rent) *
-                                </label>
-                                <input
-                                    {...register('deposit_amount', { valueAsNumber: true })}
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    readOnly
-                                    placeholder="Optional"
-                                    className="w-full rounded-lg border border-gray-300 bg-gray-100 px-4 py-2 text-gray-700 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
-                                />
-                                {errors.deposit_amount && <p className="mt-1 text-sm text-red-600">{errors.deposit_amount.message}</p>}
-                            </div>
-
-                            <div>
-                                <label className={classNameTitles}>
-                                    Service Charge (per year)
+                                    {isShortlet ? 'Service Charge' : 'Service Charge (per year)'}
                                 </label>
                                 <input
                                     {...register('service_charge', {
@@ -1081,6 +1241,137 @@ export default function ListingFormPage() {
                                 {errors.caution_fee && <p className="mt-1 text-sm text-red-600">{errors.caution_fee.message}</p>}
                             </div>
                         </div>
+
+                        {isShortlet && (
+                            <div className="space-y-5 rounded-2xl border border-amber-200 bg-amber-50/60 p-6">
+                                <div>
+                                    <h3 className="text-[21px] font-semibold text-gray-900">Shortlet Operations</h3>
+                                    <p className="mt-1 text-sm text-gray-600">
+                                        Set nightly pricing and stay rules so guests know exactly what to expect.
+                                    </p>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                    <div>
+                                        <label className={classNameTitles}>Nightly Rate (₦) *</label>
+                                        <input
+                                            {...register('nightly_rate', {
+                                                setValueAs: (value) => value === '' ? undefined : Number(value),
+                                            })}
+                                            type="number"
+                                            min="1"
+                                            step="0.01"
+                                            className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                            placeholder="e.g., 45000"
+                                        />
+                                        {errors.nightly_rate && <p className="mt-1 text-sm text-red-600">{errors.nightly_rate.message}</p>}
+                                    </div>
+                                    <div>
+                                        <label className={classNameTitles}>Who is listing this shortlet? *</label>
+                                        <select
+                                            {...register('shortlet_lister_role')}
+                                            className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                        >
+                                            <option value="">Select lister role</option>
+                                            {shortletListerRoleOptions.map((option) => (
+                                                <option key={option.value} value={option.value}>{option.label}</option>
+                                            ))}
+                                        </select>
+                                        {errors.shortlet_lister_role && <p className="mt-1 text-sm text-red-600">{errors.shortlet_lister_role.message}</p>}
+                                    </div>
+                                    <div>
+                                        <label className={classNameTitles}>Cleaning Fee (₦)</label>
+                                        <input
+                                            {...register('cleaning_fee', {
+                                                setValueAs: (value) => value === '' ? undefined : Number(value),
+                                            })}
+                                            type="number"
+                                            min="0"
+                                            step="0.01"
+                                            className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                            placeholder="Optional"
+                                        />
+                                        {errors.cleaning_fee && <p className="mt-1 text-sm text-red-600">{errors.cleaning_fee.message}</p>}
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                                    <div>
+                                        <label className={classNameTitles}>Minimum Stay (nights) *</label>
+                                        <input
+                                            {...register('minimum_stay_nights', {
+                                                setValueAs: (value) => value === '' ? undefined : Number(value),
+                                            })}
+                                            type="number"
+                                            min="1"
+                                            className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                            placeholder="e.g., 2"
+                                        />
+                                        {errors.minimum_stay_nights && <p className="mt-1 text-sm text-red-600">{errors.minimum_stay_nights.message}</p>}
+                                    </div>
+                                    <div>
+                                        <label className={classNameTitles}>Maximum Stay (nights)</label>
+                                        <input
+                                            {...register('maximum_stay_nights', {
+                                                setValueAs: (value) => value === '' ? undefined : Number(value),
+                                            })}
+                                            type="number"
+                                            min="1"
+                                            className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                            placeholder="Optional"
+                                        />
+                                        {errors.maximum_stay_nights && <p className="mt-1 text-sm text-red-600">{errors.maximum_stay_nights.message}</p>}
+                                    </div>
+                                    <div>
+                                        <label className={classNameTitles}>Check-in Time</label>
+                                        <input
+                                            {...register('shortlet_check_in_time')}
+                                            type="time"
+                                            className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className={classNameTitles}>Check-out Time</label>
+                                        <input
+                                            {...register('shortlet_check_out_time')}
+                                            type="time"
+                                            className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className={classNameTitles}>Maximum Occupancy *</label>
+                                    <input
+                                        {...register('maximum_occupancy')}
+                                        type="number"
+                                        min="1"
+                                        className="w-full max-w-xs rounded-lg border border-gray-300 bg-white px-4 py-2.5 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                    />
+                                    {errors.maximum_occupancy && <p className="mt-1 text-sm text-red-600">{errors.maximum_occupancy.message}</p>}
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                    {([
+                                        { field: 'smoking_allowed', label: 'Smoking allowed' },
+                                        { field: 'party_allowed', label: 'Parties allowed' },
+                                        { field: 'utilities_included', label: 'Utilities included' },
+                                        { field: 'furnished', label: 'Furnished' },
+                                        { field: 'parking', label: 'Parking available' },
+                                        { field: 'internet', label: 'Internet/Fibre' },
+                                    ] as const).map((option) => (
+                                        <label key={option.field} className="flex items-center gap-3 rounded-lg border bg-white px-4 py-2">
+                                            <input
+                                                {...register(option.field)}
+                                                type="checkbox"
+                                                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                            />
+                                            <span className="text-sm text-gray-800">{option.label}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
 
                         <label className="flex items-center space-x-2">
                             <input {...register('negotiable')} type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
@@ -1243,45 +1534,49 @@ export default function ListingFormPage() {
                         <div className="space-y-5 border-t pt-6">
                             <h3 className="text-[21px] font-semibold text-gray-900">Rental Preferences</h3>
 
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                <div>
-                                    <label className={classNameTitles}>
-                                        Maximum Occupancy *
-                                    </label>
-                                    <input
-                                        {...register('maximum_occupancy')}
-                                        type="number"
-                                        min="1"
-                                        className="w-full rounded-lg border border-gray-300 px-4 py-2.5 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
-                                    />
-                                    {errors.maximum_occupancy && <p className="mt-1 text-sm text-red-600">{errors.maximum_occupancy.message}</p>}
+                            {!isShortlet && (
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                    <div>
+                                        <label className={classNameTitles}>
+                                            Maximum Occupancy *
+                                        </label>
+                                        <input
+                                            {...register('maximum_occupancy')}
+                                            type="number"
+                                            min="1"
+                                            className="w-full rounded-lg border border-gray-300 px-4 py-2.5 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                        />
+                                        {errors.maximum_occupancy && <p className="mt-1 text-sm text-red-600">{errors.maximum_occupancy.message}</p>}
+                                    </div>
+                                    <div>
+                                        <label className={classNameTitles}>
+                                            Minimum Rental Duration *
+                                        </label>
+                                        <input
+                                            {...register('minimum_rental_duration')}
+                                            className="w-full rounded-lg border border-gray-300 px-4 py-2.5 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                            placeholder="e.g., 6 months"
+                                        />
+                                        {errors.minimum_rental_duration && <p className="mt-1 text-sm text-red-600">{errors.minimum_rental_duration.message}</p>}
+                                    </div>
+                                    <div>
+                                        <label className={classNameTitles}>
+                                            Maximum Rental Duration
+                                        </label>
+                                        <input
+                                            {...register('maximum_rental_duration')}
+                                            className="w-full rounded-lg border border-gray-300 px-4 py-2.5 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                            placeholder="e.g., 2 years"
+                                        />
+                                        {errors.maximum_rental_duration && <p className="mt-1 text-sm text-red-600">{errors.maximum_rental_duration.message}</p>}
+                                    </div>
                                 </div>
-                                <div>
-                                    <label className={classNameTitles}>
-                                        Minimum Rental Duration *
-                                    </label>
-                                    <input
-                                        {...register('minimum_rental_duration')}
-                                        className="w-full rounded-lg border border-gray-300 px-4 py-2.5 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
-                                        placeholder="e.g., 6 months"
-                                    />
-                                    {errors.minimum_rental_duration && <p className="mt-1 text-sm text-red-600">{errors.minimum_rental_duration.message}</p>}
-                                </div>
-                                <div>
-                                    <label className={classNameTitles}>
-                                        Maximum Rental Duration
-                                    </label>
-                                    <input
-                                        {...register('maximum_rental_duration')}
-                                        className="w-full rounded-lg border border-gray-300 px-4 py-2.5 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
-                                        placeholder="e.g., 2 years"
-                                    />
-                                    {errors.maximum_rental_duration && <p className="mt-1 text-sm text-red-600">{errors.maximum_rental_duration.message}</p>}
-                                </div>
-                            </div>
+                            )}
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                {rentalPreferenceOptions.map((option) => (
+                                {rentalPreferenceOptions
+                                    .filter((option) => !isShortlet || (option.field !== 'smoking_allowed' && option.field !== 'party_allowed'))
+                                    .map((option) => (
                                     <label key={option.field} className="flex items-center gap-3 rounded-lg border px-4 py-2">
                                         <input
                                             {...register(option.field)}
@@ -1299,25 +1594,31 @@ export default function ListingFormPage() {
                             <label className={classNameTitles}>Features</label>
 
                             <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-                                <label className="flex items-center space-x-2">
-                                    <input {...register('utilities_included')} type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                                    <span className="text-sm text-gray-700">Utilities Included</span>
-                                </label>
+                                {!isShortlet && (
+                                    <label className="flex items-center space-x-2">
+                                        <input {...register('utilities_included')} type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                                        <span className="text-sm text-gray-700">Utilities Included</span>
+                                    </label>
+                                )}
 
                                 <label className="flex items-center space-x-2">
                                     <input {...register('pet_friendly')} type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
                                     <span className="text-sm text-gray-700">Pet Friendly?</span>
                                 </label>
 
-                                <label className="flex items-center space-x-2">
-                                    <input {...register('furnished')} type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                                    <span className="text-sm text-gray-700">Furnished</span>
-                                </label>
+                                {!isShortlet && (
+                                    <label className="flex items-center space-x-2">
+                                        <input {...register('furnished')} type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                                        <span className="text-sm text-gray-700">Furnished</span>
+                                    </label>
+                                )}
 
-                                <label className="flex items-center space-x-2">
-                                    <input {...register('parking')} type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                                    <span className="text-sm text-gray-700">Parking</span>
-                                </label>
+                                {!isShortlet && (
+                                    <label className="flex items-center space-x-2">
+                                        <input {...register('parking')} type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                                        <span className="text-sm text-gray-700">Parking</span>
+                                    </label>
+                                )}
 
                                 <label className="flex items-center space-x-2">
                                     <input {...register('garage')} type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
@@ -1364,10 +1665,12 @@ export default function ListingFormPage() {
                                     <span className="text-sm text-gray-700">Air conditioning</span>
                                 </label>
 
-                                <label className="flex items-center space-x-2">
-                                    <input {...register('internet')} type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                                    <span className="text-sm text-gray-700">Internet/Fibre</span>
-                                </label>
+                                {!isShortlet && (
+                                    <label className="flex items-center space-x-2">
+                                        <input {...register('internet')} type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                                        <span className="text-sm text-gray-700">Internet/Fibre</span>
+                                    </label>
+                                )}
 
                                 <label className="flex items-center space-x-2">
                                     <input {...register('boys_quarters')} type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
@@ -1517,7 +1820,7 @@ export default function ListingFormPage() {
                                                 type="text"
                                                 {...register(`amenities.${index}.value` as const)}
                                                 className="w-full text-[13px] rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
-                                                placeholder={index === 0 ? 'e.g., 24hrs Electricity, Swimming pool, Gym, Children\'s playgorund, Nearby shopping mall etc.' : 'Amenity'}
+                                                placeholder={index === 0 ? 'e.g., 24hrs Electricity, Swimming pool, Gym, Children\'s playground, Nearby shopping mall etc.' : 'Amenity'}
                                             />
                                             {amenityFields.length > 1 && (
                                                 <button
