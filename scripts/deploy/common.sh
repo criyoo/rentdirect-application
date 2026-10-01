@@ -91,7 +91,7 @@ resolve_public_subnets() {
     --filters \
       "Name=tag:Project,Values=$PROJECT_NAME" \
       "Name=tag:Environment,Values=$ENVIRONMENT" \
-      "Name=tag:Tier,Values=public" \
+      "Name=tag:Name,Values=$NAME_PREFIX-public-*" \
     --query 'Subnets[].SubnetId' \
     --output text)"
 
