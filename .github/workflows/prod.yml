@@ -292,4 +292,4 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Deploy API
-        run: bash scripts/deploy/api.sh $${{ vars.ENVIRONMENT }}
+        run: bash scripts/deploy/api.sh ${{ vars.ENVIRONMENT }}

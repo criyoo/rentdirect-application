@@ -3,6 +3,7 @@
 set -euo pipefail
 
 ENVIRONMENT="${1:-dev}"
+NAME_PREFIX="rentdirect-${ENVIRONMENT}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
