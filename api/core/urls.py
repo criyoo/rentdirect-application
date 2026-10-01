@@ -4,6 +4,8 @@ from rest_framework.routers import DefaultRouter
 from .ai_chat import AiChatViewSet
 from .views import (
     AdminViewSet,
+    AgentInspectionViewSet,
+    AgentViewSet,
     AuthViewSet,
     BookingViewSet,
     CommunityChatMessageViewSet,
@@ -17,13 +19,17 @@ from .views import (
     MessageViewSet,
     PaymentViewSet,
     ReviewViewSet,
+    ServicePaymentViewSet,
     SubscriptionPaymentViewSet,
     SupportChatMessageViewSet,
     TenantVerificationRequestViewSet,
     UserViewSet,
+    docuseal_webhook,
     financial_config,
     health,
     homepage_video,
+    representative_kyc_public_detail,
+    representative_kyc_public_submit,
 )
 
 router = DefaultRouter(trailing_slash=False)
@@ -35,6 +41,9 @@ router.register("landlord-verification-requests", LandlordVerificationRequestVie
 router.register("tenant-verification-requests", TenantVerificationRequestViewSet, basename="tenant-verification-requests")
 router.register("bookings", BookingViewSet, basename="bookings")
 router.register("payments", PaymentViewSet, basename="payments")
+router.register("service-payments", ServicePaymentViewSet, basename="service-payments")
+router.register("agents", AgentViewSet, basename="agents")
+router.register("agent-inspections", AgentInspectionViewSet, basename="agent-inspections")
 router.register("subscriptions", SubscriptionPaymentViewSet, basename="subscriptions")
 router.register("featured", FeaturedViewSet, basename="featured")
 router.register("favourites", FavouriteViewSet, basename="favourites")
@@ -67,5 +76,8 @@ urlpatterns = [
     path("v1/featured/payments/<uuid:pk>/update-duration", featured_payment_update_duration),
     path("v1/featured/<uuid:pk>/flutterwave/checkout", featured_payment_checkout),
     path("v1/featured/<uuid:pk>/unfeature", featured_listing_unfeature),
+    path("v1/webhooks/docuseal", docuseal_webhook),
+    path("v1/representative-kyc/<uuid:token>", representative_kyc_public_detail),
+    path("v1/representative-kyc/<uuid:token>/submit", representative_kyc_public_submit),
     path("v1/", include(router.urls)),
 ]

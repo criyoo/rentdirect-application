@@ -102,7 +102,7 @@ export const LEGAL_DOCUMENTS: LegalDocument[] = [
     {
         slug: 'physical-inspection-and-document-verification-agreement',
         title: 'Physical Inspection and Document Verification Agreement',
-        description: 'Agreement for RentDirect agents and lawyers conducting inspections.',
+        description: 'Agreement for RentDirect property inspection officers and lawyers conducting inspections.',
         audience: 'agents',
         content: physicalInspectionAndDocumentVerificationAgreement,
     },
@@ -112,10 +112,19 @@ export function getLegalDocumentBySlug(slug?: string): LegalDocument | undefined
     return LEGAL_DOCUMENTS.find((document) => document.slug === slug)
 }
 
-export function getLegalDocumentsForAudience(audience: 'tenant' | 'landlord'): LegalDocument[] {
+export function getLegalDocumentsForAudience(audience: 'tenant' | 'landlord' | 'agent'): LegalDocument[] {
+    if (audience === 'agent') {
+        return LEGAL_DOCUMENTS.filter(
+            (document) => document.audience === 'shared' || document.audience === 'agents',
+        )
+    }
     return LEGAL_DOCUMENTS.filter((document) => document.audience === 'shared')
 }
 
-export function getRegistrationLegalDocuments(): LegalDocument[] {
-    return LEGAL_DOCUMENTS.filter((document) => document.audience === 'registration')
+export function getRegistrationLegalDocuments(role?: 'tenant' | 'landlord' | 'agent'): LegalDocument[] {
+    return LEGAL_DOCUMENTS.filter(
+        (document) =>
+            document.audience === 'registration' ||
+            (role === 'agent' && document.audience === 'agents'),
+    )
 }

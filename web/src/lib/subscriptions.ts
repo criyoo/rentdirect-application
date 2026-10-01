@@ -1,3 +1,5 @@
+import { SUBSCRIPTIONS_ENABLED } from '@/lib/featureFlags'
+
 export type PlanCode = 'bronze' | 'silver' | 'gold' | 'platinum'
 
 export const PLAN_RANK: Record<PlanCode, number> = {
@@ -47,6 +49,11 @@ export function normalizeSubscriptionPayments(
 export function getActivePlanCode(
     response?: SubscriptionPaymentRecord[] | PaginatedResponse<SubscriptionPaymentRecord> | null,
 ): PlanCode {
+    // Subscriptions are disabled: every user has access to all features.
+    if (!SUBSCRIPTIONS_ENABLED) {
+        return 'platinum'
+    }
+
     const now = Date.now()
     const activeSubscriptions = normalizeSubscriptionPayments(response)
         .filter((payment) => {

@@ -6,13 +6,13 @@ import { getRegistrationLegalDocuments } from '@/lib/legalDocuments'
 
 type RegistrationLegalConsentModalProps = {
     isOpen: boolean
-    role: 'tenant' | 'landlord'
+    role: 'tenant' | 'landlord' | 'agent'
     onAccept: () => void
     onCancel: () => void
 }
 
 export default function RegistrationLegalConsentModal({ isOpen, role, onAccept, onCancel }: RegistrationLegalConsentModalProps) {
-    const documents = useMemo(() => getRegistrationLegalDocuments(), [])
+    const documents = useMemo(() => getRegistrationLegalDocuments(role), [role])
     const [accepted, setAccepted] = useState(false)
 
     if (!isOpen) return null
@@ -35,7 +35,7 @@ export default function RegistrationLegalConsentModal({ isOpen, role, onAccept, 
                                 Review account policies
                             </h2>
                             <p className="mt-1 text-sm leading-6 text-slate-600">
-                                Your {role} account email is successfully verified. <br />
+                                Your {role === 'agent' ? 'property inspection officer' : role === 'landlord' ? 'landlord' : 'tenant'} account email is successfully verified. <br />
                                 Please, review these policies before continuing to RentDirect.
                             </p>
                         </div>
@@ -73,7 +73,9 @@ export default function RegistrationLegalConsentModal({ isOpen, role, onAccept, 
                             className="mt-1 h-5 w-5 shrink-0 rounded border-slate-300 text-blue-600 accent-blue-600 focus:ring-2 focus:ring-blue-500"
                         />
                         <span className="text-sm leading-6 text-slate-700">
-                            I confirm that I have reviewed and agree to the Cookies Policy and Privacy Policy. I understand that ticking this box is my electronic confirmation of consent for creating and using my RentDirect account.
+                            {role === 'agent'
+                                ? 'I confirm that I have reviewed and agree to the Cookies Policy, Privacy Policy and the Physical Inspection and Document Verification Agreement. I understand that ticking this box is my electronic confirmation of consent for creating and using my RentDirect property inspection officer account.'
+                                : 'I confirm that I have reviewed and agree to the Cookies Policy and Privacy Policy. I understand that ticking this box is my electronic confirmation of consent for creating and using my RentDirect account.'}
                         </span>
                     </label>
                 </div>

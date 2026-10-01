@@ -462,6 +462,34 @@ PREMBLY_LOOKUP_CACHE_TIMEOUT_SECONDS = env_int("PREMBLY_LOOKUP_CACHE_TIMEOUT_SEC
 PREMBLY_WEBHOOK_TOKEN_CACHE_SECONDS = env_int("PREMBLY_WEBHOOK_TOKEN_CACHE_SECONDS", 60 * 60 * 24 * 7)
 PREMBLY_CAC_COMPANY_TYPE = os.environ.get("PREMBLY_CAC_COMPANY_TYPE", "RC").strip().upper()
 
+AGENT_INSPECTION_EARNING_NGN = os.environ.get("AGENT_INSPECTION_EARNING_NGN", "0.00").strip() or "0.00"
+AGENT_REFERRAL_EARNING_NGN = os.environ.get("AGENT_REFERRAL_EARNING_NGN", "2000.00").strip() or "2000.00"
+AGENT_REFERRAL_MAX_PER_REFERRAL_NGN = os.environ.get("AGENT_REFERRAL_MAX_PER_REFERRAL_NGN", "10000.00").strip() or "10000.00"
+
+GOOGLE_OAUTH_CLIENT_ID = os.environ.get("GOOGLE_OAUTH_CLIENT_ID", "").strip()
+GOOGLE_OAUTH_CLIENT_SECRET = os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET", "").strip()
+GOOGLE_OAUTH_REDIRECT_URI = os.environ.get("GOOGLE_OAUTH_REDIRECT_URI", "").strip()
+GOOGLE_TOKEN_URL = os.environ.get("GOOGLE_TOKEN_URL", "https://oauth2.googleapis.com/token").strip()
+GOOGLE_USERINFO_URL = os.environ.get("GOOGLE_USERINFO_URL", "https://openidconnect.googleapis.com/v1/userinfo").strip()
+
+DOCUSEAL_API_BASE_URL = os.environ.get("DOCUSEAL_API_BASE_URL", "https://api.docuseal.com").strip()
+DOCUSEAL_API_KEY = os.environ.get("DOCUSEAL_API_KEY", "").strip()
+DOCUSEAL_WEBHOOK_SECRET = os.environ.get("DOCUSEAL_WEBHOOK_SECRET", "").strip()
+DOCUSEAL_WEBHOOK_URL = os.environ.get("DOCUSEAL_WEBHOOK_URL", "").strip()
+DOCUSEAL_TIMEOUT_SECONDS = env_int("DOCUSEAL_TIMEOUT_SECONDS", 15)
+
+WHATSAPP_PROVIDER = os.environ.get("WHATSAPP_PROVIDER", "").strip().lower()
+WHATSAPP_TIMEOUT_SECONDS = env_int("WHATSAPP_TIMEOUT_SECONDS", 10)
+TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID", "").strip()
+TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "").strip()
+TWILIO_WHATSAPP_FROM = os.environ.get("TWILIO_WHATSAPP_FROM", "").strip()
+WHATSAPP_CLOUD_ACCESS_TOKEN = os.environ.get("WHATSAPP_CLOUD_ACCESS_TOKEN", "").strip()
+WHATSAPP_CLOUD_PHONE_NUMBER_ID = os.environ.get("WHATSAPP_CLOUD_PHONE_NUMBER_ID", "").strip()
+WHATSAPP_CLOUD_API_BASE_URL = os.environ.get(
+    "WHATSAPP_CLOUD_API_BASE_URL", "https://graph.facebook.com"
+).strip()
+WHATSAPP_CLOUD_API_VERSION = os.environ.get("WHATSAPP_CLOUD_API_VERSION", "v21.0").strip()
+
 SEED_DEMO_ACCOUNTS = env_bool("SEED_DEMO_ACCOUNTS", ENVIRONMENT in {"dev", "development", "local"})
 SEED_LANDLORD_DATA_PATH = os.environ.get("SEED_LANDLORD_DATA_PATH", "seed_demo_data/landlord/landlord.json")
 SEED_TENANT_DATA_PATH = os.environ.get("SEED_TENANT_DATA_PATH", "seed_demo_data/tenants/tenants.json")

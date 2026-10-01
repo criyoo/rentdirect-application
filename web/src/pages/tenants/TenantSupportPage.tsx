@@ -4,13 +4,17 @@ import { HiChatAlt2, HiMail, HiPhone, HiSupport } from 'react-icons/hi'
 import { useAuth } from '@/hooks/useAuth'
 import DashboardBackButton from '@/components/DashboardBackButton'
 import SupportFaqAccordion from '@/components/SupportFaqAccordion'
-import { landlordSupportFaqs, tenantSupportContacts, tenantSupportFaqs } from '@/lib/tenantSupport'
+import { agentSupportFaqs, landlordSupportFaqs, tenantSupportContacts, tenantSupportFaqs } from '@/lib/tenantSupport'
 
 export default function TenantSupportPage() {
     const { user } = useAuth()
-    const role = user?.role === 'landlord' ? 'landlord' : 'tenant'
-    const dashboardPath = user?.id ? `/dashboard/${role}/${user.id}` : '/'
-    const faqs = role === 'landlord' ? landlordSupportFaqs : tenantSupportFaqs
+    const role = user?.role === 'landlord' ? 'landlord' : user?.role === 'agent' ? 'agent' : 'tenant'
+    const dashboardPath = !user?.id
+        ? '/'
+        : role === 'agent'
+            ? '/agents/dashboard'
+            : `/dashboard/${role}/${user.id}`
+    const faqs = role === 'landlord' ? landlordSupportFaqs : role === 'agent' ? agentSupportFaqs : tenantSupportFaqs
 
     return (
         <div className="container-modern py-8">
@@ -18,7 +22,7 @@ export default function TenantSupportPage() {
                 <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
                     <div>
                         <p className="text-sm font-medium uppercase tracking-[0.2em] text-blue-600">Support</p>
-                        <h1 className="text-3xl font-bold text-gray-900">{role === 'landlord' ? 'Landlord support' : 'Tenant support'}</h1>
+                        <h1 className="text-3xl font-bold text-gray-900">{role === 'landlord' ? 'Landlord support' : role === 'agent' ? 'PIO support' : 'Tenant support'}</h1>
                     </div>
                     <DashboardBackButton to={dashboardPath} label="Back to Dashboard" />
                 </div>

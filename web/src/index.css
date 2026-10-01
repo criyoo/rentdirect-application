@@ -262,6 +262,23 @@
         @apply bg-red-100 text-red-800;
     }
 
+    /* PIO (agent) theme: recolor shared components green inside .agent-theme */
+    .agent-theme .btn-primary {
+        @apply bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-500;
+    }
+
+    .agent-theme .btn-outline {
+        @apply border-emerald-600 text-emerald-700 hover:bg-emerald-600 hover:text-white focus:ring-emerald-500;
+    }
+
+    .agent-theme .form-input {
+        @apply focus:ring-emerald-500;
+    }
+
+    .agent-theme .badge-primary {
+        @apply bg-emerald-100 text-emerald-800;
+    }
+
     /* Modern Loading States */
     .skeleton {
         @apply animate-pulse bg-gray-200 rounded;

@@ -55,20 +55,20 @@ def _authenticate_user(scope):
 
 @sync_to_async
 def _resolve_thread_user(user, scope):
-    if user.role in {AppUser.Role.TENANT, AppUser.Role.LANDLORD}:
+    if user.role in {AppUser.Role.TENANT, AppUser.Role.LANDLORD, AppUser.Role.AGENT}:
         return user
     if user.role != AppUser.Role.ADMIN:
         return None
 
     query = parse_qs(scope.get("query_string", b"").decode("utf-8"))
-    thread_user_id = (query.get("user_id") or query.get("tenant_id") or query.get("landlord_id") or [""])[0]
+    thread_user_id = (query.get("user_id") or query.get("tenant_id") or query.get("landlord_id") or query.get("agent_id") or [""])[0]
     if not thread_user_id:
         return None
 
     return (
         get_user_model()
         .objects
-        .filter(id=thread_user_id, role__in=[AppUser.Role.TENANT, AppUser.Role.LANDLORD], is_active=True)
+        .filter(id=thread_user_id, role__in=[AppUser.Role.TENANT, AppUser.Role.LANDLORD, AppUser.Role.AGENT], is_active=True)
         .first()
     )
 

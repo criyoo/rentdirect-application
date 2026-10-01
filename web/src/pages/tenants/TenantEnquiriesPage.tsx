@@ -1,7 +1,8 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, resolveMediaUrl } from '@/lib/api'
 import { Link } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
+import { useAppPopup } from '@/contexts/AppPopupContext'
 
 interface Enquiry {
     id: string
@@ -38,6 +39,8 @@ function normalizeResults<T>(payload: T[] | PaginatedResponse<T> | undefined): T
 
 export default function EnquiriesPage() {
     const { user } = useAuth()
+    const queryClient = useQueryClient()
+    const { alert } = useAppPopup()
 
     const { data: enquiries, isLoading, isError } = useQuery({
         queryKey: ['enquiries'],
@@ -47,6 +50,20 @@ export default function EnquiriesPage() {
         },
         enabled: !!user,
         retry: 1,
+    })
+
+    const markViewingBooked = useMutation({
+        mutationFn: async (listingId: string) => (
+            await api.post('/messages/viewing-booked', { listing_id: listingId })
+        ).data,
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['enquiries'] })
+            queryClient.invalidateQueries({ queryKey: ['bookings'] })
+            void alert('Viewing booked. Rental progress is now available on both dashboards.', { variant: 'success' })
+        },
+        onError: (error: any) => {
+            void alert(error?.response?.data?.detail || 'Unable to mark the viewing as booked.', { variant: 'error' })
+        },
     })
 
     if (isLoading) {
@@ -152,6 +169,24 @@ export default function EnquiriesPage() {
                                                     >
                                                         View Landlord Profile
                                                     </Link>
+
+                                                    <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                                                        <input
+                                                            type="checkbox"
+                                                            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-60"
+                                                            checked={enquiry.has_viewing_arranged}
+                                                            disabled={
+                                                                enquiry.has_viewing_arranged
+                                                                || (markViewingBooked.isPending && markViewingBooked.variables === enquiry.listing_id)
+                                                            }
+                                                            onChange={(event) => {
+                                                                if (event.target.checked) {
+                                                                    markViewingBooked.mutate(enquiry.listing_id)
+                                                                }
+                                                            }}
+                                                        />
+                                                        Viewing booked
+                                                    </label>
                                                 </div>
 
                                                 <div className="text-right">

@@ -12,11 +12,12 @@ export type User = {
     id: string
     name: string
     email: string
-    role: 'tenant' | 'landlord' | 'admin'
+    role: 'tenant' | 'landlord' | 'agent' | 'admin'
     token?: string
     email_verified?: boolean
     profile_photo_url?: string | null
     mobile?: string
+    whatsapp_number?: string
     nin_number?: string
     bvn_number?: string
     state_of_origin?: string
@@ -49,7 +50,7 @@ export type FeedbackEntry = {
     id: string
     user_id: string
     name: string
-    role: 'tenant' | 'landlord' | 'admin'
+    role: 'tenant' | 'landlord' | 'agent' | 'admin'
     topic: string
     message: string
     created_at: string
@@ -171,7 +172,6 @@ export interface Listing {
     deposit_amount?: number
     service_charge?: number | null
     caution_fee?: number | null
-    legal_fee?: number | null
     nightly_rate?: number | null
     negotiable?: boolean
     utilities_included: boolean
@@ -268,6 +268,47 @@ export interface Payment {
     provider?: string
 }
 
+export interface TenantRefund {
+    id: string
+    booking_id: string
+    payment_id: string
+    payment_method?: string
+    payment_transaction_id?: string
+    amount: number
+    fee_amount: number
+    refund_amount: number
+    currency?: string
+    reason?: string
+    bank_name: string
+    account_number: string
+    account_name?: string
+    status: 'scheduled' | 'recipient_created' | 'ready' | 'processing' | 'paid' | 'failed'
+    last_error?: string
+    process_at?: string
+    transferred_at?: string | null
+    created_at: string
+    updated_at: string
+}
+
+export interface RepresentativeKyc {
+    id: string
+    token: string
+    listing_id?: string | null
+    listing_title?: string
+    landlord_name?: string
+    ownership_type?: string
+    name?: string
+    email?: string
+    phone?: string
+    status: 'pending' | 'submitted' | 'verified' | 'rejected'
+    kyc_url: string
+    return_url?: string
+    submitted_at?: string | null
+    verified_at?: string | null
+    created_at?: string
+    updated_at?: string
+}
+
 export interface RentalProgressStep {
     key: string
     label: string
@@ -323,6 +364,7 @@ export interface Booking {
     end_date: string
     status: 'pending' | 'confirmed' | 'active' | 'completed' | 'cancelled'
     total_amount: number
+    rental_process_started: boolean
     paid_amount: number
     remaining_amount?: number
     landlord_rental_amount?: number | null
@@ -460,4 +502,166 @@ export interface SearchRequirementMatch {
     listing: Listing
     match_score: number
     match_reasons: string[]
+}
+
+export type ServicePaymentPurpose = 'agent_verification' | 'lawyer_tenancy' | 'in_person_verification'
+export type ServicePaymentStatus = 'pending' | 'completed' | 'failed' | 'cancelled'
+
+export interface ServicePayment {
+    id: string
+    user_id: string
+    booking_id?: string | null
+    listing_id?: string | null
+    listing_title?: string
+    purpose: ServicePaymentPurpose
+    purpose_display?: string
+    amount: number
+    currency: string
+    status: ServicePaymentStatus
+    status_display?: string
+    provider?: string
+    transaction_id?: string
+    payment_date?: string | null
+    return_path?: string
+    created_at: string
+    updated_at: string
+}
+
+export interface AgentProfile {
+    id: string
+    email?: string
+    profile_photo_url?: string | null
+    is_verified?: boolean
+    first_name: string
+    middle_name?: string
+    last_name: string
+    date_of_birth?: string | null
+    gender?: string
+    country_of_birth?: string
+    nationality?: string
+    state_of_origin?: string
+    lga_of_origin?: string
+    mobile?: string
+    whatsapp_number?: string
+    city?: string
+    residential_address?: string
+    nin_number?: string
+    bvn_number?: string
+    bank_name?: string
+    bank_code?: string
+    account_name?: string
+    account_number?: string
+    verification_status: 'incomplete' | 'payment_required' | 'pending' | 'verified' | 'rejected'
+    verified_at?: string | null
+    verification_attempts?: number
+    verification_payment?: ServicePayment | null
+    verification_payment_required?: boolean
+    referral_code?: string
+    mobile_warning?: string
+    created_at?: string
+    updated_at?: string
+}
+
+export interface AgentReferralNode {
+    id: string
+    name: string
+    profile_photo_url?: string | null
+    referral_code?: string
+    is_verified?: boolean
+    properties_inspected: number
+    earned_from_referral?: string
+    children: AgentReferralNode[]
+}
+
+export interface AgentReferralEarning {
+    id: string
+    referred_name: string
+    amount: string
+    payout_status: 'pending' | 'paid'
+    created_at: string
+}
+
+export interface AgentReferralsResponse {
+    referral_code: string
+    referred_by?: { id: string; name: string; profile_photo_url?: string | null } | null
+    metrics: {
+        total_referrals: number
+        total_referral_earned: string
+        total_referral_paid: string
+        referral_earning_per_inspection: string
+        referral_earning_cap: string
+    }
+    earnings: AgentReferralEarning[]
+    tree: AgentReferralNode
+}
+
+export interface InspectionFieldOption {
+    value: string
+    label: string
+}
+
+export interface InspectionField {
+    key: string
+    label: string
+    type: 'select' | 'multiselect' | 'text' | 'textarea' | 'number' | 'checkbox'
+    required: boolean
+    options?: InspectionFieldOption[]
+}
+
+export interface InspectionSection {
+    key: string
+    title: string
+    fields: InspectionField[]
+}
+
+export interface InspectionChecklistSchema {
+    sections: InspectionSection[]
+}
+
+export interface PropertyInspection {
+    id: string
+    listing_id: string
+    listing_title?: string
+    listing_address?: string
+    listing_city?: string
+    listing_state?: string
+    landlord_name?: string
+    agent_id: string
+    agent_name?: string
+    agent_email?: string
+    status: 'claimed' | 'draft' | 'submitted'
+    status_display?: string
+    responses: Record<string, unknown>
+    analysis: Record<string, unknown>
+    overall_status?: string
+    evidence_documents?: Array<{
+        id: string
+        title: string
+        file_url?: string
+        content_type?: string
+        created_at?: string
+    }>
+    earning_amount: number | string
+    payout_status: 'pending' | 'paid'
+    payout_status_display?: string
+    payout_reference?: string
+    claimed_at?: string
+    submitted_at?: string | null
+    signed_off_at?: string | null
+    paid_out_at?: string | null
+    created_at: string
+    updated_at: string
+}
+
+export interface AgentDashboard {
+    profile: AgentProfile
+    verification_payment?: ServicePayment | null
+    available_inspections: Listing[]
+    inspections: PropertyInspection[]
+    metrics: {
+        properties_inspected: number
+        total_amount_earned: number | string
+        total_amount_paid_out: number | string
+        pending_payout: number | string
+    }
 }

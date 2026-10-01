@@ -8,7 +8,7 @@ import { User } from '@/types'
 
 type RegistrationStarted = {
     email: string
-    role: 'tenant' | 'landlord'
+    role: 'tenant' | 'landlord' | 'agent'
     expires_in_seconds: number
     message: string
 }
@@ -22,7 +22,8 @@ type RegisterForm = {
     name: string
     email: string
     password: string
-    role: 'tenant' | 'landlord'
+    role: 'tenant' | 'landlord' | 'agent'
+    referral_code?: string
 }
 
 const LANDLORD_IDENTITY_ONBOARDING_KEY = 'landlord_onboarding_pending_identity'
@@ -31,6 +32,7 @@ type AuthContextValue = {
     user: User | null
     isRestoring: boolean
     login: (data: LoginForm) => Promise<void>
+    loginWithGoogle: (code: string, options?: { role?: 'tenant' | 'landlord' | 'agent'; referral_code?: string }) => Promise<void>
     register: (data: RegisterForm) => Promise<RegistrationStarted>
     verifyRegistration: (data: { email: string; otp_code: string }, options?: { navigate?: boolean }) => Promise<User>
     logout: () => Promise<void>
@@ -44,7 +46,7 @@ function getStoredUser(): User | null {
 
     try {
         const parsedUser = JSON.parse(stored)
-        const isValidRole = ['tenant', 'landlord', 'admin'].includes(parsedUser.role)
+        const isValidRole = ['tenant', 'landlord', 'agent', 'admin'].includes(parsedUser.role)
         const hasRequiredFields = parsedUser && parsedUser.id && parsedUser.role && parsedUser.name && parsedUser.email
 
         if (hasRequiredFields && isValidRole) {
@@ -71,6 +73,7 @@ function normalizeUser(payload: any, fallbackEmail?: string): User {
         role: payload.role,
         name: payload.name || payload.email?.split('@')[0] || fallbackEmail?.split('@')[0] || 'User',
         email: payload.email || fallbackEmail || '',
+        whatsapp_number: payload.whatsapp_number ?? '',
         profile_photo_url: payload.profile_photo_url ?? null,
         is_verified: payload.is_verified ?? false,
         account_frozen: payload.account_frozen ?? false,
@@ -185,6 +188,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     navigate('/landlord/verification')
                 } else if (nextUser.role === 'tenant') {
                     navigate('/verify')
+                } else if (nextUser.role === 'agent') {
+                    navigate('/agents/verification')
                 } else if (nextUser.role === 'admin') {
                     navigate('/admin/dashboard')
                 }
@@ -209,11 +214,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 navigate(`/dashboard/landlord/${nextUser.id}`)
             } else if (nextUser.role === 'tenant') {
                 navigate(`/dashboard/tenant/${nextUser.id}`)
+            } else if (nextUser.role === 'agent') {
+                navigate('/agents/dashboard')
             } else if (nextUser.role === 'admin') {
                 navigate('/admin/dashboard')
             }
         } catch (err: any) {
             throw new Error(extractErrorMessage(err, 'Login failed'))
+        }
+    }
+
+    async function loginWithGoogle(code: string, options: { role?: 'tenant' | 'landlord' | 'agent'; referral_code?: string } = {}): Promise<void> {
+        try {
+            const response = await api.post('/auth/google/exchange', { code, role: options.role, referral_code: options.referral_code })
+            const nextUser = normalizeUser(response.data)
+
+            setUser(nextUser)
+            localStorage.setItem('user', JSON.stringify(nextUser))
+            queryClient.setQueryData(['users', 'me'], response.data)
+
+            const isNewUser = response.data?.is_new_user === true
+            if (nextUser.role === 'landlord') {
+                if (isNewUser) {
+                    localStorage.setItem(LANDLORD_IDENTITY_ONBOARDING_KEY, '1')
+                    navigate('/landlord/verification')
+                } else {
+                    navigate(`/dashboard/landlord/${nextUser.id}`)
+                }
+            } else if (nextUser.role === 'tenant') {
+                navigate(isNewUser ? '/verify' : `/dashboard/tenant/${nextUser.id}`)
+            } else if (nextUser.role === 'agent') {
+                navigate(isNewUser ? '/agents/verification' : '/agents/dashboard')
+            } else if (nextUser.role === 'admin') {
+                navigate('/admin/dashboard')
+            }
+        } catch (err: any) {
+            throw new Error(extractErrorMessage(err, 'Google sign-in failed'))
         }
     }
 
@@ -233,7 +269,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     return (
-        <AuthContext.Provider value={{ user, isRestoring, login, register, verifyRegistration, logout }}>
+        <AuthContext.Provider value={{ user, isRestoring, login, loginWithGoogle, register, verifyRegistration, logout }}>
             {children}
         </AuthContext.Provider>
     )

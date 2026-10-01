@@ -9,6 +9,8 @@ from django.template.loader import render_to_string
 from django.utils.html import escape
 from django.utils import timezone
 
+from .whatsapp import send_whatsapp_message
+
 RENTDIRECT_INFO_EMAIL = "info@rentdirect.homes"
 
 
@@ -22,6 +24,7 @@ def send_feedback_acknowledgement(
     plan_code: str,
     response_time: str,
     feedback_id: str,
+    whatsapp_number: str = "",
 ) -> None:
     """Confirm support submissions and state the response target for the user's plan."""
     plan_label = str(plan_code or "bronze").replace("_", " ").title()
@@ -67,6 +70,14 @@ def send_feedback_acknowledgement(
     )
     email.attach_alternative(html_body, "text/html")
     email.send(fail_silently=False)
+    if whatsapp_number:
+        send_whatsapp_message(
+            whatsapp_number,
+            (
+                f"RentDirect {request_type} received (Ref: {feedback_id}). "
+                f"Our support team will respond within {response_time}."
+            ),
+        )
 
 
 def send_payment_confirmation_to_landlord(
@@ -80,6 +91,8 @@ def send_payment_confirmation_to_landlord(
     transaction_id: str,
     payment_date: str,
     booking_id: str,
+    landlord_whatsapp_number: str = "",
+    tenant_whatsapp_number: str = "",
 ) -> None:
     """Email #1: When tenant makes a successful payment, notify landlord with tenant + RentDirect in CC."""
     subject = f"Rental Payment Received — {listing_title}"
@@ -136,6 +149,22 @@ def send_payment_confirmation_to_landlord(
     )
     msg.attach_alternative(html_body, "text/html")
     msg.send(fail_silently=False)
+    if landlord_whatsapp_number:
+        send_whatsapp_message(
+            landlord_whatsapp_number,
+            (
+                f"RentDirect: Your tenant {tenant_name} has made a rental payment of "
+                f"₦{rental_amount:,.2f} for {listing_title}. Ref: {transaction_id}"
+            ),
+        )
+    if tenant_whatsapp_number:
+        send_whatsapp_message(
+            tenant_whatsapp_number,
+            (
+                f"RentDirect: Your rental payment of ₦{rental_amount:,.2f} for "
+                f"{listing_title} was received. Ref: {transaction_id}"
+            ),
+        )
 
 
 def send_landlord_payout_notification(
@@ -150,6 +179,7 @@ def send_landlord_payout_notification(
     account_name: str,
     account_number: str,
     settlement_id: str,
+    landlord_whatsapp_number: str = "",
 ) -> None:
     """Email #2: When a transfer to the landlord account is initiated."""
     subject = f"Landlord Payout Initiated — {listing_title}"
@@ -209,6 +239,14 @@ def send_landlord_payout_notification(
     )
     msg.attach_alternative(html_body, "text/html")
     msg.send(fail_silently=False)
+    if landlord_whatsapp_number:
+        send_whatsapp_message(
+            landlord_whatsapp_number,
+            (
+                f"RentDirect: A payout of ₦{rental_amount:,.2f} for {listing_title} "
+                f"has been initiated to your {bank_name} account. Ref: {settlement_id}"
+            ),
+        )
 
 
 def send_rentdirect_internal_transfer_notification(
@@ -300,7 +338,7 @@ def _render_email_template(*, title: str, heading: str, body_html: str) -> str:
         f"{body_html}"
         "</td></tr>"
         "<tr><td style='padding:16px 32px;border-top:1px solid #eee;font-size:12px;color:#999;text-align:center;'>"
-        "<p style='margin:0;'>RentDirect &mdash; Making Renting Simple</p>"
+        "<p style='margin:0;'>RentDirect &mdash; Making Renting Simple and Secure</p>"
         "<p style='margin:4px 0 0;'>"
         f"<a href='mailto:{RENTDIRECT_INFO_EMAIL}' style='color:#1a1a2e;text-decoration:none;'>{RENTDIRECT_INFO_EMAIL}</a></p>"
         "</td></tr>"

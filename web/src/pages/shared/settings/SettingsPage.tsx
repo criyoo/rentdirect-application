@@ -14,7 +14,8 @@ import {
     validateMobile,
     validateResidence,
 } from '@/lib/profile'
-import { User, UserResidence } from '@/types'
+import { nigerianBanks } from '@/lib/banks'
+import { AgentProfile, User, UserResidence } from '@/types'
 
 type GuarantorDetailsForm = {
     full_name: string
@@ -134,9 +135,18 @@ export default function SettingsPage() {
         queryKey: ['users', 'me'],
         queryFn: async () => (await api.get<User>('/users/me')).data,
     })
+    const { data: agentProfile } = useQuery({
+        queryKey: ['agents', 'profile'],
+        queryFn: async () => (await api.get<AgentProfile>('/agents/profile')).data,
+        enabled: me?.role === 'agent',
+    })
 
     const [email, setEmail] = useState('')
     const [mobile, setMobile] = useState('')
+    const [whatsappNumber, setWhatsappNumber] = useState('')
+    const [residentialAddress, setResidentialAddress] = useState('')
+    const [agentCity, setAgentCity] = useState('')
+    const [bankDetails, setBankDetails] = useState({ bank_name: '', account_name: '', account_number: '' })
     const [biodata, setBiodata] = useState({ first_name: '', middle_name: '', last_name: '' })
     const [residence, setResidence] = useState<UserResidence>(normalizeResidence())
     const [guarantorDetails, setGuarantorDetails] = useState<GuarantorDetailsForm>(emptyGuarantorDetails)
@@ -171,6 +181,7 @@ export default function SettingsPage() {
         const storedDraft = readFormDraft<SettingsProfileDraft>(settingsProfileDraftStorageKey)
         setEmail(storedDraft?.email ?? me.email ?? '')
         setMobile(storedDraft?.mobile ?? me.mobile ?? '')
+        setWhatsappNumber(me.whatsapp_number ?? '')
         setResidence({
             ...normalizeResidence(me.residence),
             ...(storedDraft?.residence || {}),
@@ -178,7 +189,19 @@ export default function SettingsPage() {
 
         const profile = me.role === 'landlord'
             ? asRecord(me.landlord_verification_profile)
-            : asRecord(me.tenant_verification_profile)
+            : me.role === 'agent'
+                ? (agentProfile as unknown as Record<string, any> || {})
+                : asRecord(me.tenant_verification_profile)
+        if (me.role === 'agent' && agentProfile) {
+            setResidentialAddress(agentProfile.residential_address || '')
+            setAgentCity(agentProfile.city || '')
+            setBankDetails({
+                bank_name: agentProfile.bank_name || '',
+                account_name: agentProfile.account_name || '',
+                account_number: agentProfile.account_number || '',
+            })
+            if (!me.whatsapp_number) setWhatsappNumber(agentProfile.whatsapp_number || '')
+        }
         const nameParts = splitName(me.name)
         setBiodata({
             first_name: String(profile.first_name || nameParts.first_name),
@@ -192,7 +215,7 @@ export default function SettingsPage() {
         })
         setHydratedDraftStorageKey(settingsProfileDraftStorageKey)
         setAccountFrozen(Boolean(me.account_frozen))
-    }, [me, settingsProfileDraftStorageKey])
+    }, [agentProfile, me, settingsProfileDraftStorageKey])
 
     useEffect(() => {
         if (
@@ -224,11 +247,22 @@ export default function SettingsPage() {
     const validateProfile = () => {
         const nextErrors: Record<string, string> = {}
         const mobileError = validateMobile(mobile)
+        const whatsappError = whatsappNumber ? validateMobile(whatsappNumber) : ''
         const guarantorMobileError = validateMobile(guarantorDetails.mobile_number)
 
         if (mobileError) nextErrors.mobile = mobileError
+        if (whatsappError) nextErrors.whatsapp_number = whatsappError
         if (guarantorMobileError) nextErrors.guarantor_mobile_number = guarantorMobileError
-        Object.assign(nextErrors, validateResidence('', residence))
+        if (me?.role !== 'agent') Object.assign(nextErrors, validateResidence('', residence))
+
+        if (me?.role === 'agent') {
+            if (bankDetails.account_number && !/^\d{10}$/.test(bankDetails.account_number)) {
+                nextErrors.account_number = 'Account number must be exactly 10 digits.'
+            }
+            if (bankDetails.account_name && !/^[A-Za-z][A-Za-z\s'\-.]*$/.test(bankDetails.account_name)) {
+                nextErrors.account_name = 'Account name must contain letters only.'
+            }
+        }
 
         setFieldErrors(nextErrors)
         return Object.keys(nextErrors).length === 0
@@ -238,6 +272,7 @@ export default function SettingsPage() {
         const payload: Record<string, any> = {
             email: email.trim(),
             mobile: mobile.trim(),
+            whatsapp_number: whatsappNumber.trim(),
             residence: {
                 state: residence.state?.trim() || '',
                 city: residence.city?.trim() || '',
@@ -249,6 +284,15 @@ export default function SettingsPage() {
 
         if (me?.role === 'tenant') {
             payload.guarantor_details = buildGuarantorPayload(guarantorDetails)
+        }
+        if (me?.role === 'agent') {
+            payload.agent_profile = {
+                residential_address: residentialAddress.trim(),
+                city: agentCity.trim(),
+                bank_name: bankDetails.bank_name.trim(),
+                account_name: bankDetails.account_name.trim(),
+                account_number: bankDetails.account_number.trim(),
+            }
         }
 
         return payload
@@ -379,7 +423,9 @@ export default function SettingsPage() {
         ? `/dashboard/landlord/${user.id}`
         : user?.role === 'tenant'
             ? `/dashboard/tenant/${user.id}`
-            : '/'
+            : user?.role === 'agent'
+                ? '/agents/dashboard'
+                : '/'
 
     const beginProfileVerification = () => {
         if (!me || !validateProfile()) return
@@ -482,7 +528,18 @@ export default function SettingsPage() {
                     <p className="mt-1 text-gray-600">Changes are saved only after OTP verification.</p>
                 </div>
                 <div className="flex flex-wrap gap-3">
-                    <Link to={me.role === 'tenant' ? `/tenants/${me.id}/profile?edit=1` : '/landlord/verification'} className="btn btn-primary">Open Profile Page</Link>
+                    <Link
+                        to={
+                            me.role === 'tenant'
+                                ? `/tenants/${me.id}/profile?edit=1`
+                                : me.role === 'agent'
+                                    ? '/agents/profile'
+                                    : '/landlord/verification'
+                        }
+                        className="btn btn-primary"
+                    >
+                        Open Profile Page
+                    </Link>
                 </div>
             </div>
 
@@ -528,6 +585,20 @@ export default function SettingsPage() {
                             />
                             {fieldErrors.mobile && <p className="form-error">{fieldErrors.mobile}</p>}
                         </Field>
+                        <Field label="WhatsApp number">
+                            <input
+                                className="form-input"
+                                type="tel"
+                                inputMode="tel"
+                                pattern={MOBILE_INPUT_PATTERN}
+                                maxLength={14}
+                                title={MOBILE_ERROR_MESSAGE}
+                                value={whatsappNumber}
+                                onChange={e => setWhatsappNumber(e.target.value)}
+                                placeholder={MOBILE_INPUT_PLACEHOLDER}
+                            />
+                            {fieldErrors.whatsapp_number && <p className="form-error">{fieldErrors.whatsapp_number}</p>}
+                        </Field>
                     </div>
                     <button className="btn btn-primary mt-6 w-full py-3" onClick={beginProfileVerification} disabled={profileSavePending}>
                         {profileSavePending ? 'Processing...' : 'Save Contact Details'}
@@ -554,34 +625,75 @@ export default function SettingsPage() {
 
                 <section className="card flex h-full flex-col p-6">
                     <div className="mb-6">
-                        <h2 className="text-2xl font-bold text-gray-900">Residence Address</h2>
+                        <h2 className="text-2xl font-bold text-gray-900">{me.role === 'agent' ? 'Address' : 'Residence Address'}</h2>
                         <p className="mt-2 text-sm text-gray-600">Keep your current address up to date.</p>
                     </div>
-                    <div className="grid flex-1 gap-5">
-                        <div className="grid gap-5 sm:grid-cols-2">
-                            <Field label="State">
-                                <input className="form-input" value={residence.state || ''} onChange={e => setResidence(current => ({ ...current, state: e.target.value }))} placeholder="Enter residence state" />
-                            </Field>
+                    {me.role === 'agent' ? (
+                        <div className="grid flex-1 gap-5">
                             <Field label="City">
-                                <input className="form-input" value={residence.city || ''} onChange={e => setResidence(current => ({ ...current, city: e.target.value }))} placeholder="Enter residence city" />
+                                <input className="form-input" value={agentCity} onChange={e => setAgentCity(e.target.value)} placeholder="Enter your city" />
+                            </Field>
+                            <Field label="Full residential address">
+                                <textarea className="form-input min-h-24" value={residentialAddress} onChange={e => setResidentialAddress(e.target.value)} placeholder="Enter your full address" />
                             </Field>
                         </div>
-                        <Field label="Street address">
-                            <textarea className="form-input min-h-24" value={residence.address || ''} onChange={e => setResidence(current => ({ ...current, address: e.target.value }))} placeholder="Enter your full address" />
-                            {fieldErrors.residence && <p className="form-error">{fieldErrors.residence}</p>}
-                        </Field>
-                    </div>
+                    ) : (
+                        <div className="grid flex-1 gap-5">
+                            <div className="grid gap-5 sm:grid-cols-2">
+                                <Field label="State">
+                                    <input className="form-input" value={residence.state || ''} onChange={e => setResidence(current => ({ ...current, state: e.target.value }))} placeholder="Enter residence state" />
+                                </Field>
+                                <Field label="City">
+                                    <input className="form-input" value={residence.city || ''} onChange={e => setResidence(current => ({ ...current, city: e.target.value }))} placeholder="Enter residence city" />
+                                </Field>
+                            </div>
+                            <Field label="Street address">
+                                <textarea className="form-input min-h-24" value={residence.address || ''} onChange={e => setResidence(current => ({ ...current, address: e.target.value }))} placeholder="Enter your full address" />
+                                {fieldErrors.residence && <p className="form-error">{fieldErrors.residence}</p>}
+                            </Field>
+                        </div>
+                    )}
                     <button className="btn btn-primary mt-6 w-full py-3" onClick={beginProfileVerification} disabled={profileSavePending}>
-                        {profileSavePending ? 'Processing...' : 'Save Residence Address'}
+                        {profileSavePending ? 'Processing...' : me.role === 'agent' ? 'Save Address' : 'Save Residence Address'}
                     </button>
                 </section>
 
                 <section className="card flex h-full flex-col p-6">
-                    <div className="mb-6">
-                        <h2 className="text-2xl font-bold text-gray-900">Guarantor Details</h2>
-                        <p className="mt-2 text-sm text-gray-600">Add or update your guarantor information. Every change requires OTP verification.</p>
-                    </div>
-                    {me.role === 'tenant' ? (
+                    {me.role === 'agent' ? (
+                        <>
+                            <div className="mb-6">
+                                <h2 className="text-2xl font-bold text-gray-900">Payout Bank Details</h2>
+                                <p className="mt-2 text-sm text-gray-600">Update the account your inspection payouts are sent to. Every change requires OTP verification.</p>
+                            </div>
+                            <div className="grid flex-1 gap-5">
+                                <Field label="Bank name">
+                                    <select className="form-input" value={bankDetails.bank_name} onChange={e => setBankDetails(current => ({ ...current, bank_name: e.target.value }))}>
+                                        <option value="">Select bank</option>
+                                        {nigerianBanks.map((bank) => <option key={bank} value={bank}>{bank}</option>)}
+                                    </select>
+                                </Field>
+                                <div className="grid gap-5 sm:grid-cols-2">
+                                    <Field label="Account name">
+                                        <input className="form-input" value={bankDetails.account_name} onChange={e => setBankDetails(current => ({ ...current, account_name: e.target.value.replace(/[^A-Za-z\s'\-.]/g, '') }))} placeholder="Account name" />
+                                        {fieldErrors.account_name && <p className="form-error">{fieldErrors.account_name}</p>}
+                                    </Field>
+                                    <Field label="Account number">
+                                        <input className="form-input" inputMode="numeric" maxLength={10} value={bankDetails.account_number} onChange={e => setBankDetails(current => ({ ...current, account_number: e.target.value.replace(/\D/g, '') }))} placeholder="10 digit account number" />
+                                        {fieldErrors.account_number && <p className="form-error">{fieldErrors.account_number}</p>}
+                                    </Field>
+                                </div>
+                            </div>
+                            <button className="btn btn-primary mt-6 w-full py-3" onClick={beginProfileVerification} disabled={profileSavePending}>
+                                {profileSavePending ? 'Processing...' : 'Save Bank Details'}
+                            </button>
+                        </>
+                    ) : (
+                        <>
+                            <div className="mb-6">
+                                <h2 className="text-2xl font-bold text-gray-900">Guarantor Details</h2>
+                                <p className="mt-2 text-sm text-gray-600">Add or update your guarantor information. Every change requires OTP verification.</p>
+                            </div>
+                            {me.role === 'tenant' ? (
                         <>
                             <div className="grid flex-1 gap-5">
                                 <div className="grid gap-5 sm:grid-cols-2">
@@ -629,6 +741,8 @@ export default function SettingsPage() {
                         </>
                     ) : (
                         <p className="text-sm text-gray-600">Guarantor details are available for tenant accounts.</p>
+                    )}
+                        </>
                     )}
                 </section>
 

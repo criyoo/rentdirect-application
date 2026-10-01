@@ -10,7 +10,7 @@ const audienceLabels = {
     registration: 'Account creation',
     tenant: 'Tenant document',
     landlord: 'Landlord document',
-    agents: 'Agent and lawyer document',
+    agents: 'PIO and lawyer document',
 } as const
 
 export default function LegalDocumentPage() {

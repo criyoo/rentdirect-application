@@ -12,6 +12,7 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from django.conf import settings
 
 from ..financial_constants import MONEY_PRECISION, ZERO_AMOUNT
+from ..banks import NIGERIAN_BANK_CODES_BY_NAME, normalize_bank_name_key
 
 logger = logging.getLogger(__name__)
 
@@ -39,38 +40,13 @@ UBA_BANK_CODE = "033"
 WEMA_BANK_CODE = "035"
 ZENITH_BANK_CODE = "057"
 
-NIGERIAN_PAYOUT_BANK_CODES_BY_NAME = {
-    "accessbank": ACCESS_BANK_CODE,
-    "ecobank": ECOBANK_CODE,
-    "fidelitybank": FIDELITY_BANK_CODE,
-    "firstbank": FIRST_BANK_CODE,
-    "firstbankofnigeria": FIRST_BANK_CODE,
-    "firstcitymonumentbank": FCMB_BANK_CODE,
-    "firstcitymonumentbankplc": FCMB_BANK_CODE,
-    "fcmb": FCMB_BANK_CODE,
-    "gtbank": GTBANK_CODE,
-    "guarantytrustbank": GTBANK_CODE,
-    "opay": OPAY_BANK_CODE,
-    "paycom": OPAY_BANK_CODE,
-    "opaydigitalservices": OPAY_BANK_CODE,
-    "palmpay": PALMPAY_BANK_CODE,
-    "moniepoint": MONIEPOINT_BANK_CODE,
-    "moniepointmfb": MONIEPOINT_BANK_CODE,
-    "moniepointmicrofinancebank": MONIEPOINT_BANK_CODE,
-    "providus": PROVIDUS_BANK_CODE,
-    "providusbank": PROVIDUS_BANK_CODE,
-    "providusbankplc": PROVIDUS_BANK_CODE,
-    "sterlingbank": STERLING_BANK_CODE,
-    "uba": UBA_BANK_CODE,
-    "unitedbankforafrica": UBA_BANK_CODE,
-    "wemabank": WEMA_BANK_CODE,
-    "zenithbank": ZENITH_BANK_CODE,
-}
+NIGERIAN_PAYOUT_BANK_CODES_BY_NAME = NIGERIAN_BANK_CODES_BY_NAME
 
 NIGERIAN_PAYOUT_BANK_CODE_CANDIDATES_BY_NAME = {
     "opay": (OPAY_BANK_CODE, OPAY_LEGACY_BANK_CODE),
     "paycom": (OPAY_BANK_CODE, OPAY_LEGACY_BANK_CODE),
     "opaydigitalservices": (OPAY_BANK_CODE, OPAY_LEGACY_BANK_CODE),
+    "opaydigitalserviceslimitedopay": (OPAY_BANK_CODE, OPAY_LEGACY_BANK_CODE),
     "palmpay": (PALMPAY_BANK_CODE,),
     "moniepoint": (MONIEPOINT_BANK_CODE, MONIEPOINT_NIBSS_BANK_CODE),
     "moniepointmfb": (MONIEPOINT_BANK_CODE, MONIEPOINT_NIBSS_BANK_CODE),
@@ -79,10 +55,6 @@ NIGERIAN_PAYOUT_BANK_CODE_CANDIDATES_BY_NAME = {
     "firstcitymonumentbankplc": (FCMB_BANK_CODE,),
     "fcmb": (FCMB_BANK_CODE,),
 }
-
-
-def normalize_bank_name_key(bank_name: str) -> str:
-    return "".join(character for character in str(bank_name or "").lower() if character.isalnum())
 
 
 def resolve_nigerian_payout_bank_code(bank_name: str, bank_code: str = "") -> str:

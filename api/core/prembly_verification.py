@@ -219,7 +219,7 @@ def prembly_post(path: str, body: dict[str, Any]) -> dict[str, Any]:
         raise PremblyVerificationUnavailable() from exc
 
 
-def prembly_lookup(*, verification_type: str, path: str, lookup_value: str, body: dict[str, Any]) -> dict[str, Any]:
+def prembly_lookup(*, verification_type: str, path: str, lookup_value: str, body: dict[str, Any], store_record: bool = True) -> dict[str, Any]:
     lookup_hash = hashlib.sha256(str(lookup_value).encode("utf-8")).hexdigest()
     cache_key = f"prembly_lookup:{verification_type}:{lookup_hash}"
     cached_payload = cache.get(cache_key)
@@ -238,12 +238,13 @@ def prembly_lookup(*, verification_type: str, path: str, lookup_value: str, body
     payload = prembly_post(path, body)
     if isinstance(payload, dict) and _payload_verified(payload):
         sanitized = _strip_sensitive_media(json.loads(json.dumps(payload)))
-        sanitized = store_verification_record_payload(
-            provider="prembly",
-            verification_type=verification_type,
-            lookup_value=lookup_value,
-            payload=sanitized,
-        )
+        if store_record:
+            sanitized = store_verification_record_payload(
+                provider="prembly",
+                verification_type=verification_type,
+                lookup_value=lookup_value,
+                payload=sanitized,
+            )
         cache.set(cache_key, sanitized, timeout=getattr(settings, "PREMBLY_LOOKUP_CACHE_TIMEOUT_SECONDS", 86400))
         return sanitized
     return payload
@@ -505,6 +506,7 @@ def verify_nin(input_data: dict[str, Any], nin_number: str) -> dict[str, Any]:
         path=settings.PREMBLY_NIN_API_URL,
         lookup_value=nin_number,
         body={"number_nin": nin_number},
+        store_record=False,
     )
     nin_data = _get_payload_data(nin_payload, "nin_data")
     if not _payload_verified(nin_payload) or not nin_data:
@@ -515,6 +517,12 @@ def verify_nin(input_data: dict[str, Any], nin_number: str) -> dict[str, Any]:
     mismatches.pop("mobile", None)
     if mismatches:
         raise ValidationError(mismatches)
+    nin_payload = store_verification_record_payload(
+        provider="prembly",
+        verification_type="nin",
+        lookup_value=nin_number,
+        payload=nin_payload,
+    )
     if phone_mismatch:
         nin_payload = {**nin_payload, "mobile_warning": MOBILE_MISMATCH_WARNING.replace("NIN or BVN", "NIN")}
 
@@ -527,6 +535,7 @@ def verify_nin_and_bvn(input_data: dict[str, Any], nin_number: str, bvn_number: 
         path=settings.PREMBLY_NIN_API_URL,
         lookup_value=nin_number,
         body={"number_nin": nin_number},
+        store_record=False,
     )
     nin_data = _get_payload_data(nin_payload, "nin_data")
     if not _payload_verified(nin_payload) or not nin_data:
@@ -539,6 +548,7 @@ def verify_nin_and_bvn(input_data: dict[str, Any], nin_number: str, bvn_number: 
         path=settings.PREMBLY_BVN_API_URL,
         lookup_value=bvn_number,
         body={"number": bvn_number},
+        store_record=False,
     )
     bvn_data = _get_payload_data(bvn_payload, "bvn_data")
     if not _payload_verified(bvn_payload) or not bvn_data:
@@ -559,6 +569,19 @@ def verify_nin_and_bvn(input_data: dict[str, Any], nin_number: str, bvn_number: 
     merged = _merge_field_mismatches(input_data, nin_mismatches, bvn_mismatches, nin_data, bvn_data)
     if merged:
         raise ValidationError(merged)
+
+    nin_payload = store_verification_record_payload(
+        provider="prembly",
+        verification_type="nin",
+        lookup_value=nin_number,
+        payload=nin_payload,
+    )
+    bvn_payload = store_verification_record_payload(
+        provider="prembly",
+        verification_type="bvn",
+        lookup_value=bvn_number,
+        payload=bvn_payload,
+    )
 
     mobile_warning = _mobile_verification_warning(input_data, nin_data, bvn_data)
     if mobile_warning:

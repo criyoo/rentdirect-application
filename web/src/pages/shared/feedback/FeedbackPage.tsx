@@ -24,7 +24,7 @@ export default function FeedbackPage() {
     const navigate = useNavigate()
     const { user } = useAuth()
     const [name, setName] = useState('')
-    const [role, setRole] = useState<'tenant' | 'landlord' | 'admin'>('tenant')
+    const [role, setRole] = useState<'tenant' | 'landlord' | 'agent' | 'admin'>('tenant')
     const [topic, setTopic] = useState('')
     const [message, setMessage] = useState('')
 
@@ -57,6 +57,10 @@ export default function FeedbackPage() {
                 navigate(`/dashboard/tenant/${user.id}`)
                 return
             }
+            if (user?.role === 'agent') {
+                navigate('/agents/dashboard')
+                return
+            }
             navigate('/')
         },
         onError: (error) => {
@@ -68,7 +72,9 @@ export default function FeedbackPage() {
         ? `/dashboard/landlord/${user.id}`
         : user?.role === 'tenant'
             ? `/dashboard/tenant/${user.id}`
-            : '/'
+            : user?.role === 'agent'
+                ? '/agents/dashboard'
+                : '/'
 
     return (
         <div className="container-modern py-8">

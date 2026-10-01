@@ -1,0 +1,147 @@
+{
+  "agreement": {
+    "id": "string",
+    "dateFormatted": "date",
+    "templateVersion": "string",
+    "generatedAt": "datetime",
+    "finalisedAt": "datetime|null",
+    "documentHash": "string|null",
+    "signingProvider": "string",
+    "status": "DRAFT|REVIEW|APPROVED|SIGNING|PARTIALLY_SIGNED|FULLY_SIGNED|FINAL"
+  },
+  "property": {
+    "state": "string",
+    "localGovernmentArea": "string",
+    "fullAddress": "string",
+    "type": "string",
+    "unitDescription": "string",
+    "floor": "string",
+    "roomsDescription": "string",
+    "ancillaryAreas": "string",
+    "reference": "string|null",
+    "inspectionNoticeHours": 48,
+    "isExcludedFromLagosTenancyLaw": false
+  },
+  "landlord": {
+    "name": "string",
+    "address": "string",
+    "email": "string",
+    "phone": "string",
+    "isCompany": false
+  },
+  "tenant": {
+    "name": "string",
+    "address": "string",
+    "email": "string",
+    "phone": "string",
+    "isCompany": false
+  },
+  "tenancy": {
+    "useTypeLabel": "string",
+    "permittedUse": "string",
+    "termValue": 1,
+    "termUnit": "year",
+    "startDateFormatted": "date",
+    "endDateFormatted": "date",
+    "possessionTrigger": "actual handover date",
+    "isFixedTerm": true,
+    "isCommercial": false
+  },
+  "payments": {
+    "rentFrequency": "yearly",
+    "rentDueDate": "date",
+    "firstRentPeriod": "string",
+    "paymentMethodDescription": "string",
+    "latePaymentInterestEnabled": false,
+    "latePaymentInterestRate": "string",
+    "initialPaymentDueDate": "date"
+  },
+  "money": {
+    "rentAmount": 0,
+    "rentAmountWords": "string",
+    "securityDeposit": 0,
+    "serviceCharge": 0,
+    "facilityCharge": 0,
+    "agencyFee": 0,
+    "otherFeesTotal": 0,
+    "totalInitialAmount": 0
+  },
+  "fees": {
+    "securityDepositFrequency": "once",
+    "securityDepositRefundable": "Yes",
+    "securityDepositRefundDays": 30,
+    "serviceChargeFrequency": "annual",
+    "serviceChargeRefundable": "No",
+    "facilityChargeFrequency": "annual",
+    "facilityChargeRefundable": "No",
+    "agencyFeeFrequency": "once",
+    "agencyFeePayer": "as agreed",
+    "otherFeesFrequency": "as agreed",
+    "otherFeesPayer": "as agreed",
+    "otherFeesRefundable": "No",
+    "utilitiesResponsibility": "string",
+    "taxesAndStatutoryCharges": "as required by law",
+    "stampingRegistrationResponsibility": "as agreed and subject to applicable law"
+  },
+  "maintenance": {
+    "landlordResponsibilities": "string",
+    "tenantResponsibilities": "string",
+    "rentAbatementRule": "as required by law / agreed",
+    "maximumRestorationDays": 90
+  },
+  "termination": {
+    "noticePeriodDescription": "calculated by jurisdiction and tenancy type",
+    "preExpiryInspectionDays": 30,
+    "holdingOverRateDescription": "reasonable use and occupation rate, subject to applicable law"
+  },
+  "renewal": {
+    "renewalOption": "by mutual written agreement",
+    "noticeMonths": 3,
+    "specialRenewalNotice": ""
+  },
+  "dispute": {
+    "arbitrationEnabled": false,
+    "arbitrationVenue": "Lagos, Nigeria",
+    "arbitratorCount": 1,
+    "appointingAuthority": "as agreed or competent authority under applicable law"
+  },
+  "handover": {
+    "dateFormatted": "date",
+    "electricityMeterReading": "",
+    "waterMeterReading": "",
+    "gasMeterReading": "",
+    "otherMeterReadings": "",
+    "keysDescription": "",
+    "inventoryDescription": "",
+    "existingDefects": ""
+  },
+  "commercial": {
+    "businessDescription": "",
+    "signageRules": "",
+    "operatingHours": "",
+    "customerAccessRules": "",
+    "licensingResponsibilities": "",
+    "fitOutPeriod": "",
+    "fitOutRules": "",
+    "reinstatementRules": "",
+    "serviceChargeMechanism": "",
+    "insuranceRequirements": "",
+    "assignmentRules": ""
+  },
+  "specialConditions": [],
+  "witnesses": [],
+  "signatures": {
+    "landlord": {
+      "signedAtFormatted": "",
+      "signatureId": "",
+      "signatoryName": "",
+      "signatoryCapacity": ""
+    },
+    "tenant": {
+      "signedAtFormatted": "",
+      "signatureId": "",
+      "signatoryName": "",
+      "signatoryCapacity": ""
+    }
+  }
+}

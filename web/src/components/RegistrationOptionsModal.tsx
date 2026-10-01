@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { HiHome, HiSearch } from 'react-icons/hi'
+import { HiHome, HiSearch, HiUser } from 'react-icons/hi'
 
 interface RegistrationOptionsModalProps {
     isOpen: boolean
@@ -43,7 +43,7 @@ export default function RegistrationOptionsModal({ isOpen, onClose }: Registrati
                     </button>
                 </div>
 
-                <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                <div className="mt-6 grid gap-4 sm:grid-cols-3">
                     <Link
                         to="/register?role=tenant"
                         onClick={onClose}
@@ -64,6 +64,17 @@ export default function RegistrationOptionsModal({ isOpen, onClose }: Registrati
                         <h3 className="mt-4 text-lg font-bold text-slate-950">Register &amp; List Properties</h3>
                         <p className="mt-2 text-sm leading-6 text-slate-600">
                             Create a landlord account and list properties for verified tenants.
+                        </p>
+                    </Link>
+                    <Link
+                        to="/agents"
+                        onClick={onClose}
+                        className="group rounded-xl border border-slate-200 p-5 transition-all hover:-translate-y-0.5 hover:border-emerald-400 hover:bg-emerald-50 hover:shadow-lg"
+                    >
+                        <HiUser className="h-8 w-8 text-emerald-600" />
+                        <h3 className="mt-4 text-lg font-bold text-slate-950">Become a PIO</h3>
+                        <p className="mt-2 text-sm leading-6 text-slate-600">
+                            Register free as a Property Inspection Officer and earn by inspecting properties for landlords.
                         </p>
                     </Link>
                 </div>

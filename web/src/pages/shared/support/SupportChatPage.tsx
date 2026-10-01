@@ -40,8 +40,11 @@ export default function SupportChatPage() {
     const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'closed'>('connecting')
     const socketRef = useRef<WebSocket | null>(null)
     const bottomRef = useRef<HTMLDivElement | null>(null)
-    const dashboardRole = user?.role === 'landlord' ? 'landlord' : 'tenant'
-    const dashboardPath = user?.id ? `/dashboard/${dashboardRole}/${user.id}` : '/'
+    const dashboardPath = !user?.id
+        ? '/'
+        : user.role === 'agent'
+            ? '/agents/dashboard'
+            : `/dashboard/${user.role === 'landlord' ? 'landlord' : 'tenant'}/${user.id}`
 
     const { data: history } = useQuery({
         queryKey: ['support-chat', 'messages'],

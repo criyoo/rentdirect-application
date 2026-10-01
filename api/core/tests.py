@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import json
 import re
+import uuid
 from io import StringIO
 from pathlib import Path
 from datetime import date, timedelta
@@ -25,7 +26,9 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from core import flutterwave
 from core.management.commands.seed_demo_data import Command as SeedDemoDataCommand
 from core.flutterwave import FlutterwaveError
-from core.models import AppUser, Booking, BvnVerificationRecord, CacVerificationRecord, CommunityChatMessage, Document, Feedback, FeaturedPayment, Listing, ListingImage, Message, NinVerificationRecord, Payment, PaymentSettlement, Review, SubscriptionPayment, SubscriptionPaymentMethod, SubscriptionVATPayment, SupportChatMessage, TenantProfile, VerificationRequest
+from core.inspection_checklist import INSPECTION_CHECKLIST_SCHEMA
+from core.models import AgentProfile, AgentReferralEarning, AppUser, Booking, BvnVerificationRecord, CacVerificationRecord, CommunityChatMessage, Document, Feedback, FeaturedPayment, Listing, ListingImage, Message, NinVerificationRecord, Payment, PaymentSettlement, PendingRegistration, PropertyInspection, Review, ServicePayment, SubscriptionPayment, SubscriptionPaymentMethod, SubscriptionVATPayment, SupportChatMessage, TenancyAgreement, TenantProfile, VerificationRequest
+from core.referrals import award_referral_earning, generate_unique_referral_code, resolve_referrer
 from core.payment_queue import TASK_PROCESS_READY_PAYOUTS, TASK_RECONCILE_PENDING_PAYMENTS, enqueue_payment_task
 from core.prembly_verification import (
     PremblyWebhookVerificationError,
@@ -236,7 +239,7 @@ class HealthTests(TestCase):
                 self.assertEqual(b"".join(response.streaming_content), b"2345")
 
     def test_homepage_video_redirects_to_remote_storage_url(self):
-        with patch("core.views.default_storage") as storage:
+        with override_settings(HOMEPAGE_VIDEO_STORAGE_NAME="seed/video/rentdirect.mp4"), patch("core.views.default_storage") as storage:
             storage.exists.return_value = True
             storage.path.side_effect = NotImplementedError
             storage.url.return_value = "https://media.example.com/seed/video/rentdirect.mp4"
@@ -300,6 +303,91 @@ class AuthViewSetTests(TestCase):
         self.assertTrue(verified_user.email_verified)
         self.assertIn(settings.ACCESS_COOKIE_NAME, response.cookies)
         self.assertIn(settings.REFRESH_COOKIE_NAME, response.cookies)
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend", WEB_PUBLIC_URL="https://rentdirect.homes")
+    def test_register_defers_user_creation_until_otp_verified(self):
+        email = "pending-user@example.com"
+        response = self.client.post(
+            "/api/v1/auth/register",
+            {
+                "name": "Pending User",
+                "email": email,
+                "password": "password-123",
+                "role": AppUser.Role.TENANT,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.json())
+        self.assertFalse(AppUser.objects.filter(email=email).exists())
+        pending = PendingRegistration.objects.get(email=email)
+        self.assertNotEqual(pending.password_hash, "password-123")
+        self.assertTrue(pending.password_hash.startswith(("pbkdf2_", "md5$")))
+
+        bad_response = self.client.post(
+            "/api/v1/auth/register/verify",
+            {"email": email, "otp_code": "ZZZZZZ"},
+            format="json",
+        )
+        self.assertEqual(bad_response.status_code, 400, bad_response.json())
+        self.assertFalse(AppUser.objects.filter(email=email).exists())
+
+        code_match = re.search(r"code is ([A-Z0-9]{6})", mail.outbox[-1].body)
+        self.assertIsNotNone(code_match)
+        ok_response = self.client.post(
+            "/api/v1/auth/register/verify",
+            {"email": email, "otp_code": code_match.group(1)},
+            format="json",
+        )
+        self.assertEqual(ok_response.status_code, 200, ok_response.json())
+        user = AppUser.objects.get(email=email)
+        self.assertTrue(user.email_verified)
+        self.assertEqual(user.role, AppUser.Role.TENANT)
+        self.assertTrue(user.check_password("password-123"))
+        self.assertFalse(PendingRegistration.objects.filter(email=email).exists())
+        self.assertIn(settings.ACCESS_COOKIE_NAME, ok_response.cookies)
+        self.assertIn(settings.REFRESH_COOKIE_NAME, ok_response.cookies)
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend", WEB_PUBLIC_URL="https://rentdirect.homes")
+    def test_register_rejects_existing_verified_email(self):
+        email = "verified-user@example.com"
+        AppUser.objects.create_user(
+            email=email,
+            password="password-123",
+            name="Verified User",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        response = self.client.post(
+            "/api/v1/auth/register",
+            {
+                "name": "Duplicate",
+                "email": email,
+                "password": "password-123",
+                "role": AppUser.Role.TENANT,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400, response.json())
+        self.assertFalse(PendingRegistration.objects.filter(email=email).exists())
+
+    def test_verify_registration_rejects_expired_pending_challenge(self):
+        email = "expired-pending@example.com"
+        PendingRegistration.objects.create(
+            email=email,
+            name="Expired Pending",
+            role=AppUser.Role.TENANT,
+            password_hash="pbkdf2_sha256$test",
+            otp_hash=hash_otp(email, "ABCDEF"),
+            otp_expires_at=timezone.now() - timedelta(minutes=1),
+        )
+        response = self.client.post(
+            "/api/v1/auth/register/verify",
+            {"email": email, "otp_code": "ABCDEF"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400, response.json())
+        self.assertFalse(AppUser.objects.filter(email=email).exists())
 
     def test_login_ignores_stale_access_cookie_for_deleted_user(self):
         stale_user = AppUser.objects.create_user(
@@ -970,7 +1058,7 @@ class ListingTests(TestCase):
                 "fitted_kitchen": "true",
                 "ownership_types": ["Sole Owner"],
                 "property_ownership_documents": property_ownership_documents,
-                "property_verification_method": "documents",
+                "property_verification_method": "in_person",
                 "property_documents": property_document,
                 "minimum_rental_duration": "6 months",
                 "maximum_occupancy": "4",
@@ -1013,8 +1101,13 @@ class ListingTests(TestCase):
         self.assertRegex(cover.file.name, r"/listing-image-[0-9a-f]{32}\.gif$")
         self.assertEqual(
             listing.property_document_verification_status,
-            VerificationRequest.VerificationProgressStatus.PENDING,
+            VerificationRequest.VerificationProgressStatus.UNVERIFIED,
         )
+        self.assertEqual(
+            listing.physical_property_status,
+            VerificationRequest.VerificationProgressStatus.UNVERIFIED,
+        )
+        self.assertTrue(listing.property_document_submission["in_person_verification_requested"])
         self.assertEqual(listing.minimum_rental_duration, "6 months")
         self.assertEqual(listing.maximum_occupancy, 4)
         self.assertTrue(listing.short_let_allowed)
@@ -1043,7 +1136,7 @@ class ListingTests(TestCase):
         self.assertRegex(first.file.name, r"/document-[0-9a-f]{32}\.pdf$")
         self.assertRegex(second.file.name, r"/document-[0-9a-f]{32}\.pdf$")
 
-    def test_landlord_listing_requires_property_documents_or_in_person_verification(self):
+    def test_landlord_listing_requires_in_person_verification(self):
         landlord = AppUser.objects.create_user(
             email="landlord-doc-required@example.com",
             password="password-123",
@@ -1099,7 +1192,7 @@ class ListingTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 400, response.json())
-        self.assertIn("property_documents", response.json())
+        self.assertIn("property_verification_method", response.json())
 
     def test_landlord_can_choose_in_person_verification_without_property_documents(self):
         landlord = AppUser.objects.create_user(
@@ -1160,9 +1253,10 @@ class ListingTests(TestCase):
         listing = Listing.objects.get(title="In Person Listing")
         self.assertEqual(str(listing.deposit_amount), "540000.00")
         self.assertEqual(listing.property_documents.count(), 0)
+        self.assertTrue(listing.property_document_submission["in_person_verification_requested"])
         self.assertEqual(
             listing.physical_property_status,
-            VerificationRequest.VerificationProgressStatus.PENDING,
+            VerificationRequest.VerificationProgressStatus.UNVERIFIED,
         )
 
     def test_bronze_landlord_cannot_create_second_active_listing(self):
@@ -1989,6 +2083,58 @@ class AdminSiteTests(TestCase):
         self.assertContains(response, 'name="cac_registration_date"')
         self.assertNotContains(response, "Property Ownership Verification")
 
+    def test_payment_changelist_shows_tenant_details(self):
+        landlord = AppUser.objects.create_user(
+            email="payment-admin-landlord@example.com",
+            password="password-123",
+            name="Admin Payment Landlord",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+        )
+        tenant = AppUser.objects.create_user(
+            email="payment-admin-tenant@example.com",
+            password="password-123",
+            name="Admin Payment Tenant",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        listing = Listing.objects.create(
+            landlord=landlord,
+            title="Admin Payment Listing",
+            description="Listing used for payment admin test",
+            address="9 Admin Street",
+            city="Lagos",
+            property_type="Apartment",
+            bedrooms=2,
+            bathrooms=2,
+            price_per_year=1200000,
+        )
+        booking = Booking.objects.create(
+            tenant=tenant,
+            listing=listing,
+            start_date=date(2026, 7, 1),
+            end_date=date(2027, 7, 1),
+            total_amount=calculate_booking_total(listing.price_per_year),
+        )
+        Payment.objects.create(
+            booking=booking,
+            amount=100000,
+            payment_method="bank",
+            status="pending",
+            transaction_id="ADMIN_PAYMENT_TXN_1",
+            currency="NGN",
+            provider="flutterwave",
+        )
+
+        response = self.client.get("/admin/core/payment/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "ADMIN_PAYMENT_TXN_1")
+        self.assertContains(response, "Admin Payment Tenant")
+        self.assertContains(response, "payment-admin-tenant@example.com")
+        self.assertContains(response, "Tenant Name")
+        self.assertContains(response, "Tenant Email")
+
 
 class VerificationRequestViewSetTests(TestCase):
     def _nin_payload(self, nin="12345678901", phone="09080350066"):
@@ -2357,6 +2503,89 @@ class VerificationRequestViewSetTests(TestCase):
 
         self.assertFalse(prembly_post_mock.called)
         self.assertEqual(payload["data"]["rc_number"], "9629888")
+
+    def _nin_bvn_identity_input(self):
+        return {
+            "first_name": "Christian",
+            "middle_name": "Odezi",
+            "last_name": "Aluya",
+            "date_of_birth": "1977-02-06",
+            "gender": "Male",
+            "nationality": "Nigerian",
+            "state_of_origin": "Delta",
+            "lga": "Isoko North",
+            "mobile": "09080350066",
+        }
+
+    def test_verify_nin_stores_record_after_successful_match(self):
+        from core.dikript_verification import verify_nin
+
+        cache.clear()
+        self.addCleanup(cache.clear)
+        with patch("core.dikript_verification.dikript_get", return_value=self._nin_payload()):
+            verify_nin(self._nin_bvn_identity_input(), "12345678901")
+
+        nin_record = NinVerificationRecord.objects.get(provider="dikript", nin="12345678901")
+        self.assertEqual(nin_record.response_payload["data"]["nin"], "12345678901")
+
+    def test_verify_nin_does_not_store_record_when_matching_fails(self):
+        from core.dikript_verification import verify_nin
+        from rest_framework.exceptions import ValidationError
+
+        cache.clear()
+        self.addCleanup(cache.clear)
+        input_data = self._nin_bvn_identity_input()
+        input_data["first_name"] = "Wrong"
+        with patch("core.dikript_verification.dikript_get", return_value=self._nin_payload()):
+            with self.assertRaises(ValidationError):
+                verify_nin(input_data, "12345678901")
+
+        self.assertFalse(NinVerificationRecord.objects.filter(provider="dikript", nin="12345678901").exists())
+
+    def test_verify_nin_and_bvn_stores_records_after_successful_match(self):
+        from core.dikript_verification import verify_nin_and_bvn
+
+        cache.clear()
+        self.addCleanup(cache.clear)
+        with patch("core.dikript_verification.dikript_get", side_effect=[self._nin_payload(), self._bvn_payload()]):
+            verify_nin_and_bvn(self._nin_bvn_identity_input(), "12345678901", "22347235093")
+
+        nin_record = NinVerificationRecord.objects.get(provider="dikript", nin="12345678901")
+        bvn_record = BvnVerificationRecord.objects.get(provider="dikript", bvn="22347235093")
+        self.assertEqual(nin_record.response_payload["data"]["nin"], "12345678901")
+        self.assertEqual(bvn_record.response_payload["data"]["bvn"], "22347235093")
+
+    def test_verify_nin_and_bvn_does_not_store_records_when_matching_fails(self):
+        from core.dikript_verification import verify_nin_and_bvn
+        from rest_framework.exceptions import ValidationError
+
+        cache.clear()
+        self.addCleanup(cache.clear)
+        input_data = self._nin_bvn_identity_input()
+        input_data["first_name"] = "Wrong"
+        input_data["last_name"] = "Person"
+        with patch("core.dikript_verification.dikript_get", side_effect=[self._nin_payload(), self._bvn_payload()]):
+            with self.assertRaises(ValidationError):
+                verify_nin_and_bvn(input_data, "12345678901", "22347235093")
+
+        self.assertFalse(NinVerificationRecord.objects.filter(provider="dikript", nin="12345678901").exists())
+        self.assertFalse(BvnVerificationRecord.objects.filter(provider="dikript", bvn="22347235093").exists())
+
+    def test_prembly_verify_nin_and_bvn_does_not_store_records_when_matching_fails(self):
+        from core.prembly_verification import verify_nin_and_bvn
+        from rest_framework.exceptions import ValidationError
+
+        cache.clear()
+        self.addCleanup(cache.clear)
+        input_data = self._nin_bvn_identity_input()
+        input_data["first_name"] = "Wrong"
+        input_data["last_name"] = "Person"
+        with patch("core.prembly_verification.prembly_post", side_effect=[self._prembly_nin_payload(phone="09080350066"), self._prembly_bvn_payload()]):
+            with self.assertRaises(ValidationError):
+                verify_nin_and_bvn(input_data, "91231161558", "22347235093")
+
+        self.assertFalse(NinVerificationRecord.objects.filter(provider="prembly", nin="91231161558").exists())
+        self.assertFalse(BvnVerificationRecord.objects.filter(provider="prembly", bvn="22347235093").exists())
 
     @patch("core.dikript_verification.dikript_lookup")
     def test_tenant_profile_submission_verifies_nin_only(self, dikript_lookup_mock):
@@ -3121,6 +3350,18 @@ class PaymentQueueTests(TestCase):
 
 
 class FlutterwaveTransferPayloadTests(TestCase):
+    def test_payout_bank_code_resolves_full_nigerian_bank_list(self):
+        self.assertEqual(flutterwave.resolve_nigerian_payout_bank_code("Fairmoney Microfinance Bank"), "51318")
+        self.assertEqual(flutterwave.resolve_nigerian_payout_bank_code("Kuda Bank"), "50211")
+        self.assertEqual(flutterwave.resolve_nigerian_payout_bank_code("OPay Digital Services Limited (OPay)"), "100004")
+        self.assertEqual(flutterwave.resolve_nigerian_payout_bank_code("Moniepoint MFB"), "50515")
+        self.assertEqual(flutterwave.resolve_nigerian_payout_bank_code("Access Bank"), "044")
+        self.assertEqual(flutterwave.resolve_nigerian_payout_bank_code("Zenith Bank Plc"), "057")
+        self.assertEqual(
+            flutterwave.nigerian_payout_bank_code_candidates("OPay Digital Services Limited (OPay)"),
+            ["100004", "999992"],
+        )
+
     @override_settings(
         FLUTTERWAVE_API_VERSION="v4",
         FLUTTERWAVE_CLIENT_ID="test-client-id",
@@ -3492,9 +3733,61 @@ class BookingPaymentTests(TestCase):
         self.assertEqual(response.status_code, 201, response.json())
         booking = Booking.objects.get(id=response.json()["id"])
         self.assertEqual(booking.total_amount, calculate_booking_total(self.listing.price_per_year))
-        self.assertEqual(calculate_administration_fee_vat(self.listing.price_per_year), Decimal("9000.00"))
-        self.assertEqual(response.json()["total_amount"], 1389000.0)
-        self.assertEqual(response.json()["remaining_amount"], 1389000.0)
+        self.assertEqual(calculate_administration_fee_vat(self.listing.price_per_year), Decimal("11250.00"))
+        self.assertEqual(response.json()["total_amount"], 1421250.0)
+        self.assertEqual(response.json()["remaining_amount"], 1421250.0)
+
+    def test_booking_create_reuses_viewing_only_booking(self):
+        booking = Booking.objects.create(
+            tenant=self.tenant,
+            listing=self.listing,
+            start_date=date(2026, 6, 19),
+            end_date=date(2027, 6, 19),
+            status=Booking.Status.PENDING,
+            total_amount=None,
+        )
+
+        response = self.client.post(
+            "/api/v1/bookings",
+            {
+                "listing_id": str(self.listing.id),
+                "start_date": "2026-08-01",
+                "end_date": "2027-08-01",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.json())
+        self.assertEqual(response.json()["id"], str(booking.id))
+        self.assertTrue(response.json()["rental_process_started"])
+        booking.refresh_from_db()
+        self.assertEqual(booking.start_date, date(2026, 8, 1))
+        self.assertEqual(booking.end_date, date(2027, 8, 1))
+        self.assertEqual(booking.total_amount, calculate_booking_total(self.listing.price_per_year))
+        self.assertEqual(Booking.objects.filter(tenant=self.tenant, listing=self.listing).count(), 1)
+
+    def test_payment_rejected_for_viewing_only_booking(self):
+        booking = Booking.objects.create(
+            tenant=self.tenant,
+            listing=self.listing,
+            start_date=date(2026, 6, 19),
+            end_date=date(2027, 6, 19),
+            status=Booking.Status.PENDING,
+            total_amount=None,
+        )
+
+        response = self.client.post(
+            "/api/v1/payments",
+            {
+                "booking_id": str(booking.id),
+                "amount": "100000.00",
+                "payment_method": "bank",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400, response.json())
+        self.assertFalse(Payment.objects.filter(booking=booking).exists())
 
     def test_bronze_tenant_cannot_create_booking(self):
         tenant = AppUser.objects.create_user(
@@ -3607,7 +3900,7 @@ class BookingPaymentTests(TestCase):
         self.assertEqual(booking.paid_amount, Decimal("0.00"))
         booking_response = self.client.get(f"/api/v1/bookings/listing/{self.listing.id}")
         self.assertEqual(booking_response.status_code, 200, booking_response.json())
-        self.assertEqual(booking_response.json()["remaining_amount"], 1389000.0)
+        self.assertEqual(booking_response.json()["remaining_amount"], 1421250.0)
 
     def test_tenant_can_delete_cancelled_rental_payment_history(self):
         booking = Booking.objects.create(
@@ -4006,7 +4299,7 @@ class BookingPaymentTests(TestCase):
         settlements = PaymentSettlement.objects.filter(payment__transaction_id=final_payment_payload["payment"]["transaction_id"])
         self.assertEqual(
             str(settlements.get(purpose=PaymentSettlement.Purpose.OPERATIONS).amount),
-            "120000.00",
+            "150000.00",
         )
         self.assertEqual(
             str(settlements.get(purpose=PaymentSettlement.Purpose.CAUTION_FEE).amount),
@@ -4014,7 +4307,7 @@ class BookingPaymentTests(TestCase):
         )
         self.assertEqual(
             str(settlements.get(purpose=PaymentSettlement.Purpose.ADMINISTRATION_FEE_VAT).amount),
-            "9000.00",
+            "11250.00",
         )
         landlord_settlement = settlements.get(purpose=PaymentSettlement.Purpose.LANDLORD_RENT)
         self.assertEqual(str(landlord_settlement.amount), "1200000.00")
@@ -4908,6 +5201,560 @@ class BookingRentalProgressTests(TestCase):
         relisted_results = relisted_payload["results"] if isinstance(relisted_payload, dict) and "results" in relisted_payload else relisted_payload
         self.assertEqual(len(relisted_results), 1)
         self.assertEqual(relisted_results[0]["id"], str(self.listing.id))
+
+
+class TenancyAgreementTests(TestCase):
+    def setUp(self):
+        self.landlord = AppUser.objects.create_user(
+            email="agreement-landlord@example.com",
+            password="password-123",
+            name="Agreement Landlord",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+            mobile="+2348011111111",
+            nin_number="11111111111",
+        )
+        self.landlord.landlord_verification_type = AppUser.LandlordVerificationType.INDIVIDUAL
+        self.landlord.landlord_verification_profile = {
+            "first_name": "Agreement",
+            "last_name": "Landlord",
+            "residential_address": "12 Landlord Close, Ikeja, Lagos",
+            "contact_number": "+2348011111111",
+            "nin": "11111111111",
+        }
+        self.landlord.save(update_fields=["landlord_verification_type", "landlord_verification_profile"])
+        self.tenant = AppUser.objects.create_user(
+            email="agreement-tenant@example.com",
+            password="password-123",
+            name="Agreement Tenant",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+            mobile="+2348022222222",
+            nin_number="22222222222",
+            tenant_verification_profile={"residence_address": "5 Tenant Avenue, Yaba, Lagos"},
+        )
+        self.listing = Listing.objects.create(
+            landlord=self.landlord,
+            title="2 Bedroom Apartment in Lekki",
+            description="A listing used for tenancy agreement tests",
+            address="8 Coastal Road",
+            city="Lekki",
+            state="Lagos",
+            lga="Eti-Osa",
+            property_type="Apartment",
+            bedrooms=2,
+            bathrooms=2,
+            price_per_year=2500000,
+            caution_fee=250000,
+            service_charge=150000,
+            legal_fee=125000,
+            parking=True,
+        )
+        self.booking = Booking.objects.create(
+            tenant=self.tenant,
+            listing=self.listing,
+            start_date=date(2026, 7, 1),
+            end_date=date(2027, 7, 1),
+            status=Booking.Status.CONFIRMED,
+            total_amount=calculate_booking_total(self.listing.price_per_year),
+        )
+        self.api = APIClient()
+        self.api.force_authenticate(user=self.landlord)
+        self.url = f"/api/v1/bookings/{self.booking.id}/tenancy-agreement"
+
+    def test_get_returns_persisted_party_property_and_booking_data(self):
+        response = self.api.get(self.url)
+
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        booking_payload = payload["booking"]
+        self.assertEqual(booking_payload["id"], str(self.booking.id))
+        self.assertEqual(booking_payload["listing_title"], "2 Bedroom Apartment in Lekki")
+        self.assertEqual(booking_payload["tenant_name"], "Agreement Tenant")
+        self.assertEqual(booking_payload["tenant_email"], "agreement-tenant@example.com")
+        self.assertEqual(booking_payload["start_date"], "2026-07-01")
+        self.assertEqual(booking_payload["end_date"], "2027-07-01")
+        self.assertEqual(booking_payload["status"], "confirmed")
+        self.assertEqual(float(booking_payload["rent_amount"]), 2500000.0)
+
+        data = payload["data"]
+        self.assertEqual(data["landlord"]["name"], "Agreement Landlord")
+        self.assertEqual(data["landlord"]["address"], "12 Landlord Close, Ikeja, Lagos")
+        self.assertEqual(data["landlord"]["phone"], "+2348011111111")
+        self.assertNotIn("identificationNumber", data["landlord"])
+        self.assertFalse(data["landlord"]["isCompany"])
+        self.assertEqual(data["tenant"]["name"], "Agreement Tenant")
+        self.assertEqual(data["tenant"]["email"], "agreement-tenant@example.com")
+        self.assertEqual(data["tenant"]["address"], "5 Tenant Avenue, Yaba, Lagos")
+        self.assertEqual(data["tenant"]["phone"], "+2348022222222")
+        self.assertNotIn("identificationNumber", data["tenant"])
+        self.assertEqual(data["property"]["state"], "Lagos")
+        self.assertEqual(data["property"]["localGovernmentArea"], "Eti-Osa")
+        self.assertIn("8 Coastal Road", data["property"]["fullAddress"])
+        self.assertIn("Parking", data["property"]["ancillaryAreas"])
+        self.assertFalse(data["property"]["isExcludedFromLagosTenancyLaw"])
+
+        self.assertIsInstance(data["money"]["rentAmount"], int)
+        self.assertEqual(data["money"]["rentAmount"], 2500000)
+        self.assertEqual(data["money"]["securityDeposit"], 250000)
+        self.assertEqual(data["money"]["serviceCharge"], 150000)
+        self.assertNotIn("legalFee", data["money"])
+        self.assertEqual(data["money"]["totalInitialAmount"], 2900000)
+        self.assertEqual(data["money"]["rentAmountWords"], "Two Million Five Hundred Thousand Naira only")
+
+        self.assertEqual(data["tenancy"]["termValue"], 1)
+        self.assertEqual(data["tenancy"]["termUnit"], "year")
+        self.assertTrue(data["tenancy"]["isFixedTerm"])
+        self.assertFalse(data["tenancy"]["isCommercial"])
+        self.assertNotIn("useType", data["tenancy"])
+        self.assertIn("expires on 01 July 2027", data["termination"]["noticePeriodDescription"])
+        self.assertIn("without any requirement", data["termination"]["noticePeriodDescription"])
+
+        field_paths = {field["path"] for field in payload["fields"]}
+        self.assertIn("landlord.address", field_paths)
+        self.assertIn("money.securityDeposit", field_paths)
+        self.assertNotIn("tenancy.useType", field_paths)
+        self.assertFalse(any("identification" in path.lower() for path in field_paths))
+        self.assertFalse(any("legalFee" in path for path in field_paths))
+        self.assertEqual(payload["missing_fields"], [])
+        self.assertTrue(payload["can_generate"])
+        self.assertIsNone(payload["latest_agreement"])
+
+    def test_workspace_includes_free_and_lawyer_agreement_options(self):
+        response = self.api.get(self.url)
+
+        self.assertEqual(response.status_code, 200, response.json())
+        options = response.json()["agreement_options"]
+        self.assertEqual(options["free"]["amount"], 0)
+        self.assertTrue(options["free"]["landlord_pays"])
+        self.assertEqual(options["lawyer"]["fee_rate"], "0.05")
+        self.assertEqual(float(options["lawyer"]["amount"]), 125000.0)
+        self.assertTrue(options["lawyer"]["landlord_pays"])
+        self.assertIsNone(options["lawyer"]["payment"])
+
+        payment = ServicePayment.objects.create(
+            user=self.landlord,
+            booking=self.booking,
+            purpose=ServicePayment.Purpose.LAWYER_TENANCY,
+            amount=125000,
+            status=ServicePayment.Status.COMPLETED,
+            transaction_id="SVC-TEST-LAWYER",
+        )
+        second_response = self.api.get(self.url)
+        self.assertEqual(second_response.status_code, 200, second_response.json())
+        payment_payload = second_response.json()["agreement_options"]["lawyer"]["payment"]
+        self.assertEqual(payment_payload["id"], str(payment.id))
+        self.assertEqual(payment_payload["status"], "completed")
+
+    def test_tenant_allowed_and_unrelated_landlord_not_found(self):
+        tenant_client = APIClient()
+        tenant_client.force_authenticate(user=self.tenant)
+        self.assertEqual(tenant_client.get(self.url).status_code, 200)
+
+        other_landlord = AppUser.objects.create_user(
+            email="other-landlord@example.com",
+            password="password-123",
+            name="Other Landlord",
+            role=AppUser.Role.LANDLORD,
+        )
+        other_client = APIClient()
+        other_client.force_authenticate(user=other_landlord)
+        self.assertEqual(other_client.get(self.url).status_code, 404)
+
+    def test_post_with_blank_required_field_returns_dotted_errors(self):
+        response = self.api.post(self.url, {"data": {"landlord": {"address": ""}}}, format="json")
+
+        self.assertEqual(response.status_code, 400)
+        payload = response.json()
+        self.assertEqual(payload["errors"]["landlord.address"], "This field is required.")
+        self.assertIn("landlord.address", payload["missing_fields"])
+        self.assertFalse(TenancyAgreement.objects.filter(booking=self.booking).exists())
+
+    def test_post_with_non_object_data_is_rejected(self):
+        response = self.api.post(self.url, {"data": "not-an-object"}, format="json")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["data"], "Agreement data must be an object.")
+
+    def test_successful_post_persists_hashed_immutable_review_version(self):
+        response = self.api.post(
+            self.url,
+            {
+                "data": {
+                    "landlord": {"name": "Submitted Fake Name", "address": "99 Landlord Way, Lagos"},
+                    "money": {"rentAmount": 1, "securityDeposit": 300000},
+                    "handover": {"keysDescription": "Two sets of keys and one access card"},
+                }
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.json())
+        payload = response.json()
+        record = TenancyAgreement.objects.get(booking=self.booking)
+        self.assertEqual(record.version, 1)
+        self.assertEqual(record.status, TenancyAgreement.Status.REVIEW)
+        self.assertEqual(record.generated_by, self.landlord)
+        self.assertIsNone(record.finalised_at)
+        self.assertEqual(payload["latest_agreement"]["id"], str(record.id))
+        self.assertEqual(payload["latest_agreement"]["version"], 1)
+
+        rendered = record.rendered_content
+        self.assertTrue(rendered.startswith("# TENANCY AGREEMENT"))
+        self.assertIn("Agreement Landlord", rendered)
+        self.assertNotIn("Submitted Fake Name", rendered)
+        self.assertIn("5 Tenant Avenue, Yaba, Lagos", rendered)
+        self.assertIn("8 Coastal Road", rendered)
+        self.assertIn("99 Landlord Way, Lagos", rendered)
+        self.assertIn("Two sets of keys and one access card", rendered)
+        self.assertNotIn("{{", rendered)
+        self.assertNotIn("}}", rendered)
+        self.assertIn("used solely as a private residence", rendered)
+        self.assertIn("# 30. SCHEDULE 2 — PAYMENT SUMMARY", rendered)
+        self.assertIn("# 31. EXECUTION", rendered)
+        self.assertNotIn("SCHEDULE 2 — COMMERCIAL TENANCY DETAILS", rendered)
+        self.assertNotIn("lawful business or activity described above", rendered)
+        self.assertNotIn("signage", rendered)
+        self.assertNotIn("does not apply", rendered)
+        self.assertNotIn("tenancy.useType", rendered)
+        self.assertNotIn("11111111111", rendered)
+        self.assertNotIn("22222222222", rendered)
+
+        expected_hash = hashlib.sha256(rendered.encode("utf-8")).hexdigest()
+        self.assertEqual(record.document_hash, expected_hash)
+        self.assertEqual(record.agreement_data["agreement"]["documentHash"], expected_hash)
+        self.assertEqual(record.agreement_data["landlord"]["name"], "Agreement Landlord")
+        self.assertEqual(record.agreement_data["money"]["rentAmount"], 2500000)
+        self.assertEqual(record.agreement_data["money"]["securityDeposit"], 300000)
+        self.assertEqual(record.agreement_data["money"]["totalInitialAmount"], 2950000)
+
+    def test_second_post_creates_new_version_and_preserves_first(self):
+        first_response = self.api.post(self.url, {"data": {}}, format="json")
+        self.assertEqual(first_response.status_code, 201, first_response.json())
+        first = TenancyAgreement.objects.get(booking=self.booking, version=1)
+        first_hash = first.document_hash
+        first_rendered = first.rendered_content
+
+        second_response = self.api.post(
+            self.url,
+            {"data": {"handover": {"keysDescription": "One key set"}}},
+            format="json",
+        )
+        self.assertEqual(second_response.status_code, 201, second_response.json())
+        self.assertEqual(second_response.json()["latest_agreement"]["version"], 2)
+        self.assertEqual(TenancyAgreement.objects.filter(booking=self.booking).count(), 2)
+
+        first.refresh_from_db()
+        self.assertEqual(first.document_hash, first_hash)
+        self.assertEqual(first.rendered_content, first_rendered)
+        self.assertEqual(
+            TenancyAgreement.objects.get(booking=self.booking, version=2).status,
+            TenancyAgreement.Status.REVIEW,
+        )
+
+    def _create_commercial_booking(self):
+        office_listing = Listing.objects.create(
+            landlord=self.landlord,
+            title="Lekki Office Suite",
+            description="Office space in Lekki",
+            address="20 Office Close",
+            city="Lekki",
+            state="Lagos",
+            lga="Eti-Osa",
+            property_type="Office",
+            bedrooms=0,
+            bathrooms=1,
+            price_per_year=8000000,
+        )
+        return Booking.objects.create(
+            tenant=self.tenant,
+            listing=office_listing,
+            start_date=date(2026, 8, 1),
+            end_date=date(2027, 8, 1),
+            status=Booking.Status.CONFIRMED,
+            total_amount=calculate_booking_total(office_listing.price_per_year),
+        )
+
+    def test_commercial_use_requires_business_description(self):
+        office_booking = self._create_commercial_booking()
+        office_url = f"/api/v1/bookings/{office_booking.id}/tenancy-agreement"
+
+        get_response = self.api.get(office_url)
+        self.assertEqual(get_response.status_code, 200, get_response.json())
+        self.assertTrue(get_response.json()["data"]["tenancy"]["isCommercial"])
+        self.assertNotIn("useType", get_response.json()["data"]["tenancy"])
+
+        response = self.api.post(office_url, {"data": {}}, format="json")
+
+        self.assertEqual(response.status_code, 400)
+        payload = response.json()
+        self.assertEqual(payload["errors"]["commercial.businessDescription"], "This field is required.")
+        self.assertIn("commercial.businessDescription", payload["missing_fields"])
+        self.assertFalse(TenancyAgreement.objects.filter(booking=office_booking).exists())
+
+    def test_commercial_generation_includes_commercial_schedule(self):
+        office_booking = self._create_commercial_booking()
+        office_url = f"/api/v1/bookings/{office_booking.id}/tenancy-agreement"
+
+        response = self.api.post(
+            office_url,
+            {"data": {"commercial": {"businessDescription": "Software consultancy office"}}},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.json())
+        rendered = TenancyAgreement.objects.get(booking=office_booking).rendered_content
+        self.assertIn("lawful business or activity described above", rendered)
+        self.assertIn("# 30. SCHEDULE 2 — COMMERCIAL TENANCY DETAILS", rendered)
+        self.assertIn("# 31. SCHEDULE 3 — PAYMENT SUMMARY", rendered)
+        self.assertIn("# 32. EXECUTION", rendered)
+        self.assertIn("Software consultancy office", rendered)
+        self.assertNotIn("private residence", rendered)
+        self.assertNotIn("does not apply", rendered)
+        self.assertNotIn("tenancy.useType", rendered)
+        self.assertNotIn("11111111111", rendered)
+        self.assertNotIn("22222222222", rendered)
+
+    def test_lagos_excluded_area_sets_exclusion_notice(self):
+        ikoyi_listing = Listing.objects.create(
+            landlord=self.landlord,
+            title="Ikoyi Office Suite",
+            description="Office suite in Ikoyi",
+            address="4 Ikoyi Crescent",
+            city="Ikoyi",
+            state="Lagos",
+            lga="Eti-Osa",
+            property_type="Office",
+            bedrooms=0,
+            bathrooms=1,
+            price_per_year=8000000,
+        )
+        ikoyi_booking = Booking.objects.create(
+            tenant=self.tenant,
+            listing=ikoyi_listing,
+            start_date=date(2026, 8, 1),
+            end_date=date(2027, 8, 1),
+            status=Booking.Status.CONFIRMED,
+            total_amount=calculate_booking_total(ikoyi_listing.price_per_year),
+        )
+
+        response = self.api.get(f"/api/v1/bookings/{ikoyi_booking.id}/tenancy-agreement")
+
+        self.assertEqual(response.status_code, 200, response.json())
+        data = response.json()["data"]
+        self.assertTrue(data["property"]["isExcludedFromLagosTenancyLaw"])
+        self.assertTrue(data["tenancy"]["isCommercial"])
+        self.assertNotIn("useType", data["tenancy"])
+        notice = data["termination"]["noticePeriodDescription"]
+        self.assertIn("excluded from the Lagos State Tenancy Law 2011", notice)
+        self.assertIn("other applicable law", notice)
+
+    def test_non_lagos_property_with_excluded_area_address_is_not_excluded(self):
+        rivers_listing = Listing.objects.create(
+            landlord=self.landlord,
+            title="Port Harcourt Duplex",
+            description="A duplex in Port Harcourt",
+            address="10 Victoria Island Road",
+            city="Port Harcourt",
+            state="Rivers",
+            lga="Port Harcourt",
+            property_type="House",
+            bedrooms=3,
+            bathrooms=3,
+            price_per_year=3000000,
+        )
+        rivers_booking = Booking.objects.create(
+            tenant=self.tenant,
+            listing=rivers_listing,
+            start_date=date(2026, 9, 1),
+            end_date=date(2027, 9, 1),
+            status=Booking.Status.CONFIRMED,
+            total_amount=calculate_booking_total(rivers_listing.price_per_year),
+        )
+
+        response = self.api.get(f"/api/v1/bookings/{rivers_booking.id}/tenancy-agreement")
+
+        self.assertEqual(response.status_code, 200, response.json())
+        data = response.json()["data"]
+        self.assertFalse(data["property"]["isExcludedFromLagosTenancyLaw"])
+        self.assertNotIn("excluded from the Lagos State Tenancy Law 2011", data["termination"]["noticePeriodDescription"])
+
+    def test_monthly_frequency_derives_period_rent_and_first_period(self):
+        response = self.api.post(
+            self.url,
+            {"data": {"payments": {"rentFrequency": "monthly"}}},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.json())
+        record = TenancyAgreement.objects.get(booking=self.booking)
+        self.assertEqual(record.agreement_data["payments"]["rentFrequency"], "monthly")
+        self.assertEqual(record.agreement_data["money"]["rentAmount"], 208333.33)
+        self.assertEqual(record.agreement_data["money"]["totalInitialAmount"], 608333.33)
+        self.assertEqual(record.agreement_data["payments"]["firstRentPeriod"], "01 July 2026 to 01 August 2026")
+        self.assertTrue(record.agreement_data["money"]["rentAmountWords"].endswith("Kobo only"))
+        self.assertIn("208,333.33", record.rendered_content)
+
+    def test_non_finite_numeric_value_is_rejected(self):
+        response = self.api.post(
+            self.url,
+            {"data": {"money": {"securityDeposit": "Infinity"}}},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["errors"]["money.securityDeposit"], "Enter a valid number.")
+        self.assertFalse(TenancyAgreement.objects.filter(booking=self.booking).exists())
+
+    def test_rendered_output_sanitizes_submitted_template_values(self):
+        response = self.api.post(
+            self.url,
+            {"data": {"handover": {"existingDefects": "<script>alert(1)</script> {{bad}} [click](javascript:alert(1))"}}},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.json())
+        rendered = TenancyAgreement.objects.get(booking=self.booking).rendered_content
+        self.assertNotIn("<script>", rendered)
+        self.assertNotIn("{{", rendered)
+        self.assertNotIn("}}", rendered)
+        self.assertNotIn("](javascript:", rendered)
+
+    def test_cancelled_booking_returns_workspace_but_cannot_generate(self):
+        self.booking.status = Booking.Status.CANCELLED
+        self.booking.save(update_fields=["status", "updated_at"])
+
+        get_response = self.api.get(self.url)
+        self.assertEqual(get_response.status_code, 200, get_response.json())
+        self.assertFalse(get_response.json()["can_generate"])
+
+        post_response = self.api.post(self.url, {"data": {}}, format="json")
+        self.assertEqual(post_response.status_code, 400)
+        self.assertFalse(TenancyAgreement.objects.filter(booking=self.booking).exists())
+
+    def _generate_agreement(self):
+        response = self.api.post(self.url, {"data": {}}, format="json")
+        self.assertEqual(response.status_code, 201, response.json())
+        return TenancyAgreement.objects.get(booking=self.booking)
+
+    def test_tenant_can_view_workspace_for_own_booking(self):
+        self._generate_agreement()
+        self.api.force_authenticate(user=self.tenant)
+        response = self.api.get(self.url)
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        self.assertEqual(payload["viewer_role"], "tenant")
+        self.assertIsNone(payload["agreement_options"])
+        self.assertFalse(payload["can_generate"])
+        self.assertEqual(payload["fields"], [])
+
+    def test_tenant_cannot_generate_agreement(self):
+        self.api.force_authenticate(user=self.tenant)
+        response = self.api.post(self.url, {"data": {}}, format="json")
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(TenancyAgreement.objects.filter(booking=self.booking).exists())
+
+    def test_landlord_signing_records_signature_and_completes_progress_step(self):
+        self._generate_agreement()
+        response = self.api.post(
+            f"{self.url}/sign",
+            {"signatory_name": "Agreement Landlord", "signatory_capacity": "Landlord"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        self.assertTrue(payload["signed_by_landlord"])
+        self.assertFalse(payload["signed_by_tenant"])
+        self.assertFalse(payload["can_sign"])
+        signatures = payload["data"]["signatures"]
+        self.assertTrue(signatures["landlord"]["signatureId"])
+        self.assertEqual(signatures["landlord"]["signatoryName"], "Agreement Landlord")
+        self.assertTrue(signatures["landlord"]["signatureId"])
+
+        agreement = TenancyAgreement.objects.get(booking=self.booking)
+        self.assertEqual(agreement.agreement_data["signatures"]["landlord"]["signatureId"], signatures["landlord"]["signatureId"])
+
+        self.booking.refresh_from_db()
+        progress = self.booking.landlord_rental_progress
+        self.assertIn("tenancy_agreement_signed", progress)
+        self.assertNotIn("tenancy_agreement_signed", self.booking.tenant_rental_progress)
+
+    def test_tenant_signing_records_signature_and_completes_tenant_progress_step(self):
+        self._generate_agreement()
+        self.api.force_authenticate(user=self.tenant)
+        response = self.api.post(
+            f"{self.url}/sign",
+            {"signatory_name": "Agreement Tenant"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        self.assertTrue(payload["signed_by_tenant"])
+        self.assertFalse(payload["signed_by_landlord"])
+
+        self.booking.refresh_from_db()
+        self.assertIn("tenancy_agreement_signed", self.booking.tenant_rental_progress)
+        self.assertNotIn("tenancy_agreement_signed", self.booking.landlord_rental_progress)
+
+    def test_both_parties_can_sign_same_version(self):
+        self._generate_agreement()
+        first = self.api.post(f"{self.url}/sign", {"signatory_name": "Agreement Landlord"}, format="json")
+        self.assertEqual(first.status_code, 200, first.json())
+        self.api.force_authenticate(user=self.tenant)
+        second = self.api.post(f"{self.url}/sign", {"signatory_name": "Agreement Tenant"}, format="json")
+        self.assertEqual(second.status_code, 200, second.json())
+        payload = second.json()
+        self.assertTrue(payload["signed_by_landlord"])
+        self.assertTrue(payload["signed_by_tenant"])
+        agreement = TenancyAgreement.objects.get(booking=self.booking)
+        self.assertEqual(agreement.version, 1)
+        self.assertEqual(agreement.status, TenancyAgreement.Status.FINAL)
+        self.assertTrue(agreement.agreement_data["signatures"]["landlord"]["signatureId"])
+        self.assertTrue(agreement.agreement_data["signatures"]["tenant"]["signatureId"])
+
+    def test_duplicate_signature_attempt_is_rejected(self):
+        self._generate_agreement()
+        first = self.api.post(f"{self.url}/sign", {"signatory_name": "Agreement Landlord"}, format="json")
+        self.assertEqual(first.status_code, 200, first.json())
+        second = self.api.post(f"{self.url}/sign", {"signatory_name": "Agreement Landlord"}, format="json")
+        self.assertEqual(second.status_code, 400)
+
+    def test_signing_requires_generated_agreement(self):
+        response = self.api.post(f"{self.url}/sign", {"signatory_name": "Agreement Landlord"}, format="json")
+        self.assertEqual(response.status_code, 400)
+
+    def test_signing_rejects_unrelated_users_and_missing_name(self):
+        self._generate_agreement()
+        outsider = AppUser.objects.create_user(
+            email="agreement-outsider@example.com",
+            password="password-123",
+            name="Outsider",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        self.api.force_authenticate(user=outsider)
+        response = self.api.post(f"{self.url}/sign", {"signatory_name": "Outsider"}, format="json")
+        self.assertEqual(response.status_code, 404)
+
+        self.api.force_authenticate(user=self.landlord)
+        missing_name = self.api.post(f"{self.url}/sign", {"signatory_name": ""}, format="json")
+        self.assertEqual(missing_name.status_code, 400)
+
+    def test_counterpart_progress_mapping_uses_explicit_step_keys(self):
+        """Landlord 'deposit notification' should map to tenant 'tenant_paid_deposit', not positional index."""
+        from core.models import build_booking_progress_data, complete_booking_progress_step
+
+        complete_booking_progress_step(self.booking, "tenant", "tenant_paid_deposit")
+        landlord_data = build_booking_progress_data(self.booking, AppUser.Role.LANDLORD)
+        steps = {step["key"]: step for step in landlord_data["steps"]}
+        self.assertTrue(steps["deposit_payment_notification_received"]["counterpart_completed"])
+        self.assertEqual(steps["deposit_payment_notification_received"]["counterpart_step_key"], "tenant_paid_deposit")
+
+        # Choice counterpart: tenant sees landlord's selection on the transfer question.
+        complete_booking_progress_step(self.booking, "landlord", "rentdirect_transfer_to_landlord", selected_value="no")
+        tenant_data = build_booking_progress_data(self.booking, AppUser.Role.TENANT)
+        tenant_steps = {step["key"]: step for step in tenant_data["steps"]}
+        self.assertEqual(tenant_steps["rentdirect_transfer_to_landlord"]["counterpart_selected_value"], "no")
 
 
 class TenantScreeningSummaryTests(TestCase):
@@ -7284,6 +8131,95 @@ class MessageEnquiryTests(TestCase):
         self.assertEqual([item["content"] for item in payload], ["Tenant enquiry", "Landlord reply"])
         self.assertEqual(payload[1]["id"], str(reply.id))
 
+    def _viewing_booked_setup(self, email_prefix="viewing-booked"):
+        landlord = AppUser.objects.create_user(
+            email=f"{email_prefix}-landlord@example.com",
+            password="password-123",
+            name="Viewing Landlord",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+        )
+        tenant = self.create_verified_tenant(
+            f"{email_prefix}-tenant@example.com",
+            name="Viewing Tenant",
+        )
+        create_active_subscription(tenant, SubscriptionPayment.PlanCode.SILVER)
+        listing = Listing.objects.create(
+            landlord=landlord,
+            title="Viewing Booked Listing",
+            description="Listing used for viewing booked tests",
+            address="7 Viewing Street",
+            city="Lagos",
+            property_type="Apartment",
+            bedrooms=2,
+            bathrooms=2,
+            price_per_year=1500000,
+            status=Listing.Status.AVAILABLE,
+        )
+        return landlord, tenant, listing
+
+    def test_tenant_can_mark_viewing_booked_after_messaging_landlord(self):
+        landlord, tenant, listing = self._viewing_booked_setup()
+        Message.objects.create(
+            sender=tenant,
+            receiver=landlord,
+            listing=listing,
+            content="Viewing Availability: Saturday afternoon\n\nI would like to arrange a viewing.",
+        )
+
+        client = APIClient()
+        client.force_authenticate(tenant)
+        response = client.post(
+            "/api/v1/messages/viewing-booked",
+            {"listing_id": str(listing.id)},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.json())
+        booking = Booking.objects.get(tenant=tenant, listing=listing)
+        self.assertIsNone(booking.total_amount)
+        self.assertIn("viewing_appointment_booked", booking.tenant_rental_progress)
+        self.assertFalse(response.json()["rental_process_started"])
+
+        landlord_client = APIClient()
+        landlord_client.force_authenticate(landlord)
+        bookings_response = landlord_client.get("/api/v1/bookings")
+        self.assertEqual(bookings_response.status_code, 200, bookings_response.json())
+        results = bookings_response.json()
+        if isinstance(results, dict):
+            results = results.get("results", [])
+        booking_payload = next(item for item in results if item["id"] == str(booking.id))
+        self.assertIsNotNone(booking_payload["tenant_screening_summary"])
+
+        repeat_response = client.post(
+            "/api/v1/messages/viewing-booked",
+            {"listing_id": str(listing.id)},
+            format="json",
+        )
+        self.assertEqual(repeat_response.status_code, 200, repeat_response.json())
+        self.assertEqual(repeat_response.json()["id"], str(booking.id))
+        self.assertEqual(Booking.objects.filter(tenant=tenant, listing=listing).count(), 1)
+
+    def test_tenant_cannot_mark_viewing_booked_without_tenant_message(self):
+        landlord, tenant, listing = self._viewing_booked_setup(email_prefix="viewing-no-message")
+        Message.objects.create(
+            sender=landlord,
+            receiver=tenant,
+            listing=listing,
+            content="Hello, let me know if you have questions about the listing.",
+        )
+
+        client = APIClient()
+        client.force_authenticate(tenant)
+        response = client.post(
+            "/api/v1/messages/viewing-booked",
+            {"listing_id": str(listing.id)},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 403, response.json())
+        self.assertFalse(Booking.objects.filter(tenant=tenant, listing=listing).exists())
+
 
 class TenantPublicProfileTests(TestCase):
     def test_public_tenant_profile_exposes_screening_summary_without_private_contacts(self):
@@ -7693,3 +8629,1103 @@ class RenewalReminderCommandTests(TestCase):
         self.assertIsNotNone(booking.renewal_reminder_sent_at)
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn("tenancy renewal reminder", mail.outbox[0].subject.lower())
+
+
+def build_complete_inspection_responses(**overrides):
+    responses = {}
+    for section in INSPECTION_CHECKLIST_SCHEMA["sections"]:
+        for field in section["fields"]:
+            key = field["key"]
+            field_type = field["type"]
+            options = [option["value"] for option in field.get("options", [])]
+            if field_type == "select":
+                responses[key] = options[0]
+            elif field_type == "multiselect":
+                neutral = next(
+                    (candidate for candidate in ("none_observed", "none") if candidate in options),
+                    options[0] if options else None,
+                )
+                responses[key] = [neutral] if neutral else []
+            elif field_type == "number":
+                responses[key] = 6.5
+            elif field_type == "checkbox":
+                responses[key] = True
+            else:
+                responses[key] = "Checked on site."
+    responses.update(overrides)
+    return responses
+
+
+class ServicePaymentTests(TestCase):
+    def setUp(self):
+        self.landlord = AppUser.objects.create_user(
+            email="svc-landlord@example.com",
+            password="password-123",
+            name="Service Landlord",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+        )
+        self.other_landlord = AppUser.objects.create_user(
+            email="svc-other-landlord@example.com",
+            password="password-123",
+            name="Other Landlord",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+        )
+        self.tenant = AppUser.objects.create_user(
+            email="svc-tenant@example.com",
+            password="password-123",
+            name="Service Tenant",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        self.agent = AppUser.objects.create_user(
+            email="svc-agent@example.com",
+            password="password-123",
+            name="Service Agent",
+            role=AppUser.Role.AGENT,
+            email_verified=True,
+        )
+        self.listing = Listing.objects.create(
+            landlord=self.landlord,
+            title="Service Listing",
+            description="Listing used for service payment tests",
+            address="10 Service Road",
+            city="Lagos",
+            state="Lagos",
+            property_type="Apartment",
+            bedrooms=2,
+            bathrooms=2,
+            price_per_year=2500000,
+        )
+        self.booking = Booking.objects.create(
+            tenant=self.tenant,
+            listing=self.listing,
+            start_date=date(2026, 7, 1),
+            end_date=date(2027, 7, 1),
+            status=Booking.Status.CONFIRMED,
+            total_amount=calculate_booking_total(self.listing.price_per_year),
+        )
+        self.client = APIClient()
+
+    def test_agent_request_creates_500_payment_without_booking_or_subscription(self):
+        self.client.force_authenticate(user=self.agent)
+        response = self.client.post(
+            "/api/v1/service-payments/request",
+            {"purpose": "agent_verification"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.json())
+        payload = response.json()
+        self.assertEqual(payload["purpose"], "agent_verification")
+        self.assertEqual(payload["status"], "pending")
+        self.assertEqual(Decimal(payload["amount"]), Decimal("500.00"))
+        self.assertIsNone(payload["booking_id"])
+        self.assertEqual(payload["return_path"], "/agents/verification")
+
+        payment = ServicePayment.objects.get(id=payload["id"])
+        self.assertEqual(payment.amount, Decimal("500.00"))
+        self.assertIsNone(payment.booking)
+        self.assertFalse(SubscriptionPayment.objects.filter(user=self.agent).exists())
+
+        self.client.force_authenticate(user=self.tenant)
+        forbidden = self.client.post(
+            "/api/v1/service-payments/request",
+            {"purpose": "agent_verification"},
+            format="json",
+        )
+        self.assertEqual(forbidden.status_code, 403)
+
+    def test_lawyer_request_creates_five_percent_for_booking_landlord(self):
+        original_total = self.booking.total_amount
+        self.client.force_authenticate(user=self.landlord)
+        response = self.client.post(
+            "/api/v1/service-payments/request",
+            {"purpose": "lawyer_tenancy", "booking_id": str(self.booking.id)},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.json())
+        payload = response.json()
+        self.assertEqual(payload["purpose"], "lawyer_tenancy")
+        self.assertEqual(Decimal(payload["amount"]), Decimal("125000.00"))
+        self.assertEqual(payload["booking_id"], str(self.booking.id))
+        self.assertEqual(
+            payload["return_path"], f"/landlord/tenancy-agreements/{self.booking.id}"
+        )
+
+        self.booking.refresh_from_db()
+        self.assertEqual(self.booking.total_amount, original_total)
+
+        self.client.force_authenticate(user=self.tenant)
+        tenant_response = self.client.post(
+            "/api/v1/service-payments/request",
+            {"purpose": "lawyer_tenancy", "booking_id": str(self.booking.id)},
+            format="json",
+        )
+        self.assertEqual(tenant_response.status_code, 403)
+
+        self.client.force_authenticate(user=self.other_landlord)
+        other_response = self.client.post(
+            "/api/v1/service-payments/request",
+            {"purpose": "lawyer_tenancy", "booking_id": str(self.booking.id)},
+            format="json",
+        )
+        self.assertEqual(other_response.status_code, 403)
+
+    def test_lawyer_request_rejected_for_cancelled_booking(self):
+        self.booking.status = Booking.Status.CANCELLED
+        self.booking.save(update_fields=["status", "updated_at"])
+
+        self.client.force_authenticate(user=self.landlord)
+        response = self.client.post(
+            "/api/v1/service-payments/request",
+            {"purpose": "lawyer_tenancy", "booking_id": str(self.booking.id)},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(
+            ServicePayment.objects.filter(purpose=ServicePayment.Purpose.LAWYER_TENANCY).exists()
+        )
+
+    def test_pending_request_is_reused_and_completed_request_returned(self):
+        self.client.force_authenticate(user=self.agent)
+        first = self.client.post(
+            "/api/v1/service-payments/request",
+            {"purpose": "agent_verification"},
+            format="json",
+        )
+        self.assertEqual(first.status_code, 201, first.json())
+
+        second = self.client.post(
+            "/api/v1/service-payments/request",
+            {"purpose": "agent_verification"},
+            format="json",
+        )
+        self.assertEqual(second.status_code, 200, second.json())
+        self.assertEqual(second.json()["id"], first.json()["id"])
+        self.assertEqual(ServicePayment.objects.filter(user=self.agent).count(), 1)
+
+        payment = ServicePayment.objects.get(id=first.json()["id"])
+        payment.status = ServicePayment.Status.COMPLETED
+        payment.payment_date = timezone.now()
+        payment.save(update_fields=["status", "payment_date", "updated_at"])
+
+        third = self.client.post(
+            "/api/v1/service-payments/request",
+            {"purpose": "agent_verification"},
+            format="json",
+        )
+        self.assertEqual(third.status_code, 200, third.json())
+        self.assertEqual(third.json()["id"], str(payment.id))
+        self.assertEqual(third.json()["status"], "completed")
+        self.assertEqual(ServicePayment.objects.filter(user=self.agent).count(), 1)
+
+    @override_settings(
+        FLUTTERWAVE_PUBLIC_KEY="test-public-key",
+        FLUTTERWAVE_SECRET_KEY="test-secret-key",
+        WEB_PUBLIC_URL="http://localhost:5173",
+        FLUTTERWAVE_WEBHOOK_URL="https://api.example.com/api/v1/payments/webhook/flutterwave",
+    )
+    def test_checkout_payload_contains_metadata_payer_and_amount(self):
+        payment = ServicePayment.objects.create(
+            user=self.agent,
+            purpose=ServicePayment.Purpose.AGENT_VERIFICATION,
+            amount=Decimal("500.00"),
+            transaction_id="SVCTESTCHECKOUT01",
+        )
+        self.client.force_authenticate(user=self.agent)
+        response = self.client.post(
+            f"/api/v1/service-payments/{payment.id}/flutterwave/checkout", {}, format="json"
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        checkout = response.json()["checkout"]
+        self.assertEqual(checkout["checkout_mode"], "inline")
+        flutterwave_payload = checkout["flutterwave"]
+        self.assertEqual(flutterwave_payload["tx_ref"], payment.transaction_id)
+        self.assertEqual(flutterwave_payload["amount"], 500.0)
+        self.assertEqual(flutterwave_payload["currency"], "NGN")
+        self.assertEqual(flutterwave_payload["customer"]["email"], self.agent.email)
+        self.assertEqual(flutterwave_payload["meta"]["service_payment_id"], str(payment.id))
+        self.assertEqual(flutterwave_payload["meta"]["purpose"], "agent_verification")
+        self.assertEqual(flutterwave_payload["meta"]["customer_type"], "agent")
+        self.assertIn(
+            f"/service-payments/{payment.id}", flutterwave_payload["redirect_url"]
+        )
+        self.assertIn("webhook_url", flutterwave_payload)
+
+    @override_settings(
+        FLUTTERWAVE_PUBLIC_KEY="test-public-key",
+        FLUTTERWAVE_SECRET_KEY="test-secret-key",
+        WEB_PUBLIC_URL="http://localhost:5173",
+    )
+    @patch("core.views.query_transaction")
+    def test_verify_rejects_mismatches_and_successful_payload_completes(self, query_transaction_mock):
+        payment = ServicePayment.objects.create(
+            user=self.agent,
+            purpose=ServicePayment.Purpose.AGENT_VERIFICATION,
+            amount=Decimal("500.00"),
+            transaction_id="SVCTESTVERIFY01",
+        )
+        self.client.force_authenticate(user=self.agent)
+        verify_url = "/api/v1/service-payments/flutterwave/verify"
+
+        query_transaction_mock.return_value = {
+            "status": "success",
+            "data": {
+                "id": "9001",
+                "tx_ref": "OTHER_REFERENCE",
+                "status": "successful",
+                "amount": "500.00",
+                "currency": "NGN",
+                "customer": {"email": self.agent.email},
+            },
+        }
+        response = self.client.get(
+            verify_url, {"reference": payment.transaction_id, "transaction_id": "9001"}
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, ServicePayment.Status.FAILED)
+
+        payment.status = ServicePayment.Status.PENDING
+        payment.save(update_fields=["status", "updated_at"])
+        query_transaction_mock.return_value = {
+            "status": "success",
+            "data": {
+                "id": "9001",
+                "tx_ref": payment.transaction_id,
+                "status": "successful",
+                "amount": "9000.00",
+                "currency": "NGN",
+                "customer": {"email": self.agent.email},
+            },
+        }
+        response = self.client.get(
+            verify_url, {"reference": payment.transaction_id, "transaction_id": "9001"}
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, ServicePayment.Status.FAILED)
+
+        payment.status = ServicePayment.Status.PENDING
+        payment.save(update_fields=["status", "updated_at"])
+        query_transaction_mock.return_value = {
+            "status": "success",
+            "data": {
+                "id": "9001",
+                "tx_ref": payment.transaction_id,
+                "status": "successful",
+                "amount": "500.00",
+                "currency": "NGN",
+                "customer": {"email": self.agent.email},
+            },
+        }
+        response = self.client.get(
+            verify_url, {"reference": payment.transaction_id, "transaction_id": "9001"}
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, ServicePayment.Status.COMPLETED)
+        self.assertIsNotNone(payment.payment_date)
+
+    @override_settings(
+        ENFORCE_FLUTTERWAVE_WEBHOOK_SIGNATURE=False,
+        FLUTTERWAVE_WEBHOOK_SECRET_HASH="",
+    )
+    def test_webhook_resolves_and_completes_service_payment(self):
+        payment = ServicePayment.objects.create(
+            user=self.agent,
+            purpose=ServicePayment.Purpose.AGENT_VERIFICATION,
+            amount=Decimal("500.00"),
+            transaction_id="SVCTESTWEBHOOK01",
+        )
+
+        response = self.client.post(
+            "/api/v1/payments/webhook/flutterwave",
+            {
+                "type": "charge.completed",
+                "data": {
+                    "tx_ref": payment.transaction_id,
+                    "reference": payment.transaction_id,
+                    "status": "successful",
+                    "amount": 500.0,
+                    "currency": "NGN",
+                    "customer": {"email": self.agent.email},
+                },
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, ServicePayment.Status.COMPLETED)
+        self.assertIsNotNone(payment.payment_date)
+        self.assertIsNotNone(payment.webhook_data)
+
+
+class AgentFeatureTests(TestCase):
+    def setUp(self):
+        self.landlord = AppUser.objects.create_user(
+            email="agent-feature-landlord@example.com",
+            password="password-123",
+            name="Inspection Landlord",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+        )
+        self.agent = AppUser.objects.create_user(
+            email="agent-feature-agent@example.com",
+            password="password-123",
+            name="Inspection Agent",
+            role=AppUser.Role.AGENT,
+            email_verified=True,
+        )
+        self.other_agent = AppUser.objects.create_user(
+            email="agent-feature-other@example.com",
+            password="password-123",
+            name="Other Agent",
+            role=AppUser.Role.AGENT,
+            email_verified=True,
+        )
+        self.listing = Listing.objects.create(
+            landlord=self.landlord,
+            title="Inspection Listing",
+            description="Listing awaiting physical inspection",
+            address="15 Inspection Close",
+            city="Lagos",
+            state="Lagos",
+            property_type="Apartment",
+            bedrooms=2,
+            bathrooms=2,
+            price_per_year=1800000,
+            physical_property_status="pending",
+            property_document_submission={"in_person_verification_requested": True},
+        )
+        self.client = APIClient()
+
+    def _complete_agent_profile(self, agent=None):
+        agent = agent or self.agent
+        AgentProfile.objects.update_or_create(
+            user=agent,
+            defaults={
+                "first_name": "Inspection",
+                "last_name": "Agent",
+                "date_of_birth": date(1992, 4, 10),
+                "gender": "male",
+                "country_of_birth": "Nigeria",
+                "nationality": "Nigeria",
+                "state_of_origin": "Lagos",
+                "lga_of_origin": "Ikeja",
+                "mobile": "08012345678",
+                "city": "Ikeja",
+                "residential_address": "3 Agent Street, Lagos",
+                "nin_number": "12345678901",
+                "bvn_number": "10987654321",
+                "bank_name": "Test Bank",
+                "account_name": "Inspection Agent",
+                "account_number": "0123456789",
+            },
+        )
+
+    def _complete_verification_payment(self, agent=None):
+        agent = agent or self.agent
+        return ServicePayment.objects.create(
+            user=agent,
+            purpose=ServicePayment.Purpose.AGENT_VERIFICATION,
+            amount=Decimal("500.00"),
+            status=ServicePayment.Status.COMPLETED,
+            transaction_id=f"SVCTEST{uuid.uuid4().hex[:16].upper()}",
+            payment_date=timezone.now(),
+        )
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_agent_registration_returns_agent_role(self):
+        response = self.client.post(
+            "/api/v1/auth/register",
+            {
+                "name": "New Agent",
+                "email": "new-agent@example.com",
+                "password": "password-123",
+                "role": "agent",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.json())
+        self.assertEqual(response.json()["role"], "agent")
+        self.assertFalse(AppUser.objects.filter(email="new-agent@example.com").exists())
+        self.assertEqual(PendingRegistration.objects.get(email="new-agent@example.com").role, AppUser.Role.AGENT)
+
+        otp_match = re.search(r"\b([A-Z0-9]{6})\b", mail.outbox[-1].body)
+        self.assertIsNotNone(otp_match)
+        verify_response = self.client.post(
+            "/api/v1/auth/register/verify",
+            {"email": "new-agent@example.com", "otp_code": otp_match.group(1)},
+            format="json",
+        )
+        self.assertEqual(verify_response.status_code, 200, verify_response.json())
+        user = AppUser.objects.get(email="new-agent@example.com")
+        self.assertEqual(user.role, AppUser.Role.AGENT)
+
+    def test_profile_patch_validates_and_syncs_user_fields(self):
+        self.client.force_authenticate(user=self.agent)
+
+        invalid = self.client.patch(
+            "/api/v1/agents/profile",
+            {"nin_number": "123", "mobile": "12345"},
+            format="json",
+        )
+        self.assertEqual(invalid.status_code, 400)
+
+        response = self.client.patch(
+            "/api/v1/agents/profile",
+            {
+                "first_name": "Inspection",
+                "middle_name": "Middle",
+                "last_name": "Agent",
+                "date_of_birth": "1992-04-10",
+                "gender": "male",
+                "country_of_birth": "Nigeria",
+                "nationality": "Nigeria",
+                "state_of_origin": "Lagos",
+                "lga_of_origin": "Ikeja",
+                "mobile": "08012345678",
+                "city": "Ikeja",
+                "residential_address": "3 Agent Street, Lagos",
+                "nin_number": "12345678901",
+                "bvn_number": "10987654321",
+                "bank_name": "Test Bank",
+                "account_name": "Inspection Agent",
+                "account_number": "0123456789",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        self.assertEqual(payload["verification_status"], "payment_required")
+        self.assertEqual(payload["email"], self.agent.email)
+
+        self.agent.refresh_from_db()
+        self.assertEqual(self.agent.name, "Inspection Middle Agent")
+        self.assertEqual(self.agent.mobile, "08012345678")
+        self.assertEqual(self.agent.nin_number, "12345678901")
+        self.assertEqual(self.agent.bvn_number, "10987654321")
+        self.assertEqual(self.agent.state_of_origin, "Lagos")
+
+    @patch("core.views.verify_nin_and_bvn")
+    def test_verify_requires_payment_then_verifies_profile_and_request(self, verify_mock):
+        verify_mock.return_value = {"nin": {"status": "verified"}, "bvn": {"status": "verified"}}
+        self._complete_agent_profile()
+        self.client.force_authenticate(user=self.agent)
+
+        unpaid = self.client.post("/api/v1/agents/verify", {}, format="json")
+        self.assertEqual(unpaid.status_code, 400)
+        self.assertFalse(verify_mock.called)
+
+        self._complete_verification_payment()
+        response = self.client.post("/api/v1/agents/verify", {}, format="json")
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertEqual(response.json()["verification_status"], "verified")
+        self.assertTrue(response.json()["is_verified"])
+
+        profile = AgentProfile.objects.get(user=self.agent)
+        self.assertEqual(profile.verification_status, AgentProfile.VerificationStatus.VERIFIED)
+        self.assertIsNotNone(profile.verified_at)
+
+        verification = VerificationRequest.objects.get(user=self.agent)
+        self.assertEqual(verification.status, VerificationRequest.Status.APPROVED)
+        self.assertEqual(
+            verification.identity_verification_status,
+            VerificationRequest.VerificationProgressStatus.VERIFIED,
+        )
+        self.assertEqual(
+            verification.verification_method, VerificationRequest.Method.AUTOMATED
+        )
+
+        self.assertFalse(SubscriptionPayment.objects.filter(user=self.agent).exists())
+        call_kwargs = verify_mock.call_args[0]
+        self.assertEqual(call_kwargs[0]["lga"], "Ikeja")
+        self.assertEqual(call_kwargs[1], "12345678901")
+        self.assertEqual(call_kwargs[2], "10987654321")
+
+        locked = self.client.patch(
+            "/api/v1/agents/profile",
+            {"nin_number": "99999999999", "account_number": "9999999999", "bank_name": "Other Bank"},
+            format="json",
+        )
+        self.assertEqual(locked.status_code, 400)
+        profile.refresh_from_db()
+        self.assertEqual(profile.nin_number, "12345678901")
+        self.assertEqual(profile.account_number, "0123456789")
+        self.assertEqual(profile.bank_name, "Test Bank")
+
+    def test_unverified_agent_cannot_claim_pending_listing(self):
+        self.client.force_authenticate(user=self.agent)
+        response = self.client.post(
+            "/api/v1/agent-inspections/claim",
+            {"listing_id": str(self.listing.id)},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(PropertyInspection.objects.exists())
+
+        dashboard = self.client.get("/api/v1/agents/dashboard")
+        self.assertEqual(dashboard.status_code, 200, dashboard.json())
+        self.assertEqual(dashboard.json()["available_inspections"], [])
+
+    @patch("core.views.verify_nin_and_bvn")
+    def test_verified_agent_claims_only_pending_in_person_listing_once(self, verify_mock):
+        verify_mock.return_value = {}
+        self._complete_agent_profile()
+        self._complete_verification_payment()
+        self.client.force_authenticate(user=self.agent)
+        self.client.post("/api/v1/agents/verify", {}, format="json")
+
+        dashboard = self.client.get("/api/v1/agents/dashboard")
+        self.assertEqual(dashboard.status_code, 200, dashboard.json())
+        available = dashboard.json()["available_inspections"]
+        self.assertEqual(len(available), 1)
+        self.assertEqual(available[0]["id"], str(self.listing.id))
+        self.assertEqual(available[0]["title"], "Inspection Listing")
+        self.assertEqual(available[0]["address"], "15 Inspection Close")
+        self.assertEqual(available[0]["city"], "Lagos")
+        self.assertEqual(available[0]["state"], "Lagos")
+
+        response = self.client.post(
+            "/api/v1/agent-inspections/claim",
+            {"listing_id": str(self.listing.id)},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.json())
+        self.assertEqual(response.json()["agent_id"], str(self.agent.id))
+        self.assertEqual(response.json()["listing_id"], str(self.listing.id))
+        self.assertEqual(response.json()["status"], "claimed")
+
+        duplicate = self.client.post(
+            "/api/v1/agent-inspections/claim",
+            {"listing_id": str(self.listing.id)},
+            format="json",
+        )
+        self.assertEqual(duplicate.status_code, 400)
+
+        no_request_listing = Listing.objects.create(
+            landlord=self.landlord,
+            title="No Request Listing",
+            description="Listing without in-person request",
+            address="1 Plain Street",
+            city="Lagos",
+            state="Lagos",
+            property_type="House",
+            bedrooms=3,
+            bathrooms=2,
+            price_per_year=1200000,
+            physical_property_status="pending",
+        )
+        rejected = self.client.post(
+            "/api/v1/agent-inspections/claim",
+            {"listing_id": str(no_request_listing.id)},
+            format="json",
+        )
+        self.assertEqual(rejected.status_code, 400)
+
+        non_pending_listing = Listing.objects.create(
+            landlord=self.landlord,
+            title="Verified Listing",
+            description="Already verified listing",
+            address="2 Verified Street",
+            city="Lagos",
+            state="Lagos",
+            property_type="House",
+            bedrooms=3,
+            bathrooms=2,
+            price_per_year=1200000,
+            physical_property_status="verified",
+            property_document_submission={"in_person_verification_requested": True},
+        )
+        non_pending = self.client.post(
+            "/api/v1/agent-inspections/claim",
+            {"listing_id": str(non_pending_listing.id)},
+            format="json",
+        )
+        self.assertEqual(non_pending.status_code, 400)
+
+    def _claim_as_verified_agent(self, agent=None, listing=None):
+        agent = agent or self.agent
+        listing = listing or self.listing
+        self._complete_agent_profile(agent)
+        self._complete_verification_payment(agent)
+        profile = AgentProfile.objects.get(user=agent)
+        profile.verification_status = AgentProfile.VerificationStatus.VERIFIED
+        profile.verified_at = timezone.now()
+        profile.save(update_fields=["verification_status", "verified_at", "updated_at"])
+        self.client.force_authenticate(user=agent)
+        response = self.client.post(
+            "/api/v1/agent-inspections/claim",
+            {"listing_id": str(listing.id)},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.json())
+        return PropertyInspection.objects.get(id=response.json()["id"])
+
+    def test_invalid_option_unknown_field_and_incomplete_submit_rejected(self):
+        inspection = self._claim_as_verified_agent()
+
+        invalid_option = self.client.patch(
+            f"/api/v1/agent-inspections/{inspection.id}",
+            {"responses": {"boundary_condition": "bogus"}},
+            format="json",
+        )
+        self.assertEqual(invalid_option.status_code, 400)
+
+        mixed_none = self.client.patch(
+            f"/api/v1/agent-inspections/{inspection.id}",
+            {"responses": {"external_issues": ["none_observed", "erosion"]}},
+            format="json",
+        )
+        self.assertEqual(mixed_none.status_code, 400)
+
+        unknown_field = self.client.patch(
+            f"/api/v1/agent-inspections/{inspection.id}",
+            {"responses": {"not_a_field": "x"}},
+            format="json",
+        )
+        self.assertEqual(unknown_field.status_code, 400)
+
+        incomplete = self.client.post(
+            f"/api/v1/agent-inspections/{inspection.id}/submit",
+            {"responses": {"boundary_condition": "verified"}},
+            format="json",
+        )
+        self.assertEqual(incomplete.status_code, 400)
+        inspection.refresh_from_db()
+        self.assertEqual(inspection.status, PropertyInspection.Status.CLAIMED)
+
+    def test_complete_submission_signs_off_and_report_is_immutable(self):
+        inspection = self._claim_as_verified_agent()
+        responses = build_complete_inspection_responses(
+            overall_status="inspection_completed_with_issues",
+            critical_red_flags=["suspected_fraud"],
+            structural_condition="requires_specialist",
+        )
+
+        response = self.client.post(
+            f"/api/v1/agent-inspections/{inspection.id}/submit",
+            {"responses": responses},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        inspection.refresh_from_db()
+        self.listing.refresh_from_db()
+        self.assertEqual(inspection.status, PropertyInspection.Status.SUBMITTED)
+        self.assertEqual(inspection.overall_status, "inspection_completed_with_issues")
+        self.assertIsNotNone(inspection.submitted_at)
+        self.assertIsNotNone(inspection.signed_off_at)
+        self.assertEqual(
+            self.listing.physical_property_status,
+            VerificationRequest.VerificationProgressStatus.PENDING,
+        )
+        analysis = inspection.analysis
+        self.assertEqual(analysis["critical_red_flags"], ["suspected_fraud"])
+        self.assertEqual(analysis["overall_status"], "inspection_completed_with_issues")
+        self.assertEqual(analysis["total_item_count"], len(responses))
+        self.assertEqual(analysis["completed_item_count"], len(responses))
+        self.assertIn("structural_condition", analysis["issue_item_keys"])
+
+        update_after_submit = self.client.patch(
+            f"/api/v1/agent-inspections/{inspection.id}",
+            {"responses": {"boundary_condition": "issue_found"}},
+            format="json",
+        )
+        self.assertEqual(update_after_submit.status_code, 400)
+        inspection.refresh_from_db()
+        self.assertEqual(inspection.responses["boundary_condition"], "verified")
+
+    def test_clean_submission_without_red_flags_marks_listing_verified(self):
+        clean_listing = Listing.objects.create(
+            landlord=self.landlord,
+            title="Clean Inspection Listing",
+            description="Listing with a clean inspection",
+            address="50 Clean Street",
+            city="Lagos",
+            state="Lagos",
+            property_type="House",
+            bedrooms=2,
+            bathrooms=1,
+            price_per_year=1000000,
+            physical_property_status="pending",
+            property_document_submission={"in_person_verification_requested": True},
+        )
+        inspection = self._claim_as_verified_agent(listing=clean_listing)
+        responses = build_complete_inspection_responses(
+            overall_status="inspection_completed",
+            critical_red_flags=["none_observed"],
+        )
+
+        response = self.client.post(
+            f"/api/v1/agent-inspections/{inspection.id}/submit",
+            {"responses": responses},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        inspection.refresh_from_db()
+        clean_listing.refresh_from_db()
+        self.assertEqual(inspection.status, PropertyInspection.Status.SUBMITTED)
+        self.assertEqual(inspection.analysis["critical_red_flags"], [])
+        self.assertEqual(
+            clean_listing.physical_property_status,
+            VerificationRequest.VerificationProgressStatus.VERIFIED,
+        )
+
+    @override_settings(AGENT_INSPECTION_EARNING_NGN="15000.00")
+    def test_dashboard_isolates_agents_and_sums_earnings(self):
+        first = self._claim_as_verified_agent()
+        self.client.post(
+            f"/api/v1/agent-inspections/{first.id}/submit",
+            {"responses": build_complete_inspection_responses()},
+            format="json",
+        )
+        first.refresh_from_db()
+        first.payout_status = PropertyInspection.PayoutStatus.PAID
+        first.paid_out_at = timezone.now()
+        first.save(update_fields=["payout_status", "paid_out_at", "updated_at"])
+
+        second_listing = Listing.objects.create(
+            landlord=self.landlord,
+            title="Second Inspection Listing",
+            description="Second pending inspection",
+            address="20 Second Street",
+            city="Lagos",
+            state="Lagos",
+            property_type="House",
+            bedrooms=3,
+            bathrooms=2,
+            price_per_year=2000000,
+            physical_property_status="pending",
+            property_document_submission={"in_person_verification_requested": True},
+        )
+        second = self._claim_as_verified_agent(listing=second_listing)
+        self.client.post(
+            f"/api/v1/agent-inspections/{second.id}/submit",
+            {"responses": build_complete_inspection_responses()},
+            format="json",
+        )
+
+        other_listing = Listing.objects.create(
+            landlord=self.landlord,
+            title="Other Agent Listing",
+            description="Claimed by another agent",
+            address="30 Other Street",
+            city="Lagos",
+            state="Lagos",
+            property_type="House",
+            bedrooms=2,
+            bathrooms=1,
+            price_per_year=1000000,
+            physical_property_status="pending",
+            property_document_submission={"in_person_verification_requested": True},
+        )
+        PropertyInspection.objects.create(
+            listing=other_listing,
+            agent=self.other_agent,
+            status=PropertyInspection.Status.SUBMITTED,
+            earning_amount=Decimal("15000.00"),
+        )
+
+        response = self.client.get("/api/v1/agents/dashboard")
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        metrics = payload["metrics"]
+        self.assertEqual(metrics["properties_inspected"], 2)
+        self.assertEqual(Decimal(metrics["total_amount_earned"]), Decimal("30000.00"))
+        self.assertEqual(Decimal(metrics["total_amount_paid_out"]), Decimal("15000.00"))
+        self.assertEqual(Decimal(metrics["pending_payout"]), Decimal("15000.00"))
+        inspection_ids = {item["id"] for item in payload["inspections"]}
+        self.assertEqual(inspection_ids, {str(first.id), str(second.id)})
+
+        self.client.force_authenticate(user=self.other_agent)
+        other_response = self.client.get("/api/v1/agents/dashboard")
+        self.assertEqual(other_response.status_code, 200, other_response.json())
+        other_metrics = other_response.json()["metrics"]
+        self.assertEqual(other_metrics["properties_inspected"], 1)
+        self.assertEqual(Decimal(other_metrics["total_amount_earned"]), Decimal("15000.00"))
+
+    def test_pdf_returns_attachment_for_owner_and_admin_only(self):
+        inspection = self._claim_as_verified_agent()
+        self.client.post(
+            f"/api/v1/agent-inspections/{inspection.id}/submit",
+            {"responses": build_complete_inspection_responses()},
+            format="json",
+        )
+
+        pdf_response = self.client.get(f"/api/v1/agent-inspections/{inspection.id}/pdf")
+        self.assertEqual(pdf_response.status_code, 200)
+        self.assertEqual(pdf_response["Content-Type"], "application/pdf")
+        self.assertTrue(pdf_response.content.startswith(b"%PDF"))
+
+        self.client.force_authenticate(user=self.other_agent)
+        forbidden = self.client.get(f"/api/v1/agent-inspections/{inspection.id}/pdf")
+        self.assertIn(forbidden.status_code, {403, 404})
+
+        admin = AppUser.objects.create_user(
+            email="inspection-admin@example.com",
+            password="password-123",
+            name="Admin User",
+            role=AppUser.Role.ADMIN,
+            email_verified=True,
+            is_staff=True,
+        )
+        self.client.force_authenticate(user=admin)
+        admin_response = self.client.get(f"/api/v1/agent-inspections/{inspection.id}/pdf")
+        self.assertEqual(admin_response.status_code, 200)
+        self.assertTrue(admin_response.content.startswith(b"%PDF"))
+
+        draft_listing = Listing.objects.create(
+            landlord=self.landlord,
+            title="Draft Inspection Listing",
+            description="Unsubmitted inspection",
+            address="40 Draft Street",
+            city="Lagos",
+            state="Lagos",
+            property_type="House",
+            bedrooms=2,
+            bathrooms=1,
+            price_per_year=1000000,
+            physical_property_status="pending",
+            property_document_submission={"in_person_verification_requested": True},
+        )
+        draft = self._claim_as_verified_agent(listing=draft_listing)
+        draft_response = self.client.get(f"/api/v1/agent-inspections/{draft.id}/pdf")
+        self.assertEqual(draft_response.status_code, 400)
+
+    def test_agent_support_chat_history_is_isolated(self):
+        admin = AppUser.objects.create_user(
+            email="support-admin2@example.com",
+            password="password-123",
+            name="Support Admin",
+            role=AppUser.Role.ADMIN,
+            email_verified=True,
+            is_staff=True,
+        )
+        SupportChatMessage.objects.create(
+            thread_user=self.agent, sender=self.agent, content="Agent needs help."
+        )
+        SupportChatMessage.objects.create(
+            thread_user=self.other_agent, sender=admin, content="Other agent reply."
+        )
+        tenant = AppUser.objects.create_user(
+            email="support-tenant3@example.com",
+            password="password-123",
+            name="Tenant User",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        SupportChatMessage.objects.create(
+            thread_user=tenant, sender=tenant, content="Tenant message."
+        )
+
+        self.client.force_authenticate(user=self.agent)
+        response = self.client.get("/api/v1/support-chat/messages")
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        results = payload["results"] if isinstance(payload, dict) and "results" in payload else payload
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["content"], "Agent needs help.")
+
+        self.client.force_authenticate(user=admin)
+        for param in ("thread_user", "agent_id"):
+            admin_response = self.client.get(
+                "/api/v1/support-chat/messages", {param: str(self.agent.id)}
+            )
+            self.assertEqual(admin_response.status_code, 200, admin_response.json())
+            admin_payload = admin_response.json()
+            admin_results = (
+                admin_payload["results"]
+                if isinstance(admin_payload, dict) and "results" in admin_payload
+                else admin_payload
+            )
+            self.assertEqual(len(admin_results), 1)
+            self.assertEqual(admin_results[0]["content"], "Agent needs help.")
+
+
+class AgentReferralTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.landlord = AppUser.objects.create_user(
+            email="referral-landlord@example.com",
+            password="password-123",
+            name="Referral Landlord",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+        )
+        self.referrer = AppUser.objects.create_user(
+            email="referrer-pio@example.com",
+            password="password-123",
+            name="Referrer Pio",
+            role=AppUser.Role.AGENT,
+            email_verified=True,
+        )
+        self.referred = AppUser.objects.create_user(
+            email="referred-pio@example.com",
+            password="password-123",
+            name="Referred Pio",
+            role=AppUser.Role.AGENT,
+            email_verified=True,
+        )
+        self.referrer_profile = AgentProfile.objects.create(
+            user=self.referrer, first_name="Referrer", last_name="Pio"
+        )
+        self.referred_profile = AgentProfile.objects.create(
+            user=self.referred,
+            first_name="Referred",
+            last_name="Pio",
+            verification_status=AgentProfile.VerificationStatus.VERIFIED,
+            referred_by=self.referrer,
+        )
+
+    def _submitted_inspection(self, agent, title):
+        listing = Listing.objects.create(
+            landlord=self.landlord,
+            title=title,
+            bedrooms=2,
+            bathrooms=1,
+            price_per_year=1000000,
+        )
+        return PropertyInspection.objects.create(
+            listing=listing,
+            agent=agent,
+            status=PropertyInspection.Status.SUBMITTED,
+            earning_amount=Decimal("100.00"),
+        )
+
+    def test_referral_code_generated_unique_8_chars(self):
+        code = self.referrer_profile.referral_code
+        self.assertEqual(len(code), 8)
+        self.assertTrue(code.isalnum())
+        codes = {generate_unique_referral_code() for _ in range(20)}
+        self.assertEqual(len(codes), 20)
+        self.assertNotIn(code, codes)
+
+    def test_resolve_referrer_case_insensitive(self):
+        code = self.referrer_profile.referral_code
+        self.assertEqual(resolve_referrer(code.lower()).id, self.referrer.id)
+        self.assertIsNone(resolve_referrer("ZZZZZZZZ"))
+        self.assertIsNone(resolve_referrer(""))
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_registration_with_referral_code_links_referrer(self):
+        response = self.client.post(
+            "/api/v1/auth/register",
+            {
+                "name": "New Pio",
+                "email": "new-pio@example.com",
+                "password": "password-123",
+                "role": "agent",
+                "referral_code": self.referrer_profile.referral_code.lower(),
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.json())
+        self.assertEqual(
+            PendingRegistration.objects.get(email="new-pio@example.com").referral_code,
+            self.referrer_profile.referral_code,
+        )
+
+        otp_match = re.search(r"\b([A-Z0-9]{6})\b", mail.outbox[-1].body)
+        verify_response = self.client.post(
+            "/api/v1/auth/register/verify",
+            {"email": "new-pio@example.com", "otp_code": otp_match.group(1)},
+            format="json",
+        )
+        self.assertEqual(verify_response.status_code, 200, verify_response.json())
+        profile = AgentProfile.objects.get(user__email="new-pio@example.com")
+        self.assertEqual(profile.referred_by_id, self.referrer.id)
+        self.assertEqual(len(profile.referral_code), 8)
+
+    def test_registration_rejects_invalid_referral_code(self):
+        response = self.client.post(
+            "/api/v1/auth/register",
+            {
+                "name": "New Pio",
+                "email": "new-pio@example.com",
+                "password": "password-123",
+                "role": "agent",
+                "referral_code": "ZZZZZZZZ",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_registration_rejects_referral_code_for_non_agent(self):
+        response = self.client.post(
+            "/api/v1/auth/register",
+            {
+                "name": "New Tenant",
+                "email": "new-tenant@example.com",
+                "password": "password-123",
+                "role": "tenant",
+                "referral_code": self.referrer_profile.referral_code,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_award_referral_earning_per_inspection_and_cap(self):
+        for index in range(7):
+            award_referral_earning(self._submitted_inspection(self.referred, f"L{index}"))
+        earnings = AgentReferralEarning.objects.filter(referrer=self.referrer)
+        self.assertEqual(earnings.count(), 5)
+        self.assertEqual(
+            sum(e.amount for e in earnings), Decimal("10000.00")
+        )
+
+    def test_award_referral_earning_is_idempotent(self):
+        inspection = self._submitted_inspection(self.referred, "Idem")
+        award_referral_earning(inspection)
+        award_referral_earning(inspection)
+        self.assertEqual(
+            AgentReferralEarning.objects.filter(inspection=inspection).count(), 1
+        )
+
+    def test_award_referral_earning_requires_verified_referred(self):
+        self.referred_profile.verification_status = AgentProfile.VerificationStatus.PENDING
+        self.referred_profile.save()
+        award_referral_earning(self._submitted_inspection(self.referred, "Unverified"))
+        self.assertEqual(AgentReferralEarning.objects.count(), 0)
+
+    def test_award_referral_earning_requires_referrer(self):
+        self.referred_profile.referred_by = None
+        self.referred_profile.save()
+        award_referral_earning(self._submitted_inspection(self.referred, "NoReferrer"))
+        self.assertEqual(AgentReferralEarning.objects.count(), 0)
+
+    def test_referrals_endpoint_returns_tree(self):
+        for index in range(2):
+            award_referral_earning(self._submitted_inspection(self.referred, f"T{index}"))
+        self.client.force_authenticate(user=self.referrer)
+        response = self.client.get("/api/v1/agents/referrals")
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        self.assertEqual(payload["referral_code"], self.referrer_profile.referral_code)
+        self.assertEqual(payload["metrics"]["total_referrals"], 1)
+        self.assertEqual(payload["metrics"]["total_referral_earned"], "4000.00")
+        children = payload["tree"]["children"]
+        self.assertEqual(len(children), 1)
+        self.assertEqual(children[0]["id"], str(self.referred.id))
+        self.assertEqual(children[0]["properties_inspected"], 2)
+
+    def test_referrals_endpoint_requires_agent_role(self):
+        tenant = AppUser.objects.create_user(
+            email="referral-tenant@example.com",
+            password="password-123",
+            name="Tenant",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        self.client.force_authenticate(user=tenant)
+        response = self.client.get("/api/v1/agents/referrals")
+        self.assertEqual(response.status_code, 403)

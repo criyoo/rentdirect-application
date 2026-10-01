@@ -4,7 +4,7 @@ import { useAuth } from '@/hooks/useAuth'
 interface ProtectedRouteProps
 {
     children: React.ReactNode
-    requiredRoles?: ('tenant' | 'landlord' | 'admin')[]
+    requiredRoles?: ('tenant' | 'landlord' | 'agent' | 'admin')[]
 }
 
 export default function ProtectedRoute({ children, requiredRoles }: ProtectedRouteProps)
@@ -25,7 +25,8 @@ export default function ProtectedRoute({ children, requiredRoles }: ProtectedRou
 
     if (!user)
     {
-        return <Navigate to="/login" replace />
+        const agentOnly = requiredRoles?.length === 1 && requiredRoles[0] === 'agent'
+        return <Navigate to={agentOnly ? '/agents/login' : '/login'} replace />
     }
 
     if (requiredRoles && !requiredRoles.includes(user.role))

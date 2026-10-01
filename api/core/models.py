@@ -65,6 +65,7 @@ class AppUser(AbstractBaseUser, PermissionsMixin):
     class Role(models.TextChoices):
         TENANT = "tenant", "Tenant"
         LANDLORD = "landlord", "Landlord"
+        AGENT = "agent", "Property Inspection Officer"
         ADMIN = "admin", "Admin"
 
     class LandlordVerificationType(models.TextChoices):
@@ -78,6 +79,7 @@ class AppUser(AbstractBaseUser, PermissionsMixin):
     email_verified = models.BooleanField(default=False)
     profile_photo = models.ImageField(upload_to=profile_photo_upload_to, blank=True, null=True, max_length=512)
     mobile = models.CharField(max_length=40, blank=True, default="")
+    whatsapp_number = models.CharField(max_length=40, blank=True, default="")
     nin_number = models.CharField(max_length=80, blank=True, default="")
     bvn_number = models.CharField(max_length=80, blank=True, default="")
     state_of_origin = models.CharField(max_length=120, blank=True, default="")
@@ -171,6 +173,38 @@ class LandlordProfile(AppUser):
         verbose_name_plural = "Landlord Profiles"
 
 
+class Agent(AppUser):
+    class Meta:
+        proxy = True
+        verbose_name = "Property Inspection Officer"
+        verbose_name_plural = "Property Inspection Officers"
+
+
+class PendingRegistration(models.Model):
+    """Registration credentials held until email OTP verification succeeds.
+
+    The matching ``AppUser`` row is only created once the verification code is
+    confirmed, so sign-up credentials are never persisted before verification.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    email = models.EmailField(unique=True)
+    name = models.CharField(max_length=160)
+    role = models.CharField(max_length=20, choices=AppUser.Role.choices)
+    password_hash = models.CharField(max_length=256)
+    otp_hash = models.CharField(max_length=128, blank=True, default="")
+    otp_expires_at = models.DateTimeField(null=True, blank=True)
+    otp_attempts = models.PositiveSmallIntegerField(default=0)
+    referral_code = models.CharField(max_length=16, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["email"], name="core_pendingreg_email_idx"),
+        ]
+
+
 class AdminUser(AppUser):
     class Meta:
         proxy = True
@@ -183,11 +217,12 @@ BOOKING_PROGRESS_STEP_DEFINITIONS = {
         ("viewing_appointment_booked", "Viewing appointment booked?"),
         ("house_viewed", "House Viewed?"),
         ("tenancy_agreement_signed", "Tenancy agreement signed?"),
-        ("deposit_payment_notification_received", "Recieved email notification of rental deposit from Rentdirect?"),
-        ("rental_payment_notification_received", "Received email notification of rental full payment from Rentdirect?"),
+        ("deposit_payment_notification_received", "Recieved email from Rentdirect of deposit payment by tenant?"),
+        ("rental_payment_notification_received", "Received email from Rentdirect of full rental payment by tenant?"),
         ("check_in_inventory_completed", "Check-in house inventory completed?"),
         ("tenant_collected_house_key", "Tenant collected house Key?"),
-        ("net_payment_notification_received", "Bank & Email notification of total rent amount received?"),
+        ("rentdirect_transfer_to_landlord", "Confirm if RentDirect can transfer rent amount to Landlord?"),
+        ("net_payment_notification_received", "Received full rental amount to Bank & email notification to confirm payment?"),
     ),
     AppUser.Role.TENANT: (
         ("viewing_appointment_booked", "Viewing appointment booked?"),
@@ -197,8 +232,8 @@ BOOKING_PROGRESS_STEP_DEFINITIONS = {
         ("tenant_paid_rent_in_full", "Tenant has paid rent in full?"),
         ("check_in_inventory_completed", "Check-in house inventory completed?"),
         ("tenant_collected_house_key", "Tenant collected House Key?"),
-        ("rentdirect_transfer_to_landlord", "Can RentDirect transfer rent amount to Landlord?"),
-        ("final_rent_payment_email_received", "Email of rent payment to landlord received?"),
+        ("rentdirect_transfer_to_landlord", "Confirm if RentDirect can transfer rent amount to Landlord?"),
+        ("final_rent_payment_email_received", "Received Email from RentDirect of full payment sent to landlord?"),
     ),
 }
 
@@ -226,10 +261,8 @@ BOOKING_PROGRESS_COUNTERPART_STEP_KEYS = {
         "rental_payment_notification_received": ("tenant_paid_rent_in_full",),
         "check_in_inventory_completed": ("check_in_inventory_completed",),
         "tenant_collected_house_key": ("tenant_collected_house_key",),
-        "net_payment_notification_received": (
-            "final_rent_payment_email_received",
-            "rentdirect_transfer_to_landlord",
-        ),
+        "rentdirect_transfer_to_landlord": ("rentdirect_transfer_to_landlord",),
+        "net_payment_notification_received": ("final_rent_payment_email_received",),
     },
     AppUser.Role.TENANT: {
         "viewing_appointment_booked": ("viewing_appointment_booked",),
@@ -239,7 +272,7 @@ BOOKING_PROGRESS_COUNTERPART_STEP_KEYS = {
         "tenant_paid_rent_in_full": ("rental_payment_notification_received",),
         "check_in_inventory_completed": ("check_in_inventory_completed",),
         "tenant_collected_house_key": ("tenant_collected_house_key",),
-        "rentdirect_transfer_to_landlord": ("net_payment_notification_received",),
+        "rentdirect_transfer_to_landlord": ("rentdirect_transfer_to_landlord",),
         "final_rent_payment_email_received": ("net_payment_notification_received",),
     },
 }
@@ -634,6 +667,8 @@ class Listing(models.Model):
     property_ownership_documents = models.JSONField(default=list, blank=True)
     property_documents = models.ManyToManyField("Document", blank=True, related_name="listing_property_documents")
     property_document_submission = models.JSONField(blank=True, null=True)
+    representative_kyc = models.ForeignKey("RepresentativeKyc", on_delete=models.SET_NULL, null=True, blank=True, related_name="linked_listings")
+    authorization_letter = models.FileField(upload_to="authorization_letters/", blank=True)
     property_document_verification_status = models.CharField(
         max_length=20,
         choices=VERIFICATION_PROGRESS_STATUS_CHOICES,
@@ -1044,6 +1079,34 @@ class Booking(models.Model):
         ]
 
 
+class TenancyAgreement(models.Model):
+    class Status(models.TextChoices):
+        REVIEW = "review", "Review"
+        FINAL = "final", "Final"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    booking = models.ForeignKey(Booking, on_delete=models.CASCADE, related_name="tenancy_agreements")
+    generated_by = models.ForeignKey(AppUser, on_delete=models.PROTECT, related_name="generated_tenancy_agreements")
+    version = models.PositiveIntegerField()
+    template_version = models.CharField(max_length=40)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.REVIEW)
+    agreement_data = models.JSONField(default=dict)
+    rendered_content = models.TextField()
+    document_hash = models.CharField(max_length=64, db_index=True)
+    docuseal_submission_id = models.BigIntegerField(null=True, blank=True, db_index=True)
+    generated_at = models.DateTimeField(default=timezone.now, editable=False)
+    finalised_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-version"]
+        constraints = [
+            models.UniqueConstraint(fields=["booking", "version"], name="core_tenancy_agreement_booking_version_uniq"),
+        ]
+        indexes = [
+            models.Index(fields=["booking", "-generated_at"], name="core_tenancy_booking_gen_idx"),
+        ]
+
+
 class Payment(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     booking = models.ForeignKey(Booking, on_delete=models.CASCADE, related_name="payments")
@@ -1116,6 +1179,87 @@ class PaymentSettlement(models.Model):
         indexes = [
             models.Index(fields=["purpose", "status"], name="core_paysettle_purp_stat_idx"),
             models.Index(fields=["transfer_recipient_id"], name="core_paysettle_recipient_idx"),
+        ]
+
+
+class RepresentativeKyc(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        SUBMITTED = "submitted", "Submitted"
+        VERIFIED = "verified", "Verified"
+        REJECTED = "rejected", "Rejected"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    landlord = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name="representative_kycs")
+    listing = models.ForeignKey("Listing", on_delete=models.SET_NULL, null=True, blank=True, related_name="representative_kycs")
+    ownership_type = models.CharField(max_length=120, blank=True, default="")
+    name = models.CharField(max_length=160, blank=True, default="")
+    email = models.EmailField(blank=True, default="")
+    phone = models.CharField(max_length=40, blank=True, default="")
+    nin_number = models.CharField(max_length=20, blank=True, default="")
+    date_of_birth = models.DateField(null=True, blank=True)
+    passport_photo = models.FileField(upload_to="representative_kyc/photos/", blank=True)
+    id_document = models.FileField(upload_to="representative_kyc/documents/", blank=True)
+    return_url = models.CharField(max_length=255, blank=True, default="")
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    verification_payload = models.JSONField(blank=True, null=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    verified_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Representative KYC"
+        verbose_name_plural = "Representative KYCs"
+        indexes = [
+            models.Index(fields=["landlord", "-created_at"], name="core_repkyc_landlord_idx"),
+            models.Index(fields=["status"], name="core_repkyc_status_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"RepresentativeKyc({self.landlord.email} - {self.status})"
+
+
+class TenantRefund(models.Model):
+    class Status(models.TextChoices):
+        SCHEDULED = "scheduled", "Scheduled"
+        RECIPIENT_CREATED = "recipient_created", "Recipient Created"
+        READY = "ready", "Ready"
+        PROCESSING = "processing", "Processing"
+        PAID = "paid", "Paid"
+        FAILED = "failed", "Failed"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    booking = models.ForeignKey(Booking, on_delete=models.CASCADE, related_name="refunds")
+    payment = models.ForeignKey(Payment, on_delete=models.CASCADE, related_name="refunds")
+    tenant = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name="tenant_refunds")
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    fee_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    refund_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    currency = models.CharField(max_length=10, default="NGN")
+    reason = models.TextField(blank=True, default="")
+    bank_name = models.CharField(max_length=120)
+    bank_code = models.CharField(max_length=40, blank=True, default="")
+    account_number = models.CharField(max_length=40)
+    account_name = models.CharField(max_length=160, blank=True, default="")
+    transfer_recipient_id = models.CharField(max_length=120, blank=True, default="")
+    transfer_reference = models.CharField(max_length=120, blank=True, default="", db_index=True)
+    status = models.CharField(max_length=30, choices=Status.choices, default=Status.SCHEDULED)
+    provider_payload = models.JSONField(blank=True, null=True)
+    transfer_payload = models.JSONField(blank=True, null=True)
+    last_error = models.TextField(blank=True, default="")
+    process_at = models.DateTimeField()
+    transferred_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Tenant Refund"
+        verbose_name_plural = "Tenant Refunds"
+        indexes = [
+            models.Index(fields=["status", "process_at"], name="core_refund_status_proc_idx"),
+            models.Index(fields=["booking", "-created_at"], name="core_refund_booking_ct_idx"),
         ]
 
 
@@ -1413,4 +1557,221 @@ class SupportChatMessage(models.Model):
         indexes = [
             models.Index(fields=["thread_user", "-created_at"], name="core_supportchat_thread_ct_idx"),
             models.Index(fields=["sender", "-created_at"], name="core_supportchat_sender_ct_idx"),
+        ]
+
+
+class AgentProfile(models.Model):
+    class VerificationStatus(models.TextChoices):
+        INCOMPLETE = "incomplete", "Incomplete"
+        PAYMENT_REQUIRED = "payment_required", "Payment required"
+        PENDING = "pending", "Pending"
+        VERIFIED = "verified", "Verified"
+        REJECTED = "rejected", "Rejected"
+
+    user = models.OneToOneField(AppUser, on_delete=models.CASCADE, related_name="agent_profile")
+    first_name = models.CharField(max_length=160)
+    middle_name = models.CharField(max_length=160, blank=True, default="")
+    last_name = models.CharField(max_length=160)
+    date_of_birth = models.DateField(null=True, blank=True)
+    gender = models.CharField(max_length=30, blank=True, default="")
+    nationality = models.CharField(max_length=80, default="Nigeria")
+    state_of_origin = models.CharField(max_length=120, blank=True, default="")
+    lga_of_origin = models.CharField(max_length=120, blank=True, default="")
+    mobile = models.CharField(max_length=40, blank=True, default="")
+    whatsapp_number = models.CharField(max_length=40, blank=True, default="")
+    country_of_birth = models.CharField(max_length=120, blank=True, default="")
+    city = models.CharField(max_length=120, blank=True, default="")
+    residential_address = models.TextField(blank=True, default="")
+    nin_number = models.CharField(max_length=80, blank=True, default="")
+    bvn_number = models.CharField(max_length=80, blank=True, default="")
+    bank_name = models.CharField(max_length=120, blank=True, default="")
+    bank_code = models.CharField(max_length=40, blank=True, default="")
+    account_name = models.CharField(max_length=160, blank=True, default="")
+    account_number = models.CharField(max_length=40, blank=True, default="")
+    verification_status = models.CharField(
+        max_length=40,
+        choices=VerificationStatus.choices,
+        default=VerificationStatus.INCOMPLETE,
+    )
+    verified_at = models.DateTimeField(null=True, blank=True)
+    verification_attempts = models.PositiveIntegerField(default=0)
+    referral_code = models.CharField(max_length=8, unique=True, blank=True, default="")
+    referred_by = models.ForeignKey(
+        AppUser,
+        on_delete=models.SET_NULL,
+        related_name="agent_referrals",
+        null=True,
+        blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Property Inspection Officer Profile"
+        verbose_name_plural = "Property Inspection Officer Profiles"
+        indexes = [
+            models.Index(fields=["verification_status", "-updated_at"], name="core_agentprof_status_idx"),
+        ]
+
+    def save(self, *args, **kwargs):
+        if not self.referral_code:
+            from .referrals import generate_unique_referral_code
+
+            self.referral_code = generate_unique_referral_code()
+            update_fields = kwargs.get("update_fields")
+            if update_fields is not None and "referral_code" not in update_fields:
+                kwargs["update_fields"] = [*update_fields, "referral_code"]
+        super().save(*args, **kwargs)
+
+
+class ServicePayment(models.Model):
+    class Purpose(models.TextChoices):
+        AGENT_VERIFICATION = "agent_verification", "Property Inspection Officer Verification"
+        LAWYER_TENANCY = "lawyer_tenancy", "Lawyer Tenancy Agreement"
+        IN_PERSON_VERIFICATION = "in_person_verification", "In-Person Property Verification"
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        COMPLETED = "completed", "Completed"
+        FAILED = "failed", "Failed"
+        CANCELLED = "cancelled", "Cancelled"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name="service_payments")
+    booking = models.ForeignKey(
+        Booking,
+        on_delete=models.SET_NULL,
+        related_name="service_payments",
+        null=True,
+        blank=True,
+    )
+    listing = models.ForeignKey(
+        Listing,
+        on_delete=models.SET_NULL,
+        related_name="service_payments",
+        null=True,
+        blank=True,
+    )
+    purpose = models.CharField(max_length=30, choices=Purpose.choices)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    currency = models.CharField(max_length=10, default="NGN")
+    status = models.CharField(max_length=30, choices=Status.choices, default=Status.PENDING)
+    provider = models.CharField(max_length=40, default="flutterwave")
+    transaction_id = models.CharField(max_length=120, unique=True)
+    provider_payload = models.JSONField(blank=True, null=True)
+    webhook_data = models.JSONField(blank=True, null=True)
+    payment_date = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["user", "purpose", "-created_at"], name="core_svcpay_user_purp_idx"),
+            models.Index(fields=["booking", "purpose", "status"], name="core_svcpay_booking_idx"),
+        ]
+
+
+class PropertyInspection(models.Model):
+    class Status(models.TextChoices):
+        CLAIMED = "claimed", "Claimed"
+        DRAFT = "draft", "Draft"
+        SUBMITTED = "submitted", "Submitted"
+
+    class PayoutStatus(models.TextChoices):
+        PENDING = "pending", "Pending"
+        PAID = "paid", "Paid"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    listing = models.OneToOneField(Listing, on_delete=models.CASCADE, related_name="inspection")
+    agent = models.ForeignKey(AppUser, on_delete=models.PROTECT, related_name="property_inspections")
+    status = models.CharField(max_length=30, choices=Status.choices, default=Status.CLAIMED)
+    responses = models.JSONField(default=dict, blank=True)
+    analysis = models.JSONField(default=dict, blank=True)
+    overall_status = models.CharField(max_length=40, blank=True, default="")
+    evidence_documents = models.ManyToManyField(Document, blank=True, related_name="property_inspections")
+    earning_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    payout_status = models.CharField(max_length=30, choices=PayoutStatus.choices, default=PayoutStatus.PENDING)
+    payout_reference = models.CharField(max_length=120, blank=True, default="")
+    claimed_at = models.DateTimeField(default=timezone.now)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    signed_off_at = models.DateTimeField(null=True, blank=True)
+    paid_out_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["agent", "status", "-created_at"], name="core_insp_agent_status_idx"),
+            models.Index(fields=["payout_status", "-submitted_at"], name="core_insp_payout_idx"),
+        ]
+
+    def save(self, *args, **kwargs):
+        paid_out_at_updated = False
+        if self.pk is not None:
+            previous = (
+                PropertyInspection.objects.filter(pk=self.pk)
+                .values_list("payout_status", flat=True)
+                .first()
+            )
+            if previous != self.payout_status:
+                if self.payout_status == PropertyInspection.PayoutStatus.PAID:
+                    if self.paid_out_at is None:
+                        self.paid_out_at = timezone.now()
+                else:
+                    self.paid_out_at = None
+                paid_out_at_updated = True
+        elif self.payout_status == PropertyInspection.PayoutStatus.PAID and self.paid_out_at is None:
+            self.paid_out_at = timezone.now()
+            paid_out_at_updated = True
+        if paid_out_at_updated:
+            update_fields = kwargs.get("update_fields")
+            if update_fields is not None:
+                update_fields = list(update_fields)
+                if "paid_out_at" not in update_fields:
+                    update_fields.append("paid_out_at")
+                kwargs["update_fields"] = update_fields
+        super().save(*args, **kwargs)
+
+
+class AgentReferralEarning(models.Model):
+    """Referral bonus earned by a PIO for a referred PIO's submitted inspection."""
+
+    class PayoutStatus(models.TextChoices):
+        PENDING = "pending", "Pending"
+        PAID = "paid", "Paid"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    referrer = models.ForeignKey(
+        AppUser,
+        on_delete=models.PROTECT,
+        related_name="agent_referral_earnings",
+    )
+    referred = models.ForeignKey(
+        AppUser,
+        on_delete=models.PROTECT,
+        related_name="agent_referral_earned",
+    )
+    inspection = models.OneToOneField(
+        PropertyInspection,
+        on_delete=models.PROTECT,
+        related_name="referral_earning",
+    )
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    currency = models.CharField(max_length=10, default="NGN")
+    payout_status = models.CharField(
+        max_length=30,
+        choices=PayoutStatus.choices,
+        default=PayoutStatus.PENDING,
+    )
+    payout_reference = models.CharField(max_length=120, blank=True, default="")
+    paid_out_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "PIO Referral Earning"
+        verbose_name_plural = "PIO Referral Earnings"
+        indexes = [
+            models.Index(fields=["referrer", "referred"], name="core_refearn_ref_idx"),
+            models.Index(fields=["payout_status", "-created_at"], name="core_refearn_payout_idx"),
         ]

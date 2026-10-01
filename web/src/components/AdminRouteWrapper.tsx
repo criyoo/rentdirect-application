@@ -12,10 +12,18 @@ export default function AdminRouteWrapper({ children }: AdminRouteWrapperProps) 
 
     // Don't show navbar for admin routes
     const isAdminRoute = location.pathname.startsWith('/admin')
+    // PIO public pages render their own green header
+    const isAgentPublicRoute = [
+        '/agents',
+        '/agents/about',
+        '/agents/how-it-works',
+        '/agents/login',
+        '/agents/register',
+    ].includes(location.pathname)
 
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col">
-            {!isAdminRoute && <Navbar />}
+            {!isAdminRoute && !isAgentPublicRoute && <Navbar />}
             <main className={`flex-1 ${isAdminRoute ? '' : 'pt-20'}`}>
                 {children}
             </main>

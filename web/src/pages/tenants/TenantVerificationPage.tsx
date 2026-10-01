@@ -36,6 +36,7 @@ const schema = z.object({
     lga: z.string().min(1, 'LGA is required'),
     email: z.string().min(1, 'Email is required').email('Enter a valid email address.'),
     mobile: z.string().optional().refine((value) => !value || !validateMobile(value), MOBILE_ERROR_MESSAGE),
+    whatsapp_number: z.string().optional().refine((value) => !value || !validateMobile(value), MOBILE_ERROR_MESSAGE),
     employment_status: z.string().min(1, 'Employment status is required'),
     nin_number: z.string().min(1, 'NIN is required').refine((value) => !validateNin(value), NIN_ERROR_MESSAGE),
 })
@@ -251,6 +252,7 @@ export default function TenantVerificationPage() {
             lga: existingProfile?.lga || stringValue(verificationProfile.lga),
             email: stringValue(verificationProfile.email) || me?.email || user?.email || '',
             mobile: stringValue(verificationProfile.mobile) || me?.mobile || '',
+            whatsapp_number: stringValue(verificationProfile.whatsapp_number) || me?.whatsapp_number || '',
             employment_status: existingProfile?.employment_status || optionValue(verificationProfile.employment_status, employmentOptions),
             nin_number: me?.nin_number || stringValue(verificationProfile.nin_number || verificationProfile.nin),
         }
@@ -336,6 +338,7 @@ export default function TenantVerificationPage() {
                 name: [data.first_name, data.middle_name, data.last_name].filter(Boolean).join(' '),
                 email: data.email.trim(),
                 mobile: (data.mobile || '').trim(),
+                whatsapp_number: (data.whatsapp_number || '').trim(),
                 state_of_origin: data.state_of_origin,
             })
 
@@ -354,6 +357,7 @@ export default function TenantVerificationPage() {
                 lga: data.lga,
                 email: data.email.trim(),
                 mobile: (data.mobile || '').trim(),
+                whatsapp_number: (data.whatsapp_number || '').trim(),
                 employment_status: data.employment_status,
             }
 
@@ -499,6 +503,9 @@ export default function TenantVerificationPage() {
                             </InputRow>
                             <InputRow label="Mobile (linked to NIN)" error={errors.mobile?.message}>
                                 <TextInput register={register} name="mobile" placeholder={MOBILE_INPUT_PLACEHOLDER} error={errors.mobile?.message} {...mobileInputProps} />
+                            </InputRow>
+                            <InputRow label="WhatsApp Number (optional)" error={errors.whatsapp_number?.message}>
+                                <TextInput register={register} name="whatsapp_number" placeholder={MOBILE_INPUT_PLACEHOLDER} error={errors.whatsapp_number?.message} {...mobileInputProps} />
                             </InputRow>
                         </div>
 

@@ -8,7 +8,6 @@ interface FinancialConfigResponse {
     listing_deposit_rate: string
     listing_deposit_hold_days: number
     refundable_caution_fee_rate: string
-    legal_fee_max_rate: string
     payment_cancellation_admin_fee_rate: string
     card_payment_limit: string
     account_freeze_fee_percentage: string
@@ -25,7 +24,6 @@ export interface FinancialConfig {
     listingDepositRate: number
     listingDepositHoldDays: number
     refundableCautionFeeRate: number
-    legalFeeMaxRate: number
     paymentCancellationAdminFeeRate: number
     cardPaymentLimit: number
     accountFreezeFeePercentage: number
@@ -43,7 +41,6 @@ function toFinancialConfig(data: FinancialConfigResponse): FinancialConfig {
         listingDepositRate: Number(data.listing_deposit_rate),
         listingDepositHoldDays: Number(data.listing_deposit_hold_days),
         refundableCautionFeeRate: Number(data.refundable_caution_fee_rate),
-        legalFeeMaxRate: Number(data.legal_fee_max_rate),
         paymentCancellationAdminFeeRate: Number(data.payment_cancellation_admin_fee_rate),
         cardPaymentLimit: Number(data.card_payment_limit),
         accountFreezeFeePercentage: Number(data.account_freeze_fee_percentage),

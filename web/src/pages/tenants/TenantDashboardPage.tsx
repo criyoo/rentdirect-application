@@ -27,6 +27,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useAppPopup } from '@/contexts/AppPopupContext'
 import DashboardBackButton from '@/components/DashboardBackButton'
 import { api, resolveMediaUrl } from '@/lib/api'
+import { SUBSCRIPTIONS_ENABLED } from '@/lib/featureFlags'
 import { hasBronzeAccess, SubscriptionPaymentRecord } from '@/lib/subscriptions'
 import { Booking, Listing, Payment } from '@/types'
 import { formatCurrencyWithSymbol } from '@/utils/currency'
@@ -109,7 +110,7 @@ export default function TenantDashboardPage() {
     })
     const { data: subscriptionPaymentResponse } = useQuery({
         queryKey: ['subscription-payments', 'tenant-dashboard', user?.id],
-        enabled: user?.role === 'tenant',
+        enabled: SUBSCRIPTIONS_ENABLED && user?.role === 'tenant',
         queryFn: async () => (await api.get<SubscriptionPaymentRecord[] | PaginatedResponse<SubscriptionPaymentRecord>>('/subscriptions')).data,
     })
     const { data: freshUser } = useQuery({
@@ -120,7 +121,7 @@ export default function TenantDashboardPage() {
 
     const isTenantVerified = Boolean(freshUser?.is_verified ?? user?.is_verified ?? tenantProfile?.status === 'approved')
     const isTenantProfileComplete = tenantProfile?.status === 'approved'
-    const isTenantSubscribed = subscriptionPaymentResponse !== undefined && !hasBronzeAccess(subscriptionPaymentResponse)
+    const isTenantSubscribed = !SUBSCRIPTIONS_ENABLED || (subscriptionPaymentResponse !== undefined && !hasBronzeAccess(subscriptionPaymentResponse))
 
     const missingEnquirySteps = [
         !isTenantVerified && { label: 'Verification', to: '/verify' },
@@ -142,13 +143,14 @@ export default function TenantDashboardPage() {
     }
 
     const activeBookings = bookings.filter(booking => !['cancelled', 'completed'].includes(booking.status))
-    const totalCommitted = activeBookings.reduce((sum, booking) => sum + getBookingFinancials(booking).totalAmount, 0)
-    const totalPaid = activeBookings.reduce((sum, booking) => sum + getBookingFinancials(booking).paidAmount, 0)
-    const outstandingBalance = activeBookings.reduce((sum, booking) => sum + getBookingFinancials(booking).remainingAmount, 0)
+    const paymentBookings = bookings.filter((booking) => booking.rental_process_started)
+    const activePaymentBookings = paymentBookings.filter((booking) => !['cancelled', 'completed'].includes(booking.status))
+    const totalCommitted = activePaymentBookings.reduce((sum, booking) => sum + getBookingFinancials(booking).totalAmount, 0)
+    const totalPaid = activePaymentBookings.reduce((sum, booking) => sum + getBookingFinancials(booking).paidAmount, 0)
+    const outstandingBalance = activePaymentBookings.reduce((sum, booking) => sum + getBookingFinancials(booking).remainingAmount, 0)
     const tenantFirstName = user?.name?.trim().split(/\s+/)[0] || 'Tenant'
     const dashboardActions = [
-        // { to: '/search', label: 'Search', Icon: HiSearch, colorClass: 'text-blue-600' },
-        { to: '/billing', label: 'Billing', Icon: HiCash, colorClass: 'text-emerald-600' },
+        ...(SUBSCRIPTIONS_ENABLED ? [{ to: '/billing', label: 'Billing', Icon: HiCash, colorClass: 'text-emerald-600' }] : []),
         { to: '/enquiries', label:  user?.role === 'tenant' ? 'Landlord Enquiries' : 'Tenant Enquiries', Icon: HiChat, colorClass: 'text-green-600' },
         { to: '/community-chat', label: 'Community Chat', Icon: HiUserGroup, colorClass: 'text-indigo-600' },
         { to: '/complaint', label: 'Complaint', Icon: HiExclamationCircle, colorClass: 'text-red-700' },
@@ -165,7 +167,6 @@ export default function TenantDashboardPage() {
     const cancelPayment = useMutation({
         mutationFn: async (paymentId: string) => (await api.post<Payment>(`/payments/${paymentId}/cancel`)).data,
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['bookings', 'tenant', user?.id] })
             queryClient.invalidateQueries({ queryKey: ['bookings'] })
             alert('Payment cancelled.')
         },
@@ -179,7 +180,6 @@ export default function TenantDashboardPage() {
             await api.delete(`/bookings/${bookingId}`)
         },
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['bookings', 'tenant', user?.id] })
             queryClient.invalidateQueries({ queryKey: ['bookings'] })
             alert('Rental payment history deleted.')
         },
@@ -276,15 +276,85 @@ export default function TenantDashboardPage() {
 
                 <div className="mb-12">
                     <div className="flex items-center justify-between mb-6">
-                        <h2 className="text-2xl font-bold text-gray-900">Rental Payments History</h2>
-                        <Link to="/dashboard/settings" className="btn btn-outline">
-                            Manage Settings
-                        </Link>
+                        <h2 className="text-2xl font-bold text-gray-900">Rental Progress</h2>
                     </div>
 
-                    {bookings.length > 0 ? (
+                    {activeBookings.length > 0 ? (
                         <div className="grid gap-4">
-                            {bookings.map((booking) => {
+                            {activeBookings.map((booking) => (
+                                <div key={booking.id} className="card p-6">
+                                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                                        <Link
+                                            to={`/listings/${booking.listing_id}`}
+                                            className="block h-28 w-full shrink-0 overflow-hidden rounded-lg bg-gray-100 sm:w-36"
+                                        >
+                                            <img
+                                                src={resolveMediaUrl(booking.listing_cover_image_url)}
+                                                alt={booking.listing_title || 'Rental property'}
+                                                loading="lazy"
+                                                decoding="async"
+                                                className="h-full w-full object-cover"
+                                                onError={(event) => {
+                                                    event.currentTarget.src = '/placeholder.jpg'
+                                                }}
+                                            />
+                                        </Link>
+                                        <div>
+                                            <div className="flex items-center gap-3">
+                                                <h3 className="text-lg font-semibold text-gray-900">
+                                                    {booking.listing_title || 'Rental application'}
+                                                </h3>
+                                                <span className={`badge ${booking.status === 'cancelled' ? 'badge-warning' : 'badge-success'}`}>
+                                                    {booking.status}
+                                                </span>
+                                            </div>
+                                            <p className="mt-2 text-sm text-gray-600">
+                                                {[booking.listing_address, booking.listing_city].filter(Boolean).join(', ') || 'Property details available on listing page'}
+                                            </p>
+                                            {booking.rental_progress ? (
+                                                <p className="mt-2 text-sm text-gray-500">
+                                                    Rental progress: {booking.rental_progress.progress_percent}% complete
+                                                </p>
+                                            ) : null}
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-5 flex flex-wrap gap-3">
+                                        <Link to={`/listings/${booking.listing_id}`} className="btn btn-outline">
+                                            View Property
+                                        </Link>
+                                        <Link to={`/rental-progress/${booking.id}`} className="btn btn-outline">
+                                            Rental Progress
+                                        </Link>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="card p-10 text-center">
+                            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <HiViewGrid className="w-8 h-8 text-gray-400" />
+                            </div>
+                            <h3 className="text-lg font-medium text-gray-900 mb-2">No rental progress yet</h3>
+                            <p className="text-gray-600 mb-6">Book a viewing or start a rental application to track progress here.</p>
+                            <Link to="/search" className="btn btn-primary">
+                                Browse Properties
+                            </Link>
+                        </div>
+                    )}
+                </div>
+
+                {paymentBookings.length > 0 && (
+                    <div className="mb-12">
+                        <div className="flex items-center justify-between mb-6">
+                            <h2 className="text-2xl font-bold text-gray-900">Rental Payments History</h2>
+                            <Link to="/dashboard/settings" className="btn btn-outline">
+                                Manage Settings
+                            </Link>
+                        </div>
+
+                        <div className="grid gap-4">
+                            {paymentBookings.map((booking) => {
                                 const { totalAmount, paidAmount, remainingAmount } = getBookingFinancials(booking)
                                 const isSettled = remainingAmount <= 0
                                 const pendingPayments = (booking.payments || []).filter((payment) => (
@@ -323,11 +393,6 @@ export default function TenantDashboardPage() {
                                                     <p className="mt-2 text-sm text-gray-600">
                                                         {[booking.listing_address, booking.listing_city].filter(Boolean).join(', ') || 'Property details available on listing page'}
                                                     </p>
-                                                    {booking.rental_progress ? (
-                                                        <p className="mt-2 text-sm text-gray-500">
-                                                            Rental progress: {booking.rental_progress.progress_percent}% complete
-                                                        </p>
-                                                    ) : null}
                                                 </div>
                                             </div>
 
@@ -352,9 +417,6 @@ export default function TenantDashboardPage() {
                                         <div className="mt-5 flex flex-wrap gap-3">
                                             <Link to={`/listings/${booking.listing_id}`} className="btn btn-outline">
                                                 View Property
-                                            </Link>
-                                            <Link to={`/rental-progress/${booking.id}`} className="btn btn-outline">
-                                                Rental Progress
                                             </Link>
                                             <Link
                                                 to={`/rent/${booking.listing_id}`}
@@ -388,19 +450,8 @@ export default function TenantDashboardPage() {
                                 )
                             })}
                         </div>
-                    ) : (
-                        <div className="card p-10 text-center">
-                            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                                <HiViewGrid className="w-8 h-8 text-gray-400" />
-                            </div>
-                            <h3 className="text-lg font-medium text-gray-900 mb-2">No rental payments yet</h3>
-                            <p className="text-gray-600 mb-6">Once you book a property, your total amount, payments, and balance will appear here.</p>
-                            <Link to="/search" className="btn btn-primary">
-                                Browse Properties
-                            </Link>
-                        </div>
-                    )}
-                </div>
+                    </div>
+                )}
 
                 <div className="mb-12">
                     <div className="flex items-center justify-between mb-6">

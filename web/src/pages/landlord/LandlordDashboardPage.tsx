@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import {
@@ -6,6 +6,7 @@ import {
     HiCash,
     HiChartBar,
     HiChat,
+    HiChevronDown,
     HiChatAlt2,
     HiClipboardCheck,
     HiCog,
@@ -31,6 +32,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { useAppPopup } from '@/contexts/AppPopupContext'
 import DashboardBackButton from '@/components/DashboardBackButton'
 import { api, resolveMediaUrl } from '@/lib/api'
+import { SUBSCRIPTIONS_ENABLED } from '@/lib/featureFlags'
 import { hasBronzeAccess, SubscriptionPaymentRecord } from '@/lib/subscriptions'
 import { Booking } from '@/types'
 import { formatCurrencyWithSymbol } from '@/utils/currency'
@@ -81,6 +83,19 @@ export default function LandlordDashboardPage() {
     const location = useLocation()
     const navigate = useNavigate()
     const { alert, confirm } = useAppPopup()
+    const [expandedProgressBookings, setExpandedProgressBookings] = useState<Set<string>>(new Set())
+
+    const toggleProgressBooking = (bookingId: string) => {
+        setExpandedProgressBookings((current) => {
+            const next = new Set(current)
+            if (next.has(bookingId)) {
+                next.delete(bookingId)
+            } else {
+                next.add(bookingId)
+            }
+            return next
+        })
+    }
 
     useEffect(() => {
         const notice = (location.state as { registrationNotice?: string } | null)?.registrationNotice
@@ -101,7 +116,7 @@ export default function LandlordDashboardPage() {
     })
     const { data: subscriptionPaymentResponse } = useQuery({
         queryKey: ['subscription-payments', 'landlord-dashboard', user?.id],
-        enabled: user?.role === 'landlord',
+        enabled: SUBSCRIPTIONS_ENABLED && user?.role === 'landlord',
         queryFn: async () => (await api.get<SubscriptionPaymentRecord[] | PaginatedResponse<SubscriptionPaymentRecord>>('/subscriptions')).data,
     })
 
@@ -120,11 +135,12 @@ export default function LandlordDashboardPage() {
     const rentalStatusClass = "text-[16px] font-bold text-gray-600"
     const totalValue = listings.reduce((sum, listing) => sum + Number(listing.price_per_year || 0), 0)
     const activeBookings = bookings.filter(booking => !['cancelled', 'completed'].includes(booking.status))
-    const financialBookings = bookings.filter(booking => booking.status !== 'cancelled')
+    const paymentBookings = activeBookings.filter((booking) => booking.rental_process_started)
+    const financialBookings = bookings.filter((booking) => booking.status !== 'cancelled' && booking.rental_process_started)
     const totalCollected = financialBookings.reduce((sum, booking) => sum + getBookingFinancials(booking).collectedAmount, 0)
     const totalExpecting = financialBookings.reduce((sum, booking) => sum + getBookingFinancials(booking).expectingAmount, 0)
     const outstandingBalance = financialBookings.reduce((sum, booking) => sum + getBookingFinancials(booking).remainingAmount, 0)
-    const isBronzeLandlord = user?.role === 'landlord' && subscriptionPaymentResponse !== undefined && hasBronzeAccess(subscriptionPaymentResponse)
+    const isBronzeLandlord = SUBSCRIPTIONS_ENABLED && user?.role === 'landlord' && subscriptionPaymentResponse !== undefined && hasBronzeAccess(subscriptionPaymentResponse)
     const landlordFirstName = user?.name?.trim().split(/\s+/)[0] || 'Landlord'
     const landlordProfileId = userId || user?.id
     const landlordProfilePath = landlordProfileId ? `/landlords/${landlordProfileId}` : '#'
@@ -132,7 +148,7 @@ export default function LandlordDashboardPage() {
         { to: '/landlord/enquiries', label: 'Chat (Enquiries)', Icon: HiChat, colorClass: 'text-green-600' },
         { to: '/landlord/verification', label: 'Verification', Icon: HiShieldCheck, colorClass: 'text-purple-600' },
         { to: landlordProfilePath, label: 'Profile', Icon: HiUser, colorClass: 'text-orange-600' },
-        { to: '/billing', label: 'Billing', Icon: HiCash, colorClass: 'text-emerald-600' },
+        ...(SUBSCRIPTIONS_ENABLED ? [{ to: '/billing', label: 'Billing', Icon: HiCash, colorClass: 'text-emerald-600' }] : []),
         { to: '/complaint', label: 'Complaint', Icon: HiExclamationCircle, colorClass: 'text-red-700' },
         { to: '/support', label: 'Support', Icon: HiSupport, colorClass: 'text-blue-700' },
         { to: '/issues', label: 'Issues', Icon: HiQuestionMarkCircle, colorClass: 'text-amber-600' },
@@ -225,7 +241,7 @@ export default function LandlordDashboardPage() {
 
                 <div className="mb-8">
                     <div className="flex items-center justify-between mb-6">
-                        <h2 className="text-2xl font-bold text-gray-900">Tenant Payments</h2>
+                        <h2 className="text-2xl font-bold text-gray-900">Rental Progress</h2>
                         <div className="rounded-xl bg-blue-50 px-4 py-3 text-sm text-blue-700">
                             Portfolio value: <span className="font-semibold">{formatCurrencyWithSymbol(totalValue)}</span>
                         </div>
@@ -234,6 +250,116 @@ export default function LandlordDashboardPage() {
                     {activeBookings.length > 0 ? (
                         <div className="grid gap-4">
                             {activeBookings.map((booking) => {
+                                const isProgressOpen = expandedProgressBookings.has(booking.id)
+                                return (
+                                <div key={booking.id} className="card p-6">
+                                    <button
+                                        type="button"
+                                        onClick={() => toggleProgressBooking(booking.id)}
+                                        aria-expanded={isProgressOpen}
+                                        className="flex w-full items-start justify-between gap-4 text-left"
+                                    >
+                                        <div>
+                                            <div className="flex items-center gap-3">
+                                                <h3 className="text-lg font-semibold text-gray-900">
+                                                    {booking.listing_title || 'Property booking'}
+                                                </h3>
+                                                <span className="badge badge-warning">{booking.status}</span>
+                                            </div>
+                                            <p className="mt-2 text-sm text-gray-600">
+                                                {[booking.tenant_name, booking.tenant_email].filter(Boolean).join(' • ') || 'Tenant information available on booking'}
+                                            </p>
+                                            {booking.rental_progress ? (
+                                                <p className="mt-2 text-sm text-gray-500">
+                                                    Rental progress: {booking.rental_progress.progress_percent}% complete
+                                                </p>
+                                            ) : null}
+                                            {booking.tenant_screening_summary ? (
+                                                <p className="mt-2 text-sm font-medium text-blue-700">
+                                                    Tenant screening score: {booking.tenant_screening_summary.overall_score.toFixed(1)}/100
+                                                </p>
+                                            ) : null}
+                                        </div>
+                                        <HiChevronDown
+                                            className={`mt-1 h-6 w-6 shrink-0 text-gray-400 transition-transform duration-200 ${isProgressOpen ? 'rotate-180' : ''}`}
+                                            aria-hidden="true"
+                                        />
+                                    </button>
+
+                                    {isProgressOpen && (<>
+                                    {booking.tenant_screening_summary ? (
+                                        <div className="mt-5 rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
+                                            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                                                <div>
+                                                    <p className="text-xs uppercase tracking-[0.2em] text-blue-700">Tenant Screening</p>
+                                                    <p className="mt-1 text-lg font-semibold text-gray-900">
+                                                        Overall score: {booking.tenant_screening_summary.overall_score.toFixed(1)}%
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-2">
+                                                {booking.tenant_screening_summary.categories.map((category) => (
+                                                    <div key={category.key} className="rounded-xl bg-white px-4 py-1 shadow-sm">
+                                                        <p className="text-sm text-gray-900">{category.label}: {category.score}%</p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ) : null}
+
+                                    <div className="mt-5 flex flex-wrap gap-3">
+                                        <Link to={`/listings/${booking.listing_id}`} className="btn btn-outline">
+                                            View Property
+                                        </Link>
+                                        <Link to={`/rental-progress/${booking.id}`} className="btn btn-outline">
+                                            Rental Progress
+                                        </Link>
+                                        <Link to={`/landlord/tenancy-agreements/${booking.id}`} className="btn btn-outline">
+                                            <HiDocumentText className="mr-2 h-4 w-4" />
+                                            Tenancy Agreement
+                                        </Link>
+                                        <Link to={`/tenants/${booking.tenant_id}/profile`} className="btn btn-outline">
+                                            View Tenants Profile
+                                        </Link>
+                                        {isBronzeLandlord ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => alert('Contacting tenants is not available on the Bronze free plan.')}
+                                                className="btn btn-outline"
+                                            >
+                                                Upgrade to Message Tenant
+                                            </button>
+                                        ) : (
+                                            <Link to="/landlord/enquiries" className="btn btn-primary">
+                                                Message Tenant
+                                            </Link>
+                                        )}
+                                    </div>
+                                    </>)}
+                                </div>
+                                )
+                            })}
+                        </div>
+                    ) : (
+                        <div className="card p-10 text-center">
+                            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <HiChat className="w-8 h-8 text-gray-400" />
+                            </div>
+                            <h3 className="text-lg font-medium text-gray-900 mb-2">No rental progress yet</h3>
+                            <p className="text-gray-600">As tenants reserve your properties, rental progress will appear here.</p>
+                        </div>
+                    )}
+                </div>
+
+                {paymentBookings.length > 0 && (
+                    <div className="mb-8">
+                        <div className="flex items-center justify-between mb-6">
+                            <h2 className="text-2xl font-bold text-gray-900">Tenant Payments</h2>
+                        </div>
+
+                        <div className="grid gap-4">
+                            {paymentBookings.map((booking) => {
                                 const { rentalAmount, collectedAmount, expectingAmount, remainingAmount } = getBookingFinancials(booking)
 
                                 return (
@@ -251,16 +377,6 @@ export default function LandlordDashboardPage() {
                                                 <p className="mt-2 text-sm text-gray-600">
                                                     {[booking.tenant_name, booking.tenant_email].filter(Boolean).join(' • ') || 'Tenant information available on booking'}
                                                 </p>
-                                                {booking.rental_progress ? (
-                                                    <p className="mt-2 text-sm text-gray-500">
-                                                        Rental progress: {booking.rental_progress.progress_percent}% complete
-                                                    </p>
-                                                ) : null}
-                                                {booking.tenant_screening_summary ? (
-                                                    <p className="mt-2 text-sm font-medium text-blue-700">
-                                                        Tenant screening score: {booking.tenant_screening_summary.overall_score.toFixed(1)}/100
-                                                    </p>
-                                                ) : null}
                                             </div>
 
                                             <div className="grid gap-3 sm:grid-cols-2 lg:min-w-[560px] xl:grid-cols-4">
@@ -283,68 +399,17 @@ export default function LandlordDashboardPage() {
                                             </div>
                                         </div>
 
-                                        {booking.tenant_screening_summary ? (
-                                            <div className="mt-5 rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
-                                                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                                                    <div>
-                                                        <p className="text-xs uppercase tracking-[0.2em] text-blue-700">Tenant Screening</p>
-                                                        <p className="mt-1 text-lg font-semibold text-gray-900">
-                                                            Overall score: {booking.tenant_screening_summary.overall_score.toFixed(1)}%
-                                                        </p>
-                                                    </div>
-                                                    {/* <p className="text-sm text-gray-600">
-                                                        Category scores only. Raw tenant verification data remains hidden.
-                                                    </p> */}
-                                                </div>
-
-                                                <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-2">
-                                                    {booking.tenant_screening_summary.categories.map((category) => (
-                                                        <div key={category.key} className="rounded-xl bg-white px-4 py-1 shadow-sm">
-                                                            <p className="text-sm text-gray-900">{category.label}: {category.score}%</p>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        ) : null}
-
                                         <div className="mt-5 flex flex-wrap gap-3">
                                             <Link to={`/listings/${booking.listing_id}`} className="btn btn-outline">
                                                 View Property
                                             </Link>
-                                            <Link to={`/rental-progress/${booking.id}`} className="btn btn-outline">
-                                                Rental Progress
-                                            </Link>
-                                            <Link to={`/tenants/${booking.tenant_id}/profile`} className="btn btn-outline">
-                                                View Tenants Profile
-                                            </Link>
-                                            {isBronzeLandlord ? (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => alert('Contacting tenants is not available on the Bronze free plan.')}
-                                                    className="btn btn-outline"
-                                                >
-                                                    Upgrade to Message Tenant
-                                                </button>
-                                            ) : (
-                                                <Link to="/landlord/enquiries" className="btn btn-primary">
-                                                    Message Tenant
-                                                </Link>
-                                            )}
                                         </div>
                                     </div>
                                 )
                             })}
                         </div>
-                    ) : (
-                        <div className="card p-10 text-center">
-                            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                                <HiChat className="w-8 h-8 text-gray-400" />
-                            </div>
-                            <h3 className="text-lg font-medium text-gray-900 mb-2">No tenant payments yet</h3>
-                            <p className="text-gray-600">As tenants reserve your properties, paid amounts and outstanding balances will appear here.</p>
-                        </div>
-                    )}
-                </div>
+                    </div>
+                )}
 
                 <div className="mb-8">
                     <div className="flex items-center justify-between mb-6">

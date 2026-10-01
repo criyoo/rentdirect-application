@@ -5,6 +5,7 @@ from core.views import (
     booking_is_fully_paid,
     booking_payout_balance_available,
     booking_payout_release_conditions_met,
+    process_due_tenant_refunds,
     reconcile_processing_payment_settlements,
     trigger_booking_payouts_if_ready,
 )
@@ -38,8 +39,11 @@ class Command(BaseCommand):
             ready_count += 1
             trigger_booking_payouts_if_ready(booking)
 
+        refunds_processed = process_due_tenant_refunds()
+
         self.stdout.write(
             self.style.SUCCESS(
-                f"Checked {checked_count} booking(s); processed {ready_count} payout-ready booking(s)."
+                f"Checked {checked_count} booking(s); processed {ready_count} payout-ready booking(s); "
+                f"processed {refunds_processed} due tenant refund(s)."
             )
         )

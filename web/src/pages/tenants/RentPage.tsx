@@ -189,9 +189,10 @@ export default function RentPage() {
         )
 
     const isBookingCancelled = booking?.status === 'cancelled'
+    const rentalProcessStarted = Boolean(booking?.rental_process_started)
     const showCancelledPaymentState = isBookingCancelled || Boolean(cancelledPaymentId)
     const annualRent = showCancelledPaymentState ? 0 : Number(listing?.price_per_year || 0)
-    const paidAmount = showCancelledPaymentState ? 0 : Number(booking?.paid_amount || 0)
+    const paidAmount = showCancelledPaymentState || !rentalProcessStarted ? 0 : Number(booking?.paid_amount || 0)
     const {
         annualRent: normalizedAnnualRent,
         depositAmount,
@@ -203,7 +204,7 @@ export default function RentPage() {
         remainingBalance,
     } = calculateRentBreakdown(annualRent, paidAmount, financialConfig)
     const isFullyPaid = !showCancelledPaymentState && remainingBalance <= 0
-    const canPayInitialDeposit = Boolean(booking && paidAmount <= 0 && depositAmount > 0 && depositAmount < remainingBalance)
+    const canPayInitialDeposit = Boolean(rentalProcessStarted && paidAmount <= 0 && depositAmount > 0 && depositAmount < remainingBalance)
     const isInitialDepositSelection = paidAmount === 0 && paymentAmount === depositAmount
     const isFullRentalSelection = paidAmount === 0 && paymentAmount === totalAmount
     const paymentReviewRent = isInitialDepositSelection ? 0 : isFullRentalSelection ? normalizedAnnualRent : paymentAmount
@@ -211,7 +212,7 @@ export default function RentPage() {
     const paymentReviewAdministrationFee = isInitialDepositSelection || isFullRentalSelection ? administrationFee : 0
     const paymentReviewAdministrationFeeVat = isInitialDepositSelection || isFullRentalSelection ? administrationFeeVat : 0
     const keysCollectedConfirmed = Boolean(booking?.keys_collected_confirmed)
-    const openRentalPayments = (booking?.payments || []).filter((payment) => (
+    const openRentalPayments = (rentalProcessStarted ? booking?.payments || [] : []).filter((payment) => (
         payment.status === 'pending' || payment.status === 'processing'
     ))
     const activeOpenPayment = activeCheckoutPayment && ['pending', 'processing'].includes(activeCheckoutPayment.status)
@@ -725,7 +726,7 @@ export default function RentPage() {
                                 </div>
                             )}
 
-                            {showPaymentForm && booking && !showCancelledPaymentState && (
+                            {showPaymentForm && booking?.rental_process_started && !showCancelledPaymentState && (
                                 <div className="bg-white rounded-2xl p-6 shadow-lg border">
                                     <h2 className="text-xl font-semibold mb-4">Payment</h2>
                                     <div>
@@ -917,7 +918,7 @@ export default function RentPage() {
                                             The {formatRatePercent(financialConfig?.listingDepositRate)} deposit is part of the {formatCurrencyWithSymbol(normalizedAnnualRent)} annual rent, the property is removed from public search for a maximum of {formatDays(financialConfig?.listingDepositHoldDays)} once deposit is paid pending full rental payment.
                                         </div>
                                     </div> */}
-                                    {booking && (
+                                    {booking?.rental_process_started && (
                                         <>
                                             <div className="border-t pt-3">
                                                 <div className="flex justify-between text-green-600">
@@ -943,7 +944,7 @@ export default function RentPage() {
                                         >
                                             Sign In to Continue
                                         </button>
-                                    ) : !booking ? (
+                                    ) : !booking || !booking.rental_process_started ? (
                                         <button
                                             onClick={() => createBooking.mutate()}
                                             disabled={createBooking.isPending}
@@ -978,7 +979,7 @@ export default function RentPage() {
                                         </button>
                                     )}
 
-                                    {booking && !showCancelledPaymentState && !isFullyPaid && (
+                                    {booking?.rental_process_started && !showCancelledPaymentState && !isFullyPaid && (
                                         <LegalConsentCheckbox
                                             id="tenant-rental-legal-consent"
                                             documents={[{ slug: 'tenant-rental-and-booking-terms', title: 'Tenant Rental and Booking Terms' }]}
@@ -997,7 +998,7 @@ export default function RentPage() {
                             </div>
                         </div>
                     </div>
-                    {booking && (
+                    {booking?.rental_process_started && (
                         <div className="mb-4 bg-white rounded-2xl p-6 shadow-lg border">
                             <div className="flex items-center justify-between">
                                 <div>
@@ -1038,7 +1039,7 @@ export default function RentPage() {
                             )} */}
                         </div>
                     )}
-                    {booking && booking.payments && booking.payments.length > 0 && (
+                    {booking?.rental_process_started && booking.payments && booking.payments.length > 0 && (
                         <div className="mb-6 bg-white rounded-2xl p-6 shadow-lg border">
                             <h2 className="text-xl font-semibold text-gray-900 mb-4">Payment History</h2>
                             <div className="space-y-4">
@@ -1111,12 +1112,10 @@ export default function RentPage() {
                         <ul className="text-[14px] text-blue-800 space-y-1">
                             <li>Annual rent</li>
                             <li>Refundable caution fee</li>
-                            <p className="mt-4 text-[16px] font-semibold text-indigo-800">15% Rentdirect fee covers the following:</p>
+                            <p className="mt-4 text-[16px] font-semibold text-indigo-800">{formatRatePercent(financialConfig?.administrationFeeRate)} Rentdirect fee covers the following:</p>
                             <li>Administration fee</li>
-                            <li>Legal fee</li>
                             <li>Verification fee</li>
                             <li>Viewing fee</li>
-                            <li>Lease agreement fee</li>
                             <li>Tenant & Landlord support</li>
                         </ul>
                     </div>

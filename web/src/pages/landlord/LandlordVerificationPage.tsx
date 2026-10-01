@@ -25,6 +25,8 @@ import {
     validateCacRegistrationNumber,
     validateMobile,
 } from '@/lib/profile'
+import { nigerianBanks } from '@/lib/banks'
+import { SUBSCRIPTIONS_ENABLED } from '@/lib/featureFlags'
 import { LandlordVerificationType, User } from '@/types'
 
 type PaginatedResponse<T> = { results?: T[] }
@@ -32,63 +34,6 @@ type PaginatedResponse<T> = { results?: T[] }
 const LANDLORD_IDENTITY_ONBOARDING_KEY = 'landlord_onboarding_pending_identity'
 const OTHER_CITY_OPTION = '__other_city__'
 
-const nigerianBanks = [
-    'Access Bank Plc',
-    'Advans La Fayette Microfinance Bank',
-    'Alpha Morgan Bank Limited',
-    'Carbon Microfinance Bank',
-    'Citibank Nigeria Limited',
-    'Coronation Merchant Bank Limited',
-    'Dot Microfinance Bank',
-    'Ecobank Nigeria Limited',
-    'FairMoney Microfinance Bank',
-    'FBNQuest Merchant Bank Limited',
-    'Fidelity Bank Plc',
-    'First Bank of Nigeria Limited',
-    'First City Monument Bank (FCMB)',
-    'FSDH Merchant Bank Limited',
-    'Globus Bank Limited',
-    'Greenwich Merchant Bank Limited',
-    'Guaranty Trust Bank (GTBank)',
-    'Hope Payment Service Bank',
-    'Jaiz Bank Plc',
-    'Keystone Bank Limited',
-    'Kuda Microfinance Bank',
-    'Lotus Bank Limited',
-    'Mint Microfinance Bank',
-    'Mkobo Microfinance Bank',
-    'MoMo Payment Service Bank (MTN)',
-    'MoneyMaster Payment Service Bank (9mobile)',
-    'Moniepoint Microfinance Bank',
-    'Nova Merchant Bank Limited',
-    'OPay',
-    'Optimus Bank Limited',
-    'PalmPay',
-    'Parallex Bank Limited',
-    'Polaris Bank Limited',
-    'PremiumTrust Bank Limited',
-    'Providus Bank Plc',
-    'Rand Merchant Bank Nigeria Limited',
-    'Raven Bank',
-    'Rubies Microfinance Bank',
-    'Signature Bank Limited',
-    'SmartCash Payment Service Bank (Airtel)',
-    'Sparkle Microfinance Bank',
-    'Stanbic IBTC Bank Plc',
-    'Standard Chartered Bank Nigeria Limited',
-    'Sterling Bank Plc',
-    'SunTrust Bank Nigeria Limited',
-    'TAJBank Limited',
-    'Tatum Bank Limited',
-    'The Alternative Bank Limited',
-    'Titan Trust Bank Limited',
-    'Union Bank of Nigeria Plc',
-    'United Bank for Africa (UBA) Plc',
-    'Unity Bank Plc',
-    'VFD Microfinance Bank',
-    'Wema Bank Plc',
-    'Zenith Bank Plc',
-]
 
 type UploadedDocument = {
     id: string
@@ -121,6 +66,7 @@ type IndividualForm = {
     lga_of_origin: string
     gender: string
     contact_number: string
+    whatsapp_number: string
     email: string
     nin: string
     bvn: string
@@ -137,6 +83,7 @@ type CorporateForm = {
     business_city_other: string
     business_address: string
     company_phone_number: string
+    whatsapp_number: string
     company_email: string
     contact_person_name: string
     contact_person_position: string
@@ -170,6 +117,7 @@ const emptyIndividualForm: IndividualForm = {
     lga_of_origin: '',
     gender: '',
     contact_number: '',
+    whatsapp_number: '',
     email: '',
     nin: '',
     bvn: '',
@@ -186,6 +134,7 @@ const emptyCorporateForm: CorporateForm = {
     business_city_other: '',
     business_address: '',
     company_phone_number: '',
+    whatsapp_number: '',
     company_email: '',
     contact_person_name: '',
     contact_person_position: '',
@@ -275,6 +224,7 @@ function buildCorporateProfilePayload(form: CorporateForm) {
         business_city: form.business_city === OTHER_CITY_OPTION ? form.business_city_other : form.business_city,
         business_address: form.business_address,
         company_phone_number: form.company_phone_number,
+        whatsapp_number: form.whatsapp_number,
         company_email: form.company_email,
         contact_person_name: form.contact_person_name,
         contact_person_position: form.contact_person_position,
@@ -316,6 +266,7 @@ function buildIndividualProfilePayload(form: IndividualForm, savedProfile: Recor
         lga_of_origin: form.lga_of_origin,
         gender: form.gender,
         contact_number: form.contact_number,
+        whatsapp_number: form.whatsapp_number,
         email: form.email,
         nin: form.nin,
         bvn: form.bvn,
@@ -369,6 +320,7 @@ function buildInitialIndividualForm(me?: User): IndividualForm {
         lga_of_origin: String(savedProfile.lga_of_origin || ''),
         gender: String(savedProfile.gender || ''),
         contact_number: String(savedProfile.contact_number || me?.mobile || ''),
+        whatsapp_number: String(savedProfile.whatsapp_number || me?.whatsapp_number || ''),
         email: String(savedProfile.email || me?.email || ''),
         nin: formatIdentityNumberInput(String(savedProfile.nin || me?.nin_number || '')),
         bvn: formatIdentityNumberInput(String(savedProfile.bvn || me?.bvn_number || '')),
@@ -394,6 +346,7 @@ function buildInitialCorporateForm(me?: User): CorporateForm {
         business_city_other: knownBusinessCity ? '' : savedBusinessCity,
         business_address: String(savedProfile.business_address || me?.residence?.address || ''),
         company_phone_number: String(savedProfile.company_phone_number || me?.mobile || ''),
+        whatsapp_number: String(savedProfile.whatsapp_number || me?.whatsapp_number || ''),
         company_email: String(savedProfile.company_email || me?.email || ''),
         contact_person_name: String(savedProfile.contact_person_name || me?.name || ''),
         contact_person_position: String(savedProfile.contact_person_position || ''),
@@ -665,6 +618,10 @@ export default function LandlordVerificationPage() {
             if (contactNumberError) {
                 nextErrors.contact_number = contactNumberError
             }
+            const whatsappError = validateMobile(individualForm.whatsapp_number)
+            if (whatsappError) {
+                nextErrors.whatsapp_number = whatsappError
+            }
         }
 
         if (verificationType === 'corporate') {
@@ -710,6 +667,10 @@ export default function LandlordVerificationPage() {
             if (companyPhoneError) {
                 nextErrors.company_phone_number = companyPhoneError
             }
+            const corporateWhatsappError = validateMobile(corporateForm.whatsapp_number)
+            if (corporateWhatsappError) {
+                nextErrors.whatsapp_number = corporateWhatsappError
+            }
         }
 
         if (identificationFiles.length === 0 && existingIdentificationDocuments.length === 0) {
@@ -740,9 +701,14 @@ export default function LandlordVerificationPage() {
                 ? buildIndividualProfilePayload(individualForm, me?.landlord_verification_profile || {})
                 : buildCorporateProfilePayload(corporateForm)
 
+            const whatsappNumber = verificationType === 'individual'
+                ? individualForm.whatsapp_number.trim()
+                : corporateForm.whatsapp_number.trim()
+
             const payload: Record<string, any> = {
                 landlord_verification_type: verificationType,
                 landlord_verification_profile: profilePayload,
+                whatsapp_number: whatsappNumber,
             }
             if (verificationType === 'individual') {
                 payload.name = [individualForm.first_name, individualForm.middle_name, individualForm.last_name]
@@ -812,7 +778,9 @@ export default function LandlordVerificationPage() {
             }
 
             const shouldProceed = await confirm(
-                'Your identity has been successfully verified, you can now proceed to complete your profile and subscribe if not done already. Profile completion and subscription is required to list properties',
+                SUBSCRIPTIONS_ENABLED
+                    ? 'Your identity has been successfully verified, you can now proceed to complete your profile and subscribe if not done already. Profile completion and subscription is required to list properties'
+                    : 'Your identity has been successfully verified, you can now proceed to complete your profile. Profile completion is required to list properties',
                 { variant: 'confirm', confirmLabel: 'Proceed', cancelLabel: 'Cancel' }
             )
             if (shouldProceed && me?.id) {
@@ -1119,6 +1087,22 @@ export default function LandlordVerificationPage() {
                                                 {fieldErrors.contact_number && <p className="form-error">{fieldErrors.contact_number}</p>}
                                             </div>
                                             <div>
+                                                <label className={formLabelDefault}>WhatsApp Number (optional)</label>
+                                                <input
+                                                    className="form-input"
+                                                    name="whatsapp_number"
+                                                    type="tel"
+                                                    inputMode="tel"
+                                                    pattern={MOBILE_INPUT_PATTERN}
+                                                    maxLength={14}
+                                                    title={MOBILE_ERROR_MESSAGE}
+                                                    placeholder={MOBILE_INPUT_PLACEHOLDER}
+                                                    value={individualForm.whatsapp_number}
+                                                    onChange={handleIndividualChange}
+                                                />
+                                                {fieldErrors.whatsapp_number && <p className="form-error">{fieldErrors.whatsapp_number}</p>}
+                                            </div>
+                                            <div>
                                                 <label className={formLabelDefault}>Email</label>
                                                 <input className="form-input" type="email" name="email" value={individualForm.email} onChange={handleIndividualChange} />
                                                 {fieldErrors.email && <p className="form-error">{fieldErrors.email}</p>}
@@ -1269,6 +1253,22 @@ export default function LandlordVerificationPage() {
                                                 onChange={handleCorporateChange}
                                             />
                                             {fieldErrors.company_phone_number && <p className="form-error">{fieldErrors.company_phone_number}</p>}
+                                        </div>
+                                        <div>
+                                            <label className={formLabelDefault}>WhatsApp Number (optional)</label>
+                                            <input
+                                                className="form-input"
+                                                name="whatsapp_number"
+                                                type="tel"
+                                                inputMode="tel"
+                                                pattern={MOBILE_INPUT_PATTERN}
+                                                maxLength={14}
+                                                title={MOBILE_ERROR_MESSAGE}
+                                                placeholder={MOBILE_INPUT_PLACEHOLDER}
+                                                value={corporateForm.whatsapp_number}
+                                                onChange={handleCorporateChange}
+                                            />
+                                            {fieldErrors.whatsapp_number && <p className="form-error">{fieldErrors.whatsapp_number}</p>}
                                         </div>
                                         <div>
                                             <label className={formLabelDefault}>Company Email</label>

@@ -6,6 +6,7 @@ from django.utils import timezone
 
 from core.models import Booking
 from core.views import subtract_calendar_months
+from core.whatsapp import send_whatsapp_alert_for_user
 
 
 class Command(BaseCommand):
@@ -42,6 +43,13 @@ class Command(BaseCommand):
                 settings.DEFAULT_FROM_EMAIL,
                 [booking.tenant.email],
                 fail_silently=False,
+            )
+            send_whatsapp_alert_for_user(
+                booking.tenant,
+                (
+                    f"RentDirect: Your tenancy for {booking.listing.title} expires on "
+                    f"{booking.end_date:%B %d, %Y}. Contact your landlord to renew."
+                ),
             )
 
             with transaction.atomic():

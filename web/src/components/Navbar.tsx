@@ -28,6 +28,7 @@ export default function Navbar() {
         : null
     const isTenantRegistrationActive = registrationRole === 'tenant'
     const isLandlordRegistrationActive = registrationRole === 'landlord'
+    const isAgentRegistrationActive = location.pathname === '/agents' || location.pathname === '/agents/register' || location.pathname === '/agents/login'
 
     // Verify authentication with backend if user is not in localStorage
     const { data: backendUser } = useQuery({
@@ -46,8 +47,15 @@ export default function Navbar() {
     // Check if user is currently on their dashboard page
     const isOnDashboard = authenticatedUser && authenticatedUser.id && (
         (authenticatedUser.role === 'landlord' && location.pathname.startsWith(`/dashboard/landlord/${authenticatedUser.id}`)) ||
-        (authenticatedUser.role === 'tenant' && location.pathname.startsWith(`/dashboard/tenant/${authenticatedUser.id}`))
+        (authenticatedUser.role === 'tenant' && location.pathname.startsWith(`/dashboard/tenant/${authenticatedUser.id}`)) ||
+        (authenticatedUser.role === 'agent' && location.pathname.startsWith('/agents/dashboard'))
     )
+
+    const dashboardPath = authenticatedUser?.role === 'landlord'
+        ? `/dashboard/landlord/${authenticatedUser.id}`
+        : authenticatedUser?.role === 'agent'
+            ? '/agents/dashboard'
+            : `/dashboard/tenant/${authenticatedUser?.id}`
 
     const handleLogout = async () => {
         await logout()
@@ -72,7 +80,7 @@ export default function Navbar() {
                     {/* Desktop Navigation */}
                     <nav className="hidden md:flex items-center gap-3">
                         <NavLink
-                            to="/about"
+                            to={authenticatedUser?.role === 'agent' ? '/agents/about' : '/about'}
                             reloadDocument={isTenantProfileEditPage}
                             className={({ isActive }) => `group inline-flex items-center gap-1 rounded-xl px-6 py-2 text-sm font-semibold transition-all duration-300 hover:-translate-y-1.0 hover:bg-indigo-100 hover:text-purple-900 hover:shadow-sm active:scale-95 ${isActive ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-700'}`}
                         >
@@ -81,7 +89,7 @@ export default function Navbar() {
                         </NavLink>
 
                         {authenticatedUser?.id ? <NavLink
-                            to="/how-it-works"
+                            to={authenticatedUser?.role === 'agent' ? '/agents/how-it-works' : '/how-it-works'}
                             reloadDocument={isTenantProfileEditPage}
                             className={({ isActive }) => `group inline-flex items-center gap-1 rounded-xl px-6 py-2 text-sm font-semibold transition-all duration-300 hover:-translate-y-0.5 hover:bg-indigo-50 hover:text-indigo-700 hover:shadow-sm active:scale-95 ${isActive ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-700'}`}
                         >
@@ -89,14 +97,16 @@ export default function Navbar() {
                             How it works
                         </NavLink> : null}
 
-                        <NavLink
-                            to="/search"
-                            reloadDocument={isTenantProfileEditPage}
-                            className={({ isActive }) => `group inline-flex items-center gap-1 rounded-xl px-3 py-2 text-sm font-semibold transition-all duration-300 hover:-translate-y-0.5 hover:bg-indigo-50 hover:text-indigo-700 hover:shadow-sm active:scale-95 ${isActive ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-700'}`}
-                        >
-                            <HiSearch className={navIconClassName} />
-                            <span>Search</span>
-                        </NavLink>
+                        {!isAgentRegistrationActive && (
+                            <NavLink
+                                to="/search"
+                                reloadDocument={isTenantProfileEditPage}
+                                className={({ isActive }) => `group inline-flex items-center gap-1 rounded-xl px-3 py-2 text-sm font-semibold transition-all duration-300 hover:-translate-y-0.5 hover:bg-indigo-50 hover:text-indigo-700 hover:shadow-sm active:scale-95 ${isActive ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-700'}`}
+                            >
+                                <HiSearch className={navIconClassName} />
+                                <span>Search</span>
+                            </NavLink>
+                        )}
 
                         {authenticatedUser && authenticatedUser.role === 'landlord' && (
                             <NavLink
@@ -112,7 +122,7 @@ export default function Navbar() {
                             <div className="flex items-center gap-3">
                                 {!isOnDashboard && (
                                     <NavLink
-                                        to={authenticatedUser.role === 'landlord' ? `/dashboard/landlord/${authenticatedUser.id}` : `/dashboard/tenant/${authenticatedUser.id}`}
+                                        to={dashboardPath}
                                         reloadDocument={isTenantProfileEditPage}
                                         className="group btn gap-2 bg-gradient-to-r from-slate-700 to-indigo-700 text-sm font-semibold text-white shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:from-indigo-600 hover:to-purple-600 hover:shadow-lg active:scale-95"
                                     >
@@ -133,32 +143,36 @@ export default function Navbar() {
                         ) : (
                             <div className="flex items-center gap-3">
                                 <NavLink
-                                    to="/login"
+                                    to={isAgentRegistrationActive ? '/agents/login' : '/login'}
                                     className={({ isActive }) => `group inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-all duration-300 hover:-translate-y-0.5 hover:bg-indigo-50 hover:text-indigo-700 hover:shadow-sm active:scale-95 ${isActive ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-700'}`}
                                 >
                                     <HiLogin className="h-6 w-6 transition-transform duration-300 group-hover:translate-x-0.5" />
                                     Login
                                 </NavLink>
-                                <NavLink
-                                    to="/register?role=tenant"
-                                    className={`group btn relative gap-2 overflow-hidden text-sm font-semibold shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0 active:scale-95 ${isTenantRegistrationActive
-                                        ? 'bg-indigo-800 text-white shadow-md'
-                                        : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
-                                        }`}
-                                >
-                                    <HiHome className="h-6 w-6 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:scale-120" />
-                                    <span>Find a home</span>
-                                </NavLink>
-                                <NavLink
-                                    to="/register?role=landlord"
-                                    className={`group btn relative gap-2 overflow-hidden text-sm font-semibold transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0 active:scale-95 ${isLandlordRegistrationActive
-                                        ? 'bg-purple-700 text-white shadow-md'
-                                        : 'bg-purple-50 text-purple-700 hover:bg-purple-100'
-                                        }`}
-                                >
-                                    <HiOfficeBuilding className="h-6 w-6 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:scale-120" />
-                                    <span>List a Property</span>
-                                </NavLink>
+                                {!isAgentRegistrationActive && (
+                                    <>
+                                        <NavLink
+                                            to="/register?role=tenant"
+                                            className={`group btn relative gap-2 overflow-hidden text-sm font-semibold shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0 active:scale-95 ${isTenantRegistrationActive
+                                                ? 'bg-indigo-800 text-white shadow-md'
+                                                : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+                                                }`}
+                                        >
+                                            <HiHome className="h-6 w-6 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:scale-120" />
+                                            <span>Find a home</span>
+                                        </NavLink>
+                                        <NavLink
+                                            to="/register?role=landlord"
+                                            className={`group btn relative gap-2 overflow-hidden text-sm font-semibold transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg active:translate-y-0 active:scale-95 ${isLandlordRegistrationActive
+                                                ? 'bg-purple-700 text-white shadow-md'
+                                                : 'bg-purple-50 text-purple-700 hover:bg-purple-100'
+                                                }`}
+                                        >
+                                            <HiOfficeBuilding className="h-6 w-6 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:scale-120" />
+                                            <span>List a Property</span>
+                                        </NavLink>
+                                    </>
+                                )}
                             </div>
                         )}
                     </nav>
@@ -188,7 +202,7 @@ export default function Navbar() {
                         <div className="md:hidden py-4 border-t border-gray-200 animate-slide-up">
                             <div className="flex flex-col gap-3">
                                 <NavLink
-                                    to="/about"
+                                    to={authenticatedUser?.role === 'agent' ? '/agents/about' : '/about'}
                                     reloadDocument={isTenantProfileEditPage}
                                     className={navMenuClassName}
                                     onClick={() => setIsMobileMenuOpen(false)}
@@ -199,7 +213,7 @@ export default function Navbar() {
 
                                 {authenticatedUser?.id ? (
                                     <NavLink
-                                        to="/how-it-works"
+                                        to={authenticatedUser?.role === 'agent' ? '/agents/how-it-works' : '/how-it-works'}
                                         reloadDocument={isTenantProfileEditPage}
                                         className={navMenuClassName}
                                         onClick={() => setIsMobileMenuOpen(false)}
@@ -209,15 +223,17 @@ export default function Navbar() {
                                     </NavLink>
                                 ) : null}
 
-                                <NavLink
-                                    to="/search"
-                                    reloadDocument={isTenantProfileEditPage}
-                                    className={navMenuClassName}
-                                    onClick={() => setIsMobileMenuOpen(false)}
-                                >
-                                    <HiSearch className="h-6 w-6 transition-transform duration-300 group-hover:scale-110" />
-                                    <span>Search</span>
-                                </NavLink>
+                                {!isAgentRegistrationActive && (
+                                    <NavLink
+                                        to="/search"
+                                        reloadDocument={isTenantProfileEditPage}
+                                        className={navMenuClassName}
+                                        onClick={() => setIsMobileMenuOpen(false)}
+                                    >
+                                        <HiSearch className="h-6 w-6 transition-transform duration-300 group-hover:scale-110" />
+                                        <span>Search</span>
+                                    </NavLink>
+                                )}
 
                                 {authenticatedUser && authenticatedUser.role === 'landlord' && (
                                     <NavLink
@@ -234,7 +250,7 @@ export default function Navbar() {
                                     <div className="flex flex-col gap-3">
                                         {!isOnDashboard && (
                                             <NavLink
-                                                to={authenticatedUser.role === 'landlord' ? `/dashboard/landlord/${authenticatedUser.id}` : `/dashboard/tenant/${authenticatedUser.id}`}
+                                                to={dashboardPath}
                                                 reloadDocument={isTenantProfileEditPage}
                                                 className="group flex items-center gap-3 rounded-xl bg-gradient-to-r from-slate-700 to-indigo-700 px-4 py-3 font-semibold text-white shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:from-indigo-600 hover:to-purple-600 hover:shadow-md active:scale-[0.98]"
                                                 onClick={() => setIsMobileMenuOpen(false)}
@@ -255,7 +271,7 @@ export default function Navbar() {
                                 ) : (
                                     <div className="flex flex-col gap-3">
                                         <NavLink
-                                            to="/login"
+                                            to={isAgentRegistrationActive ? '/agents/login' : '/login'}
                                             className={navMenuClassName}
                                             onClick={() => setIsMobileMenuOpen(false)}
                                         >
@@ -263,29 +279,45 @@ export default function Navbar() {
                                             <span>Login</span>
                                         </NavLink>
 
-                                        <NavLink
-                                            to="/register?role=tenant"
-                                            onClick={() => setIsMobileMenuOpen(false)}
-                                            className={`group flex items-center gap-3 rounded-xl px-4 py-3 font-semibold shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md active:scale-[0.98] ${isTenantRegistrationActive
-                                                ? 'bg-indigo-600 text-white shadow-md'
-                                                : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-400'
-                                                }`}
-                                        >
-                                            <HiHome className="h-6 w-6 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:scale-120" />
-                                            <span>Find a home</span>
-                                        </NavLink>
+                                        {!isAgentRegistrationActive && (
+                                            <>
+                                                <NavLink
+                                                    to="/register?role=tenant"
+                                                    onClick={() => setIsMobileMenuOpen(false)}
+                                                    className={`group flex items-center gap-3 rounded-xl px-4 py-3 font-semibold shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md active:scale-[0.98] ${isTenantRegistrationActive
+                                                        ? 'bg-indigo-600 text-white shadow-md'
+                                                        : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-400'
+                                                        }`}
+                                                >
+                                                    <HiHome className="h-6 w-6 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:scale-120" />
+                                                    <span>Find a home</span>
+                                                </NavLink>
 
-                                        <NavLink
-                                            to="/register?role=landlord"
-                                            onClick={() => setIsMobileMenuOpen(false)}
-                                            className={`group flex items-center gap-3 rounded-xl px-4 py-3 font-semibold shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md active:scale-[0.98] ${isLandlordRegistrationActive
-                                                ? 'bg-purple-600 text-white shadow-md'
-                                                : 'bg-purple-50 text-purple-700 hover:bg-purple-400'
-                                                }`}
-                                        >
-                                            <HiOfficeBuilding className="h-6 w-6 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:scale-120" />
-                                            <span>List a Property</span>
-                                        </NavLink>
+                                                <NavLink
+                                                    to="/register?role=landlord"
+                                                    onClick={() => setIsMobileMenuOpen(false)}
+                                                    className={`group flex items-center gap-3 rounded-xl px-4 py-3 font-semibold shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md active:scale-[0.98] ${isLandlordRegistrationActive
+                                                        ? 'bg-purple-600 text-white shadow-md'
+                                                        : 'bg-purple-50 text-purple-700 hover:bg-purple-400'
+                                                        }`}
+                                                >
+                                                    <HiOfficeBuilding className="h-6 w-6 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:scale-120" />
+                                                    <span>List a Property</span>
+                                                </NavLink>
+
+                                                <NavLink
+                                                    to="/agents"
+                                                    onClick={() => setIsMobileMenuOpen(false)}
+                                                    className={`group flex items-center gap-3 rounded-xl px-4 py-3 font-semibold shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md active:scale-[0.98] ${isAgentRegistrationActive
+                                                        ? 'bg-emerald-600 text-white shadow-md'
+                                                        : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                                                        }`}
+                                                >
+                                                    <HiUser className="h-6 w-6 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:scale-120" />
+                                                    <span>Become a PIO</span>
+                                                </NavLink>
+                                            </>
+                                        )}
                                     </div>
                                 )}
                             </div>

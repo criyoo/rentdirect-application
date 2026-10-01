@@ -91,7 +91,7 @@ export const landlordSupportFaqs = [
     },
     {
         question: 'How do I verify property ownership?',
-        answer: 'When creating or editing a listing, choose Upload documents or In-person verification. Upload the requested ownership documents or request a physical inspection by an authorised RentDirect agent or lawyer, then review and consent to the property verification terms.',
+        answer: 'When creating or editing a listing, choose Upload documents or In-person verification. Upload the requested ownership documents or request a physical inspection by an authorised RentDirect property inspection officer or lawyer, then review and consent to the property verification terms.',
     },
     {
         question: 'Why can I not create a listing yet?',
@@ -116,6 +116,41 @@ export const landlordSupportFaqs = [
     {
         question: 'How do I contact RentDirect support?',
         answer: 'Open Support for the support phone number, email, FAQ, and Support Chat. Open Issues when you need to submit a problem for the RentDirect team to investigate.',
+    },
+] as const
+
+export const agentSupportFaqs = [
+    {
+        question: 'How do I register as a property inspection officer?',
+        answer: 'Choose Become a PIO in the navigation menu, create your free account, and verify your email with the one-time code sent to you. There is no subscription for PIOs.',
+    },
+    {
+        question: 'Why do I pay a ₦500 verification fee?',
+        answer: 'A one-time ₦500 payment covers identity verification before you can claim inspection work. It is charged once and is not a subscription or recurring fee.',
+    },
+    {
+        question: 'How do I complete PIO verification?',
+        answer: 'Open Verification from your PIO dashboard, complete your personal, identity, and bank details, pay the ₦500 verification fee, review the Physical Inspection and Document Verification Agreement, and submit your NIN and BVN for validation.',
+    },
+    {
+        question: 'How do I claim a property inspection?',
+        answer: 'Once verified, open your PIO dashboard to see available in-person inspection requests. Select Claim on a listing to reserve it — each property can only be inspected by one PIO.',
+    },
+    {
+        question: 'How do I earn from referrals?',
+        answer: 'Every PIO gets a unique referral code on sign-up. Share it with new PIOs — when a referred PIO completes identity verification and submits inspections, you earn a bonus per inspection up to a cap for each referral. Open Referrals on your dashboard to see your code and referral tree.',
+    },
+    {
+        question: 'How do I submit an inspection report?',
+        answer: 'Open the claimed inspection, complete every required checklist section, upload supporting evidence, and choose Submit sign-off. Submitted reports are immutable and cannot be edited afterwards.',
+    },
+    {
+        question: 'When do I get paid for an inspection?',
+        answer: 'Your dashboard shows Total Earned, Total Paid Out, and Pending Payout for submitted inspections. RentDirect pays out approved inspection earnings to the bank account saved in your PIO profile.',
+    },
+    {
+        question: 'How do I contact RentDirect support?',
+        answer: 'Open Support for the support phone number, email, FAQ, and Support Chat. Your support chat is private to your PIO account.',
     },
 ] as const
 

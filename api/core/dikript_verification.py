@@ -16,7 +16,7 @@ from django.core.cache import cache
 from django.utils.dateparse import parse_date
 from rest_framework.exceptions import APIException, ValidationError
 
-from .verification_records import get_verification_record_payload, store_verification_record_payload
+from .verification_records import get_verification_record_payload, sanitize_verification_payload, store_verification_record_payload
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +87,7 @@ def dikript_get(path: str, query: dict[str, Any]) -> dict[str, Any]:
         raise DikriptVerificationUnavailable() from exc
 
 
-def dikript_lookup(*, verification_type: str, path: str, lookup_value: str, query: dict[str, Any]) -> dict[str, Any]:
+def dikript_lookup(*, verification_type: str, path: str, lookup_value: str, query: dict[str, Any], store_record: bool = True) -> dict[str, Any]:
     lookup_hash = hashlib.sha256(str(lookup_value).encode("utf-8")).hexdigest()
     cache_key = f"dikript_lookup:{verification_type}:{lookup_hash}"
     cached_payload = cache.get(cache_key)
@@ -110,12 +110,15 @@ def dikript_lookup(*, verification_type: str, path: str, lookup_value: str, quer
         if isinstance(data, dict):
             data.pop("photo", None)
             data.pop("signature", None)
-        sanitized = store_verification_record_payload(
-            provider="dikript",
-            verification_type=verification_type,
-            lookup_value=lookup_value,
-            payload=sanitized,
-        )
+        if store_record:
+            sanitized = store_verification_record_payload(
+                provider="dikript",
+                verification_type=verification_type,
+                lookup_value=lookup_value,
+                payload=sanitized,
+            )
+        else:
+            sanitized = sanitize_verification_payload(sanitized)
         cache.set(cache_key, sanitized, timeout=getattr(settings, "DIKRIPT_LOOKUP_CACHE_TIMEOUT_SECONDS", 86400))
         return sanitized
     return payload
@@ -406,6 +409,7 @@ def verify_nin(input_data: dict[str, Any], nin_number: str) -> dict[str, Any]:
         path=settings.DIKRIPT_NIN_API_URL,
         lookup_value=nin_number,
         query={"nin": nin_number},
+        store_record=False,
     )
     nin_data = nin_payload.get("data") if isinstance(nin_payload.get("data"), dict) else {}
     if not nin_payload.get("status") or not nin_data:
@@ -416,6 +420,12 @@ def verify_nin(input_data: dict[str, Any], nin_number: str) -> dict[str, Any]:
     mismatches.pop("mobile", None)
     if mismatches:
         raise ValidationError(mismatches)
+    nin_payload = store_verification_record_payload(
+        provider="dikript",
+        verification_type="nin",
+        lookup_value=nin_number,
+        payload=nin_payload,
+    )
     if phone_mismatch:
         nin_payload = {**nin_payload, "mobile_warning": MOBILE_MISMATCH_WARNING.replace("NIN or BVN", "NIN")}
 
@@ -443,6 +453,7 @@ def verify_nin_and_bvn(input_data: dict[str, Any], nin_number: str, bvn_number: 
         path=settings.DIKRIPT_NIN_API_URL,
         lookup_value=nin_number,
         query={"nin": nin_number},
+        store_record=False,
     )
     nin_data = nin_payload.get("data") if isinstance(nin_payload.get("data"), dict) else {}
     if not nin_payload.get("status") or not nin_data:
@@ -459,6 +470,7 @@ def verify_nin_and_bvn(input_data: dict[str, Any], nin_number: str, bvn_number: 
         path=settings.DIKRIPT_BVN_API_URL,
         lookup_value=bvn_number,
         query={"bvn": bvn_number},
+        store_record=False,
     )
     bvn_data = bvn_payload.get("data") if isinstance(bvn_payload.get("data"), dict) else {}
     if not bvn_payload.get("status") or not bvn_data:
@@ -487,6 +499,19 @@ def verify_nin_and_bvn(input_data: dict[str, Any], nin_number: str, bvn_number: 
 
     if merged:
         raise ValidationError(merged)
+
+    nin_payload = store_verification_record_payload(
+        provider="dikript",
+        verification_type="nin",
+        lookup_value=nin_number,
+        payload=nin_payload,
+    )
+    bvn_payload = store_verification_record_payload(
+        provider="dikript",
+        verification_type="bvn",
+        lookup_value=bvn_number,
+        payload=bvn_payload,
+    )
 
     mobile_warning = _mobile_verification_warning(input_data, nin_data, bvn_data)
     if mobile_warning:

@@ -6,8 +6,9 @@ import { Link, useParams } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import { formatRatePercent, useFinancialConfig } from '@/hooks/useFinancialConfig'
 import { api, resolveMediaUrl } from '@/lib/api'
+import { nigerianBanks } from '@/lib/banks'
 import { hasPlatinumAccess, hasSilverAccess, SubscriptionPaymentRecord } from '@/lib/subscriptions'
-import { Booking, RentalProgressStep } from '@/types'
+import { Booking, RentalProgressStep, TenantRefund } from '@/types'
 import { formatCurrencyWithSymbol } from '@/utils/currency'
 import DashboardBackButton from '@/components/DashboardBackButton'
 
@@ -38,6 +39,38 @@ function formatProgressPercent(value: number | undefined): string {
     return Number.isInteger(numericValue) ? `${numericValue}%` : `${numericValue.toFixed(1)}%`
 }
 
+const REFUND_FEE_RATE = 0.01
+const REFUND_FEE_CAP_NGN = 50000
+
+function refundFeeFor(amount: number): number {
+    return Math.min(amount * REFUND_FEE_RATE, REFUND_FEE_CAP_NGN)
+}
+
+function normalizeBankKey(value: string | undefined): string {
+    return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+const OPEN_REFUND_STATUSES = new Set(['scheduled', 'recipient_created', 'ready', 'processing', 'paid'])
+
+function refundStatusLabel(status: string): string {
+    switch (status) {
+        case 'scheduled':
+            return 'Scheduled'
+        case 'recipient_created':
+            return 'Preparing payout'
+        case 'ready':
+            return 'Ready'
+        case 'processing':
+            return 'Processing'
+        case 'paid':
+            return 'Paid'
+        case 'failed':
+            return 'Failed'
+        default:
+            return status
+    }
+}
+
 export default function RentalProgressPage() {
     const { bookingId } = useParams()
     const { user } = useAuth()
@@ -45,6 +78,12 @@ export default function RentalProgressPage() {
     const { data: financialConfig } = useFinancialConfig()
     const [selectedStepKeys, setSelectedStepKeys] = useState<string[]>([])
     const [selectedStepResponses, setSelectedStepResponses] = useState<Record<string, string>>({})
+    const [showRefundForm, setShowRefundForm] = useState(false)
+    const [refundPaymentId, setRefundPaymentId] = useState('')
+    const [refundBankName, setRefundBankName] = useState('')
+    const [refundAccountNumber, setRefundAccountNumber] = useState('')
+    const [refundAccountName, setRefundAccountName] = useState('')
+    const [refundReason, setRefundReason] = useState('')
 
     const { data: subscriptionPaymentResponse, isLoading: isSubscriptionLoading } = useQuery({
         queryKey: ['subscription-payments', 'rental-progress', user?.id],
@@ -62,6 +101,12 @@ export default function RentalProgressPage() {
         queryKey: ['rental-progress', bookingId],
         enabled: !!bookingId && hasRentalProgressAccess,
         queryFn: async () => (await api.get<Booking>(`/bookings/${bookingId}/rental-progress`)).data,
+    })
+
+    const { data: refunds } = useQuery({
+        queryKey: ['booking-refunds', bookingId],
+        enabled: !!bookingId && hasRentalProgressAccess && user?.role === 'tenant',
+        queryFn: async () => (await api.get<TenantRefund[]>(`/bookings/${bookingId}/refunds`)).data,
     })
 
     useEffect(() => {
@@ -88,6 +133,37 @@ export default function RentalProgressPage() {
         },
         onError: (mutationError: any) => {
             alert(parseErrorMessage(mutationError, 'Failed to save rental progress.'))
+        },
+    })
+
+    const requestRefund = useMutation({
+        mutationFn: async () => {
+            if (!bookingId || !refundPaymentId) {
+                throw new Error('Select the payment to refund.')
+            }
+            return (
+                await api.post<TenantRefund>(`/bookings/${bookingId}/refunds`, {
+                    payment_id: refundPaymentId,
+                    bank_name: refundBankName,
+                    account_number: refundAccountNumber,
+                    account_name: refundAccountName,
+                    reason: refundReason,
+                })
+            ).data
+        },
+        onSuccess: async () => {
+            setShowRefundForm(false)
+            setRefundPaymentId('')
+            setRefundBankName('')
+            setRefundAccountNumber('')
+            setRefundAccountName('')
+            setRefundReason('')
+            await queryClient.invalidateQueries({ queryKey: ['booking-refunds', bookingId] })
+            await queryClient.invalidateQueries({ queryKey: ['rental-progress', bookingId] })
+            await queryClient.invalidateQueries({ queryKey: ['bookings'] })
+        },
+        onError: (mutationError: any) => {
+            alert(parseErrorMessage(mutationError, 'Failed to request refund.'))
         },
     })
 
@@ -179,6 +255,22 @@ export default function RentalProgressPage() {
     const rentalDepositPaid = Boolean(progress?.rental_deposit_paid)
     const fullRentalAmountPaid = Boolean(progress?.full_rental_amount_paid)
     const dashboardPath = isLandlord ? `/dashboard/landlord/${user?.id}` : `/dashboard/tenant/${user?.id}`
+
+    const refundsList = refunds || []
+    const keysHandedOver = Boolean(booking.tenant_key_collection_confirmed || booking.landlord_key_collection_confirmed)
+    const refundablePayments = (booking.payments || []).filter(
+        (payment) =>
+            payment.status === 'completed'
+            && !refundsList.some((refund) => refund.payment_id === payment.id && OPEN_REFUND_STATUSES.has(refund.status)),
+    )
+    const selectedRefundPayment = refundablePayments.find((payment) => payment.id === refundPaymentId)
+    const recordedBankName = selectedRefundPayment?.bank_name || ''
+    const bankOptions = recordedBankName && nigerianBanks.some((bank) => normalizeBankKey(bank) === normalizeBankKey(recordedBankName))
+        ? nigerianBanks.filter((bank) => normalizeBankKey(bank) === normalizeBankKey(recordedBankName))
+        : nigerianBanks
+    const selectedRefundAmount = Number(selectedRefundPayment?.amount || 0)
+    const selectedRefundFee = refundFeeFor(selectedRefundAmount)
+    const canRequestRefund = !isLandlord && !keysHandedOver && refundablePayments.length > 0
 
     return (
         <div className="min-h-screen bg-gray-50">
@@ -336,6 +428,18 @@ export default function RentalProgressPage() {
                                                     <p className={`text-base font-semibold ${completed ? 'text-gray-500' : 'text-gray-900'}`}>
                                                         {step.label}
                                                     </p>
+                                                    {step.key === 'tenancy_agreement_signed' && !completed ? (
+                                                        <p className="mt-1 text-sm">
+                                                            <Link
+                                                                to={isLandlord
+                                                                    ? `/landlord/tenancy-agreements/${booking.id}`
+                                                                    : `/tenant/tenancy-agreements/${booking.id}`}
+                                                                className="font-medium text-blue-600 hover:underline"
+                                                            >
+                                                                Review & sign the digital tenancy agreement
+                                                            </Link>
+                                                        </p>
+                                                    ) : null}
                                                     {step.completed_at ? (
                                                         <p className="mt-2 flex items-center gap-2 text-sm text-gray-500">
                                                             <HiClock className="h-4 w-4" />
@@ -410,13 +514,30 @@ export default function RentalProgressPage() {
                                         </div>
 
                                         <div className="flex flex-col items-center gap-2 pt-1">
-                                            <input
-                                                type="checkbox"
-                                                checked={counterpartCompleted}
-                                                disabled
-                                                aria-label={`${isLandlord ? 'Tenant' : 'Landlord'} completion for ${step.label}`}
-                                                className="h-4 w-4 rounded border-gray-300 accent-gray-400 text-gray-500 disabled:cursor-not-allowed disabled:opacity-100"
-                                            />
+                                            {isChoiceStep ? (
+                                                <div className="flex flex-col gap-2">
+                                                    {step.options?.map((option) => (
+                                                        <label key={option.value} className="flex items-center gap-1 text-xs font-medium text-gray-500">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={step.counterpart_selected_value === option.value}
+                                                                disabled
+                                                                aria-label={`${isLandlord ? 'Tenant' : 'Landlord'} answered ${option.label} for ${step.label}`}
+                                                                className="h-4 w-4 rounded border-gray-300 accent-gray-400 disabled:cursor-not-allowed disabled:opacity-100"
+                                                            />
+                                                            <span>{option.label}</span>
+                                                        </label>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <input
+                                                    type="checkbox"
+                                                    checked={counterpartCompleted}
+                                                    disabled
+                                                    aria-label={`${isLandlord ? 'Tenant' : 'Landlord'} completion for ${step.label}`}
+                                                    className="h-4 w-4 rounded border-gray-300 accent-gray-400 text-gray-500 disabled:cursor-not-allowed disabled:opacity-100"
+                                                />
+                                            )}
                                             <span className="text-center text-[10px] font-semibold uppercase tracking-wide text-gray-500 md:hidden">
                                                 {isLandlord ? 'Tenant' : 'Landlord'}
                                             </span>
@@ -426,6 +547,211 @@ export default function RentalProgressPage() {
                             })}
                         </div>
                     </div>
+
+                    {!isLandlord && (
+                        <div className="mt-8 rounded-3xl border bg-white p-6 shadow-sm">
+                            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                                <div>
+                                    <h2 className="text-2xl font-semibold text-gray-900">Refunds</h2>
+                                    <p className="mt-2 text-gray-600 text-[14px]">
+                                        Request a refund of a completed payment before the property keys are handed over.<br />
+                                        A 1% processing fee (capped at {formatCurrencyWithSymbol(REFUND_FEE_CAP_NGN)}) applies.<br />
+                                        Refunds are paid to the bank used for the original payment after 3 working days (72 hours).
+                                    </p>
+                                </div>
+                                {canRequestRefund && !showRefundForm && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowRefundForm(true)}
+                                        className="btn btn-primary"
+                                    >
+                                        Request a refund
+                                    </button>
+                                )}
+                            </div>
+
+                            {keysHandedOver && refundsList.length === 0 && (
+                                <p className="mt-4 rounded-2xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
+                                    Refunds are no longer available because the property keys have been handed over.
+                                </p>
+                            )}
+
+                            {showRefundForm && canRequestRefund && (
+                                <form
+                                    className="mt-6 grid gap-4 rounded-2xl border border-blue-100 bg-blue-50/50 p-5"
+                                    onSubmit={(event) => {
+                                        event.preventDefault()
+                                        requestRefund.mutate()
+                                    }}
+                                >
+                                    <div>
+                                        <label className="mb-1 block text-sm font-semibold text-gray-700">Payment to refund</label>
+                                        <select
+                                            value={refundPaymentId}
+                                            onChange={(event) => {
+                                                const nextId = event.target.value
+                                                setRefundPaymentId(nextId)
+                                                const nextPayment = refundablePayments.find((payment) => payment.id === nextId)
+                                                if (nextPayment?.bank_name && normalizeBankKey(nextPayment.bank_name) !== normalizeBankKey(refundBankName)) {
+                                                    setRefundBankName(nextPayment.bank_name)
+                                                }
+                                            }}
+                                            required
+                                            className="form-input w-full"
+                                        >
+                                            <option value="">Select a payment</option>
+                                            {refundablePayments.map((payment) => (
+                                                <option key={payment.id} value={payment.id}>
+                                                    {formatCurrencyWithSymbol(Number(payment.amount))} — {payment.payment_method === 'bank' ? 'Bank transfer' : 'Card'}
+                                                    {payment.card_last4 ? ` (•••• ${payment.card_last4})` : ''}
+                                                    {payment.bank_name ? ` — ${payment.bank_name}` : ''}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div className="grid gap-4 md:grid-cols-2">
+                                        <div>
+                                            <label className="mb-1 block text-sm font-semibold text-gray-700">Bank</label>
+                                            <select
+                                                value={refundBankName}
+                                                onChange={(event) => setRefundBankName(event.target.value)}
+                                                required
+                                                className="form-input w-full"
+                                            >
+                                                <option value="">Select bank</option>
+                                                {bankOptions.map((bank) => (
+                                                    <option key={bank} value={bank}>{bank}</option>
+                                                ))}
+                                            </select>
+                                            {recordedBankName && (
+                                                <p className="mt-1 text-xs text-gray-500">
+                                                    This payment was made from {recordedBankName}; refunds can only go to that bank.
+                                                </p>
+                                            )}
+                                        </div>
+                                        <div>
+                                            <label className="mb-1 block text-sm font-semibold text-gray-700">Account number</label>
+                                            <input
+                                                type="text"
+                                                inputMode="numeric"
+                                                maxLength={10}
+                                                value={refundAccountNumber}
+                                                onChange={(event) => setRefundAccountNumber(event.target.value.replace(/\D/g, ''))}
+                                                required
+                                                placeholder="10-digit account number"
+                                                className="form-input w-full"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="mb-1 block text-sm font-semibold text-gray-700">Account name</label>
+                                        <input
+                                            type="text"
+                                            value={refundAccountName}
+                                            onChange={(event) => setRefundAccountName(event.target.value)}
+                                            placeholder="Name on the account"
+                                            className="form-input w-full"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="mb-1 block text-sm font-semibold text-gray-700">Reason (optional)</label>
+                                        <textarea
+                                            value={refundReason}
+                                            onChange={(event) => setRefundReason(event.target.value)}
+                                            rows={3}
+                                            placeholder="Why are you requesting a refund?"
+                                            className="form-input w-full"
+                                        />
+                                    </div>
+
+                                    {selectedRefundPayment && (
+                                        <div className="rounded-2xl border border-gray-200 bg-white p-4 text-sm text-gray-700">
+                                            <div className="flex justify-between">
+                                                <span>Payment amount</span>
+                                                <span className="font-semibold">{formatCurrencyWithSymbol(selectedRefundAmount)}</span>
+                                            </div>
+                                            <div className="mt-1 flex justify-between">
+                                                <span>Processing fee (1%, capped at {formatCurrencyWithSymbol(REFUND_FEE_CAP_NGN)})</span>
+                                                <span className="font-semibold">-{formatCurrencyWithSymbol(selectedRefundFee)}</span>
+                                            </div>
+                                            <div className="mt-2 flex justify-between border-t pt-2">
+                                                <span>You will receive</span>
+                                                <span className="font-bold text-emerald-700">{formatCurrencyWithSymbol(selectedRefundAmount - selectedRefundFee)}</span>
+                                            </div>
+                                            <p className="mt-2 text-xs text-gray-500">
+                                                Payout is processed after 3 working days (72 hours) from the refund request.
+                                            </p>
+                                        </div>
+                                    )}
+
+                                    <div className="flex flex-wrap gap-3">
+                                        <button
+                                            type="submit"
+                                            disabled={requestRefund.isPending || !refundPaymentId || !refundBankName || refundAccountNumber.length < 10}
+                                            className="btn btn-primary disabled:cursor-not-allowed disabled:opacity-50"
+                                        >
+                                            {requestRefund.isPending ? 'Submitting...' : 'Submit refund request'}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowRefundForm(false)}
+                                            className="btn btn-outline"
+                                        >
+                                            Cancel
+                                        </button>
+                                    </div>
+                                </form>
+                            )}
+
+                            {refundsList.length > 0 && (
+                                <div className="mt-6 grid gap-3">
+                                    {refundsList.map((refund) => (
+                                        <div key={refund.id} className="rounded-2xl border border-gray-200 p-4">
+                                            <div className="flex flex-wrap items-start justify-between gap-3">
+                                                <div>
+                                                    <p className="text-base font-semibold text-gray-900">
+                                                        {formatCurrencyWithSymbol(Number(refund.refund_amount))} refund
+                                                    </p>
+                                                    <p className="mt-1 text-sm text-gray-500">
+                                                        {formatCurrencyWithSymbol(Number(refund.amount))} paid — {formatCurrencyWithSymbol(Number(refund.fee_amount))} fee
+                                                        {' · '}{refund.bank_name} · {refund.account_number}
+                                                    </p>
+                                                    {refund.reason && (
+                                                        <p className="mt-1 text-sm text-gray-500">Reason: {refund.reason}</p>
+                                                    )}
+                                                    {refund.status !== 'paid' && refund.process_at && (
+                                                        <p className="mt-1 flex items-center gap-1 text-xs text-gray-500">
+                                                            <HiClock className="h-4 w-4" />
+                                                            Processes after {new Date(refund.process_at).toLocaleString()}
+                                                        </p>
+                                                    )}
+                                                    {refund.status === 'paid' && refund.transferred_at && (
+                                                        <p className="mt-1 text-xs text-emerald-600">
+                                                            Paid on {new Date(refund.transferred_at).toLocaleString()}
+                                                        </p>
+                                                    )}
+                                                    {refund.status === 'failed' && refund.last_error && (
+                                                        <p className="mt-1 text-xs text-red-600">{refund.last_error}</p>
+                                                    )}
+                                                </div>
+                                                <span className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-semibold ${refund.status === 'paid'
+                                                    ? 'bg-emerald-100 text-emerald-700'
+                                                    : refund.status === 'failed'
+                                                        ? 'bg-red-100 text-red-700'
+                                                        : 'bg-amber-100 text-amber-700'
+                                                    }`}>
+                                                    {refundStatusLabel(refund.status)}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

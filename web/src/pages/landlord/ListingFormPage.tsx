@@ -7,8 +7,8 @@ import { api, extractApiErrorMessage, extractApiFieldErrors, getApiUrl } from '@
 import { buildFormDraftKey, readFormDraft, removeFormDraft, writeFormDraft } from '@/lib/formDrafts'
 import LegalConsentCheckbox from '@/components/LegalConsentCheckbox'
 import DashboardBackButton from '@/components/DashboardBackButton'
-import { useQuery } from '@tanstack/react-query'
-import { Listing, User } from '@/types'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { Listing, RepresentativeKyc, User } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
 import { formatDays, formatRatePercent, useFinancialConfig } from '@/hooks/useFinancialConfig'
 import { formatCurrencyWithSymbol } from '@/utils/currency'
@@ -36,7 +36,6 @@ const schema = z.object({
     deposit_amount: requiredPositiveNumber('Deposit amount is required'),
     service_charge: optionalPositiveNumber,
     caution_fee: optionalPositiveNumber,
-    legal_fee: optionalPositiveNumber,
     nightly_rate: optionalPositiveNumber,
     negotiable: z.boolean(),
     area: z.string().optional(),
@@ -74,6 +73,7 @@ const schema = z.object({
     ownership_types: z.array(z.string()).min(1, 'Select at least one ownership type'),
     property_ownership_documents: z.array(z.string()),
     property_verification_method: z.enum(['documents', 'in_person']),
+    representative_kyc_id: z.string().optional(),
     minimum_rental_duration: z.string().min(1, 'Minimum rental duration is required'),
     maximum_rental_duration: z.string().optional(),
     maximum_occupancy: z.string().min(1, 'Maximum occupancy is required'),
@@ -94,13 +94,6 @@ const schema = z.object({
             code: z.ZodIssueCode.custom,
             path: ['amenities'],
             message: 'Add at least one amenity',
-        })
-    }
-    if (data.property_verification_method === 'documents' && data.property_ownership_documents.length === 0) {
-        ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ['property_ownership_documents'],
-            message: 'Select at least one ownership document type',
         })
     }
 })
@@ -139,6 +132,8 @@ const ownershipTypeOptions = [
     'Developer-Owned Property',
     'Employer Provider'
 ] as const
+
+const ownerOnlyOwnershipTypes = ['Sole Owner', 'Joint Owner']
 
 const individualOwnershipDocumentOptions = [
     'Certificate of Occupancy (C of O)',
@@ -186,7 +181,8 @@ export default function ListingFormPage() {
     const isEditMode = Boolean(id)
     const [coverImage, setCoverImage] = useState<File | null>(null)
     const [additionalImages, setAdditionalImages] = useState<File[]>([])
-    const [propertyDocumentFiles, setPropertyDocumentFiles] = useState<File[]>([])
+    const [authorizationLetter, setAuthorizationLetter] = useState<File | null>(null)
+    const [representativeKycId, setRepresentativeKycId] = useState('')
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [hasAcceptedLegalConsent, setHasAcceptedLegalConsent] = useState(false)
     const [legalConsentError, setLegalConsentError] = useState('')
@@ -251,7 +247,7 @@ export default function ListingFormPage() {
             available_until: '',
             ownership_types: [],
             property_ownership_documents: [],
-            property_verification_method: 'documents',
+            property_verification_method: 'in_person',
             minimum_rental_duration: '',
             maximum_rental_duration: '',
             maximum_occupancy: '',
@@ -266,7 +262,7 @@ export default function ListingFormPage() {
             available_from: '',
         },
     })
-    const propertyVerificationMethod = watch('property_verification_method')
+    const selectedOwnershipTypes = watch('ownership_types') || []
     const pricePerYear = watch('price_per_year')
     const watchedFormValues = watch()
     const selectedState = watch('state')
@@ -276,12 +272,26 @@ export default function ListingFormPage() {
     const lgaOptions = selectedState ? (nigeriaStateLgaMap[selectedState] ?? []) : []
     const cityOptions = selectedState ? (nigeriaStateCitiesMap[selectedState] ?? []) : []
 
-    useEffect(() => {
-        if (propertyVerificationMethod === 'in_person') {
-            setPropertyDocumentFiles([])
-        }
-        setLegalConsentError('')
-    }, [propertyVerificationMethod])
+    const needsRepresentative = selectedOwnershipTypes.some((type) => !ownerOnlyOwnershipTypes.includes(type))
+
+    const { data: representativeKycs, refetch: refetchRepresentativeKycs } = useQuery({
+        queryKey: ['representative-kyc', 'listing-form'],
+        queryFn: async () => (await api.get<RepresentativeKyc[]>('/listings/representative-kyc')).data,
+        enabled: needsRepresentative && user?.role === 'landlord',
+        refetchInterval: (query) =>
+            (query.state.data || []).some((kyc) => kyc.status === 'pending') ? 5000 : false,
+    })
+
+    const generateKycLink = useMutation({
+        mutationFn: async () =>
+            (await api.post<RepresentativeKyc>('/listings/representative-kyc', {
+                listing_id: isEditMode ? id : null,
+                ownership_type: selectedOwnershipTypes.find((type) => !ownerOnlyOwnershipTypes.includes(type)) || '',
+                return_url: isEditMode ? `/listings/${id}/edit` : '/listings/new',
+            })).data,
+        onSuccess: () => refetchRepresentativeKycs(),
+        onError: (error) => setSubmissionError(extractApiErrorMessage(error, 'Failed to generate the representative KYC link.')),
+    })
 
     // A stored city that isn't in the state's list is treated as an "Other" entry.
     useEffect(() => {
@@ -407,7 +417,6 @@ export default function ListingFormPage() {
             video_tour_url: listing.video_tour_url || '',
             available_until: listing.available_until || '',
             caution_fee: listing.caution_fee ? Number(listing.caution_fee) : undefined,
-            legal_fee: listing.legal_fee ? Number(listing.legal_fee) : undefined,
             nightly_rate: listing.nightly_rate ? Number(listing.nightly_rate) : undefined,
             floor_number: listing.floor_number ?? undefined,
             total_floors: listing.total_floors ?? undefined,
@@ -484,7 +493,7 @@ export default function ListingFormPage() {
         if (data.service_charge) {
             formData.append('service_charge', data.service_charge.toString())
         }
-        for (const feeField of ['caution_fee', 'legal_fee', 'nightly_rate'] as const) {
+        for (const feeField of ['caution_fee', 'nightly_rate'] as const) {
             if (data[feeField]) {
                 formData.append(feeField, data[feeField].toString())
             }
@@ -555,9 +564,12 @@ export default function ListingFormPage() {
         additionalImages.forEach((image) => {
             formData.append('images', image)
         })
-        propertyDocumentFiles.forEach((file) => {
-            formData.append('property_documents', file)
-        })
+        if (representativeKycId) {
+            formData.append('representative_kyc_id', representativeKycId)
+        }
+        if (authorizationLetter) {
+            formData.append('authorization_letter', authorizationLetter)
+        }
 
         return formData
     }
@@ -575,21 +587,16 @@ export default function ListingFormPage() {
             setSubmissionError('Please select at least one additional image.')
             return
         }
-        if (!isEditMode && data.property_verification_method === 'documents' && propertyDocumentFiles.length === 0) {
-            setSubmissionError('Please upload at least one property document or choose in-person verification.')
-            return
-        }
-        if (!isEditMode && data.property_verification_method === 'documents' && data.property_ownership_documents.length === 0) {
-            setSubmissionError('Please select at least one ownership document type.')
-            return
-        }
-
-        const legalFeeCap = Number(data.price_per_year) * (financialConfig?.legalFeeMaxRate ?? 0.05)
-        if (data.legal_fee && data.legal_fee > legalFeeCap) {
-            setError('legal_fee', {
-                message: `Legal fee cannot exceed 5% of the annual rent (${formatCurrencyWithSymbol(legalFeeCap)}).`,
-            })
-            return
+        if (needsRepresentative) {
+            if (!authorizationLetter) {
+                setSubmissionError('Upload a letter of authorization from the property owner.')
+                return
+            }
+            const selectedKyc = (representativeKycs || []).find((kyc) => kyc.id === representativeKycId)
+            if (!selectedKyc || (selectedKyc.status !== 'submitted' && selectedKyc.status !== 'verified')) {
+                setSubmissionError('Generate a representative KYC link and have the representative complete it before submitting.')
+                return
+            }
         }
 
         setSubmissionError('')
@@ -616,6 +623,35 @@ export default function ListingFormPage() {
             }
 
             const result = await response.json()
+
+            if (data.property_verification_method === 'in_person') {
+                const verificationPaymentRes = await fetch(`${getApiUrl()}/service-payments/request`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        purpose: 'in_person_verification',
+                        listing_id: result.id,
+                    }),
+                })
+
+                if (verificationPaymentRes.ok) {
+                    const verificationPayment = await verificationPaymentRes.json()
+                    if (verificationPayment.status === 'pending') {
+                        setDraftPersistenceEnabled(false)
+                        setHydratedDraftStorageKey(null)
+                        removeFormDraft(listingDraftStorageKey)
+                        navigate(`/service-payments/${verificationPayment.id}`)
+                        return
+                    }
+                } else {
+                    const error = { response: { data: await verificationPaymentRes.json().catch(() => ({})) } }
+                    await popupAlert(extractApiErrorMessage(error, 'Listing saved, but failed to start the in-person verification payment.'), {
+                        title: 'Verification Payment Unavailable',
+                        variant: 'warning',
+                    })
+                }
+            }
 
             if (!isEditMode && data.featured_property) {
                 const featuredRes = await fetch(`${getApiUrl()}/featured/request`, {
@@ -679,11 +715,11 @@ export default function ListingFormPage() {
         }
     }
 
-    const handlePropertyDocumentsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setPropertyDocumentFiles(Array.from(e.target.files || []))
+    const handleAuthorizationLetterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setAuthorizationLetter(e.target.files && e.target.files[0] ? e.target.files[0] : null)
     }
 
-    const classNameTitles = "block text-[14px] text-gray-700 mb-2"
+    const classNameTitles = "block text-[15px] font-semibold text-gray-700 mb-2"
 
     if (isEditMode && isListingLoading) {
         return <div className="p-6">Loading listing...</div>
@@ -732,7 +768,7 @@ export default function ListingFormPage() {
                     <h1 className="text-3xl font-bold text-gray-900 mb-8">
                         {isEditMode ? 'Edit Listing' : 'Create New Listing'}
                     </h1>
-                    <h3 className="text-[22px] font-semibold text-gray-900">Property Information</h3><br />
+                    <h3 className="text-[21px] font-semibold text-gray-900">Property Information</h3><br />
 
                     {submissionError && (
                         <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
@@ -770,6 +806,12 @@ export default function ListingFormPage() {
                                     <option value="Studio">Studio</option>
                                     <option value="Townhouse">Townhouse</option>
                                     <option value="Condo">Condo</option>
+                                    <option value="Office">Office</option>
+                                    <option value="Shop">Shop</option>
+                                    <option value="Retail Space">Retail Space</option>
+                                    <option value="Warehouse">Warehouse</option>
+                                    <option value="Commercial Property">Commercial Property</option>
+                                    <option value="Industrial Property">Industrial Property</option>
                                 </select>
                                 {errors.property_type && <p className="mt-1 text-sm text-red-600">{errors.property_type.message}</p>}
                             </div>
@@ -870,8 +912,10 @@ export default function ListingFormPage() {
                                 )}
                                 {errors.city && <p className="mt-1 text-sm text-red-600">{errors.city.message}</p>}
                             </div>
+
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-1">
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <div>
                                 <label className={classNameTitles}>
                                     Address *
@@ -883,9 +927,6 @@ export default function ListingFormPage() {
                                 />
                                 {errors.address && <p className="mt-1 text-sm text-red-600">{errors.address.message}</p>}
                             </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
                                 <label className={classNameTitles}>
                                     Area / Neighbourhood / Estate
@@ -975,7 +1016,7 @@ export default function ListingFormPage() {
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                             <div>
                                 <label className={classNameTitles}>
                                     Price per year *
@@ -992,7 +1033,7 @@ export default function ListingFormPage() {
 
                             <div>
                                 <label className={classNameTitles}>
-                                    Optional Deposit Amount ({formatRatePercent(financialConfig?.listingDepositRate)} of Annual Rent) *
+                                    Deposit ({formatRatePercent(financialConfig?.listingDepositRate)} of Annual Rent) *
                                 </label>
                                 <input
                                     {...register('deposit_amount', { valueAsNumber: true })}
@@ -1000,6 +1041,7 @@ export default function ListingFormPage() {
                                     min="0"
                                     step="0.01"
                                     readOnly
+                                    placeholder="Optional"
                                     className="w-full rounded-lg border border-gray-300 bg-gray-100 px-4 py-2 text-gray-700 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
                                 />
                                 {errors.deposit_amount && <p className="mt-1 text-sm text-red-600">{errors.deposit_amount.message}</p>}
@@ -1017,16 +1059,13 @@ export default function ListingFormPage() {
                                     min="0"
                                     step="0.01"
                                     className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
-                                    placeholder="e.g., 150000"
+                                    placeholder="e.g., 150000 if applicable"
                                 />
                                 {errors.service_charge && <p className="mt-1 text-sm text-red-600">{errors.service_charge.message}</p>}
                             </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
                                 <label className={classNameTitles}>
-                                    Caution Fee (5% of Annual Rent)
+                                    Caution Fee
                                 </label>
                                 <input
                                     {...register('caution_fee', { setValueAs: (v) => v === '' ? undefined : Number(v) })}
@@ -1036,55 +1075,18 @@ export default function ListingFormPage() {
                                 />
                                 {errors.caution_fee && <p className="mt-1 text-sm text-red-600">{errors.caution_fee.message}</p>}
                             </div>
-                            <div>
-                                <label className={classNameTitles}>
-                                    Legal Fee (optional, max 5% of Annual Rent)
-                                </label>
-                                <input
-                                    {...register('legal_fee', { setValueAs: (v) => v === '' ? undefined : Number(v) })}
-                                    type="number" min="0" step="0.01"
-                                    className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
-                                    placeholder="Optional"
-                                />
-                                {errors.legal_fee && <p className="mt-1 text-sm text-red-600">{errors.legal_fee.message}</p>}
-                            </div>
-                            {/* <div>
-                                <label className={classNameTitles}>
-                                    Nightly Rate (short-let)
-                                </label>
-                                <input
-                                    {...register('nightly_rate', { setValueAs: (v) => v === '' ? undefined : Number(v) })}
-                                    type="number" min="0" step="0.01"
-                                    className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
-                                    placeholder="Optional"
-                                />
-                            </div> */}
                         </div>
+
                         <label className="flex items-center space-x-2">
                             <input {...register('negotiable')} type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
                             <span className="text-[16px] text-gray-700">Rent is negotiable?</span>
                         </label><br />
                         <div className="space-y-5 border-t pt-6">
-                            <h3 className="text-[22px] font-semibold text-gray-900">Property Ownership Verification</h3>
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div>
-                                    <label className={classNameTitles}>
-                                        Verification Method *
-                                    </label>
-                                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                        <label className="flex items-center gap-3 rounded-lg border px-4 py-2">
-                                            <input {...register('property_verification_method')} type="radio" value="documents" className="h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500" />
-                                            <span className="text-sm text-gray-800">Upload documents</span>
-                                        </label>
-                                        <label className="flex items-center gap-3 rounded-lg border px-4 py-2">
-                                            <input {...register('property_verification_method')} type="radio" value="in_person" className="h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500" />
-                                            <span className="text-sm text-gray-800">In-person verification</span>
-                                        </label>
-                                    </div>
-                                    {errors.property_verification_method && <p className="mt-1 text-sm text-red-600">{errors.property_verification_method.message}</p>}
-                                </div>
-                            </div>
+                            <h3 className="text-[21px] font-semibold text-gray-900">Property Ownership Verification</h3>
+                            <p className="text-sm text-gray-600">
+                                All listings are physically verified by a RentDirect Property Inspection Officer.
+                                An in-person verification fee applies after the listing is created.
+                            </p>
 
                             <div className="mt-10">
                                 <label className={classNameTitles}>
@@ -1106,11 +1108,104 @@ export default function ListingFormPage() {
                                 {errors.ownership_types && <p className="mt-1 text-sm text-red-600">{errors.ownership_types.message}</p>}
                             </div>
 
+                            {needsRepresentative && (
+                                <div className="mt-10 rounded-2xl border border-amber-200 bg-amber-50 p-5">
+                                    <h4 className="text-base font-semibold text-gray-900">Property Representative Requirements</h4>
+                                    <p className="mt-2 text-sm text-gray-700">
+                                        Because the selected ownership type is not 'Sole Owner' or 'Joint Owner', the landlord's
+                                        representative must provide a letter of authorization from the property owner and complete a
+                                        KYC verification before this listing can be submitted.
+                                    </p>
+
+                                    <div className="mt-4">
+                                        <label className={classNameTitles}>
+                                            Letter of Authorization *
+                                        </label>
+                                        <input
+                                            type="file"
+                                            accept=".pdf,.jpg,.jpeg,.png"
+                                            onChange={handleAuthorizationLetterChange}
+                                            className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                        />
+                                        {authorizationLetter && (
+                                            <p className="mt-1 text-xs text-gray-600">
+                                                {authorizationLetter.name} — {(authorizationLetter.size / 1024 / 1024).toFixed(2)} MB
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    <div className="mt-4">
+                                        <label className={classNameTitles}>
+                                            Representative KYC Link *
+                                        </label>
+                                        <button
+                                            type="button"
+                                            onClick={() => generateKycLink.mutate()}
+                                            disabled={generateKycLink.isPending}
+                                            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition disabled:cursor-not-allowed disabled:opacity-50"
+                                        >
+                                            {generateKycLink.isPending ? 'Generating...' : 'Generate representative KYC link'}
+                                        </button>
+
+                                        {(representativeKycs || []).length > 0 && (
+                                            <ul className="mt-3 space-y-2">
+                                                {(representativeKycs || []).map((kyc) => (
+                                                    <li
+                                                        key={kyc.id}
+                                                        className={`flex flex-col gap-2 rounded-lg border px-3 py-2 text-sm ${representativeKycId === kyc.id ? 'border-blue-400 bg-blue-50' : 'border-gray-200 bg-white'}`}
+                                                    >
+                                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                                            <code className="break-all text-xs text-gray-700">
+                                                                {`${window.location.origin}${kyc.kyc_url}`}
+                                                            </code>
+                                                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${kyc.status === 'verified'
+                                                                ? 'bg-emerald-100 text-emerald-700'
+                                                                : kyc.status === 'submitted'
+                                                                    ? 'bg-blue-100 text-blue-700'
+                                                                    : kyc.status === 'rejected'
+                                                                        ? 'bg-red-100 text-red-700'
+                                                                        : 'bg-amber-100 text-amber-700'
+                                                                }`}>
+                                                                {kyc.status === 'pending' ? 'Awaiting KYC' : kyc.status === 'submitted' ? 'Submitted' : kyc.status === 'verified' ? 'Verified' : 'Rejected'}
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex flex-wrap items-center gap-2">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => navigator.clipboard?.writeText(`${window.location.origin}${kyc.kyc_url}`)}
+                                                                className="rounded border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                                                            >
+                                                                Copy link
+                                                            </button>
+                                                            {(kyc.status === 'submitted' || kyc.status === 'verified') && (
+                                                                <label className="flex items-center gap-1 text-xs font-medium text-gray-700">
+                                                                    <input
+                                                                        type="radio"
+                                                                        name="representative_kyc_selection"
+                                                                        checked={representativeKycId === kyc.id}
+                                                                        onChange={() => setRepresentativeKycId(kyc.id)}
+                                                                        className="h-3.5 w-3.5 border-gray-300 text-blue-600"
+                                                                    />
+                                                                    Use this representative
+                                                                </label>
+                                                            )}
+                                                            {kyc.status === 'pending' && (
+                                                                <span className="text-xs text-gray-500">Waiting for representative to complete KYC…</span>
+                                                            )}
+                                                        </div>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="mt-10">
                                 <label className={classNameTitles}>
-                                    Ownership Documents {propertyVerificationMethod === 'documents' ? '(select document to be uploaded)' : '(select documents that will be presented for in-person verification)'}
+                                    Ownership Documents (to be verified by a PIO)
                                 </label>
-                                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                                     {ownershipDocumentOptions.map((option) => (
                                         <label key={option} className="flex items-center gap-3 rounded-lg border px-4 py-2">
                                             <input
@@ -1127,39 +1222,12 @@ export default function ListingFormPage() {
                                     <p className="mt-1 text-sm text-red-600">{errors.property_ownership_documents.message}</p>
                                 )}
                             </div>
-
-                            <div className="mt-10">
-                                <label className={`block text-sm font-medium mb-2 ${propertyVerificationMethod === 'in_person' ? 'text-gray-400' : 'text-gray-700'}`}>
-                                    <p className={classNameTitles}>
-                                        Property Documents {isEditMode || propertyVerificationMethod === 'in_person' ? '(optional)' : '*'}
-                                    </p>
-                                </label>
-                                <input
-                                    type="file"
-                                    multiple
-                                    accept=".pdf,.jpg,.jpeg,.png"
-                                    onChange={handlePropertyDocumentsChange}
-                                    disabled={propertyVerificationMethod === 'in_person'}
-                                    required={!isEditMode && propertyVerificationMethod === 'documents'}
-                                    className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
-                                />
-                                {propertyDocumentFiles.length > 0 && (
-                                    <ul className="mt-3 space-y-2 text-sm text-gray-600">
-                                        {propertyDocumentFiles.map((file) => (
-                                            <li key={`${file.name}-${file.size}`} className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2">
-                                                <span>{file.name}</span>
-                                                <span>{(file.size / 1024 / 1024).toFixed(2)} MB</span>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                )}
-                            </div>
                         </div><br />
 
                         <div className="space-y-5 border-t pt-6">
-                            <h3 className="text-[22px] font-semibold text-gray-900">Rental Preferences</h3>
+                            <h3 className="text-[21px] font-semibold text-gray-900">Rental Preferences</h3>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                 <div>
                                     <label className={classNameTitles}>
                                         Maximum Occupancy *
@@ -1214,7 +1282,7 @@ export default function ListingFormPage() {
                             {/* <h3 className="text-lg font-semibold text-gray-900">Features</h3> */}
                             <label className={classNameTitles}>Features</label>
 
-                            <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                                 <label className="flex items-center space-x-2">
                                     <input {...register('utilities_included')} type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
                                     <span className="text-sm text-gray-700">Utilities Included</span>
@@ -1316,7 +1384,7 @@ export default function ListingFormPage() {
                                 </label>
                             </div>
 
-                            <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div className="mt-9 grid grid-cols-1 md:grid-cols-3 gap-6">
                                 <div>
                                     <label className={classNameTitles}>Furnishing Level</label>
                                     <select
@@ -1459,7 +1527,7 @@ export default function ListingFormPage() {
 
                             {!isEditMode && (
                                 <div className="border-t pt-6">
-                                    <h3 className="text-[22px] font-semibold text-gray-900 mb-4">Featured Property</h3>
+                                    <h3 className="text-[21px] font-semibold text-gray-900 mb-4">Featured Property</h3>
                                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                                         <div className="flex items-start space-x-3">
                                             <div className="flex-shrink-0">
@@ -1505,37 +1573,38 @@ export default function ListingFormPage() {
 
                         <div className="space-y-4">
                             <h3 className="text-lg font-semibold text-gray-900">Images</h3>
+                            <div className="grid grid-cols-2 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label className={classNameTitles}>
+                                        Cover Image {isEditMode ? '(optional to replace current images)' : '*'}
+                                    </label>
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        onChange={handleCoverImageChange}
+                                        className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                        required={!isEditMode}
+                                    />
+                                </div>
 
-                            <div>
-                                <label className={classNameTitles}>
-                                    Cover Image {isEditMode ? '(optional to replace current images)' : '*'}
-                                </label>
-                                <input
-                                    type="file"
-                                    accept="image/*"
-                                    onChange={handleCoverImageChange}
-                                    className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
-                                    required={!isEditMode}
-                                />
-                            </div>
-
-                            <div>
-                                <label className={classNameTitles}>
-                                    Additional Images {isEditMode ? '(optional to replace current images)' : '(up to 9) *'}
-                                </label>
-                                <input
-                                    type="file"
-                                    accept="image/*"
-                                    multiple
-                                    onChange={handleAdditionalImagesChange}
-                                    required={!isEditMode}
-                                    className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
-                                />
-                                <p className="mt-1 text-sm text-gray-500">
-                                    {isEditMode
-                                        ? 'Uploading new images will replace the current image set for this listing.'
-                                        : 'You can select multiple images. Maximum 9 additional images allowed.'}
-                                </p>
+                                <div>
+                                    <label className={classNameTitles}>
+                                        Additional Images {isEditMode ? '(optional to replace current images)' : '(up to 9) *'}
+                                    </label>
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        multiple
+                                        onChange={handleAdditionalImagesChange}
+                                        required={!isEditMode}
+                                        className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-blue-500 focus:ring focus:ring-blue-500/20 outline-none"
+                                    />
+                                    <p className="mt-1 text-[11px] text-gray-500">
+                                        {isEditMode
+                                            ? 'Uploading new images will replace the current image set for this listing.'
+                                            : 'You can select multiple images. Maximum 9 additional images allowed.'}
+                                    </p>
+                                </div>
                             </div>
                         </div>
 

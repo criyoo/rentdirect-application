@@ -4,6 +4,7 @@ import { api, getApiUrl } from '@/lib/api'
 import { Listing } from '@/types'
 import ListingCard from '@/components/ListingCard'
 import RegistrationOptionsModal from '@/components/RegistrationOptionsModal'
+import { SUBSCRIPTIONS_ENABLED } from '@/lib/featureFlags'
 import { Link } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import { HiSearch, HiHome, HiLocationMarker, HiBadgeCheck, HiArrowRight, HiShieldCheck, HiCurrencyDollar, HiCheck } from 'react-icons/hi'
@@ -107,10 +108,10 @@ export default function HomePage() {
                                     </span>
                                 </h1>
                                 <h3 className="text-4xl text-blue-100 mb-3">Skip the Hassle.</h3>
-                                <p className="text-2xl font-bold text-yellow-400 mb-3">No agents. No middlemen.</p>
+                                <p className="text-2xl font-bold bg-gradient-to-r from-yellow-400 to-orange-400 bg-clip-text text-transparent mb-3">No agents. No middlemen.</p>
                                 <p className="text-xl text-blue-100 mb-8 max-w-2xl">
-                                    Discover verified properties with transparent pricing, connect directly with landlords, and find your next home faster with <span className="text-yellow-400">Sally</span>, your AI rental assistant.
-                                    <span className="mt-4 font-bold block text-[24px] text-yellow-400">Find it. Love it. Rent it.</span>
+                                    Discover verified properties with transparent pricing, connect directly with landlords, and find your next home faster with <span className="text-yellow-400">Sally</span>, our AI assistant.
+                                    <span className="mt-4 font-bold block text-[24px] bg-gradient-to-r from-yellow-400 to-orange-400 bg-clip-text text-transparent">Find it. Love it. Rent it.</span>
                                 </p>
 
                                 <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
@@ -191,7 +192,7 @@ export default function HomePage() {
                                         </div>
                                         <div className="flex items-center space-x-3">
                                             <div className="w-3 h-3 bg-blue-400 rounded-full"></div>
-                                            <span className="text-white/90">Direct landlord & tenant communication</span>
+                                            <span className="text-white/90">Refunds guaranteed up until property handover</span>
                                         </div>
                                         <div className="flex items-center space-x-3">
                                             <div className="w-3 h-3 bg-purple-400 rounded-full"></div>
@@ -199,7 +200,11 @@ export default function HomePage() {
                                         </div>
                                         <div className="flex items-center space-x-3">
                                             <div className="w-3 h-3 bg-red-400 rounded-full"></div>
-                                            <span className="text-white/90">Low cost with no hidden fees</span>
+                                            <span className="text-white/90">One flat fee with no hidden fees</span>
+                                        </div>
+                                        <div className="flex items-center space-x-3">
+                                            <div className="w-3 h-3 bg-red-400 rounded-full"></div>
+                                            <span className="text-white/90">Funds held in Escrow until rental condition fulfilled</span>
                                         </div>
                                     </div>
                                 </div>
@@ -314,9 +319,9 @@ export default function HomePage() {
                             <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center mx-auto mb-4">
                                 <HiLocationMarker className="w-6 h-6 text-purple-600" />
                             </div>
-                            <h3 className={classNameUSP}>Seamless Process</h3>
+                            <h3 className={classNameUSP}>Secure Payment</h3>
                             <p className="text-blue-600">
-                                All processes are seamless and payments done through secure channel within the platform.
+                                All payments are done securely and monies are held in escrow until rental conditions are met.
                             </p>
                         </div>
                     </div>
@@ -326,6 +331,7 @@ export default function HomePage() {
 
 
             {/* Subscription Plans Section */}
+            {SUBSCRIPTIONS_ENABLED && (
             <section className="relative overflow-hidden bg-slate-50 py-20 md:py-28">
                 <div className="pointer-events-none absolute -left-24 top-10 h-72 w-72 rounded-full bg-orange-200/50 blur-3xl" />
                 <div className="pointer-events-none absolute -right-24 bottom-0 h-80 w-80 rounded-full bg-blue-200/60 blur-3xl" />
@@ -412,6 +418,7 @@ export default function HomePage() {
                     </div>
                 </div>
             </section>
+            )}
 
             {/* CTA Section */}
             <section className="section relative -mt-12 overflow-hidden bg-[linear-gradient(180deg,#f8fafc_0%,#f8fafc_9%,#dbe3f8_22%,#2563eb_48%,#7e22ce_100%)] pt-32 md:-mt-20 md:pt-40">

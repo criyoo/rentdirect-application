@@ -1,4 +1,5 @@
 import json
+import re
 from decimal import Decimal
 
 from django.contrib.auth import authenticate
@@ -13,7 +14,9 @@ from .profile_validation import (
     is_valid_mobile,
     is_valid_nin,
 )
+from .inspection_checklist import validate_inspection_responses
 from .models import (
+    AgentProfile,
     AppUser,
     Booking,
     booking_has_paid_rental_deposit,
@@ -37,16 +40,20 @@ from .models import (
     normalize_booking_progress,
     Payment,
     PaymentSettlement,
+    PropertyInspection,
+    RepresentativeKyc,
     Review,
+    ServicePayment,
     SubscriptionPayment,
     SubscriptionPaymentMethod,
     SupportChatMessage,
     sync_listing_status_from_rental_progress,
     TenantProfile,
+    TenantRefund,
     TenantSearchRequirement,
     VerificationRequest,
 )
-from .financial_constants import REFUNDABLE_CAUTION_FEE_RATE, LEGAL_FEE_MAX_RATE, ZERO_AMOUNT
+from .financial_constants import AGENT_VERIFICATION_ATTEMPTS_PER_PAYMENT, REFUNDABLE_CAUTION_FEE_RATE, ZERO_AMOUNT
 from .pricing import calculate_booking_total, calculate_listing_deposit_amount, calculate_remaining_balance, quantize_money, resolve_booking_total
 from .subscription_access import user_has_completed_tenant_profile, user_has_silver_access
 from .tenant_scoring import build_tenant_screening_summary
@@ -72,6 +79,7 @@ class UserSerializer(serializers.ModelSerializer):
             "email_verified",
             "profile_photo_url",
             "mobile",
+            "whatsapp_number",
             "nin_number",
             "bvn_number",
             "state_of_origin",
@@ -103,6 +111,14 @@ class UserSerializer(serializers.ModelSerializer):
 
     def validate_mobile(self, value):
         value = value.strip()
+        if value and not is_valid_mobile(value):
+            raise serializers.ValidationError(
+                "Enter an 11 digit mobile number starting with 07, 08, or 09, or a +234 number starting with 70, 71, 80, 81, 90, or 91."
+            )
+        return value
+
+    def validate_whatsapp_number(self, value):
+        value = (value or "").strip()
         if value and not is_valid_mobile(value):
             raise serializers.ValidationError(
                 "Enter an 11 digit mobile number starting with 07, 08, or 09, or a +234 number starting with 70, 71, 80, 81, 90, or 91."
@@ -196,6 +212,12 @@ class UserSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError({"landlord_verification_profile": {"contact_number": "Enter a valid mobile number."}})
                 attrs.setdefault("mobile", profile_mobile)
 
+            profile_whatsapp = str(verification_profile.get("whatsapp_number") or "").strip()
+            if profile_whatsapp:
+                if not is_valid_mobile(profile_whatsapp):
+                    raise serializers.ValidationError({"landlord_verification_profile": {"whatsapp_number": "Enter a valid mobile number."}})
+                attrs.setdefault("whatsapp_number", profile_whatsapp)
+
             profile_state_of_origin = str(verification_profile.get("state_of_origin") or "").strip()
             if profile_state_of_origin:
                 try:
@@ -229,10 +251,27 @@ class RegisterSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=160)
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True, max_length=256)
-    role = serializers.ChoiceField(choices=[AppUser.Role.TENANT, AppUser.Role.LANDLORD])
+    role = serializers.ChoiceField(choices=[AppUser.Role.TENANT, AppUser.Role.LANDLORD, AppUser.Role.AGENT])
+    referral_code = serializers.CharField(required=False, allow_blank=True, max_length=16)
 
     def validate_email(self, value):
         return value.strip().lower()
+
+    def validate(self, attrs):
+        code = (attrs.get("referral_code") or "").strip().upper()
+        if not code:
+            attrs["referral_code"] = ""
+            return attrs
+        if attrs.get("role") != AppUser.Role.AGENT:
+            raise serializers.ValidationError(
+                {"referral_code": "Referral codes apply to property inspection officer accounts only."}
+            )
+        from .referrals import resolve_referrer
+
+        if resolve_referrer(code) is None:
+            raise serializers.ValidationError({"referral_code": "This referral code is not recognised."})
+        attrs["referral_code"] = code
+        return attrs
 
 
 class VerifyRegistrationSerializer(serializers.Serializer):
@@ -362,7 +401,6 @@ class ListingSerializer(serializers.ModelSerializer):
             "deposit_amount",
             "service_charge",
             "caution_fee",
-            "legal_fee",
             "nightly_rate",
             "negotiable",
             "utilities_included",
@@ -480,13 +518,6 @@ class ListingSerializer(serializers.ModelSerializer):
             # Caution fee defaults to 5% of annual rent on new listings unless set.
             if self.instance is None and attrs.get("caution_fee") is None:
                 attrs["caution_fee"] = quantize_money(Decimal(price_for_deposit) * REFUNDABLE_CAUTION_FEE_RATE)
-            legal_fee = attrs.get("legal_fee")
-            if legal_fee is not None:
-                legal_cap = quantize_money(Decimal(price_for_deposit) * LEGAL_FEE_MAX_RATE)
-                if legal_fee > legal_cap:
-                    raise serializers.ValidationError(
-                        {"legal_fee": "Legal fee cannot exceed 5% of the annual rent."}
-                    )
 
         request = self.context.get("request")
         if (
@@ -533,14 +564,30 @@ class ListingSerializer(serializers.ModelSerializer):
                 errors["images"] = "Upload at least one additional image."
 
             verification_method = attrs.get("property_verification_method") or request.data.get("property_verification_method")
-            property_documents = request.FILES.getlist("property_documents")
-            if verification_method == self.PROPERTY_VERIFICATION_METHOD_DOCUMENTS:
-                if not attrs.get("property_ownership_documents"):
-                    errors["property_ownership_documents"] = "Select at least one property ownership document type."
-                if not property_documents:
-                    errors["property_documents"] = "Upload at least one property document."
-            elif verification_method != self.PROPERTY_VERIFICATION_METHOD_IN_PERSON:
-                errors["property_verification_method"] = "Choose document upload or in-person property verification."
+            if verification_method != self.PROPERTY_VERIFICATION_METHOD_IN_PERSON:
+                errors["property_verification_method"] = "All listings are verified physically (in-person)."
+
+            owner_only_types = {"sole owner", "joint owner"}
+            needs_representative = any(
+                str(ownership_type or "").strip().lower() not in owner_only_types
+                for ownership_type in (attrs.get("ownership_types") or [])
+            )
+            if needs_representative:
+                if not request.FILES.get("authorization_letter"):
+                    errors["authorization_letter"] = "Upload a letter of authorization from the property owner."
+                representative_kyc_id = str(request.data.get("representative_kyc_id") or "").strip()
+                representative_kyc = (
+                    RepresentativeKyc.objects.filter(id=representative_kyc_id, landlord=request.user).first()
+                    if representative_kyc_id
+                    else None
+                )
+                if representative_kyc is None or representative_kyc.status not in (
+                    RepresentativeKyc.Status.SUBMITTED,
+                    RepresentativeKyc.Status.VERIFIED,
+                ):
+                    errors["representative_kyc_id"] = (
+                        "Generate a representative KYC link and have the representative complete it before submitting."
+                    )
 
             if errors:
                 raise serializers.ValidationError(errors)
@@ -613,7 +660,9 @@ class ListingSerializer(serializers.ModelSerializer):
             }
             if verification_method == self.PROPERTY_VERIFICATION_METHOD_IN_PERSON:
                 listing.property_document_verification_status = VerificationRequest.VerificationProgressStatus.UNVERIFIED
-                listing.physical_property_status = VerificationRequest.VerificationProgressStatus.PENDING
+                # In-person verification only becomes pending once the
+                # landlord's verification fee payment is completed.
+                listing.physical_property_status = VerificationRequest.VerificationProgressStatus.UNVERIFIED
             else:
                 listing.property_document_verification_status = (
                     VerificationRequest.VerificationProgressStatus.PENDING
@@ -687,6 +736,22 @@ class ListingSerializer(serializers.ModelSerializer):
             ListingImage.objects.create(listing=listing, file=optimize_listing_image(cover), is_cover=True, sort_order=0)
         for index, image in enumerate(request.FILES.getlist("images")[:9], start=1):
             ListingImage.objects.create(listing=listing, file=optimize_listing_image(image), sort_order=index)
+
+        authorization_letter = request.FILES.get("authorization_letter")
+        if authorization_letter:
+            listing.authorization_letter = authorization_letter
+        representative_kyc_id = str(request.data.get("representative_kyc_id") or "").strip()
+        if representative_kyc_id:
+            representative_kyc = RepresentativeKyc.objects.filter(
+                id=representative_kyc_id, landlord=request.user
+            ).first()
+            if representative_kyc is not None:
+                listing.representative_kyc = representative_kyc
+                representative_kyc.listing = listing
+                representative_kyc.save(update_fields=["listing", "updated_at"])
+        if authorization_letter or representative_kyc_id:
+            listing.save(update_fields=["authorization_letter", "representative_kyc", "updated_at"])
+
         self._apply_property_document_submission(listing, property_verification_method)
         return listing
 
@@ -749,7 +814,6 @@ class PublicAiListingSerializer(serializers.ModelSerializer):
             "deposit_amount",
             "service_charge",
             "caution_fee",
-            "legal_fee",
             "nightly_rate",
             "negotiable",
             "utilities_included",
@@ -872,6 +936,7 @@ class BookingSerializer(serializers.ModelSerializer):
     landlord_id = serializers.UUIDField(source="listing.landlord.id", read_only=True)
     landlord_name = serializers.CharField(source="listing.landlord.name", read_only=True)
     total_amount = serializers.SerializerMethodField()
+    rental_process_started = serializers.SerializerMethodField()
     remaining_amount = serializers.SerializerMethodField()
     landlord_rental_amount = serializers.SerializerMethodField()
     landlord_collected_amount = serializers.SerializerMethodField()
@@ -903,6 +968,7 @@ class BookingSerializer(serializers.ModelSerializer):
             "end_date",
             "status",
             "total_amount",
+            "rental_process_started",
             "paid_amount",
             "remaining_amount",
             "landlord_rental_amount",
@@ -923,6 +989,7 @@ class BookingSerializer(serializers.ModelSerializer):
             "tenant_id",
             "status",
             "total_amount",
+            "rental_process_started",
             "paid_amount",
             "remaining_amount",
             "landlord_rental_amount",
@@ -942,6 +1009,9 @@ class BookingSerializer(serializers.ModelSerializer):
 
     def get_total_amount(self, obj):
         return resolve_booking_total(obj.listing.price_per_year, obj.total_amount)
+
+    def get_rental_process_started(self, obj):
+        return obj.total_amount is not None
 
     def get_remaining_amount(self, obj):
         if obj.status == Booking.Status.CANCELLED:
@@ -1063,15 +1133,30 @@ class BookingSerializer(serializers.ModelSerializer):
         if not user_has_silver_access(request.user):
             raise serializers.ValidationError({"detail": "Renting property is available from the Silver plan."})
         listing_id = validated_data.pop("listing_id")
-        listing = Listing.objects.get(id=listing_id, status=Listing.Status.AVAILABLE)
-        if listing_has_deposit_secured_booking(listing):
-            raise serializers.ValidationError({"listing_id": "This property is no longer available for new rental applications."})
-        return Booking.objects.create(
-            tenant=self.context["request"].user,
-            listing=listing,
-            total_amount=calculate_booking_total(listing.price_per_year),
-            **validated_data,
-        )
+        with transaction.atomic():
+            listing = Listing.objects.select_for_update().get(id=listing_id, status=Listing.Status.AVAILABLE)
+            if listing_has_deposit_secured_booking(listing):
+                raise serializers.ValidationError({"listing_id": "This property is no longer available for new rental applications."})
+            total_amount = calculate_booking_total(listing.price_per_year)
+            existing_booking = (
+                Booking.objects.select_for_update()
+                .filter(tenant=request.user, listing=listing)
+                .exclude(status=Booking.Status.CANCELLED)
+                .order_by("-created_at")
+                .first()
+            )
+            if existing_booking:
+                existing_booking.start_date = validated_data["start_date"]
+                existing_booking.end_date = validated_data["end_date"]
+                existing_booking.total_amount = total_amount
+                existing_booking.save(update_fields=["start_date", "end_date", "total_amount", "updated_at"])
+                return existing_booking
+            return Booking.objects.create(
+                tenant=request.user,
+                listing=listing,
+                total_amount=total_amount,
+                **validated_data,
+            )
 
 
 class RentalProgressUpdateSerializer(serializers.Serializer):
@@ -1218,6 +1303,85 @@ class PaymentSerializer(serializers.ModelSerializer):
         if normalized not in {"card", "bank"}:
             raise serializers.ValidationError("Choose either card or bank.")
         return normalized
+
+
+class TenantRefundSerializer(serializers.ModelSerializer):
+    booking_id = serializers.UUIDField(source="booking.id", read_only=True)
+    payment_id = serializers.UUIDField(source="payment.id", read_only=True)
+    payment_method = serializers.CharField(source="payment.payment_method", read_only=True)
+    payment_transaction_id = serializers.CharField(source="payment.transaction_id", read_only=True)
+
+    class Meta:
+        model = TenantRefund
+        fields = [
+            "id",
+            "booking_id",
+            "payment_id",
+            "payment_method",
+            "payment_transaction_id",
+            "amount",
+            "fee_amount",
+            "refund_amount",
+            "currency",
+            "reason",
+            "bank_name",
+            "account_number",
+            "account_name",
+            "status",
+            "last_error",
+            "process_at",
+            "transferred_at",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+
+class TenantRefundRequestSerializer(serializers.Serializer):
+    payment_id = serializers.UUIDField()
+    bank_name = serializers.CharField(max_length=120)
+    bank_code = serializers.CharField(max_length=40, required=False, allow_blank=True, default="")
+    account_number = serializers.CharField(max_length=40)
+    account_name = serializers.CharField(max_length=160, required=False, allow_blank=True, default="")
+    reason = serializers.CharField(required=False, allow_blank=True, default="")
+
+    def validate_account_number(self, value):
+        normalized = str(value or "").strip()
+        if not normalized.isdigit() or len(normalized) < 10:
+            raise serializers.ValidationError("Enter a valid 10-digit bank account number.")
+        return normalized
+
+
+class RepresentativeKycSerializer(serializers.ModelSerializer):
+    listing_id = serializers.UUIDField(source="listing.id", read_only=True)
+    listing_title = serializers.CharField(source="listing.title", read_only=True)
+    landlord_name = serializers.CharField(source="landlord.name", read_only=True)
+    kyc_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = RepresentativeKyc
+        fields = [
+            "id",
+            "token",
+            "listing_id",
+            "listing_title",
+            "landlord_name",
+            "ownership_type",
+            "name",
+            "email",
+            "phone",
+            "status",
+            "kyc_url",
+            "return_url",
+            "submitted_at",
+            "verified_at",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+    def get_kyc_url(self, obj):
+        return f"/representative-kyc/{obj.token}"
 
 
 class FeaturedPaymentSerializer(serializers.ModelSerializer):
@@ -1624,3 +1788,379 @@ class TenantSearchRequirementSerializer(serializers.ModelSerializer):
         if min_bedrooms is not None and max_bedrooms is not None and min_bedrooms > max_bedrooms:
             raise serializers.ValidationError({"min_bedrooms": "Minimum bedrooms cannot exceed maximum bedrooms."})
         return attrs
+
+
+class ServicePaymentSerializer(serializers.ModelSerializer):
+    user_id = serializers.UUIDField(source="user.id", read_only=True)
+    booking_id = serializers.UUIDField(read_only=True)
+    listing_id = serializers.SerializerMethodField()
+    listing_title = serializers.SerializerMethodField()
+    purpose_display = serializers.CharField(source="get_purpose_display", read_only=True)
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    return_path = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ServicePayment
+        fields = [
+            "id",
+            "user_id",
+            "booking_id",
+            "listing_id",
+            "listing_title",
+            "purpose",
+            "purpose_display",
+            "amount",
+            "currency",
+            "status",
+            "status_display",
+            "provider",
+            "transaction_id",
+            "payment_date",
+            "return_path",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "user_id",
+            "booking_id",
+            "listing_id",
+            "listing_title",
+            "purpose_display",
+            "amount",
+            "currency",
+            "status",
+            "status_display",
+            "provider",
+            "transaction_id",
+            "payment_date",
+            "return_path",
+            "created_at",
+            "updated_at",
+        ]
+
+    def _resolve_listing(self, obj):
+        if obj.listing_id:
+            return obj.listing
+        if obj.booking_id and obj.booking:
+            return obj.booking.listing
+        return None
+
+    def get_listing_id(self, obj):
+        listing = self._resolve_listing(obj)
+        return str(listing.id) if listing else None
+
+    def get_listing_title(self, obj):
+        listing = self._resolve_listing(obj)
+        return listing.title if listing else ""
+
+    def get_return_path(self, obj) -> str:
+        if obj.purpose == ServicePayment.Purpose.AGENT_VERIFICATION:
+            return "/agents/verification"
+        if obj.purpose == ServicePayment.Purpose.LAWYER_TENANCY and obj.booking_id:
+            return f"/landlord/tenancy-agreements/{obj.booking_id}"
+        if obj.purpose == ServicePayment.Purpose.IN_PERSON_VERIFICATION:
+            listing = self._resolve_listing(obj)
+            return f"/listings/{listing.id}" if listing else "/dashboard"
+        return "/"
+
+
+class ServicePaymentRequestSerializer(serializers.Serializer):
+    purpose = serializers.ChoiceField(choices=ServicePayment.Purpose.choices)
+    booking_id = serializers.UUIDField(required=False)
+    listing_id = serializers.UUIDField(required=False)
+
+
+class AgentInspectionListingSerializer(serializers.ModelSerializer):
+    landlord_name = serializers.CharField(source="landlord.name", read_only=True)
+    cover_image_url = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = Listing
+        fields = [
+            "id",
+            "title",
+            "address",
+            "city",
+            "state",
+            "property_type",
+            "landlord_name",
+            "cover_image_url",
+        ]
+        read_only_fields = fields
+
+
+AGENT_PROFILE_FIELDS = [
+    "first_name",
+    "middle_name",
+    "last_name",
+    "date_of_birth",
+    "gender",
+    "country_of_birth",
+    "nationality",
+    "state_of_origin",
+    "lga_of_origin",
+    "mobile",
+    "whatsapp_number",
+    "city",
+    "residential_address",
+    "nin_number",
+    "bvn_number",
+    "bank_name",
+    "bank_code",
+    "account_name",
+    "account_number",
+]
+
+AGENT_PROFILE_REQUIRED_FIELDS = [
+    field for field in AGENT_PROFILE_FIELDS if field not in {"middle_name", "whatsapp_number", "bank_code"}
+]
+
+
+def agent_profile_is_complete(profile: AgentProfile) -> bool:
+    return all(
+        getattr(profile, field, None) not in (None, "") for field in AGENT_PROFILE_REQUIRED_FIELDS
+    )
+
+
+def sync_agent_profile_status(profile: AgentProfile) -> None:
+    if profile.verification_status in {
+        AgentProfile.VerificationStatus.VERIFIED,
+        AgentProfile.VerificationStatus.REJECTED,
+    }:
+        return
+    profile.verification_status = (
+        AgentProfile.VerificationStatus.PAYMENT_REQUIRED
+        if agent_profile_is_complete(profile)
+        else AgentProfile.VerificationStatus.INCOMPLETE
+    )
+
+
+class AgentProfileSerializer(serializers.ModelSerializer):
+    email = serializers.EmailField(source="user.email", read_only=True)
+    profile_photo_url = serializers.CharField(source="user.profile_photo_url", read_only=True)
+    is_verified = serializers.SerializerMethodField()
+    verification_payment = serializers.SerializerMethodField()
+    verification_payment_required = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AgentProfile
+        fields = [
+            "id",
+            "email",
+            "profile_photo_url",
+            "is_verified",
+            *AGENT_PROFILE_FIELDS,
+            "verification_status",
+            "verified_at",
+            "verification_attempts",
+            "verification_payment",
+            "verification_payment_required",
+            "referral_code",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "email",
+            "profile_photo_url",
+            "is_verified",
+            "verification_status",
+            "verified_at",
+            "verification_attempts",
+            "verification_payment",
+            "verification_payment_required",
+            "referral_code",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_is_verified(self, obj) -> bool:
+        return obj.verification_status == AgentProfile.VerificationStatus.VERIFIED
+
+    def get_verification_payment(self, obj):
+        payment = (
+            ServicePayment.objects.filter(
+                user=obj.user, purpose=ServicePayment.Purpose.AGENT_VERIFICATION
+            )
+            .order_by("-created_at")
+            .first()
+        )
+        if payment is None:
+            return None
+        return ServicePaymentSerializer(payment, context=self.context).data
+
+    def validate_nin_number(self, value):
+        value = (value or "").strip()
+        if value and not is_valid_nin(value):
+            raise serializers.ValidationError("NIN must be exactly 11 digits.")
+        return value
+
+    def validate_bvn_number(self, value):
+        value = (value or "").strip()
+        if value and not is_valid_nin(value):
+            raise serializers.ValidationError("BVN must be exactly 11 digits.")
+        return value
+
+    def get_verification_payment_required(self, obj) -> bool:
+        if obj.verification_status == AgentProfile.VerificationStatus.VERIFIED:
+            return False
+        completed_payments = ServicePayment.objects.filter(
+            user=obj.user,
+            purpose=ServicePayment.Purpose.AGENT_VERIFICATION,
+            status=ServicePayment.Status.COMPLETED,
+        ).count()
+        return obj.verification_attempts >= completed_payments * AGENT_VERIFICATION_ATTEMPTS_PER_PAYMENT
+
+    def validate_account_name(self, value):
+        value = (value or "").strip()
+        if value and not re.fullmatch(r"[A-Za-z][A-Za-z\s'\-.]*", value):
+            raise serializers.ValidationError("Account name must contain letters only.")
+        return value
+
+    def validate_account_number(self, value):
+        value = (value or "").strip()
+        if value and not (value.isdigit() and len(value) == 10):
+            raise serializers.ValidationError("Nigerian account number must be exactly 10 digits.")
+        return value
+
+    def validate_mobile(self, value):
+        value = (value or "").strip()
+        if value and not is_valid_mobile(value):
+            raise serializers.ValidationError(
+                "Enter an 11 digit mobile number starting with 07, 08, or 09, or a +234 number starting with 70, 71, 80, 81, 90, or 91."
+            )
+        return value
+
+    def validate(self, attrs):
+        if (
+            self.instance is not None
+            and self.instance.verification_status == AgentProfile.VerificationStatus.VERIFIED
+            and attrs
+        ):
+            raise serializers.ValidationError(
+                "Verified agent profiles are locked. Contact support to update verified identity or payout details."
+            )
+        return attrs
+
+    def update(self, instance, validated_data):
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        sync_agent_profile_status(instance)
+        instance.save()
+        return instance
+
+    def create(self, validated_data):
+        profile = AgentProfile(**validated_data)
+        sync_agent_profile_status(profile)
+        profile.save()
+        return profile
+
+
+class PropertyInspectionSerializer(serializers.ModelSerializer):
+    listing_id = serializers.UUIDField(source="listing.id", read_only=True)
+    listing_title = serializers.CharField(source="listing.title", read_only=True)
+    listing_address = serializers.CharField(source="listing.address", read_only=True)
+    listing_city = serializers.CharField(source="listing.city", read_only=True)
+    listing_state = serializers.CharField(source="listing.state", read_only=True)
+    landlord_name = serializers.CharField(source="listing.landlord.name", read_only=True)
+    agent_id = serializers.UUIDField(source="agent.id", read_only=True)
+    agent_name = serializers.CharField(source="agent.name", read_only=True)
+    agent_email = serializers.EmailField(source="agent.email", read_only=True)
+    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    payout_status_display = serializers.CharField(source="get_payout_status_display", read_only=True)
+    evidence_documents = DocumentSerializer(many=True, read_only=True)
+    evidence_document_ids = serializers.ListField(
+        child=serializers.UUIDField(), write_only=True, required=False
+    )
+
+    class Meta:
+        model = PropertyInspection
+        fields = [
+            "id",
+            "listing_id",
+            "listing_title",
+            "listing_address",
+            "listing_city",
+            "listing_state",
+            "landlord_name",
+            "agent_id",
+            "agent_name",
+            "agent_email",
+            "status",
+            "status_display",
+            "responses",
+            "analysis",
+            "overall_status",
+            "evidence_documents",
+            "evidence_document_ids",
+            "earning_amount",
+            "payout_status",
+            "payout_status_display",
+            "payout_reference",
+            "claimed_at",
+            "submitted_at",
+            "signed_off_at",
+            "paid_out_at",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "listing_id",
+            "listing_title",
+            "listing_address",
+            "listing_city",
+            "listing_state",
+            "landlord_name",
+            "agent_id",
+            "agent_name",
+            "agent_email",
+            "status",
+            "status_display",
+            "analysis",
+            "overall_status",
+            "evidence_documents",
+            "earning_amount",
+            "payout_status",
+            "payout_status_display",
+            "payout_reference",
+            "claimed_at",
+            "submitted_at",
+            "signed_off_at",
+            "paid_out_at",
+            "created_at",
+            "updated_at",
+        ]
+
+    def validate_responses(self, value):
+        return validate_inspection_responses(value, require_complete=False)
+
+    def validate_evidence_document_ids(self, value):
+        request = self.context.get("request")
+        agent = getattr(request, "user", None)
+        if agent is None and self.instance is not None:
+            agent = self.instance.agent
+        documents = Document.objects.filter(id__in=value, owner=agent)
+        if documents.count() != len(set(value)):
+            raise serializers.ValidationError("Evidence documents must belong to the inspecting agent.")
+        return value
+
+    def validate(self, attrs):
+        if self.instance is not None and self.instance.status == PropertyInspection.Status.SUBMITTED:
+            raise serializers.ValidationError("Submitted inspections cannot be modified.")
+        return attrs
+
+    def update(self, instance, validated_data):
+        document_ids = validated_data.pop("evidence_document_ids", None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        if instance.status == PropertyInspection.Status.CLAIMED and (
+            instance.responses or document_ids
+        ):
+            instance.status = PropertyInspection.Status.DRAFT
+        instance.save()
+        if document_ids is not None:
+            documents = Document.objects.filter(id__in=document_ids, owner=instance.agent)
+            instance.evidence_documents.set(documents)
+        return instance

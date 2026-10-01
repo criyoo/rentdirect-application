@@ -10,7 +10,9 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 from typing import Any
 
+import requests
 from django.conf import settings
+from django.contrib.auth.hashers import make_password
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -18,7 +20,7 @@ from django.core.files.storage import default_storage
 from django.db import connection, transaction
 from django.db.migrations.executor import MigrationExecutor
 from django.db.models import Avg, Q, Sum
-from django.db.utils import OperationalError, ProgrammingError
+from django.db.utils import IntegrityError, OperationalError, ProgrammingError
 from django.http import FileResponse, Http404, HttpResponse, HttpResponseRedirect, JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -33,9 +35,11 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import (
+    AgentProfile,
     AppUser,
     build_booking_progress_data,
     booking_progress_step_completed,
+    booking_progress_step_completed_by_any_party,
     booking_progress_step_selected_value,
     complete_booking_progress_step,
     Booking,
@@ -49,12 +53,18 @@ from .models import (
     Message,
     Payment,
     PaymentSettlement,
+    PendingRegistration,
+    PropertyInspection,
+    RepresentativeKyc,
     Review,
+    ServicePayment,
     SubscriptionPayment,
     SubscriptionPaymentMethod,
     SubscriptionVATPayment,
     SupportChatMessage,
+    TenancyAgreement,
     TenantProfile,
+    TenantRefund,
     TenantSearchRequirement,
     VerificationRequest,
 )
@@ -102,15 +112,22 @@ from .financial_constants import (
     FEATURED_PROPERTY_MIN_DURATION_DAYS,
     FEATURED_PROPERTY_MONTHLY_DURATION_DAYS,
     FEATURED_PROPERTY_MONTHLY_FEE,
-    LEGAL_FEE_MAX_RATE,
+    AGENT_VERIFICATION_FEE,
+    AGENT_VERIFICATION_ATTEMPTS_PER_PAYMENT,
+    IN_PERSON_VERIFICATION_FEE,
+    LAWYER_SERVICE_FEE_RATE,
     LISTING_DEPOSIT_RATE,
     MONEY_MINOR_UNIT_FACTOR,
     MONEY_PRECISION,
     PAYMENT_CANCELLATION_ADMIN_FEE_RATE,
     PERCENT_DENOMINATOR,
     REFUNDABLE_CAUTION_FEE_RATE,
+    TENANT_REFUND_FEE_CAP_NGN,
+    TENANT_REFUND_FEE_RATE,
+    TENANT_REFUND_PROCESSING_DELAY_HOURS,
     ZERO_AMOUNT,
 )
+from .banks import normalize_bank_name_key
 from .verification_service import verify_cac, verify_nin, verify_nin_and_bvn
 from .notifications import (
     send_feedback_acknowledgement,
@@ -135,9 +152,29 @@ from .pricing import (
     calculate_featured_property_fee,
     calculate_refundable_caution_fee,
     calculate_remaining_balance,
+    quantize_money,
     resolve_booking_total,
 )
+from .docuseal import (
+    create_submission as create_docuseal_submission,
+    get_submission as get_docuseal_submission,
+    is_docuseal_configured,
+    verify_webhook_signature as verify_docuseal_webhook_signature,
+)
 from .security import OTP_MAX_ATTEMPTS, OTP_TTL_MINUTES, contains_contact_info, generate_otp, hash_otp, otp_matches
+from .profile_validation import is_valid_mobile, is_valid_nin
+from .tenancy_agreements import (
+    agreement_form_fields,
+    agreement_missing_fields,
+    build_agreement_draft,
+    generate_tenancy_agreement,
+    render_tenancy_agreement,
+    serialize_tenancy_agreement,
+    sign_tenancy_agreement,
+    signature_block_signed,
+    signature_role_for_user,
+)
+from .whatsapp import send_whatsapp_alert_for_user, send_whatsapp_message
 from .tenant_verification import normalize_tenant_verification_profile
 from .throttling import production_ratelimit
 from .community_chat import COMMUNITY_CHAT_ROLES, user_has_active_community_chat_subscription
@@ -159,7 +196,18 @@ from .location_services import (
     resolve_city_state_coordinates,
 )
 from .image_optimization import optimize_profile_image
+from .inspection_checklist import (
+    INSPECTION_CHECKLIST_SCHEMA,
+    build_inspection_analysis,
+    validate_inspection_responses,
+)
+from .inspection_reports import build_inspection_report_pdf
+from .referrals import award_referral_earning, build_referral_tree, resolve_referrer
 from .serializers import (
+    AGENT_PROFILE_REQUIRED_FIELDS,
+    agent_profile_is_complete,
+    AgentInspectionListingSerializer,
+    AgentProfileSerializer,
     BookingSerializer,
     CommunityChatMessageSerializer,
     DocumentSerializer,
@@ -170,9 +218,13 @@ from .serializers import (
     LoginSerializer,
     MessageSerializer,
     PaymentSerializer,
+    PropertyInspectionSerializer,
     RegisterSerializer,
+    RepresentativeKycSerializer,
     ReviewSerializer,
     RentalProgressUpdateSerializer,
+    ServicePaymentRequestSerializer,
+    ServicePaymentSerializer,
     SettingsOtpRequestSerializer,
     SettingsPasswordSerializer,
     SubscriptionPaymentRequestSerializer,
@@ -180,6 +232,8 @@ from .serializers import (
     SubscriptionPaymentMethodSerializer,
     SupportChatMessageSerializer,
     TenantProfileSerializer,
+    TenantRefundRequestSerializer,
+    TenantRefundSerializer,
     TenantSearchRequirementSerializer,
     UserSerializer,
     VerifyRegistrationSerializer,
@@ -198,8 +252,18 @@ SETTINGS_OTP_PURPOSE_ACCOUNT = "account"
 SETTINGS_PROFILE_MUTABLE_FIELDS = {
     "email",
     "mobile",
+    "whatsapp_number",
     "residence",
     "landlord_verification_profile",
+}
+
+AGENT_SETTINGS_MUTABLE_FIELDS = {
+    "residential_address",
+    "city",
+    "bank_name",
+    "bank_code",
+    "account_name",
+    "account_number",
 }
 
 
@@ -371,7 +435,9 @@ def clear_auth_cookies(response: Response) -> None:
 def send_registration_email(user, otp_code: str) -> None:
     from django.core.mail import send_mail
 
-    action_url = build_otp_email_action_url("/register")
+    action_url = build_otp_email_action_url(
+        "/agents/register" if user.role == AppUser.Role.AGENT else "/register"
+    )
     body = build_otp_email_plain_body(
         code=otp_code,
         label="verification",
@@ -564,6 +630,10 @@ def begin_settings_otp_challenge(user, *, purpose: str, target_email: str) -> No
         ]
     )
     send_settings_otp_email(target_email, otp_code, purpose)
+    send_whatsapp_alert_for_user(
+        user,
+        f"Your RentDirect verification code is {otp_code}. It expires in {OTP_TTL_MINUTES} minutes. Do not share this code with anyone.",
+    )
 
 
 def ensure_valid_settings_otp(user, *, purpose: str, target_email: str, code: str) -> None:
@@ -928,6 +998,49 @@ def build_featured_payment_return_url(payment: FeaturedPayment) -> str:
 
 def build_subscription_payment_return_url(payment: SubscriptionPayment) -> str:
     return f"{frontend_site_origin()}/billing/subscriptions/pay/{payment.id}"
+
+
+def build_service_payment_reference() -> str:
+    return f"SVC{uuid.uuid4().hex[:20].upper()}"
+
+
+def build_service_payment_return_url(payment: ServicePayment) -> str:
+    return f"{frontend_site_origin()}/service-payments/{payment.id}"
+
+
+def lawyer_service_fee_for_booking(booking: Booking) -> Decimal:
+    return quantize_money(Decimal(booking.listing.price_per_year or 0) * LAWYER_SERVICE_FEE_RATE)
+
+
+def build_service_checkout(payment: ServicePayment) -> dict:
+    user = payment.user
+    purpose_label = (
+        "Property Inspection Officer Identity Verification"
+        if payment.purpose == ServicePayment.Purpose.AGENT_VERIFICATION
+        else "Lawyer-prepared Tenancy Agreement"
+    )
+    metadata = {
+        "service_payment_id": str(payment.id),
+        "purpose": payment.purpose,
+        "customer_type": user.role,
+    }
+    if payment.booking_id:
+        metadata["booking_id"] = str(payment.booking_id)
+        metadata["listing_id"] = str(payment.booking.listing_id)
+    return build_checkout_payload(
+        reference=payment.transaction_id,
+        amount=payment.amount,
+        currency=payment.currency,
+        email=user.email,
+        redirect_url=build_service_payment_return_url(payment),
+        payment_method="card",
+        title=f"RentDirect {purpose_label}",
+        description=f"{purpose_label} service payment",
+        metadata=metadata,
+        customer_name=user.name,
+        customer_phone=user.mobile,
+        webhook_url=build_flutterwave_webhook_url(),
+    )
 
 
 def exclude_deposit_secured_listings(queryset):
@@ -2362,6 +2475,179 @@ def reconcile_processing_payment_settlements(payment: Payment | None = None) -> 
     return reconciled_count
 
 
+def calculate_tenant_refund_fee(amount: Decimal) -> Decimal:
+    fee = (normalize_decimal_amount(amount) * TENANT_REFUND_FEE_RATE).quantize(MONEY_PRECISION, rounding=ROUND_HALF_UP)
+    return min(fee, TENANT_REFUND_FEE_CAP_NGN)
+
+
+def resolve_payment_refund_bank(payment: Payment) -> str:
+    bank_name = str(payment.bank_name or "").strip()
+    if bank_name:
+        return bank_name
+    for payload in (payment.provider_payload, payment.webhook_data):
+        extracted_bank, _card_last4 = extract_payment_channel_details(payload)
+        if extracted_bank:
+            return extracted_bank
+    return ""
+
+
+def map_transfer_status_to_refund_status(payload: dict | None) -> str:
+    provider_state = extract_payment_state(payload)
+    if provider_state == "completed":
+        return TenantRefund.Status.PAID
+    if provider_state in {"failed", "cancelled"}:
+        return TenantRefund.Status.FAILED
+    return TenantRefund.Status.PROCESSING
+
+
+def sync_tenant_refund_transfer(refund: TenantRefund, payload: dict | None) -> TenantRefund:
+    next_status = map_transfer_status_to_refund_status(payload)
+    refund.transfer_payload = payload
+    refund.last_error = "" if next_status != TenantRefund.Status.FAILED else extract_settlement_failure_reason(payload, "Flutterwave refund transfer failed.")
+    refund.status = next_status
+    update_fields = ["transfer_payload", "last_error", "status", "updated_at"]
+    if next_status == TenantRefund.Status.PAID and refund.transferred_at is None:
+        refund.transferred_at = timezone.now()
+        update_fields.append("transferred_at")
+    refund.save(update_fields=update_fields)
+    if next_status == TenantRefund.Status.FAILED:
+        logger.error(
+            "Tenant refund transfer failed from webhook. refund_id=%s payment_id=%s reference=%s reason=%s payload=%s",
+            refund.id,
+            refund.payment_id,
+            refund.transfer_reference or "-",
+            refund.last_error,
+            payload,
+        )
+    return refund
+
+
+def build_refund_transfer_reference(payment: Payment, refund: TenantRefund) -> str:
+    base_reference = payment.transaction_id or str(payment.id)
+    return f"{base_reference}-TREFUND-{str(refund.id)[:8].upper()}"[:120]
+
+
+def process_due_tenant_refunds(now=None) -> int:
+    now = now or timezone.now()
+
+    # Reconcile refunds that already have a transfer in flight.
+    for refund in (
+        TenantRefund.objects
+        .filter(status=TenantRefund.Status.PROCESSING)
+        .exclude(transfer_reference="")
+        .order_by("updated_at")
+    ):
+        transfer_id = extract_resource_id(refund.transfer_payload)
+        if not transfer_id:
+            continue
+        try:
+            sync_tenant_refund_transfer(refund, retrieve_bank_transfer(transfer_id=transfer_id))
+        except FlutterwaveError as exc:
+            logger.warning(
+                "Tenant refund reconciliation failed. refund_id=%s reference=%s reason=%s",
+                refund.id,
+                refund.transfer_reference,
+                exc,
+            )
+
+    due_refunds = (
+        TenantRefund.objects
+        .select_related("payment", "booking", "tenant")
+        .filter(status=TenantRefund.Status.SCHEDULED, process_at__lte=now)
+        .order_by("process_at")
+    )
+
+    processed = 0
+    for refund in due_refunds:
+        if not should_use_v4():
+            refund.status = TenantRefund.Status.READY
+            refund.last_error = ""
+            refund.save(update_fields=["status", "last_error", "updated_at"])
+            continue
+
+        if not refund.transfer_recipient_id:
+            recipient_response = None
+            recipient_lookup_error = None
+            try:
+                recipient_response = find_transfer_recipient(
+                    account_number=refund.account_number,
+                    bank_name=refund.bank_name,
+                    bank_code=refund.bank_code,
+                )
+            except FlutterwaveError as exc:
+                recipient_lookup_error = exc
+
+            if recipient_response is None and recipient_lookup_error is None:
+                try:
+                    recipient_response = create_transfer_recipient(
+                        full_name=refund.account_name or refund.tenant.name or "Tenant Refund",
+                        phone_number=refund.tenant.mobile,
+                        bank_name=refund.bank_name,
+                        bank_code=refund.bank_code,
+                        account_number=refund.account_number,
+                        account_name=refund.account_name,
+                        idempotency_key=f"{refund.payment.transaction_id}-refund-recipient",
+                    )
+                except FlutterwaveError as exc:
+                    if "recipient already exists" not in str(exc).lower():
+                        recipient_lookup_error = exc
+
+            if recipient_lookup_error is not None:
+                refund.status = TenantRefund.Status.SCHEDULED
+                refund.last_error = str(recipient_lookup_error)
+                refund.save(update_fields=["status", "last_error", "updated_at"])
+                logger.error(
+                    "Tenant refund recipient lookup/creation failed. refund_id=%s payment_id=%s reason=%s",
+                    refund.id,
+                    refund.payment_id,
+                    refund.last_error,
+                )
+                continue
+
+            if recipient_response is not None:
+                refund.transfer_recipient_id = extract_resource_id(recipient_response)
+                refund.provider_payload = recipient_response
+                refund.status = TenantRefund.Status.READY if refund.transfer_recipient_id else TenantRefund.Status.SCHEDULED
+                refund.last_error = "" if refund.transfer_recipient_id else "Flutterwave did not return a transfer recipient id."
+                refund.save(update_fields=["transfer_recipient_id", "provider_payload", "status", "last_error", "updated_at"])
+                if not refund.transfer_recipient_id:
+                    continue
+
+        transfer_reference = refund.transfer_reference or build_refund_transfer_reference(refund.payment, refund)
+        try:
+            transfer_response = create_bank_transfer(
+                amount=refund.refund_amount,
+                currency=refund.currency,
+                reference=transfer_reference,
+                narration="RentDirect Tenant Refund",
+                recipient_id=refund.transfer_recipient_id,
+                bank_name=refund.bank_name,
+                bank_code=refund.bank_code,
+                account_number=refund.account_number,
+                account_name=refund.account_name,
+                idempotency_key=transfer_reference,
+            )
+        except FlutterwaveError as exc:
+            refund.status = TenantRefund.Status.READY
+            refund.transfer_reference = transfer_reference
+            refund.last_error = str(exc)
+            refund.save(update_fields=["status", "transfer_reference", "last_error", "updated_at"])
+            logger.exception(
+                "Tenant refund transfer request failed. refund_id=%s payment_id=%s reference=%s reason=%s",
+                refund.id,
+                refund.payment_id,
+                transfer_reference,
+                refund.last_error,
+            )
+            continue
+
+        refund.transfer_reference = transfer_reference
+        sync_tenant_refund_transfer(refund, transfer_response)
+        processed += 1
+
+    return processed
+
+
 def ensure_payment_settlement_records(payment: Payment) -> None:
     PaymentSettlement.objects.filter(payment__booking=payment.booking).exclude(payment=payment).exclude(
         status=PaymentSettlement.Status.PAID,
@@ -2613,6 +2899,7 @@ def trigger_payment_settlements(payment: Payment) -> None:
                     account_name=settlement.account_name,
                     account_number=settlement.account_number,
                     settlement_id=str(settlement.id),
+                    landlord_whatsapp_number=landlord.whatsapp_number,
                 )
                 complete_booking_progress_step(
                     booking,
@@ -2735,6 +3022,8 @@ def update_booking_after_completed_payment(payment: Payment) -> Payment:
                 transaction_id=payment.transaction_id,
                 payment_date=payment.payment_date.strftime("%Y-%m-%d %H:%M:%S"),
                 booking_id=str(payment.booking_id),
+                landlord_whatsapp_number=payment.booking.listing.landlord.whatsapp_number,
+                tenant_whatsapp_number=payment.booking.tenant.whatsapp_number,
             )
         except Exception:
             logger.exception("Failed to send payment confirmation email for payment %s", payment.id)
@@ -3024,6 +3313,112 @@ def sync_subscription_payment(payment: SubscriptionPayment, *, transaction_id: s
     return payment
 
 
+def complete_service_payment(payment: ServicePayment, *, webhook_data=None) -> ServicePayment:
+    payment.status = ServicePayment.Status.COMPLETED
+    payment.payment_date = timezone.now()
+    if webhook_data is not None:
+        payment.webhook_data = webhook_data
+    payment.save(update_fields=["status", "payment_date", "webhook_data", "updated_at"])
+    if payment.purpose == ServicePayment.Purpose.IN_PERSON_VERIFICATION and payment.listing_id:
+        # Paid in-person verification moves the listing into the inspection queue.
+        Listing.objects.filter(pk=payment.listing_id).update(
+            physical_property_status=VerificationRequest.VerificationProgressStatus.PENDING,
+            updated_at=timezone.now(),
+        )
+    return payment
+
+
+def sync_service_payment(payment: ServicePayment, *, transaction_id: str | None = None, provider_status: str | None = None, payload=None, source: str) -> ServicePayment:
+    redirect_state = map_redirect_status(provider_status)
+    if payment.status == ServicePayment.Status.COMPLETED:
+        return payment
+    if payload is None and redirect_state in {ServicePayment.Status.CANCELLED, ServicePayment.Status.FAILED} and not transaction_id:
+        payment.status = redirect_state
+        payment.provider_payload = update_payment_provider_payload(
+            payment.provider_payload,
+            None,
+            redirect={"status": provider_status, "source": source},
+        )
+        payment.save(update_fields=["status", "provider_payload", "updated_at"])
+        return payment
+
+    charge_payload = payload
+    if charge_payload is None:
+        charge_payload = query_transaction(reference=payment.transaction_id or "", transaction_id=transaction_id)
+    if charge_payload is None:
+        return payment
+
+    charge_data = charge_payload.get("data") or {}
+    if not isinstance(charge_data, dict):
+        charge_data = {}
+    provider_state = extract_payment_state(charge_payload)
+    provider_amount_value = charge_data.get("amount")
+    if isinstance(provider_amount_value, dict):
+        provider_amount_value = provider_amount_value.get("value")
+    actual_reference = extract_reference(charge_payload)
+    actual_amount = normalize_decimal_amount(provider_amount_value)
+    actual_currency = str(charge_data.get("currency") or "").upper()
+    actual_email = extract_customer_email(charge_payload).lower()
+    expected_email = payment.user.email.strip().lower()
+    verification_errors: list[str] = []
+    verification_warnings: list[str] = []
+
+    if actual_reference:
+        if actual_reference != (payment.transaction_id or ""):
+            verification_errors.append("reference_mismatch")
+    elif provider_state == "completed":
+        verification_errors.append("reference_missing")
+    if provider_amount_value not in (None, ""):
+        if actual_amount != normalize_decimal_amount(payment.amount):
+            verification_errors.append("amount_mismatch")
+    elif provider_state == "completed":
+        verification_errors.append("amount_missing")
+    if actual_currency:
+        if actual_currency != payment.currency.upper():
+            verification_errors.append("currency_mismatch")
+    elif provider_state == "completed":
+        verification_errors.append("currency_missing")
+    if actual_email and actual_email != expected_email:
+        verification_warnings.append("customer_email_mismatch")
+
+    payment.provider_payload = update_payment_provider_payload(
+        payment.provider_payload,
+        charge_payload,
+        verification={
+            "source": source,
+            "provider_status": extract_payment_state(charge_payload),
+            "provider_transaction_id": extract_provider_transaction_id(charge_payload),
+            "errors": verification_errors,
+            "warnings": verification_warnings,
+            "verified_at": timezone.now().isoformat(),
+        },
+    )
+    payment.provider = "flutterwave"
+    if source == "webhook":
+        payment.webhook_data = charge_payload
+
+    next_state = provider_state
+    if verification_errors:
+        next_state = ServicePayment.Status.FAILED
+
+    if next_state == ServicePayment.Status.COMPLETED:
+        payment.save(update_fields=["provider_payload", "provider", "webhook_data", "updated_at"])
+        return complete_service_payment(
+            payment,
+            webhook_data=charge_payload if source == "webhook" else payment.webhook_data,
+        )
+
+    payment.status = (
+        ServicePayment.Status.CANCELLED
+        if next_state == ServicePayment.Status.CANCELLED
+        else ServicePayment.Status.FAILED
+        if next_state == ServicePayment.Status.FAILED
+        else ServicePayment.Status.PENDING
+    )
+    payment.save(update_fields=["status", "provider_payload", "provider", "webhook_data", "updated_at"])
+    return payment
+
+
 def reconcile_pending_customer_payments(*, limit: int = 100) -> dict[str, int]:
     limit = max(int(limit), 1)
     candidates = list(
@@ -3045,6 +3440,13 @@ def reconcile_pending_customer_payments(*, limit: int = 100) -> dict[str, int]:
         .exclude(transaction_id="")
         .order_by("created_at")[:limit]
     )
+    candidates.extend(
+        ServicePayment.objects.select_related("user", "booking")
+        .filter(provider="flutterwave", status=ServicePayment.Status.PENDING)
+        .exclude(transaction_id__isnull=True)
+        .exclude(transaction_id="")
+        .order_by("created_at")[:limit]
+    )
     candidates.sort(key=lambda payment: payment.created_at)
 
     checked = completed = pending = failed = 0
@@ -3055,6 +3457,8 @@ def reconcile_pending_customer_payments(*, limit: int = 100) -> dict[str, int]:
                 reconciled = sync_booking_payment(payment, source="reconciliation")
             elif isinstance(payment, FeaturedPayment):
                 reconciled = sync_featured_payment(payment, source="reconciliation")
+            elif isinstance(payment, ServicePayment):
+                reconciled = sync_service_payment(payment, source="reconciliation")
             else:
                 reconciled = sync_subscription_payment(payment, source="reconciliation")
         except FlutterwaveError:
@@ -3084,6 +3488,7 @@ def ensure_supported_subscription_role(user: AppUser) -> None:
 @method_decorator(production_ratelimit(key="ip", rate="10/m", method="POST", block=True), name="register")
 @method_decorator(production_ratelimit(key="ip", rate="10/m", method="POST", block=True), name="verify_registration")
 @method_decorator(production_ratelimit(key="ip", rate="10/m", method="POST", block=True), name="login")
+@method_decorator(production_ratelimit(key="ip", rate="10/m", method="POST", block=True), name="google_exchange")
 @method_decorator(production_ratelimit(key="ip", rate="30/m", method="POST", block=True), name="refresh")
 class AuthViewSet(viewsets.ViewSet):
     permission_classes = [AllowAny]
@@ -3093,26 +3498,33 @@ class AuthViewSet(viewsets.ViewSet):
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-        existing = User.objects.filter(email=data["email"]).first()
+        email = data["email"].strip().lower()
+        existing = User.objects.filter(email=email).first()
         if existing and existing.email_verified:
             raise ValidationError({"email": "Email already registered"})
 
         otp = generate_otp()
         expires_at = timezone.now() + timedelta(minutes=OTP_TTL_MINUTES)
-        user = existing or User(email=data["email"], role=data["role"])
-        user.name = data["name"]
-        user.role = data["role"]
-        user.set_password(data["password"])
-        user.email_verified = False
-        user.registration_otp_hash = hash_otp(user.email, otp)
-        user.registration_otp_expires_at = expires_at
-        user.registration_otp_attempts = 0
-        user.save()
-        send_registration_email(user, otp)
+        # Sign-up credentials are held on PendingRegistration only; the AppUser
+        # record is created after OTP verification succeeds.
+        pending = PendingRegistration(
+            email=email,
+            name=data["name"],
+            role=data["role"],
+            password_hash=make_password(data["password"]),
+            otp_hash=hash_otp(email, otp),
+            otp_expires_at=expires_at,
+            otp_attempts=0,
+            referral_code=data.get("referral_code") or "",
+        )
+        send_registration_email(pending, otp)
+        with transaction.atomic():
+            PendingRegistration.objects.filter(email=email).delete()
+            pending.save()
         return Response(
             {
-                "email": user.email,
-                "role": user.role,
+                "email": pending.email,
+                "role": pending.role,
                 "expires_in_seconds": OTP_TTL_MINUTES * 60,
                 "message": "Verification code sent to email.",
             },
@@ -3126,8 +3538,54 @@ class AuthViewSet(viewsets.ViewSet):
         email = serializer.validated_data["email"].strip().lower()
         code = serializer.validated_data["otp_code"]
         user = User.objects.filter(email=email).first()
-        if not user:
+        pending = PendingRegistration.objects.filter(email=email).first()
+
+        if pending is None and user is not None and user.registration_otp_hash:
+            # In-flight registration created before pending challenges existed.
+            return self._verify_legacy_registration(request, user, code)
+
+        if user is not None and user.email_verified:
+            return Response({"detail": "Email is already verified"}, status=400)
+        if pending is None:
             return Response({"detail": "Registration not found"}, status=404)
+        if pending.otp_attempts >= OTP_MAX_ATTEMPTS:
+            return Response({"detail": "Too many invalid verification attempts"}, status=429)
+        if not pending.otp_expires_at or pending.otp_expires_at < timezone.now():
+            return Response({"detail": "Verification code has expired"}, status=400)
+        if not otp_matches(pending.otp_hash, email, code):
+            pending.otp_attempts += 1
+            pending.save(update_fields=["otp_attempts", "updated_at"])
+            remaining = max(OTP_MAX_ATTEMPTS - pending.otp_attempts, 0)
+            return Response({"detail": f"Invalid verification code. {remaining} attempts remaining."}, status=400)
+
+        with transaction.atomic():
+            if user is None:
+                user = User(email=email)
+            user.name = pending.name
+            user.role = pending.role
+            user.password = pending.password_hash
+            user.email_verified = True
+            user.registration_otp_hash = ""
+            user.registration_otp_expires_at = None
+            user.registration_otp_attempts = 0
+            user.save()
+            if user.role == AppUser.Role.AGENT:
+                agent_profile, _ = AgentProfile.objects.get_or_create(
+                    user=user,
+                    defaults={"first_name": "", "last_name": ""},
+                )
+                referrer = resolve_referrer(pending.referral_code)
+                if referrer and referrer.id != user.id and agent_profile.referred_by_id is None:
+                    agent_profile.referred_by = referrer
+                    agent_profile.save(update_fields=["referred_by", "updated_at"])
+            pending.delete()
+
+        response = Response(UserSerializer(user).data)
+        set_auth_cookies(response, user)
+        return response
+
+    def _verify_legacy_registration(self, request, user, code):
+        email = user.email
         if user.email_verified:
             return Response({"detail": "Email is already verified"}, status=400)
         if user.registration_otp_attempts >= OTP_MAX_ATTEMPTS:
@@ -3154,6 +3612,122 @@ class AuthViewSet(viewsets.ViewSet):
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data["user"]
         response = Response(UserSerializer(user).data)
+        set_auth_cookies(response, user)
+        return response
+
+    @action(detail=False, methods=["get"], url_path="google/start", authentication_classes=[])
+    def google_start(self, request):
+        if not settings.GOOGLE_OAUTH_CLIENT_ID:
+            return Response({"detail": "Google sign-in is not configured."}, status=503)
+        return Response(
+            {
+                "client_id": settings.GOOGLE_OAUTH_CLIENT_ID,
+                "redirect_uri": settings.GOOGLE_OAUTH_REDIRECT_URI or "postmessage",
+            }
+        )
+
+    @action(detail=False, methods=["post"], url_path="google/exchange", authentication_classes=[])
+    def google_exchange(self, request):
+        if not settings.GOOGLE_OAUTH_CLIENT_ID or not settings.GOOGLE_OAUTH_CLIENT_SECRET:
+            return Response({"detail": "Google sign-in is not configured."}, status=503)
+        code = str(request.data.get("code") or "").strip()
+        if not code:
+            raise ValidationError({"code": "Google authorization code is required."})
+
+        allowed_redirect_uris = {"postmessage"}
+        if settings.GOOGLE_OAUTH_REDIRECT_URI:
+            allowed_redirect_uris.add(settings.GOOGLE_OAUTH_REDIRECT_URI)
+        redirect_uri = str(request.data.get("redirect_uri") or "postmessage").strip()
+        if redirect_uri not in allowed_redirect_uris:
+            raise ValidationError({"redirect_uri": "Unsupported redirect URI."})
+
+        try:
+            token_response = requests.post(
+                settings.GOOGLE_TOKEN_URL,
+                data={
+                    "code": code,
+                    "client_id": settings.GOOGLE_OAUTH_CLIENT_ID,
+                    "client_secret": settings.GOOGLE_OAUTH_CLIENT_SECRET,
+                    "redirect_uri": redirect_uri,
+                    "grant_type": "authorization_code",
+                },
+                timeout=15,
+            )
+        except requests.RequestException:
+            logger.exception("Google token exchange request failed")
+            return Response({"detail": "Google sign-in is temporarily unavailable."}, status=502)
+        if token_response.status_code != 200:
+            return Response({"detail": "Google authorization failed."}, status=400)
+
+        tokens = token_response.json()
+        access_token = tokens.get("access_token")
+        if not access_token:
+            return Response({"detail": "Google authorization failed."}, status=400)
+
+        try:
+            profile_response = requests.get(
+                settings.GOOGLE_USERINFO_URL,
+                headers={"Authorization": f"Bearer {access_token}"},
+                timeout=15,
+            )
+        except requests.RequestException:
+            logger.exception("Google userinfo request failed")
+            return Response({"detail": "Google sign-in is temporarily unavailable."}, status=502)
+        if profile_response.status_code != 200:
+            return Response({"detail": "Could not retrieve your Google profile."}, status=400)
+
+        profile = profile_response.json()
+        email = str(profile.get("email") or "").strip().lower()
+        email_verified = profile.get("email_verified")
+        if not email:
+            return Response({"detail": "Google did not return an email address."}, status=400)
+        if email_verified in (False, "false"):
+            return Response({"detail": "Your Google account email is not verified."}, status=400)
+
+        user = User.objects.filter(email=email).first()
+        created = False
+        if user is None:
+            requested_role = str(request.data.get("role") or "").strip().lower()
+            role = requested_role if requested_role in {
+                AppUser.Role.TENANT,
+                AppUser.Role.LANDLORD,
+                AppUser.Role.AGENT,
+            } else AppUser.Role.TENANT
+            name = str(profile.get("name") or "").strip() or email.split("@")[0]
+            user = User(email=email, name=name, role=role, email_verified=True)
+            user.set_unusable_password()
+            user.save()
+            if role == AppUser.Role.AGENT:
+                agent_profile = AgentProfile(user=user, first_name="", last_name="")
+                referrer = resolve_referrer(str(request.data.get("referral_code") or ""))
+                if referrer and referrer.id != user.id:
+                    agent_profile.referred_by = referrer
+                agent_profile.save()
+            created = True
+            # Clear any pending registration challenge for this email.
+            PendingRegistration.objects.filter(email=email).delete()
+        else:
+            # Existing accounts keep their registered role; a verified Google
+            # identity is sufficient proof of email ownership.
+            PendingRegistration.objects.filter(email=email).delete()
+            if not user.email_verified:
+                user.email_verified = True
+                user.registration_otp_hash = ""
+                user.registration_otp_expires_at = None
+                user.registration_otp_attempts = 0
+                user.save(
+                    update_fields=[
+                        "email_verified",
+                        "registration_otp_hash",
+                        "registration_otp_expires_at",
+                        "registration_otp_attempts",
+                        "updated_at",
+                    ]
+                )
+
+        payload = UserSerializer(user).data
+        payload["is_new_user"] = created
+        response = Response(payload)
         set_auth_cookies(response, user)
         return response
 
@@ -3290,7 +3864,25 @@ class UserViewSet(viewsets.GenericViewSet):
                 }
             )
 
-        if not payload and not tenant_profile_payload:
+        agent_profile_payload: dict[str, str] = {}
+        agent_profile_update = request.data.get("agent_profile", None)
+        if agent_profile_update is not None:
+            if request.user.role != AppUser.Role.AGENT:
+                raise ValidationError({"agent_profile": "Payout details are only available for property inspection officer accounts."})
+            if not isinstance(agent_profile_update, dict):
+                raise ValidationError({"agent_profile": "PIO profile must be a JSON object."})
+            for field_name in AGENT_SETTINGS_MUTABLE_FIELDS:
+                if field_name in agent_profile_update:
+                    agent_profile_payload[field_name] = str(agent_profile_update.get(field_name) or "").strip()
+
+            account_number = agent_profile_payload.get("account_number")
+            if account_number and not (account_number.isdigit() and len(account_number) == 10):
+                raise ValidationError({"agent_profile": {"account_number": "Nigerian account number must be exactly 10 digits."}})
+            account_name = agent_profile_payload.get("account_name")
+            if account_name and not re.fullmatch(r"[A-Za-z][A-Za-z\s'\-.]*", account_name):
+                raise ValidationError({"agent_profile": {"account_name": "Account name must contain letters only."}})
+
+        if not payload and not tenant_profile_payload and not agent_profile_payload:
             raise ValidationError({"detail": "No settings changes were provided."})
 
         serializer = None
@@ -3326,6 +3918,22 @@ class UserViewSet(viewsets.GenericViewSet):
             updated_user = serializer.save() if serializer else request.user
             if tenant_profile_serializer:
                 tenant_profile_serializer.save()
+
+            if request.user.role == AppUser.Role.AGENT:
+                agent_profile = AgentProfile.objects.filter(user=updated_user).first()
+                if agent_profile is not None:
+                    if agent_profile_payload:
+                        for field_name, value in agent_profile_payload.items():
+                            setattr(agent_profile, field_name, value)
+                        agent_profile.save(update_fields=[*agent_profile_payload.keys(), "updated_at"])
+                    sync_updates: list[str] = []
+                    for user_field in ("mobile", "whatsapp_number"):
+                        value = getattr(updated_user, user_field, "") or ""
+                        if value and getattr(agent_profile, user_field, "") != value:
+                            setattr(agent_profile, user_field, value)
+                            sync_updates.append(user_field)
+                    if sync_updates:
+                        agent_profile.save(update_fields=[*sync_updates, "updated_at"])
 
             if has_guarantor_update:
                 verification_profile = dict(updated_user.tenant_verification_profile or {})
@@ -3475,6 +4083,9 @@ class UserViewSet(viewsets.GenericViewSet):
         data.pop("bvn_number", None)
         for verification_only_field in ("country_of_birth", "email", "mobile"):
             data.pop(verification_only_field, None)
+        whatsapp_number = str(data.pop("whatsapp_number", "") or "").strip()
+        if whatsapp_number and not is_valid_mobile(whatsapp_number):
+            raise ValidationError({"whatsapp_number": "Enter a valid mobile number."})
         data["user"] = request.user.id
         if request.method == "POST" and not profile:
             serializer = TenantProfileSerializer(data=data)
@@ -3502,7 +4113,9 @@ class UserViewSet(viewsets.GenericViewSet):
             with transaction.atomic():
                 request.user.nin_number = nin_number
                 request.user.tenant_verification_profile = verification_profile
-                request.user.save(update_fields=["nin_number", "tenant_verification_profile", "updated_at"])
+                if verification_profile.get("whatsapp_number"):
+                    request.user.whatsapp_number = verification_profile["whatsapp_number"]
+                request.user.save(update_fields=["nin_number", "tenant_verification_profile", "whatsapp_number", "updated_at"])
                 new_profile = serializer.save(user=request.user)
             vr = sync_tenant_profile_approval(request.user, new_profile)
             if new_profile.supporting_documents.exists():
@@ -3551,7 +4164,9 @@ class UserViewSet(viewsets.GenericViewSet):
         with transaction.atomic():
             request.user.nin_number = nin_number
             request.user.tenant_verification_profile = verification_profile
-            request.user.save(update_fields=["nin_number", "tenant_verification_profile", "updated_at"])
+            if verification_profile.get("whatsapp_number"):
+                request.user.whatsapp_number = verification_profile["whatsapp_number"]
+            request.user.save(update_fields=["nin_number", "tenant_verification_profile", "whatsapp_number", "updated_at"])
             updated_profile = serializer.save()
         vr = sync_tenant_profile_approval(request.user, updated_profile)
         if updated_profile.supporting_documents.exists():
@@ -3736,6 +4351,36 @@ class ListingViewSet(viewsets.ModelViewSet):
             raise PermissionDenied("Forbidden")
         instance.status = Listing.Status.ARCHIVED
         instance.save(update_fields=["status", "updated_at"])
+
+    @action(detail=False, methods=["get", "post"], url_path="representative-kyc")
+    def representative_kyc(self, request):
+        if request.user.role != AppUser.Role.LANDLORD:
+            raise PermissionDenied("Only landlords can manage representative KYC links.")
+
+        if request.method == "GET":
+            kycs = (
+                RepresentativeKyc.objects
+                .select_related("listing", "landlord")
+                .filter(landlord=request.user)
+                .order_by("-created_at")[:20]
+            )
+            return Response(RepresentativeKycSerializer(kycs, many=True).data)
+
+        listing_id = str(request.data.get("listing_id") or "").strip()
+        listing = None
+        if listing_id:
+            listing = self.get_queryset().filter(pk=listing_id, landlord=request.user).first()
+            if listing is None:
+                raise ValidationError({"listing_id": "Listing not found."})
+
+        return_url = str(request.data.get("return_url") or "").strip()
+        kyc = RepresentativeKyc.objects.create(
+            landlord=request.user,
+            listing=listing,
+            ownership_type=str(request.data.get("ownership_type") or "").strip()[:120],
+            return_url=return_url[:255],
+        )
+        return Response(RepresentativeKycSerializer(kyc).data, status=status.HTTP_201_CREATED)
 
     @staticmethod
     def _can_access_location_features(request):
@@ -4424,6 +5069,463 @@ class BookingViewSet(viewsets.ModelViewSet):
 
         return Response(self.get_serializer(booking).data)
 
+    @action(detail=True, methods=["get", "post"], url_path="refunds")
+    def refunds(self, request, pk=None):
+        booking = self.get_object()
+
+        if request.method == "GET":
+            refunds = booking.refunds.select_related("payment").order_by("-created_at")
+            return Response(TenantRefundSerializer(refunds, many=True).data)
+
+        if request.user.role != AppUser.Role.TENANT or booking.tenant_id != request.user.id:
+            raise PermissionDenied("Only the tenant on this booking can request a refund.")
+        if booking_progress_step_completed_by_any_party(booking, "tenant_collected_house_key"):
+            raise ValidationError(
+                "Refunds can only be requested before the property keys have been handed over to you."
+            )
+
+        serializer = TenantRefundRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        payment = booking.payments.filter(
+            pk=data["payment_id"],
+            status__in=("completed", REFUND_REQUESTED_PAYMENT_STATUS),
+        ).first()
+        if payment is None:
+            raise ValidationError({"payment_id": "Only a completed payment on this booking can be refunded."})
+
+        open_statuses = {
+            TenantRefund.Status.SCHEDULED,
+            TenantRefund.Status.RECIPIENT_CREATED,
+            TenantRefund.Status.READY,
+            TenantRefund.Status.PROCESSING,
+            TenantRefund.Status.PAID,
+        }
+        if payment.refunds.filter(status__in=open_statuses).exists():
+            raise ValidationError({"payment_id": "A refund has already been requested for this payment."})
+
+        bank_name = str(data["bank_name"] or "").strip()
+        allowed_bank = resolve_payment_refund_bank(payment)
+        if allowed_bank and normalize_bank_name_key(bank_name) != normalize_bank_name_key(allowed_bank):
+            raise ValidationError(
+                {
+                    "bank_name": (
+                        f"Refunds can only be sent to the {allowed_bank} account used for this payment."
+                    )
+                }
+            )
+
+        fee_amount = calculate_tenant_refund_fee(payment.amount)
+        refund_amount = normalize_decimal_amount(payment.amount - fee_amount)
+        if refund_amount <= ZERO_AMOUNT:
+            raise ValidationError({"payment_id": "Refundable amount must be greater than zero."})
+
+        with transaction.atomic():
+            booking = Booking.objects.select_for_update().get(pk=booking.pk)
+            payment = Payment.objects.select_for_update().get(pk=payment.pk)
+            if payment.status not in ("completed", REFUND_REQUESTED_PAYMENT_STATUS):
+                raise ValidationError({"payment_id": "Payment can no longer be refunded."})
+            if payment.refunds.filter(status__in=open_statuses).exists():
+                raise ValidationError({"payment_id": "A refund has already been requested for this payment."})
+            if booking_progress_step_completed_by_any_party(booking, "tenant_collected_house_key"):
+                raise ValidationError(
+                    "Refunds can only be requested before the property keys have been handed over to you."
+                )
+
+            refund = TenantRefund.objects.create(
+                booking=booking,
+                payment=payment,
+                tenant=request.user,
+                amount=payment.amount,
+                fee_amount=fee_amount,
+                refund_amount=refund_amount,
+                currency=payment.currency,
+                reason=str(data.get("reason") or "").strip(),
+                bank_name=bank_name,
+                bank_code=resolve_nigerian_payout_bank_code(bank_name, data.get("bank_code") or ""),
+                account_number=data["account_number"],
+                account_name=str(data.get("account_name") or "").strip(),
+                process_at=timezone.now() + timedelta(hours=TENANT_REFUND_PROCESSING_DELAY_HOURS),
+            )
+
+            if payment.status == "completed":
+                payment.status = REFUND_REQUESTED_PAYMENT_STATUS
+                payment.provider_payload = update_payment_provider_payload(
+                    payment.provider_payload,
+                    None,
+                    refund={
+                        "refund_id": str(refund.id),
+                        "requested_at": timezone.now().isoformat(),
+                        "refund_status": "scheduled",
+                        "process_at": refund.process_at.isoformat(),
+                        "fee_amount": str(fee_amount),
+                        "refund_amount": str(refund_amount),
+                    },
+                )
+                payment.save(update_fields=["status", "provider_payload", "updated_at"])
+
+                booking.paid_amount = max(
+                    normalize_decimal_amount(booking.paid_amount) - normalize_decimal_amount(payment.amount),
+                    ZERO_AMOUNT,
+                )
+                booking.status = Booking.Status.CANCELLED
+                booking.save(update_fields=["paid_amount", "status", "updated_at"])
+
+        return Response(TenantRefundSerializer(refund).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["get", "post"], url_path="tenancy-agreement")
+    def tenancy_agreement(self, request, pk=None):
+        booking = self.get_object()
+        viewer_role = signature_role_for_user(booking, request.user)
+        if viewer_role is None and request.user.role != AppUser.Role.ADMIN:
+            raise PermissionDenied("Only the tenant or landlord on this booking can access the tenancy agreement.")
+
+        latest = booking.tenancy_agreements.order_by("-version").first()
+
+        if request.method == "POST":
+            if viewer_role != "landlord":
+                raise PermissionDenied("Only landlords can generate tenancy agreements.")
+            if booking.status == Booking.Status.CANCELLED:
+                raise ValidationError("A tenancy agreement cannot be generated for a cancelled booking.")
+            submitted_data = request.data.get("data", {})
+            if not isinstance(submitted_data, dict):
+                raise ValidationError({"data": "Agreement data must be an object."})
+            record = generate_tenancy_agreement(
+                booking=booking,
+                generated_by=request.user,
+                submitted_data=submitted_data,
+            )
+            return Response(
+                self._tenancy_agreement_workspace(booking, latest=record, data=record.agreement_data),
+                status=status.HTTP_201_CREATED,
+            )
+
+        if latest:
+            data = latest.agreement_data
+        elif viewer_role == "landlord":
+            data = build_agreement_draft(booking)
+        else:
+            data = {}
+        return Response(self._tenancy_agreement_workspace(booking, latest=latest, data=data))
+
+    @action(detail=True, methods=["post"], url_path="tenancy-agreement/sign")
+    def sign_tenancy_agreement(self, request, pk=None):
+        booking = self.get_object()
+        agreement = sign_tenancy_agreement(
+            booking=booking,
+            signer=request.user,
+            signatory_name=str(request.data.get("signatory_name") or ""),
+            signatory_capacity=str(request.data.get("signatory_capacity") or ""),
+        )
+        return Response(
+            self._tenancy_agreement_workspace(booking, latest=agreement, data=agreement.agreement_data)
+        )
+
+    @action(detail=True, methods=["post"], url_path="tenancy-agreement/docuseal")
+    def tenancy_agreement_docuseal(self, request, pk=None):
+        booking = self.get_object()
+        viewer_role = signature_role_for_user(booking, request.user)
+        if viewer_role is None:
+            raise PermissionDenied("Only the tenant or landlord on this booking can sign the tenancy agreement.")
+        if not is_docuseal_configured():
+            return Response({"detail": "Electronic signing is not configured."}, status=503)
+        agreement = (
+            TenancyAgreement.objects.select_for_update()
+            .filter(booking=booking)
+            .order_by("-version")
+            .first()
+        )
+        if agreement is None:
+            raise ValidationError("Generate the tenancy agreement before requesting signatures.")
+
+        data = agreement.agreement_data or {}
+        signatures = data.get("signatures") if isinstance(data.get("signatures"), dict) else {}
+        if signature_block_signed(signatures, viewer_role):
+            return Response(
+                self._tenancy_agreement_workspace(booking, latest=agreement, data=data)
+            )
+
+        if agreement.docuseal_submission_id is None:
+            try:
+                submission = create_docuseal_submission(
+                    name=f"Tenancy Agreement — {booking.listing.title} (Booking {booking.id})",
+                    document_name=f"tenancy-agreement-{agreement.id}.html",
+                    document_content=_docuseal_agreement_html(agreement),
+                    submitters=[
+                        {
+                            "role": DOCUSEAL_ROLE_LANDLORD,
+                            "name": booking.listing.landlord.name or booking.listing.landlord.email,
+                            "email": booking.listing.landlord.email,
+                            "send_email": False,
+                            "send_sms": False,
+                        },
+                        {
+                            "role": DOCUSEAL_ROLE_TENANT,
+                            "name": booking.tenant.name or booking.tenant.email,
+                            "email": booking.tenant.email,
+                            "send_email": False,
+                            "send_sms": False,
+                        },
+                    ],
+                )
+            except requests.RequestException:
+                logger.exception("DocuSeal submission creation failed for booking %s", booking.id)
+                return Response({"detail": "Could not start electronic signing. Please try again."}, status=502)
+
+            submitters = _docuseal_submitter_map(submission)
+            submission_id = _docuseal_submission_id(submission)
+            data["docuseal"] = {
+                "status": "pending",
+                "submitters": submitters,
+            }
+            agreement.agreement_data = data
+            agreement.docuseal_submission_id = submission_id
+            agreement.save(update_fields=["agreement_data", "docuseal_submission_id", "updated_at"])
+
+        return Response(
+            self._tenancy_agreement_workspace(booking, latest=agreement, data=agreement.agreement_data)
+        )
+
+    def _tenancy_agreement_workspace(self, booking, *, latest, data):
+        viewer_role = signature_role_for_user(booking, self.request.user)
+        is_landlord = viewer_role == "landlord"
+        signatures = data.get("signatures") if isinstance(data, dict) else None
+        if not isinstance(signatures, dict):
+            signatures = {}
+        signed_by_tenant = signature_block_signed(signatures, "tenant")
+        signed_by_landlord = signature_block_signed(signatures, "landlord")
+        lawyer_payment = (
+            ServicePayment.objects.filter(
+                booking=booking,
+                purpose=ServicePayment.Purpose.LAWYER_TENANCY,
+            )
+            .order_by("-created_at")
+            .first()
+        )
+        return {
+            "agreement_options": (
+                {
+                    "free": {
+                        "label": "RentDirect Tenancy Agreement",
+                        "amount": 0,
+                        "landlord_pays": True,
+                    },
+                    "lawyer": {
+                        "label": "Lawyer-prepared Tenancy Agreement",
+                        "fee_rate": str(LAWYER_SERVICE_FEE_RATE),
+                        "amount": float(lawyer_service_fee_for_booking(booking)),
+                        "landlord_pays": True,
+                        "payment": (
+                            ServicePaymentSerializer(lawyer_payment, context={"request": self.request}).data
+                            if lawyer_payment
+                            else None
+                        ),
+                    },
+                }
+                if is_landlord
+                else None
+            ),
+            "booking": {
+                "id": str(booking.id),
+                "listing_title": booking.listing.title,
+                "tenant_name": booking.tenant.name,
+                "tenant_email": booking.tenant.email,
+                "start_date": booking.start_date.isoformat() if booking.start_date else None,
+                "end_date": booking.end_date.isoformat() if booking.end_date else None,
+                "status": booking.status,
+                "rent_amount": float(booking.listing.price_per_year or 0),
+            },
+            "data": data,
+            "fields": agreement_form_fields() if is_landlord else [],
+            "missing_fields": agreement_missing_fields(data) if is_landlord else [],
+            "can_generate": is_landlord and booking.status != Booking.Status.CANCELLED,
+            "latest_agreement": serialize_tenancy_agreement(latest),
+            "docuseal": self._docuseal_workspace_block(booking, latest, data, viewer_role, signatures),
+            "viewer_role": viewer_role,
+            "signatures": signatures,
+            "signed_by_tenant": signed_by_tenant,
+            "signed_by_landlord": signed_by_landlord,
+            "can_sign": bool(
+                latest
+                and viewer_role
+                and not signature_block_signed(signatures, viewer_role)
+            ),
+        }
+
+    def _docuseal_workspace_block(self, booking, latest, data, viewer_role, signatures):
+        docuseal_meta = data.get("docuseal") if isinstance(data, dict) else None
+        submitters = docuseal_meta.get("submitters") if isinstance(docuseal_meta, dict) else None
+        if not isinstance(submitters, dict):
+            submitters = {}
+        signed = signature_block_signed(signatures, viewer_role) if viewer_role else False
+        # The embedded signing URL is signer-specific — only expose it to the
+        # matching party and only while they still need to sign.
+        embed_src = ""
+        if viewer_role and not signed:
+            embed_src = str(
+                (submitters.get(DOCUSEAL_ROLE_TENANT if viewer_role == "tenant" else DOCUSEAL_ROLE_LANDLORD) or {})
+                .get("embed_src")
+                or ""
+            )
+        return {
+            "enabled": is_docuseal_configured(),
+            "submission_id": latest.docuseal_submission_id if latest else None,
+            "status": docuseal_meta.get("status", "") if isinstance(docuseal_meta, dict) else "",
+            "embed_src": embed_src,
+            "documents": docuseal_meta.get("documents", []) if isinstance(docuseal_meta, dict) else [],
+        }
+
+
+DOCUSEAL_ROLE_LANDLORD = "Landlord"
+DOCUSEAL_ROLE_TENANT = "Tenant"
+
+
+def _docuseal_agreement_html(agreement: TenancyAgreement) -> str:
+    rendered = agreement.rendered_content or ""
+    body_parts = []
+    for line in rendered.split("\n"):
+        body_parts.append(f"<p>{escape(line)}</p>" if line.strip() else "")
+    signature_section = (
+        "<div style='page-break-before:always;'>"
+        "<h2>Signatures</h2>"
+        "<p>Executed by the parties:</p>"
+        "<table style='width:100%;border-collapse:collapse;'>"
+        "<tr><td style='padding:12px 8px;width:50%;vertical-align:bottom;'>"
+        f"<field name='landlord_signature' type='signature' role='{DOCUSEAL_ROLE_LANDLORD}' required='true' "
+        "style='width:220px;height:64px;'></field>"
+        "<p style='margin:4px 0 0;border-top:1px solid #333;padding-top:4px;'>Landlord Signature</p></td>"
+        "<td style='padding:12px 8px;width:50%;vertical-align:bottom;'>"
+        f"<field name='tenant_signature' type='signature' role='{DOCUSEAL_ROLE_TENANT}' required='true' "
+        "style='width:220px;height:64px;'></field>"
+        "<p style='margin:4px 0 0;border-top:1px solid #333;padding-top:4px;'>Tenant Signature</p></td>"
+        "</tr></table>"
+        "</div>"
+    )
+    return (
+        "<html><body style='font-family:Georgia,serif;font-size:14px;line-height:1.6;color:#111;'>"
+        + "".join(body_parts)
+        + signature_section
+        + "</body></html>"
+    )
+
+
+def _docuseal_submission_id(submission) -> int | None:
+    if isinstance(submission, dict):
+        return submission.get("id")
+    if isinstance(submission, list) and submission:
+        first = submission[0]
+        if isinstance(first, dict):
+            return first.get("submission_id") or first.get("id")
+    return None
+
+
+def _docuseal_submitter_map(submission) -> dict[str, dict]:
+    submitters = submission.get("submitters") if isinstance(submission, dict) else submission
+    if not isinstance(submitters, list):
+        submitters = []
+    result: dict[str, dict] = {}
+    for submitter in submitters:
+        if not isinstance(submitter, dict):
+            continue
+        role = str(submitter.get("role") or "").strip()
+        if not role:
+            continue
+        result[role] = {
+            "id": submitter.get("id"),
+            "slug": submitter.get("slug"),
+            "embed_src": submitter.get("embed_src") or "",
+            "email": submitter.get("email") or "",
+            "signed_at": submitter.get("completed_at"),
+        }
+    return result
+
+
+def _docuseal_role_for_email(agreement: TenancyAgreement, email: str) -> str | None:
+    email = (email or "").strip().lower()
+    if not email:
+        return None
+    booking = agreement.booking
+    if email == (booking.tenant.email or "").strip().lower():
+        return "tenant"
+    if email == (booking.listing.landlord.email or "").strip().lower():
+        return "landlord"
+    return None
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def docuseal_webhook(request):
+    if not verify_docuseal_webhook_signature(request):
+        return Response({"detail": "Invalid webhook signature."}, status=401)
+
+    payload = request.data if isinstance(request.data, dict) else {}
+    event_type = str(payload.get("event_type") or "")
+    event_data = payload.get("data")
+    if not isinstance(event_data, dict):
+        event_data = {}
+
+    submission_id = event_data.get("submission_id") or event_data.get("id")
+    if isinstance(event_data.get("submission"), dict):
+        submission_id = event_data["submission"].get("id") or submission_id
+    agreement = (
+        TenancyAgreement.objects.filter(docuseal_submission_id=submission_id)
+        .select_related("booking", "booking__tenant", "booking__listing", "booking__listing__landlord")
+        .order_by("-version")
+        .first()
+    ) if submission_id else None
+    if agreement is None:
+        return Response({"status": "ignored"})
+
+    if event_type == "form.completed":
+        role = str(event_data.get("role") or "").strip().lower()
+        if role not in {"tenant", "landlord"}:
+            role = _docuseal_role_for_email(agreement, str(event_data.get("email") or ""))
+        if role:
+            data = agreement.agreement_data or {}
+            meta = data.setdefault("docuseal", {})
+            submitters = meta.setdefault("submitters", {})
+            submitter_key = DOCUSEAL_ROLE_TENANT if role == "tenant" else DOCUSEAL_ROLE_LANDLORD
+            submitter = submitters.setdefault(submitter_key, {})
+            submitter["signed_at"] = event_data.get("completed_at") or timezone.now().isoformat()
+            agreement.agreement_data = data
+            agreement.save(update_fields=["agreement_data", "updated_at"])
+            signer = agreement.booking.tenant if role == "tenant" else agreement.booking.listing.landlord
+            if not signature_block_signed((data.get("signatures") or {}), role):
+                try:
+                    sign_tenancy_agreement(
+                        booking=agreement.booking,
+                        signer=signer,
+                        signatory_name=signer.name or signer.email,
+                    )
+                except ValidationError:
+                    logger.exception("DocuSeal signature recording failed for agreement %s", agreement.id)
+    elif event_type == "submission.completed":
+        data = agreement.agreement_data or {}
+        meta = data.setdefault("docuseal", {})
+        meta["status"] = "completed"
+        documents = event_data.get("documents")
+        if isinstance(documents, list):
+            meta["documents"] = [
+                {"name": doc.get("name"), "url": doc.get("url")}
+                for doc in documents
+                if isinstance(doc, dict)
+            ]
+        if event_data.get("combined_document_url"):
+            meta["combined_document_url"] = event_data["combined_document_url"]
+        if event_data.get("audit_log_url"):
+            meta["audit_log_url"] = event_data["audit_log_url"]
+        agreement.agreement_data = data
+        agreement.save(update_fields=["agreement_data", "updated_at"])
+    elif event_type in {"submission.expired", "submission.archived"}:
+        data = agreement.agreement_data or {}
+        meta = data.setdefault("docuseal", {})
+        meta["status"] = "expired" if event_type == "submission.expired" else "archived"
+        agreement.agreement_data = data
+        agreement.save(update_fields=["agreement_data", "updated_at"])
+
+    return Response({"status": "ok"})
+
 
 def process_flutterwave_webhook_event(body: dict) -> dict:
     transfer_data = body.get("data") if isinstance(body, dict) else {}
@@ -4439,6 +5541,10 @@ def process_flutterwave_webhook_event(body: dict) -> dict:
             ).filter(transfer_reference=transfer_reference).first()
             if settlement:
                 sync_payment_settlement_transfer(settlement, body)
+                return {"response": {"status": "ok", "reference": transfer_reference}, "status_code": 200}
+            refund = TenantRefund.objects.select_related("payment", "tenant").filter(transfer_reference=transfer_reference).first()
+            if refund:
+                sync_tenant_refund_transfer(refund, body)
                 return {"response": {"status": "ok", "reference": transfer_reference}, "status_code": 200}
 
     reference = extract_reference(body)
@@ -4460,6 +5566,9 @@ def process_flutterwave_webhook_event(body: dict) -> dict:
         if subscription_filter
         else None
     )
+    service_payment = (
+        ServicePayment.objects.select_related("user", "booking").filter(transaction_id=reference).first()
+    )
     settlement = PaymentSettlement.objects.select_related(
         "payment",
         "payment__booking",
@@ -4467,10 +5576,10 @@ def process_flutterwave_webhook_event(body: dict) -> dict:
         "payment__booking__listing",
         "payment__booking__listing__landlord",
     ).filter(transfer_reference=reference).first()
-    if settlement and not payment and not featured and not subscription:
+    if settlement and not payment and not featured and not subscription and not service_payment:
         sync_payment_settlement_transfer(settlement, body)
         return {"response": {"status": "ok", "reference": reference}, "status_code": 200}
-    if not payment and not featured and not subscription:
+    if not payment and not featured and not subscription and not service_payment:
         return {"response": {"status": "error", "message": "Payment not found"}, "status_code": 404}
 
     try:
@@ -4491,6 +5600,13 @@ def process_flutterwave_webhook_event(body: dict) -> dict:
         if subscription:
             sync_subscription_payment(
                 subscription,
+                transaction_id=provider_transaction_id or None,
+                payload=body,
+                source="webhook",
+            )
+        if service_payment:
+            sync_service_payment(
+                service_payment,
                 transaction_id=provider_transaction_id or None,
                 payload=body,
                 source="webhook",
@@ -4540,6 +5656,8 @@ class PaymentViewSet(viewsets.ModelViewSet):
             id=serializer.validated_data["booking_id"],
             tenant=request.user,
         )
+        if booking.total_amount is None:
+            raise ValidationError("Start the rental process with Rent Now before making a payment.")
         amount = serializer.validated_data["amount"]
         payment_method = serializer.validated_data["payment_method"]
         validate_booking_payment_amount(booking, amount, payment_method)
@@ -5329,6 +6447,7 @@ class FeedbackViewSet(viewsets.ModelViewSet):
                 plan_code=str(active_plan_code_for(self.request.user)),
                 response_time=support_response_time_for(self.request.user),
                 feedback_id=str(feedback.id),
+                whatsapp_number=self.request.user.whatsapp_number,
             )
         except Exception:
             logger.exception("Unable to send feedback acknowledgement email for %s", feedback.id)
@@ -5372,6 +6491,7 @@ class MessageViewSet(viewsets.ModelViewSet):
         booking = (
             Booking.objects
             .filter(tenant=tenant_user, listing=listing)
+            .exclude(status=Booking.Status.CANCELLED)
             .order_by("-created_at")
             .first()
         )
@@ -5536,6 +6656,7 @@ class MessageViewSet(viewsets.ModelViewSet):
             booking = (
                 Booking.objects
                 .filter(tenant=tenant, listing=listing)
+                .exclude(status=Booking.Status.CANCELLED)
                 .order_by("-created_at")
                 .first()
             )
@@ -5558,6 +6679,56 @@ class MessageViewSet(viewsets.ModelViewSet):
 
         results.sort(key=lambda item: item["last_message_time"], reverse=True)
         return Response(results)
+
+    @action(detail=False, methods=["post"], url_path="viewing-booked")
+    def viewing_booked(self, request):
+        if request.user.role != AppUser.Role.TENANT:
+            raise PermissionDenied("Only tenants can mark a viewing as booked.")
+
+        listing_id = str(request.data.get("listing_id") or "").strip()
+        if not listing_id:
+            raise ValidationError({"listing_id": "This field is required."})
+        listing = get_object_or_404(Listing.objects.select_related("landlord"), id=listing_id)
+
+        has_tenant_message = self.get_queryset().filter(
+            listing=listing,
+            sender=request.user,
+            receiver=listing.landlord,
+        ).exists()
+        if not has_tenant_message:
+            raise PermissionDenied("Message the landlord about this listing before marking a viewing as booked.")
+
+        with transaction.atomic():
+            locked_listing = Listing.objects.select_for_update().get(pk=listing.pk)
+            booking = (
+                Booking.objects.select_for_update()
+                .filter(tenant=request.user, listing=locked_listing)
+                .exclude(status=Booking.Status.CANCELLED)
+                .order_by("-created_at")
+                .first()
+            )
+            created = booking is None
+            if created:
+                today = timezone.localdate()
+                start_date = max(today, locked_listing.available_from or today)
+                booking = Booking.objects.create(
+                    tenant=request.user,
+                    listing=locked_listing,
+                    start_date=start_date,
+                    end_date=start_date + timedelta(days=365),
+                    status=Booking.Status.PENDING,
+                    total_amount=None,
+                )
+            complete_booking_progress_step(
+                booking,
+                AppUser.Role.TENANT,
+                "viewing_appointment_booked",
+            )
+
+        return Response(
+            BookingSerializer(booking, context={"request": request}).data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
 
     @action(detail=False, methods=["get"], url_path="conversations")
     def conversations(self, request):
@@ -5597,19 +6768,524 @@ class CommunityChatMessageViewSet(viewsets.GenericViewSet, mixins.ListModelMixin
         )
 
 
+class ServicePaymentViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
+    serializer_class = ServicePaymentSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = ServicePayment.objects.select_related("user", "booking", "booking__listing", "listing").order_by("-created_at")
+        if self.request.user.role != AppUser.Role.ADMIN:
+            queryset = queryset.filter(user=self.request.user)
+        purpose = self.request.query_params.get("purpose")
+        if purpose:
+            queryset = queryset.filter(purpose=purpose)
+        booking_id = self.request.query_params.get("booking_id")
+        if booking_id:
+            queryset = queryset.filter(booking_id=booking_id)
+        listing_id = self.request.query_params.get("listing_id")
+        if listing_id:
+            queryset = queryset.filter(listing_id=listing_id)
+        return queryset
+
+    def retrieve(self, request, pk=None):
+        payment = get_object_or_404(self.get_queryset(), id=pk)
+        return Response(self.get_serializer(payment).data)
+
+    @action(detail=False, methods=["post"], url_path="request")
+    def request_service_payment(self, request):
+        serializer = ServicePaymentRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        purpose = serializer.validated_data["purpose"]
+        booking_id = serializer.validated_data.get("booking_id")
+        listing_id = serializer.validated_data.get("listing_id")
+
+        with transaction.atomic():
+            user = AppUser.objects.select_for_update().get(id=request.user.id)
+
+            booking = None
+            listing = None
+            if purpose == ServicePayment.Purpose.AGENT_VERIFICATION:
+                if user.role != AppUser.Role.AGENT:
+                    raise PermissionDenied("Only property inspection officers can request PIO verification payments.")
+                if booking_id:
+                    raise ValidationError({"booking_id": "PIO verification is not linked to a booking."})
+                amount = quantize_money(AGENT_VERIFICATION_FEE)
+            elif purpose == ServicePayment.Purpose.LAWYER_TENANCY:
+                if user.role != AppUser.Role.LANDLORD:
+                    raise PermissionDenied("Only landlords can request lawyer tenancy agreement payments.")
+                if not booking_id:
+                    raise ValidationError({"booking_id": "A booking is required for a lawyer tenancy agreement."})
+                booking = get_object_or_404(
+                    Booking.objects.select_for_update().select_related("listing", "listing__landlord"),
+                    id=booking_id,
+                )
+                if booking.listing.landlord_id != user.id:
+                    raise PermissionDenied("You can only request a lawyer service for your own booking.")
+                if booking.status == Booking.Status.CANCELLED:
+                    raise ValidationError("A lawyer service cannot be requested for a cancelled booking.")
+                amount = lawyer_service_fee_for_booking(booking)
+            elif purpose == ServicePayment.Purpose.IN_PERSON_VERIFICATION:
+                if user.role != AppUser.Role.LANDLORD:
+                    raise PermissionDenied("Only landlords can request in-person verification payments.")
+                if not listing_id:
+                    raise ValidationError({"listing_id": "A listing is required for in-person verification."})
+                listing = get_object_or_404(Listing.objects.select_for_update(), id=listing_id)
+                if listing.landlord_id != user.id:
+                    raise PermissionDenied("You can only request verification for your own listing.")
+                submission = listing.property_document_submission or {}
+                if not submission.get("in_person_verification_requested"):
+                    raise ValidationError("In-person verification was not selected for this listing.")
+                amount = quantize_money(IN_PERSON_VERIFICATION_FEE)
+            else:
+                raise ValidationError({"purpose": "Unsupported service payment purpose."})
+
+            existing_filter = {"user": user, "purpose": purpose, "booking": booking}
+            if purpose == ServicePayment.Purpose.IN_PERSON_VERIFICATION:
+                existing_filter["listing"] = listing
+            existing = (
+                ServicePayment.objects.filter(**existing_filter)
+                .order_by("-created_at")
+            )
+            completed = existing.filter(status=ServicePayment.Status.COMPLETED).first()
+            if completed:
+                # A completed agent verification payment covers a fixed number of
+                # attempts. Once those are used, a new payment is required.
+                if purpose == ServicePayment.Purpose.AGENT_VERIFICATION:
+                    completed_count = existing.filter(status=ServicePayment.Status.COMPLETED).count()
+                    agent_profile = AgentProfile.objects.filter(user=user).first()
+                    attempts_used = agent_profile.verification_attempts if agent_profile else 0
+                    if attempts_used < completed_count * AGENT_VERIFICATION_ATTEMPTS_PER_PAYMENT:
+                        return Response(self.get_serializer(completed).data)
+                else:
+                    return Response(self.get_serializer(completed).data)
+            pending = existing.filter(status=ServicePayment.Status.PENDING).first()
+            if pending:
+                return Response(self.get_serializer(pending).data)
+
+            payment = ServicePayment.objects.create(
+                user=user,
+                booking=booking,
+                listing=listing,
+                purpose=purpose,
+                amount=amount,
+                transaction_id=build_service_payment_reference(),
+            )
+            return Response(self.get_serializer(payment).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"], url_path="flutterwave/checkout")
+    def flutterwave_checkout(self, request, pk=None):
+        payment = get_object_or_404(self.get_queryset(), id=pk)
+        if payment.status != ServicePayment.Status.PENDING:
+            raise ValidationError("Payment is not pending")
+
+        checkout = build_service_checkout(payment)
+        payment.provider_payload = update_payment_provider_payload(
+            payment.provider_payload,
+            None,
+            checkout=checkout,
+            return_url=build_service_payment_return_url(payment),
+        )
+        payment.provider = "flutterwave"
+        payment.save(update_fields=["provider_payload", "provider", "updated_at"])
+        return Response({"payment": self.get_serializer(payment).data, "checkout": checkout})
+
+    @action(detail=False, methods=["get"], url_path="flutterwave/verify")
+    def flutterwave_verify(self, request):
+        reference = (request.query_params.get("reference") or request.query_params.get("tx_ref") or "").strip()
+        if not reference:
+            raise ValidationError({"reference": "Payment reference is required."})
+
+        payment = get_object_or_404(self.get_queryset(), transaction_id=reference)
+        try:
+            payment = sync_service_payment(
+                payment,
+                transaction_id=request.query_params.get("transaction_id"),
+                provider_status=request.query_params.get("status"),
+                source="status",
+            )
+        except FlutterwaveError as exc:
+            return Response({"detail": str(exc)}, status=502)
+
+        return Response(self.get_serializer(payment).data)
+
+    @action(detail=True, methods=["post"], url_path="pay")
+    def simulate_pay(self, request, pk=None):
+        block_production_mock("Simulated service payment")
+        payment = get_object_or_404(self.get_queryset(), id=pk)
+        complete_service_payment(
+            payment,
+            webhook_data={"eventType": "MOCK.TRANSACTION.SUCCESS", "source": "simulate_pay"},
+        )
+        return Response(self.get_serializer(payment).data)
+
+
+class AgentViewSet(viewsets.ViewSet):
+    permission_classes = [IsAuthenticated]
+
+    def _require_agent(self, request):
+        if request.user.role != AppUser.Role.AGENT:
+            raise PermissionDenied("Only property inspection officers can access these services.")
+
+    def _profile(self, user) -> AgentProfile:
+        profile, _created = AgentProfile.objects.get_or_create(
+            user=user,
+            defaults={"first_name": "", "last_name": ""},
+        )
+        return profile
+
+    @action(detail=False, methods=["get", "patch"], url_path="profile")
+    def profile(self, request):
+        self._require_agent(request)
+        profile = self._profile(request.user)
+        if request.method == "GET":
+            return Response(AgentProfileSerializer(profile, context={"request": request}).data)
+
+        serializer = AgentProfileSerializer(
+            profile, data=request.data, partial=True, context={"request": request}
+        )
+        serializer.is_valid(raise_exception=True)
+        profile = serializer.save()
+
+        user = request.user
+        user_updates: list[str] = []
+        name_parts = [profile.first_name, profile.middle_name, profile.last_name]
+        display_name = " ".join(part for part in name_parts if part).strip()
+        if display_name and user.name != display_name:
+            user.name = display_name
+            user_updates.append("name")
+        for user_field, profile_field in (
+            ("mobile", "mobile"),
+            ("whatsapp_number", "whatsapp_number"),
+            ("nin_number", "nin_number"),
+            ("bvn_number", "bvn_number"),
+            ("state_of_origin", "state_of_origin"),
+        ):
+            value = getattr(profile, profile_field, "")
+            if value and getattr(user, user_field) != value:
+                setattr(user, user_field, value)
+                user_updates.append(user_field)
+        if user_updates:
+            user_updates.append("updated_at")
+            user.save(update_fields=user_updates)
+        return Response(AgentProfileSerializer(profile, context={"request": request}).data)
+
+    @action(detail=False, methods=["post"], url_path="verify")
+    def verify(self, request):
+        self._require_agent(request)
+        profile = self._profile(request.user)
+        if profile.verification_status == AgentProfile.VerificationStatus.VERIFIED:
+            return Response(AgentProfileSerializer(profile, context={"request": request}).data)
+
+        missing = [
+            field
+            for field in AGENT_PROFILE_REQUIRED_FIELDS
+            if not _has_submitted_value(getattr(profile, field, None))
+        ]
+        if missing:
+            raise ValidationError(
+                {"profile": f"Complete your PIO profile before verification. Missing: {', '.join(missing)}."}
+            )
+
+        # Each completed ₦500 payment covers AGENT_VERIFICATION_ATTEMPTS_PER_PAYMENT
+        # verification attempts. Attempts beyond that require a new payment.
+        completed_payments = ServicePayment.objects.filter(
+            user=request.user,
+            purpose=ServicePayment.Purpose.AGENT_VERIFICATION,
+            status=ServicePayment.Status.COMPLETED,
+        ).count()
+        if profile.verification_attempts >= completed_payments * AGENT_VERIFICATION_ATTEMPTS_PER_PAYMENT:
+            raise ValidationError(
+                "A ₦500 PIO verification payment is required before you can verify your identity."
+            )
+
+        identity_data = {
+            "first_name": profile.first_name,
+            "middle_name": profile.middle_name,
+            "last_name": profile.last_name,
+            "date_of_birth": profile.date_of_birth.isoformat() if profile.date_of_birth else None,
+            "gender": profile.gender,
+            "country_of_birth": profile.country_of_birth,
+            "nationality": profile.nationality,
+            "state_of_origin": profile.state_of_origin,
+            "lga": profile.lga_of_origin,
+            "mobile": profile.mobile,
+        }
+        try:
+            verification_payloads = verify_nin_and_bvn(identity_data, profile.nin_number, profile.bvn_number)
+        except ValidationError:
+            profile.verification_attempts += 1
+            profile.save(update_fields=["verification_attempts", "updated_at"])
+            raise
+
+        verified_at = timezone.now()
+        profile.verification_attempts += 1
+        profile.verification_status = AgentProfile.VerificationStatus.VERIFIED
+        profile.verified_at = verified_at
+        profile.save(update_fields=["verification_attempts", "verification_status", "verified_at", "updated_at"])
+
+        verification, _ = VerificationRequest.objects.get_or_create(
+            user=request.user,
+            defaults={
+                "request_type": VerificationRequest.RequestType.IDENTIFICATION,
+            },
+        )
+        verification.request_type = VerificationRequest.RequestType.IDENTIFICATION
+        verification.submitted_at = verified_at
+        verification.identity_verification_status = VerificationRequest.VerificationProgressStatus.VERIFIED
+        verification.verification_method = VerificationRequest.Method.AUTOMATED
+        verification.status = VerificationRequest.Status.APPROVED
+        verification.reviewed_at = verified_at
+        verification.save(
+            update_fields=[
+                "request_type",
+                "submitted_at",
+                "status",
+                "identity_verification_status",
+                "verification_method",
+                "reviewed_at",
+            ]
+        )
+
+        user = request.user
+        user.nin_number = profile.nin_number
+        user.bvn_number = profile.bvn_number
+        user.save(update_fields=["nin_number", "bvn_number", "updated_at"])
+
+        data = AgentProfileSerializer(profile, context={"request": request}).data
+        mobile_warning = extract_mobile_verification_warning(verification_payloads)
+        if mobile_warning:
+            data["mobile_warning"] = mobile_warning
+        return Response(data)
+
+    @action(detail=False, methods=["get"], url_path="referrals")
+    def referrals(self, request):
+        self._require_agent(request)
+        return Response(build_referral_tree(request.user))
+
+    @action(detail=False, methods=["get"], url_path="dashboard")
+    def dashboard(self, request):
+        self._require_agent(request)
+        profile = self._profile(request.user)
+        verification_payment = (
+            ServicePayment.objects.filter(
+                user=request.user, purpose=ServicePayment.Purpose.AGENT_VERIFICATION
+            )
+            .order_by("-created_at")
+            .first()
+        )
+        own_inspections = (
+            PropertyInspection.objects.select_related("listing", "listing__landlord")
+            .filter(agent=request.user)
+            .order_by("-created_at")
+        )
+        if profile.verification_status == AgentProfile.VerificationStatus.VERIFIED:
+            available_listings = (
+                Listing.objects.filter(
+                    physical_property_status=VerificationRequest.VerificationProgressStatus.PENDING,
+                    property_document_submission__in_person_verification_requested=True,
+                )
+                .exclude(inspection__isnull=False)
+                .select_related("landlord")
+                .prefetch_related("images")
+                .order_by("-created_at")
+            )
+        else:
+            available_listings = Listing.objects.none()
+        submitted = own_inspections.filter(status=PropertyInspection.Status.SUBMITTED)
+        totals = submitted.aggregate(
+            total_earned=Sum("earning_amount"),
+            total_paid=Sum("earning_amount", filter=Q(payout_status=PropertyInspection.PayoutStatus.PAID)),
+            pending_payout=Sum(
+                "earning_amount", filter=Q(payout_status=PropertyInspection.PayoutStatus.PENDING)
+            ),
+        )
+        return Response(
+            {
+                "profile": AgentProfileSerializer(profile, context={"request": request}).data,
+                "verification_payment": (
+                    ServicePaymentSerializer(verification_payment, context={"request": request}).data
+                    if verification_payment
+                    else None
+                ),
+                "available_inspections": AgentInspectionListingSerializer(
+                    available_listings, many=True, context={"request": request}
+                ).data,
+                "inspections": PropertyInspectionSerializer(
+                    own_inspections, many=True, context={"request": request}
+                ).data,
+                "metrics": {
+                    "properties_inspected": submitted.count(),
+                    "total_amount_earned": str(totals["total_earned"] or ZERO_AMOUNT),
+                    "total_amount_paid_out": str(totals["total_paid"] or ZERO_AMOUNT),
+                    "pending_payout": str(totals["pending_payout"] or ZERO_AMOUNT),
+                },
+            }
+        )
+
+
+class AgentInspectionViewSet(viewsets.GenericViewSet, mixins.ListModelMixin, mixins.RetrieveModelMixin):
+    serializer_class = PropertyInspectionSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = PropertyInspection.objects.select_related(
+            "listing", "listing__landlord", "agent"
+        ).prefetch_related("evidence_documents").order_by("-created_at")
+        if self.request.user.role == AppUser.Role.ADMIN:
+            return queryset
+        return queryset.filter(agent=self.request.user)
+
+    def _require_agent(self, request):
+        if request.user.role != AppUser.Role.AGENT:
+            raise PermissionDenied("Only property inspection officers can manage property inspections.")
+
+    @action(detail=False, methods=["get"], url_path="checklist")
+    def checklist(self, request):
+        return Response(INSPECTION_CHECKLIST_SCHEMA)
+
+    @action(detail=False, methods=["post"], url_path="claim")
+    def claim(self, request):
+        self._require_agent(request)
+        listing_id = request.data.get("listing_id")
+        if not listing_id:
+            raise ValidationError({"listing_id": "A listing is required."})
+        profile = AgentProfile.objects.filter(user=request.user).first()
+        if not profile or profile.verification_status != AgentProfile.VerificationStatus.VERIFIED:
+            raise PermissionDenied("Complete PIO verification before claiming inspections.")
+        if not ServicePayment.objects.filter(
+            user=request.user,
+            purpose=ServicePayment.Purpose.AGENT_VERIFICATION,
+            status=ServicePayment.Status.COMPLETED,
+        ).exists():
+            raise PermissionDenied("Complete the PIO verification payment before claiming inspections.")
+
+        listing = get_object_or_404(Listing, id=listing_id)
+        submission = (
+            listing.property_document_submission
+            if isinstance(listing.property_document_submission, dict)
+            else {}
+        )
+        if not submission.get("in_person_verification_requested"):
+            raise ValidationError("This listing has not requested an in-person inspection.")
+        if listing.physical_property_status != VerificationRequest.VerificationProgressStatus.PENDING:
+            raise ValidationError("This listing is not awaiting a physical inspection.")
+
+        earning_amount = decimal_setting("AGENT_INSPECTION_EARNING_NGN", "0.00")
+        try:
+            with transaction.atomic():
+                inspection = PropertyInspection.objects.create(
+                    listing=listing,
+                    agent=request.user,
+                    earning_amount=earning_amount,
+                )
+        except IntegrityError:
+            raise ValidationError("This listing already has an inspection assigned.")
+        return Response(
+            self.get_serializer(inspection, context={"request": request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    def partial_update(self, request, pk=None):
+        inspection = self.get_object()
+        if request.user.role != AppUser.Role.ADMIN and inspection.agent_id != request.user.id:
+            raise PermissionDenied("You can only update your own inspections.")
+        if inspection.status == PropertyInspection.Status.SUBMITTED:
+            raise ValidationError("Submitted inspections cannot be modified.")
+        serializer = self.get_serializer(inspection, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"], url_path="submit")
+    def submit(self, request, pk=None):
+        submitted_responses = request.data.get("responses")
+        if submitted_responses is not None and not isinstance(submitted_responses, dict):
+            raise ValidationError({"responses": "Responses must be an object."})
+
+        with transaction.atomic():
+            inspection = get_object_or_404(
+                PropertyInspection.objects.select_for_update()
+                .select_related("listing", "listing__landlord", "agent"),
+                id=pk,
+            )
+            if inspection.agent_id != request.user.id:
+                raise PermissionDenied("You can only submit your own inspections.")
+            if inspection.status == PropertyInspection.Status.SUBMITTED:
+                raise ValidationError("This inspection has already been submitted.")
+
+            responses = dict(inspection.responses or {})
+            if submitted_responses is not None:
+                responses.update(submitted_responses)
+            responses = validate_inspection_responses(responses, require_complete=True)
+            analysis = build_inspection_analysis(responses)
+
+            now = timezone.now()
+            inspection.responses = responses
+            inspection.analysis = analysis
+            inspection.overall_status = responses.get("overall_status", "")
+            inspection.status = PropertyInspection.Status.SUBMITTED
+            inspection.submitted_at = now
+            inspection.signed_off_at = now
+            inspection.save(
+                update_fields=[
+                    "responses",
+                    "analysis",
+                    "overall_status",
+                    "status",
+                    "submitted_at",
+                    "signed_off_at",
+                    "updated_at",
+                ]
+            )
+
+            if (
+                inspection.overall_status
+                in {
+                    "inspection_completed",
+                    "inspection_completed_with_issues",
+                }
+                and not analysis["critical_red_flags"]
+            ):
+                listing = Listing.objects.select_for_update().get(pk=inspection.listing_id)
+                listing.physical_property_status = VerificationRequest.VerificationProgressStatus.VERIFIED
+                listing.save(update_fields=["physical_property_status", "updated_at"])
+
+            award_referral_earning(inspection)
+
+        return Response(self.get_serializer(inspection, context={"request": request}).data)
+
+    @action(detail=True, methods=["get"], url_path="pdf")
+    def pdf(self, request, pk=None):
+        inspection = get_object_or_404(
+            PropertyInspection.objects.select_related("listing", "listing__landlord", "agent")
+            .prefetch_related("evidence_documents"),
+            id=pk,
+        )
+        if request.user.role != AppUser.Role.ADMIN and inspection.agent_id != request.user.id:
+            raise PermissionDenied("You can only download your own inspection reports.")
+        if inspection.status != PropertyInspection.Status.SUBMITTED:
+            raise ValidationError("The inspection report is available after submission.")
+        content = build_inspection_report_pdf(inspection, INSPECTION_CHECKLIST_SCHEMA)
+        response = HttpResponse(content, content_type="application/pdf")
+        response["Content-Disposition"] = f'attachment; filename="inspection-{inspection.id}.pdf"'
+        return response
+
+
 class SupportChatMessageViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
     serializer_class = SupportChatMessageSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         queryset = SupportChatMessage.objects.select_related("thread_user", "sender").order_by("-created_at")
-        if self.request.user.role in {AppUser.Role.TENANT, AppUser.Role.LANDLORD}:
+        if self.request.user.role in {AppUser.Role.TENANT, AppUser.Role.LANDLORD, AppUser.Role.AGENT}:
             return queryset.filter(thread_user=self.request.user)
 
         thread_user_id = (
             self.request.query_params.get("user_id")
             or self.request.query_params.get("tenant_id")
             or self.request.query_params.get("landlord_id")
+            or self.request.query_params.get("agent_id")
+            or self.request.query_params.get("thread_user")
         )
         if thread_user_id:
             return queryset.filter(thread_user_id=thread_user_id)
@@ -5655,6 +7331,7 @@ class AdminViewSet(viewsets.ViewSet):
             "total_users": User.objects.count(),
             "total_landlords": User.objects.filter(role="landlord").count(),
             "total_tenants": User.objects.filter(role="tenant").count(),
+            "total_agents": User.objects.filter(role="agent").count(),
             "total_admins": User.objects.filter(role="admin").count(),
             "total_listings": Listing.objects.count(),
             "active_listings": Listing.objects.filter(status="available").count(),
@@ -5697,7 +7374,6 @@ def financial_config(request):
             "administration_fee_rate": str(ADMINISTRATION_FEE_RATE),
             "administration_fee_vat_rate": str(ADMINISTRATION_FEE_VAT_RATE),
             "listing_deposit_rate": str(LISTING_DEPOSIT_RATE),
-            "legal_fee_max_rate": str(LEGAL_FEE_MAX_RATE),
             "listing_deposit_hold_days": DEPOSIT_LISTING_HOLD_DAYS,
             "payment_cancellation_admin_fee_rate": str(PAYMENT_CANCELLATION_ADMIN_FEE_RATE),
             "card_payment_limit": str(CARD_PAYMENT_LIMIT_NGN),
@@ -5707,6 +7383,96 @@ def financial_config(request):
             "featured_property_monthly_duration_days": FEATURED_PROPERTY_MONTHLY_DURATION_DAYS,
             "featured_property_min_duration_days": FEATURED_PROPERTY_MIN_DURATION_DAYS,
             "featured_property_max_duration_days": FEATURED_PROPERTY_MAX_DURATION_DAYS,
+        }
+    )
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def representative_kyc_public_detail(request, token):
+    kyc = get_object_or_404(
+        RepresentativeKyc.objects.select_related("landlord", "listing"),
+        token=token,
+    )
+    return Response(
+        {
+            "token": str(kyc.token),
+            "status": kyc.status,
+            "ownership_type": kyc.ownership_type,
+            "landlord_name": kyc.landlord.name or kyc.landlord.email,
+            "listing_title": kyc.listing.title if kyc.listing else "",
+            "name": kyc.name,
+            "email": kyc.email,
+            "phone": kyc.phone,
+            "return_url": kyc.return_url,
+            "submitted_at": kyc.submitted_at,
+            "verified_at": kyc.verified_at,
+        }
+    )
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def representative_kyc_public_submit(request, token):
+    kyc = get_object_or_404(RepresentativeKyc, token=token)
+    if kyc.status in {RepresentativeKyc.Status.SUBMITTED, RepresentativeKyc.Status.VERIFIED}:
+        return Response(
+            {"status": kyc.status, "return_url": kyc.return_url, "detail": "This KYC has already been submitted."}
+        )
+
+    name = str(request.data.get("name") or "").strip()
+    phone = str(request.data.get("phone") or "").strip()
+    nin_number = str(request.data.get("nin_number") or "").strip()
+    if not name:
+        raise ValidationError({"name": "Representative name is required."})
+    if not phone:
+        raise ValidationError({"phone": "Representative phone number is required."})
+    if nin_number and not is_valid_nin(nin_number):
+        raise ValidationError({"nin_number": "Enter a valid 11-digit NIN."})
+
+    date_of_birth = str(request.data.get("date_of_birth") or "").strip() or None
+    kyc.name = name
+    kyc.email = str(request.data.get("email") or "").strip()
+    kyc.phone = phone
+    kyc.nin_number = nin_number
+    if date_of_birth:
+        kyc.date_of_birth = date_of_birth
+    if request.FILES.get("passport_photo"):
+        kyc.passport_photo = request.FILES["passport_photo"]
+    if request.FILES.get("id_document"):
+        kyc.id_document = request.FILES["id_document"]
+    kyc.submitted_at = timezone.now()
+
+    verification_payload: dict[str, Any] | None = None
+    if nin_number:
+        first_name, _, last_name = name.partition(" ")
+        identity_data = {
+            "first_name": first_name,
+            "last_name": last_name,
+            "date_of_birth": date_of_birth,
+            "mobile": phone,
+        }
+        try:
+            verification_payload = verify_nin(identity_data, nin_number)
+            kyc.status = RepresentativeKyc.Status.VERIFIED
+            kyc.verified_at = timezone.now()
+        except APIException as exc:
+            verification_payload = {"error": str(getattr(exc, "detail", exc))}
+            kyc.status = RepresentativeKyc.Status.SUBMITTED
+        except Exception as exc:
+            verification_payload = {"error": str(exc)}
+            kyc.status = RepresentativeKyc.Status.SUBMITTED
+    else:
+        kyc.status = RepresentativeKyc.Status.SUBMITTED
+
+    kyc.verification_payload = verification_payload
+    kyc.save()
+
+    return Response(
+        {
+            "status": kyc.status,
+            "return_url": kyc.return_url,
+            "detail": "KYC verification completed." if kyc.status == RepresentativeKyc.Status.VERIFIED else "KYC submitted and pending verification.",
         }
     )
 

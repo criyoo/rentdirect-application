@@ -14,6 +14,7 @@ TENANT_VERIFICATION_PROFILE_FIELDS = (
     "lga",
     "email",
     "mobile",
+    "whatsapp_number",
     "employment_status",
     "nin_number",
 )
@@ -51,6 +52,7 @@ def normalize_tenant_verification_profile(raw_profile: dict | None, user=None) -
     if user is not None:
         source.setdefault("email", getattr(user, "email", ""))
         source.setdefault("mobile", getattr(user, "mobile", ""))
+        source.setdefault("whatsapp_number", getattr(user, "whatsapp_number", ""))
         source.setdefault("nin_number", getattr(user, "nin_number", ""))
         source.setdefault("state_of_origin", getattr(user, "state_of_origin", ""))
 

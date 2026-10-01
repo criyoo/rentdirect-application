@@ -6,7 +6,7 @@ from django.db.models import OuterRef, Prefetch, Subquery
 from django.utils.html import format_html, format_html_join
 from django.utils import timezone
 
-from .models import AdminUser, AppUser, Booking, Document, Feedback, Favourite, FeaturedPayment, Landlord, LandlordProfile, Listing, ListingImage, Message, Payment, PaymentSettlement, Review, SubscriptionPayment, SubscriptionVATPayment, Tenant, TenantProfile, TenantSearchRequirement, VerificationRequest, infer_listing_rental_status, sync_listing_status_from_rental_progress
+from .models import AdminUser, Agent, AgentProfile, AgentReferralEarning, AppUser, Booking, Document, Feedback, Favourite, FeaturedPayment, Landlord, LandlordProfile, Listing, ListingImage, Message, Payment, PaymentSettlement, PropertyInspection, RepresentativeKyc, Review, ServicePayment, SubscriptionPayment, SubscriptionVATPayment, Tenant, TenantProfile, TenantRefund, TenantSearchRequirement, VerificationRequest, infer_listing_rental_status, sync_listing_status_from_rental_progress
 
 
 PREFERRED_CONTACT_METHOD_CHOICES = (
@@ -1122,6 +1122,9 @@ class FeaturedPaymentAdmin(admin.ModelAdmin):
 class PaymentAdmin(admin.ModelAdmin):
     list_display = (
         "id",
+        "transaction_id",
+        "tenant_name",
+        "tenant_email",
         "booking",
         "rent_amount",
         "refundable_caution_fee_amount",
@@ -1138,7 +1141,15 @@ class PaymentAdmin(admin.ModelAdmin):
     readonly_fields = ("transaction_id", "virtual_account_payload", "provider_payload", "webhook_data", "created_at", "updated_at")
 
     def get_queryset(self, request):
-        return super().get_queryset(request).select_related("booking", "booking__listing").prefetch_related("settlements")
+        return super().get_queryset(request).select_related("booking", "booking__listing", "booking__tenant").prefetch_related("settlements")
+
+    @admin.display(ordering="booking__tenant__name", description="Tenant Name")
+    def tenant_name(self, obj):
+        return obj.booking.tenant.name
+
+    @admin.display(ordering="booking__tenant__email", description="Tenant Email")
+    def tenant_email(self, obj):
+        return obj.booking.tenant.email
 
     def _settlement_amount(self, obj, purpose):
         settlement = next((item for item in obj.settlements.all() if item.purpose == purpose), None)
@@ -1263,6 +1274,24 @@ class PaymentSettlementAdmin(admin.ModelAdmin):
         return timezone.localtime(value).strftime("%Y-%m-%d %H:%M:%S")
 
 
+@admin.register(RepresentativeKyc)
+class RepresentativeKycAdmin(admin.ModelAdmin):
+    list_display = ("id", "landlord", "listing", "name", "phone", "status", "submitted_at", "verified_at", "created_at")
+    list_filter = ("status", "created_at")
+    search_fields = ("landlord__email", "name", "email", "phone", "nin_number")
+    readonly_fields = ("verification_payload", "created_at", "updated_at")
+    ordering = ("-created_at",)
+
+
+@admin.register(TenantRefund)
+class TenantRefundAdmin(admin.ModelAdmin):
+    list_display = ("id", "tenant", "payment", "amount", "fee_amount", "refund_amount", "bank_name", "account_number", "status", "process_at", "created_at")
+    list_filter = ("status", "created_at")
+    search_fields = ("tenant__email", "payment__transaction_id", "account_number", "transfer_reference")
+    readonly_fields = ("provider_payload", "transfer_payload", "created_at", "updated_at")
+    ordering = ("-created_at",)
+
+
 @admin.register(SubscriptionPayment)
 class SubscriptionPaymentAdmin(admin.ModelAdmin):
     list_display = ("id", "user", "role", "plan_code", "billing_cycle", "subscription_fee_amount", "subscription_vat_amount", "total_amount", "currency", "payment_method_label", "status", "provider", "recurring_enabled", "billing_reason", "expires_at", "payment_date", "created_at")
@@ -1337,3 +1366,101 @@ class MessageAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         return super().get_queryset(request).select_related("sender", "receiver", "listing")
+
+
+@admin.register(Agent)
+class AgentAdmin(RoleAdminMixin, AppUserAdmin):
+    role = AppUser.Role.AGENT
+    list_display = ("email", "name", "email_verified", "is_active", "created_at")
+    list_filter = ("email_verified", "is_active")
+
+
+@admin.register(AgentProfile)
+class AgentProfileAdmin(admin.ModelAdmin):
+    list_display = (
+        "user",
+        "first_name",
+        "last_name",
+        "referral_code",
+        "referred_by",
+        "verification_status",
+        "verified_at",
+        "updated_at",
+    )
+    list_filter = ("verification_status", "gender", "nationality")
+    search_fields = ("user__email", "first_name", "last_name", "nin_number", "account_number", "referral_code")
+    readonly_fields = ("referral_code", "created_at", "updated_at")
+
+
+@admin.register(AgentReferralEarning)
+class AgentReferralEarningAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "referrer",
+        "referred",
+        "inspection",
+        "amount",
+        "currency",
+        "payout_status",
+        "payout_reference",
+        "paid_out_at",
+        "created_at",
+    )
+    list_filter = ("payout_status", "currency")
+    search_fields = ("referrer__email", "referrer__name", "referred__email", "referred__name", "payout_reference")
+    readonly_fields = ("paid_out_at", "created_at", "updated_at")
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related("referrer", "referred", "inspection")
+
+
+@admin.register(ServicePayment)
+class ServicePaymentAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "user",
+        "purpose",
+        "booking",
+        "amount",
+        "currency",
+        "status",
+        "transaction_id",
+        "payment_date",
+        "created_at",
+    )
+    list_filter = ("purpose", "status", "provider", "currency")
+    search_fields = ("transaction_id", "user__email", "user__name", "booking__id")
+    readonly_fields = (
+        "provider_payload",
+        "webhook_data",
+        "payment_date",
+        "transaction_id",
+        "created_at",
+        "updated_at",
+    )
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related("user", "booking", "booking__listing")
+
+
+@admin.register(PropertyInspection)
+class PropertyInspectionAdmin(admin.ModelAdmin):
+    list_display = (
+        "listing",
+        "agent",
+        "status",
+        "overall_status",
+        "earning_amount",
+        "payout_status",
+        "payout_reference",
+        "claimed_at",
+        "submitted_at",
+        "paid_out_at",
+    )
+    list_filter = ("status", "payout_status", "overall_status")
+    search_fields = ("listing__title", "agent__email", "agent__name", "payout_reference")
+    readonly_fields = ("claimed_at", "submitted_at", "signed_off_at", "paid_out_at", "created_at", "updated_at")
+    filter_horizontal = ("evidence_documents",)
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related("listing", "agent")

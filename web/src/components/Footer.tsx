@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import BrandLogo from '@/components/BrandLogo'
 import {
@@ -11,6 +11,7 @@ import {
     HiUserGroup,
 } from 'react-icons/hi'
 import { FaInstagram, FaLinkedinIn, FaXTwitter } from 'react-icons/fa6'
+import { SUBSCRIPTIONS_ENABLED } from '@/lib/featureFlags'
 
 const browseLinks = [
     { label: 'Home', href: '/' },
@@ -43,38 +44,67 @@ const socialLinks = [
     { label: 'X', href: 'https://x.com/RentDirectNig', icon: FaXTwitter },
 ]
 
+const AGENT_PUBLIC_PATHS = new Set([
+    '/agents',
+    '/agents/about',
+    '/agents/how-it-works',
+    '/agents/login',
+    '/agents/register',
+])
+
 export default function Footer() {
     const { user } = useAuth()
+    const location = useLocation()
+    const isAgentPublicPage = AGENT_PUBLIC_PATHS.has(location.pathname)
 
     const dashboardPath = user?.id
         ? user.role === 'landlord'
             ? `/dashboard/landlord/${user.id}`
-            : `/dashboard/tenant/${user.id}`
+            : user.role === 'agent'
+                ? '/agents/dashboard'
+                : `/dashboard/tenant/${user.id}`
         : '/register'
 
     const accountLinks = user?.id
-        ? [
-            { label: 'Dashboard', href: dashboardPath },
-            { label: 'Profile', href: `/profile/${user.id}` },
-            { label: 'Saved homes', href: '/favourites' },
-            { label: 'Feedback', href: '/feedback' },
-            { label: 'Complaint', href: '/complaint' },
-            { label: 'Issues', href: '/issues' },
-            { label: 'Settings', href: '/dashboard/settings' },
-        ]
+        ? user.role === 'agent'
+            ? [
+                { label: 'Dashboard', href: dashboardPath },
+                { label: 'Profile', href: '/agents/profile' },
+                { label: 'Verification', href: '/agents/verification' },
+                { label: 'Feedback', href: '/feedback' },
+                { label: 'Support', href: '/support' },
+                { label: 'Support chat', href: '/support-chat' },
+            ]
+            : [
+                { label: 'Dashboard', href: dashboardPath },
+                { label: 'Profile', href: `/profile/${user.id}` },
+                { label: 'Saved homes', href: '/favourites' },
+                { label: 'Feedback', href: '/feedback' },
+                { label: 'Complaint', href: '/complaint' },
+                { label: 'Issues', href: '/issues' },
+                { label: 'Settings', href: '/dashboard/settings' },
+            ]
         : [
-            { label: 'Login', href: '/login' },
-            { label: 'Register', href: '/register' },
+            { label: 'Login', href: isAgentPublicPage ? '/agents/login' : '/login' },
+            { label: 'Register', href: isAgentPublicPage ? '/agents/register' : '/register' },
             { label: 'Forgot password', href: '/forgot-password' },
             { label: 'Issues', href: '/issues' },
             { label: 'Complaint', href: '/complaint' },
             // { label: 'Saved homes', href: '/favourites' },
         ]
 
+    const agentLinks = [
+        { label: 'PIO Dashboard', href: '/agents/dashboard' },
+        { label: 'PIO Profile', href: '/agents/profile' },
+        { label: 'Verification', href: '/agents/verification' },
+        { label: 'Feedback', href: '/feedback' },
+        { label: 'Support', href: '/support' },
+    ]
+
     const landlordLinks = user?.id
         ? [
             { label: 'Enquiries', href: '/enquiries' },
-            { label: 'Billings', href: '/billing' },
+            ...(SUBSCRIPTIONS_ENABLED ? [{ label: 'Billings', href: '/billing' }] : []),
             { label: 'Feedback', href: '/feedback' },
             { label: 'Community Chat', href: '/community-chat' },
             { label: 'Identity checks', href: '/landlord/verification' },
@@ -84,6 +114,7 @@ export default function Footer() {
             { label: 'Identity checks', href: '/landlord/verification' },
             { label: 'Featured placements', href: '/dashboard/featured-properties' },
             { label: 'Feedback', href: '/feedback' },
+            { label: 'Become an agent', href: '/agents' },
         ]
 
     return (
@@ -168,10 +199,12 @@ export default function Footer() {
                                 </ul>
                             </nav>
 
-                            <nav aria-label="Landlords">
-                                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-200">Landlords</p>
+                            <nav aria-label={user?.role === 'agent' ? 'Property Inspection Officers' : 'Landlords'}>
+                                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-200">
+                                    {user?.role === 'agent' ? 'Property Inspection Officers' : 'Landlords'}
+                                </p>
                                 <ul className="mt-4 space-y-3 text-sm text-slate-300">
-                                    {landlordLinks.map((link) => (
+                                    {(user?.role === 'agent' ? agentLinks : landlordLinks).map((link) => (
                                         <li key={link.label}>
                                             <Link className="transition hover:text-white" to={link.href}>
                                                 {link.label}

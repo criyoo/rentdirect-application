@@ -11,6 +11,7 @@ import LoginPage from './pages/shared/auth/LoginPage'
 import RegisterPage from './pages/shared/auth/RegisterPage'
 import ForgotPasswordPage from './pages/shared/auth/ForgotPasswordPage'
 import ResetPasswordPage from './pages/shared/auth/ResetPasswordPage'
+import RepresentativeKycPage from './pages/shared/RepresentativeKycPage'
 import LandlordDashboardPage from './pages/landlord/LandlordDashboardPage'
 import TenantDashboardPage from './pages/tenants/TenantDashboardPage'
 import SearchPage from './pages/shared/SearchPage'
@@ -27,6 +28,7 @@ import RentalProgressPage from './pages/tenants/RentalProgressPage'
 import ContactLandlordPage from './pages/tenants/ContactLandlordPage'
 import LandlordEnquiriesPage from './pages/landlord/LandlordEnquiriesPage'
 import LandlordVerificationPage from './pages/landlord/LandlordVerificationPage'
+import TenancyAgreementPage from './pages/landlord/TenancyAgreementPage'
 import PublicLandlordProfilePage from './pages/landlord/PublicLandlordProfilePage'
 import PublicLandlordPropertiesPage from './pages/landlord/PublicLandlordPropertiesPage'
 import PublicTenantProfilePage from './pages/tenants/PublicTenantProfilePage'
@@ -49,8 +51,21 @@ import AdminVerificationPage from './pages/shared/admin/AdminVerificationPage'
 import AdminLoginPage from './pages/shared/admin/AdminLoginPage'
 import AdminDashboardPage from './pages/shared/admin/AdminDashboardPage'
 import AdminRegisterPage from './pages/shared/admin/AdminRegisterPage'
+import AgentLandingPage from './pages/agents/AgentLandingPage'
+import AgentRegistrationPage from './pages/agents/AgentRegistrationPage'
+import AgentLoginPage from './pages/agents/AgentLoginPage'
+import AgentAboutPage from './pages/agents/AgentAboutPage'
+import AgentHowItWorksPage from './pages/agents/AgentHowItWorksPage'
+import AgentDashboardPage from './pages/agents/AgentDashboardPage'
+import AgentProfilePage from './pages/agents/AgentProfilePage'
+import AgentVerificationPage from './pages/agents/AgentVerificationPage'
+import AgentInspectionPage from './pages/agents/AgentInspectionPage'
+import AgentChecklistPage from './pages/agents/AgentChecklistPage'
+import AgentReferralsPage from './pages/agents/AgentReferralsPage'
+import ServicePaymentPage from './pages/shared/payments/ServicePaymentPage'
 import AdminRouteWrapper from './components/AdminRouteWrapper'
 import ProtectedRoute from './components/ProtectedRoute'
+import VerificationByRolePage from './components/VerificationByRolePage'
 
 const queryClient = new QueryClient()
 
@@ -112,8 +127,14 @@ function App() {
                                     <Route path="/legal/:slug" element={<LegalDocumentPage />} />
                                     <Route path="/login" element={<LoginPage />} />
                                     <Route path="/register" element={<RegisterPage />} />
+                                    <Route path="/agents" element={<AgentLandingPage />} />
+                                    <Route path="/agents/register" element={<AgentRegistrationPage />} />
+                                    <Route path="/agents/login" element={<AgentLoginPage />} />
+                                    <Route path="/agents/about" element={<AgentAboutPage />} />
+                                    <Route path="/agents/how-it-works" element={<AgentHowItWorksPage />} />
                                     <Route path="/forgot-password" element={<ForgotPasswordPage />} />
                                     <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
+                                    <Route path="/representative-kyc/:token" element={<RepresentativeKycPage />} />
                                     <Route path="/dashboard/landlord/:userId" element={<LandlordDashboardPage />} />
                                     <Route path="/dashboard/tenant/:userId" element={<TenantDashboardPage />} />
                                     <Route path="/search" element={<SearchPage />} />
@@ -131,7 +152,7 @@ function App() {
                                     <Route path="/listings/:id" element={<ListingDetailPage />} />
                                     <Route path="/enquiries" element={<EnquiriesPage />} />
                                     <Route path="/chat/:userId" element={<ChatThreadPage />} />
-                                    <Route path="/verify" element={<TenantVerificationPage />} />
+                                    <Route path="/verify" element={<VerificationByRolePage />} />
                                     <Route path="/profile/:userId" element={
                                         <ProtectedRoute requiredRoles={['tenant', 'landlord', 'admin']}>
                                             <ProfilePage />
@@ -154,12 +175,12 @@ function App() {
                                         </ProtectedRoute>
                                     } />
                                     <Route path="/dashboard/settings" element={
-                                        <ProtectedRoute requiredRoles={['tenant', 'landlord', 'admin']}>
+                                        <ProtectedRoute requiredRoles={['tenant', 'landlord', 'agent', 'admin']}>
                                             <SettingsPage />
                                         </ProtectedRoute>
                                     } />
                                     <Route path="/feedback" element={
-                                        <ProtectedRoute requiredRoles={['tenant', 'landlord']}>
+                                        <ProtectedRoute requiredRoles={['tenant', 'landlord', 'agent']}>
                                             <FeedbackPage />
                                         </ProtectedRoute>
                                     } />
@@ -174,12 +195,12 @@ function App() {
                                         </ProtectedRoute>
                                     } />
                                     <Route path="/support" element={
-                                        <ProtectedRoute requiredRoles={['tenant', 'landlord']}>
+                                        <ProtectedRoute requiredRoles={['tenant', 'landlord', 'agent']}>
                                             <TenantSupportPage />
                                         </ProtectedRoute>
                                     } />
                                     <Route path="/support-chat" element={
-                                        <ProtectedRoute requiredRoles={['tenant', 'landlord']}>
+                                        <ProtectedRoute requiredRoles={['tenant', 'landlord', 'agent']}>
                                             <SupportChatPage />
                                         </ProtectedRoute>
                                     } />
@@ -205,6 +226,51 @@ function App() {
                                     <Route path="/landlord/verification" element={
                                         <ProtectedRoute requiredRoles={['landlord']}>
                                             <LandlordVerificationPage />
+                                        </ProtectedRoute>
+                                    } />
+                                    <Route path="/landlord/tenancy-agreements/:bookingId" element={
+                                        <ProtectedRoute requiredRoles={['landlord']}>
+                                            <TenancyAgreementPage />
+                                        </ProtectedRoute>
+                                    } />
+                                    <Route path="/tenant/tenancy-agreements/:bookingId" element={
+                                        <ProtectedRoute requiredRoles={['tenant']}>
+                                            <TenancyAgreementPage />
+                                        </ProtectedRoute>
+                                    } />
+                                    <Route path="/agents/dashboard" element={
+                                        <ProtectedRoute requiredRoles={['agent']}>
+                                            <AgentDashboardPage />
+                                        </ProtectedRoute>
+                                    } />
+                                    <Route path="/agents/profile" element={
+                                        <ProtectedRoute requiredRoles={['agent']}>
+                                            <AgentProfilePage />
+                                        </ProtectedRoute>
+                                    } />
+                                    <Route path="/agents/verification" element={
+                                        <ProtectedRoute requiredRoles={['agent']}>
+                                            <AgentVerificationPage />
+                                        </ProtectedRoute>
+                                    } />
+                                    <Route path="/agents/checklist" element={
+                                        <ProtectedRoute requiredRoles={['agent']}>
+                                            <AgentChecklistPage />
+                                        </ProtectedRoute>
+                                    } />
+                                    <Route path="/agents/referrals" element={
+                                        <ProtectedRoute requiredRoles={['agent']}>
+                                            <AgentReferralsPage />
+                                        </ProtectedRoute>
+                                    } />
+                                    <Route path="/agents/inspections/:inspectionId" element={
+                                        <ProtectedRoute requiredRoles={['agent']}>
+                                            <AgentInspectionPage />
+                                        </ProtectedRoute>
+                                    } />
+                                    <Route path="/service-payments/:paymentId" element={
+                                        <ProtectedRoute requiredRoles={['agent', 'landlord']}>
+                                            <ServicePaymentPage />
                                         </ProtectedRoute>
                                     } />
                                     <Route path="/landlords/:landlordId/properties" element={<PublicLandlordPropertiesPage />} />

@@ -99,7 +99,7 @@ SITE_KNOWLEDGE = [
             "verification (NIN and BVN) from the dashboard before completing their detailed profile and before "
             "contacting landlords directly. Landlords choose Individual or Corporate verification and upload "
             "identification documents. Property ownership can be verified by uploading ownership documents or "
-            "requesting an in-person inspection by an authorised RentDirect agent or lawyer. Landlords must be "
+            "requesting an in-person inspection by an authorised RentDirect property inspection officer or lawyer. Landlords must be "
             "verified before creating listings."
         ),
     },
