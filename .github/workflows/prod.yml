@@ -1,7 +1,7 @@
 name: Deploy Production
 
 on:
-  pull_request:
+  push:
     branches:
       - main
     paths:
@@ -17,6 +17,7 @@ on:
       - "package.json"
       - "package-lock.json"
       - "turbo.json"
+
   workflow_dispatch:
 
 permissions:
