@@ -7482,12 +7482,6 @@ class AgentInspectionViewSet(viewsets.GenericViewSet, mixins.ListModelMixin, mix
         profile = AgentProfile.objects.filter(user=request.user).first()
         if not profile or profile.verification_status != AgentProfile.VerificationStatus.VERIFIED:
             raise PermissionDenied("Complete PIO verification before claiming inspections.")
-        if not ServicePayment.objects.filter(
-            user=request.user,
-            purpose=ServicePayment.Purpose.AGENT_VERIFICATION,
-            status=ServicePayment.Status.COMPLETED,
-        ).exists():
-            raise PermissionDenied("Complete the PIO verification payment before claiming inspections.")
 
         submission = (
             listing.property_document_submission

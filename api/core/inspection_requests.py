@@ -32,16 +32,13 @@ def inspection_submission_deadline(inspection) -> object:
 
 
 def _eligible_agents():
-    from .models import AgentProfile, AppUser, ServicePayment
+    from .models import AgentProfile, AppUser
     from .roles import active_membership_or_legacy_q
 
-    paid_agent_ids = ServicePayment.objects.filter(
-        purpose=ServicePayment.Purpose.AGENT_VERIFICATION,
-        status=ServicePayment.Status.COMPLETED,
-    ).values_list("user_id", flat=True)
+    # VERIFIED is the gate: it is only reached through paid provider
+    # verification or verified-identity reuse from another persona.
     return (
-        AppUser.objects.filter(id__in=paid_agent_ids)
-        .filter(active_membership_or_legacy_q(AppUser.Role.AGENT))
+        AppUser.objects.filter(active_membership_or_legacy_q(AppUser.Role.AGENT))
         .select_related("agent_profile")
         .exclude(agent_profile__isnull=True)
         .exclude(
