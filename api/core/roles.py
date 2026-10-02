@@ -11,12 +11,24 @@ role so pre-migration data and tests keep working.
 from __future__ import annotations
 
 import copy
+from datetime import date
 
 from django.db import transaction
 from django.db.models import Q
-from rest_framework.exceptions import PermissionDenied
+from django.utils import timezone
+from rest_framework.exceptions import PermissionDenied, ValidationError
 
-from .models import AppUser, RoleAuditEvent, UserRole
+from .financial_constants import IDENTITY_VERIFICATION_ATTEMPTS_PER_PAYMENT
+from .models import (
+    AgentProfile,
+    AppUser,
+    RoleAuditEvent,
+    ServicePayment,
+    TenantProfile,
+    UserRole,
+    VerificationRequest,
+)
+from .tenant_verification import normalize_tenant_verification_date, normalize_tenant_verification_profile
 
 CUSTOMER_ROLES = {AppUser.Role.TENANT, AppUser.Role.LANDLORD, AppUser.Role.AGENT}
 ACTIVE_ROLE_HEADER = "HTTP_X_RENTDIRECT_ROLE"
@@ -164,6 +176,555 @@ def record_role_event(user, role: str, event: str, request=None) -> RoleAuditEve
 
 def users_with_role(queryset, role: str):
     return queryset.filter(active_membership_or_legacy_q(role)).distinct()
+
+
+IDENTITY_FIELDS = (
+    "first_name",
+    "middle_name",
+    "last_name",
+    "date_of_birth",
+    "gender",
+    "nationality",
+    "state_of_origin",
+    "lga",
+    "mobile",
+    "whatsapp_number",
+    "country_of_birth",
+    "email",
+    "nin_number",
+    "bvn_number",
+    "city",
+    "residential_address",
+    "employment_status",
+)
+
+
+def _merge_identity(target: dict, source: dict) -> None:
+    for key, value in source.items():
+        if key not in IDENTITY_FIELDS:
+            continue
+        text = str(value or "").strip()
+        if text and not str(target.get(key) or "").strip():
+            target[key] = normalize_tenant_verification_date(text) if key == "date_of_birth" else text
+
+
+def _identity_verified(user, role: str) -> bool:
+    return VerificationRequest.objects.filter(
+        user_id=user.pk,
+        role=role,
+        identity_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
+    ).exists()
+
+
+def verified_identity_data(user) -> dict:
+    """Canonical identity fields from personas already verified for this identity.
+
+    Keys are canonical (``lga``, ``nin_number``, ``bvn_number``, ...); callers
+    map them onto each persona's storage shape. Only verified sources are
+    merged, so the result can be trusted for skip-reverification checks.
+    """
+    data: dict = {}
+    if user is None or not getattr(user, "pk", None):
+        return data
+
+    agent_profile = AgentProfile.objects.filter(user_id=user.pk).first()
+    if agent_profile and agent_profile.verification_status == AgentProfile.VerificationStatus.VERIFIED:
+        _merge_identity(
+            data,
+            {
+                "first_name": agent_profile.first_name,
+                "middle_name": agent_profile.middle_name,
+                "last_name": agent_profile.last_name,
+                "date_of_birth": agent_profile.date_of_birth,
+                "gender": agent_profile.gender,
+                "nationality": agent_profile.nationality,
+                "state_of_origin": agent_profile.state_of_origin,
+                "lga": agent_profile.lga_of_origin,
+                "mobile": agent_profile.mobile,
+                "whatsapp_number": agent_profile.whatsapp_number,
+                "country_of_birth": agent_profile.country_of_birth,
+                "email": user.email,
+                "nin_number": agent_profile.nin_number,
+                "bvn_number": agent_profile.bvn_number,
+                "city": agent_profile.city,
+                "residential_address": agent_profile.residential_address,
+            },
+        )
+
+    if (
+        user.landlord_verification_type == AppUser.LandlordVerificationType.INDIVIDUAL
+        and _identity_verified(user, AppUser.Role.LANDLORD)
+    ):
+        profile = user.landlord_verification_profile if isinstance(user.landlord_verification_profile, dict) else {}
+        residence = profile.get("residential_information")
+        residence = residence if isinstance(residence, dict) else {}
+        _merge_identity(
+            data,
+            {
+                "first_name": profile.get("first_name"),
+                "middle_name": profile.get("middle_name"),
+                "last_name": profile.get("last_name"),
+                "date_of_birth": profile.get("date_of_birth"),
+                "gender": profile.get("gender"),
+                "nationality": profile.get("nationality"),
+                "state_of_origin": profile.get("state_of_origin"),
+                "lga": profile.get("lga_of_origin"),
+                "mobile": profile.get("contact_number") or user.mobile,
+                "whatsapp_number": profile.get("whatsapp_number"),
+                "country_of_birth": profile.get("country_of_birth"),
+                "email": profile.get("email"),
+                "nin_number": profile.get("nin") or user.nin_number,
+                "bvn_number": profile.get("bvn") or user.bvn_number,
+                "city": residence.get("city"),
+                "residential_address": profile.get("residential_address") or residence.get("address"),
+                "employment_status": profile.get("employment_status"),
+            },
+        )
+
+    if _identity_verified(user, AppUser.Role.TENANT):
+        _merge_identity(data, normalize_tenant_verification_profile(user.tenant_verification_profile, user))
+        tenant_profile = TenantProfile.objects.filter(user_id=user.pk).first()
+        if tenant_profile is not None:
+            _merge_identity(
+                data,
+                {
+                    "city": tenant_profile.residence_city,
+                    "residential_address": tenant_profile.residence_address,
+                    "employment_status": tenant_profile.employment_status,
+                },
+            )
+
+    return data
+
+
+def prefill_identity_data(user) -> dict:
+    """Verified identity plus user-held credentials for form prefill.
+
+    ``AppUser.nin_number``/``bvn_number`` are only persisted after a successful
+    provider verification, so they are safe defaults even without a verified
+    persona record.
+    """
+    data = verified_identity_data(user)
+    if user is not None:
+        _merge_identity(
+            data,
+            {
+                "nin_number": getattr(user, "nin_number", ""),
+                "bvn_number": getattr(user, "bvn_number", ""),
+                "mobile": getattr(user, "mobile", ""),
+                "whatsapp_number": getattr(user, "whatsapp_number", ""),
+                "state_of_origin": getattr(user, "state_of_origin", ""),
+                "email": getattr(user, "email", ""),
+            },
+        )
+    return data
+
+
+def verified_identity_matches(user, submitted: dict, credential_fields=("nin_number",)) -> bool:
+    """True when ``submitted`` identity data matches an already-verified persona.
+
+    Every required credential must be present and equal; all other fields
+    present non-empty in both are compared (dates normalized). Used to skip a
+    repeat provider lookup when the same credentials are re-submitted under a
+    different persona.
+    """
+    snapshot = verified_identity_data(user)
+    if not snapshot:
+        return False
+    for field_name in credential_fields:
+        expected = str(snapshot.get(field_name) or "").strip()
+        provided = str(submitted.get(field_name) or "").strip()
+        if not expected or not provided or expected.lower() != provided.lower():
+            return False
+    compared = 0
+    for key, value in submitted.items():
+        provided = str(value or "").strip()
+        expected = str(snapshot.get(key) or "").strip()
+        if not provided or not expected:
+            continue
+        compared += 1
+        if key == "date_of_birth":
+            if normalize_tenant_verification_date(provided) != normalize_tenant_verification_date(expected):
+                return False
+        elif provided.lower() != expected.lower():
+            return False
+    return compared > 0
+
+
+def _parse_identity_date(value):
+    normalized = normalize_tenant_verification_date(value)
+    try:
+        return date.fromisoformat(normalized) if normalized else None
+    except ValueError:
+        return None
+
+
+AGENT_IDENTITY_FIELD_MAP = {
+    "first_name": "first_name",
+    "middle_name": "middle_name",
+    "last_name": "last_name",
+    "date_of_birth": "date_of_birth",
+    "gender": "gender",
+    "nationality": "nationality",
+    "state_of_origin": "state_of_origin",
+    "lga": "lga_of_origin",
+    "mobile": "mobile",
+    "whatsapp_number": "whatsapp_number",
+    "country_of_birth": "country_of_birth",
+    "city": "city",
+    "residential_address": "residential_address",
+    "nin_number": "nin_number",
+    "bvn_number": "bvn_number",
+}
+
+LANDLORD_IDENTITY_FIELD_MAP = {
+    "first_name": "first_name",
+    "middle_name": "middle_name",
+    "last_name": "last_name",
+    "date_of_birth": "date_of_birth",
+    "gender": "gender",
+    "nationality": "nationality",
+    "state_of_origin": "state_of_origin",
+    "lga": "lga_of_origin",
+    "mobile": "contact_number",
+    "whatsapp_number": "whatsapp_number",
+    "country_of_birth": "country_of_birth",
+    "email": "email",
+    "nin_number": "nin",
+    "bvn_number": "bvn",
+    "residential_address": "residential_address",
+    "employment_status": "employment_status",
+}
+
+
+def prefill_agent_profile(user, profile: AgentProfile) -> bool:
+    """Copy verified identity fields into empty ``AgentProfile`` fields."""
+    if profile is None or profile.verification_status == AgentProfile.VerificationStatus.VERIFIED:
+        return False
+    missing = [
+        field_name
+        for field_name in AGENT_IDENTITY_FIELD_MAP.values()
+        if not str(getattr(profile, field_name, "") or "").strip()
+    ]
+    if not missing:
+        return False
+    data = prefill_identity_data(user)
+    if not data:
+        return False
+
+    update_fields: list[str] = []
+    for source_key, field_name in AGENT_IDENTITY_FIELD_MAP.items():
+        if field_name not in missing:
+            continue
+        value = data.get(source_key)
+        if not value:
+            continue
+        if field_name == "date_of_birth":
+            parsed = _parse_identity_date(value)
+            if parsed is None:
+                continue
+            profile.date_of_birth = parsed
+        else:
+            setattr(profile, field_name, str(value).strip())
+        update_fields.append(field_name)
+
+    if not update_fields:
+        return False
+
+    from .serializers import sync_agent_profile_status
+
+    previous_status = profile.verification_status
+    sync_agent_profile_status(profile)
+    if profile.verification_status != previous_status:
+        update_fields.append("verification_status")
+    update_fields.append("updated_at")
+    profile.save(update_fields=update_fields)
+    return True
+
+
+def prefill_tenant_verification_profile(user) -> bool:
+    from .tenant_verification import TENANT_VERIFICATION_PROFILE_FIELDS
+
+    profile = dict(user.tenant_verification_profile or {})
+    missing = [key for key in TENANT_VERIFICATION_PROFILE_FIELDS if not str(profile.get(key) or "").strip()]
+    if not missing:
+        return False
+    data = prefill_identity_data(user)
+    if not data:
+        return False
+
+    changed = False
+    for key in missing:
+        value = data.get(key)
+        if value:
+            profile[key] = normalize_tenant_verification_date(value) if key == "date_of_birth" else str(value).strip()
+            changed = True
+    if not changed:
+        return False
+    user.tenant_verification_profile = normalize_tenant_verification_profile(profile, user)
+    user.save(update_fields=["tenant_verification_profile", "updated_at"])
+    return True
+
+
+def prefill_landlord_verification_profile(user) -> bool:
+    if user.landlord_verification_type == AppUser.LandlordVerificationType.CORPORATE:
+        return False
+    profile = dict(user.landlord_verification_profile or {})
+    missing = [
+        key
+        for key in LANDLORD_IDENTITY_FIELD_MAP.values()
+        if not str(profile.get(key) or "").strip()
+    ]
+    if not missing:
+        return False
+    data = prefill_identity_data(user)
+    if not data:
+        return False
+
+    changed = False
+    for source_key, key in LANDLORD_IDENTITY_FIELD_MAP.items():
+        if key not in missing:
+            continue
+        value = data.get(source_key)
+        if not value:
+            continue
+        profile[key] = normalize_tenant_verification_date(value) if key == "date_of_birth" else str(value).strip()
+        changed = True
+
+    residence = dict(profile.get("residential_information") or {})
+    if data.get("city") and not str(residence.get("city") or "").strip():
+        residence["city"] = str(data["city"]).strip()
+        changed = True
+    if data.get("residential_address") and not str(residence.get("address") or "").strip():
+        residence["address"] = str(data["residential_address"]).strip()
+        changed = True
+    if residence:
+        profile["residential_information"] = residence
+
+    if not changed:
+        return False
+    update_fields = ["landlord_verification_profile", "updated_at"]
+    user.landlord_verification_profile = profile
+    if not user.landlord_verification_type:
+        user.landlord_verification_type = AppUser.LandlordVerificationType.INDIVIDUAL
+        update_fields.append("landlord_verification_type")
+    user.save(update_fields=update_fields)
+    return True
+
+
+IDENTITY_CREDENTIAL_FIELDS = ("nin_number", "bvn_number")
+
+VERIFICATION_PAYMENT_PURPOSES = {
+    AppUser.Role.TENANT: ServicePayment.Purpose.TENANT_VERIFICATION,
+    AppUser.Role.LANDLORD: ServicePayment.Purpose.LANDLORD_VERIFICATION,
+    AppUser.Role.AGENT: ServicePayment.Purpose.AGENT_VERIFICATION,
+}
+
+# Provider-attempt counters per role (the agent profile tracks its own).
+_VERIFICATION_ATTEMPT_FIELD = {
+    AppUser.Role.TENANT: "tenant_verification_attempts",
+    AppUser.Role.LANDLORD: "landlord_verification_attempts",
+}
+
+
+def verified_credentials(user) -> set[str]:
+    """Credential types verified under any persona of this identity."""
+    data = verified_identity_data(user)
+    return {
+        field_name
+        for field_name in IDENTITY_CREDENTIAL_FIELDS
+        if str(data.get(field_name) or "").strip()
+    }
+
+
+def identity_credentials_verified(user, role: str) -> bool:
+    """True when every credential the role requires (NIN + BVN) is already
+    verified under this identity, so no provider call or fee is needed."""
+    role = str(role or "").strip().lower()
+    return role in CUSTOMER_ROLES and set(IDENTITY_CREDENTIAL_FIELDS) <= verified_credentials(user)
+
+
+def identity_verification_attempts_used(user, role: str) -> int:
+    role = str(role or "").strip().lower()
+    if role == AppUser.Role.AGENT:
+        profile = AgentProfile.objects.filter(user_id=user.pk).first()
+        return profile.verification_attempts if profile else 0
+    field_name = _VERIFICATION_ATTEMPT_FIELD.get(role)
+    return getattr(user, field_name, 0) if field_name else 0
+
+
+def track_identity_verification_attempt(user, role: str) -> None:
+    """Consume one paid verification attempt (tenant/landlord counter fields;
+    the agent path increments ``AgentProfile.verification_attempts`` itself)."""
+    field_name = _VERIFICATION_ATTEMPT_FIELD.get(str(role or "").strip().lower())
+    if field_name is None:
+        return
+    setattr(user, field_name, (getattr(user, field_name, 0) or 0) + 1)
+    user.save(update_fields=[field_name, "updated_at"])
+
+
+def identity_verification_attempts_exhausted(user, role: str) -> bool:
+    purpose = VERIFICATION_PAYMENT_PURPOSES.get(str(role or "").strip().lower())
+    if purpose is None:
+        return False
+    completed = ServicePayment.objects.filter(
+        user_id=user.pk, purpose=purpose, status=ServicePayment.Status.COMPLETED
+    ).count()
+    return identity_verification_attempts_used(user, role) >= completed * IDENTITY_VERIFICATION_ATTEMPTS_PER_PAYMENT
+
+
+def require_identity_verification_payment(user, role: str) -> None:
+    """Raise until a completed ₦500 payment covers the next verification attempt."""
+    role = str(role or "").strip().lower()
+    if identity_verification_attempts_exhausted(user, role):
+        raise ValidationError(
+            {
+                "payment_required": VERIFICATION_PAYMENT_PURPOSES[role],
+                "detail": "A ₦500 identity verification payment is required before you can verify your identity.",
+            }
+        )
+
+
+def _persona_credentials_conflict(user, role: str, identity: dict) -> bool:
+    """True when a persona holds a NIN/BVN that differs from the verified identity."""
+    persona_nin, persona_bvn = _persona_credential_values(user, role)
+    for persona_value, field_name in ((persona_nin, "nin_number"), (persona_bvn, "bvn_number")):
+        persona_value = persona_value.strip()
+        verified_value = str(identity.get(field_name) or "").strip()
+        if persona_value and verified_value and persona_value.lower() != verified_value.lower():
+            return True
+    return False
+
+
+def identity_verification_payment_required(user, role: str) -> bool:
+    """Whether the UI should prompt for the ₦500 identity verification fee."""
+    role = str(role or "").strip().lower()
+    if role not in VERIFICATION_PAYMENT_PURPOSES:
+        return False
+    if user.is_verified_for_role(role):
+        return False
+    if role != AppUser.Role.LANDLORD or user.landlord_verification_type != AppUser.LandlordVerificationType.CORPORATE:
+        if identity_credentials_verified(user, role) and not _persona_credentials_conflict(
+            user, role, verified_identity_data(user)
+        ):
+            return False
+    return identity_verification_attempts_exhausted(user, role)
+
+
+def _persona_credential_values(user, role: str) -> tuple[str, str]:
+    """The (nin, bvn) a persona has on record, mapped to canonical fields."""
+    if role == AppUser.Role.AGENT:
+        profile = AgentProfile.objects.filter(user_id=user.pk).first()
+        if profile is None:
+            return "", ""
+        return str(profile.nin_number or ""), str(profile.bvn_number or "")
+    if role == AppUser.Role.LANDLORD:
+        profile = user.landlord_verification_profile if isinstance(user.landlord_verification_profile, dict) else {}
+        return str(profile.get("nin") or ""), str(profile.get("bvn") or "")
+    if role == AppUser.Role.TENANT:
+        profile = normalize_tenant_verification_profile(user.tenant_verification_profile, user)
+        return str(profile.get("nin_number") or ""), str(profile.get("bvn_number") or "")
+    return "", ""
+
+
+def auto_verify_role_identity(user, role: str) -> bool:
+    """Mark a persona's identity verified without a provider call or fee when
+    the identity's NIN+BVN are already verified under another persona.
+
+    Only applies when the persona's own credential fields are empty (they get
+    prefilled from the verified identity) or match it exactly — a persona that
+    carries different credentials must go through provider verification."""
+    role = str(role or "").strip().lower()
+    if user is None or not getattr(user, "pk", None):
+        return False
+    if role not in CUSTOMER_ROLES or not identity_credentials_verified(user, role):
+        return False
+    if role == AppUser.Role.LANDLORD and user.landlord_verification_type == AppUser.LandlordVerificationType.CORPORATE:
+        # Corporate landlord identity is CAC-based, not NIN/BVN.
+        return False
+
+    identity = verified_identity_data(user)
+    persona_nin, persona_bvn = _persona_credential_values(user, role)
+    for persona_value, field_name in ((persona_nin, "nin_number"), (persona_bvn, "bvn_number")):
+        persona_value = persona_value.strip()
+        verified_value = str(identity.get(field_name) or "").strip()
+        if persona_value and verified_value and persona_value.lower() != verified_value.lower():
+            return False
+
+    verified_at = timezone.now()
+    changed = False
+
+    if role == AppUser.Role.AGENT:
+        profile, _ = AgentProfile.objects.get_or_create(user=user)
+        if profile.verification_status != AgentProfile.VerificationStatus.VERIFIED:
+            profile.verification_status = AgentProfile.VerificationStatus.VERIFIED
+            profile.verified_at = verified_at
+            profile.save(update_fields=["verification_status", "verified_at", "updated_at"])
+            changed = True
+
+    verification = (
+        VerificationRequest.objects.filter(user=user, role=role)
+        .order_by("-submitted_at")
+        .first()
+    )
+    if verification is None:
+        verification = VerificationRequest.objects.create(
+            user=user,
+            role=role,
+            request_type=VerificationRequest.RequestType.IDENTIFICATION,
+        )
+    # An admin rejection on this persona is respected; it is never auto-approved.
+    if verification.status != VerificationRequest.Status.REJECTED and (
+        verification.status != VerificationRequest.Status.APPROVED
+        or verification.identity_verification_status != VerificationRequest.VerificationProgressStatus.VERIFIED
+    ):
+        if not verification.request_type:
+            verification.request_type = VerificationRequest.RequestType.IDENTIFICATION
+        verification.identity_verification_status = VerificationRequest.VerificationProgressStatus.VERIFIED
+        verification.verification_method = VerificationRequest.Method.AUTOMATED
+        verification.status = VerificationRequest.Status.APPROVED
+        verification.reviewed_at = verified_at
+        verification.save(
+            update_fields=[
+                "request_type",
+                "identity_verification_status",
+                "verification_method",
+                "status",
+                "reviewed_at",
+            ]
+        )
+        changed = True
+
+    user_updates: list[str] = []
+    for field_name in IDENTITY_CREDENTIAL_FIELDS:
+        value = str(identity.get(field_name) or "").strip()
+        if value and getattr(user, field_name, "") != value:
+            setattr(user, field_name, value)
+            user_updates.append(field_name)
+    if user_updates:
+        user_updates.append("updated_at")
+        user.save(update_fields=user_updates)
+        changed = True
+    return changed
+
+
+def prefill_role_identity(user, role: str) -> bool:
+    """Prefill a persona's verification/profile fields from verified identity
+    and mark the persona verified when its required credentials already are."""
+    role = str(role or "").strip().lower()
+    if user is None:
+        return False
+    if role == AppUser.Role.TENANT:
+        prefilled = prefill_tenant_verification_profile(user)
+    elif role == AppUser.Role.LANDLORD:
+        prefilled = prefill_landlord_verification_profile(user)
+    elif role == AppUser.Role.AGENT:
+        profile = AgentProfile.objects.filter(user_id=user.pk).first()
+        prefilled = prefill_agent_profile(user, profile)
+    else:
+        return False
+    auto_verified = auto_verify_role_identity(user, role)
+    return prefilled or auto_verified
 
 
 def active_membership_or_legacy_q(role: str, prefix: str = "") -> Q:

@@ -17,7 +17,7 @@ function getRegistrationErrorMessage(err: any): string {
         normalizedMessage.includes('email already registered') ||
         (normalizedMessage.includes('email') && normalizedMessage.includes('already'))
     ) {
-        return 'Email already registered, try sign in'
+        return 'Account already exist, please sign in'
     }
 
     return message || 'Registration failed'

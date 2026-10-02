@@ -7,7 +7,6 @@ from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
 from rest_framework import serializers
-from rest_framework.exceptions import PermissionDenied
 
 from .profile_validation import (
     normalize_residence,
@@ -56,8 +55,8 @@ from .models import (
     TenantSearchRequirement,
     VerificationRequest,
 )
-from .financial_constants import AGENT_VERIFICATION_ATTEMPTS_PER_PAYMENT, REFUNDABLE_CAUTION_FEE_RATE, ZERO_AMOUNT
-from .roles import active_role_membership, apply_active_role, available_roles, has_active_role
+from .financial_constants import REFUNDABLE_CAUTION_FEE_RATE, ZERO_AMOUNT
+from .roles import active_role_membership, available_roles, has_active_role, identity_verification_payment_required
 from .pricing import calculate_booking_total, calculate_listing_deposit_amount, calculate_remaining_balance, quantize_money, resolve_booking_total
 from .subscription_access import user_has_completed_tenant_profile, user_has_silver_access
 from .tenant_scoring import build_tenant_screening_summary
@@ -73,6 +72,7 @@ class UserSerializer(serializers.ModelSerializer):
     account_frozen_at = serializers.SerializerMethodField()
     account_frozen_until = serializers.SerializerMethodField()
     account_freeze_fee_percentage = serializers.SerializerMethodField()
+    verification_payment_required = serializers.SerializerMethodField()
 
     def get_available_roles(self, obj):
         return available_roles(obj)
@@ -97,6 +97,13 @@ class UserSerializer(serializers.ModelSerializer):
     def get_account_freeze_fee_percentage(self, obj):
         return getattr(self._freeze_source(obj), "account_freeze_fee_percentage", None)
 
+    def get_verification_payment_required(self, obj) -> bool:
+        request = self.context.get("request")
+        if request is None or getattr(request.user, "pk", None) != obj.pk:
+            return False
+        role = getattr(obj, "active_role", None) or obj.role
+        return identity_verification_payment_required(obj, role)
+
     class Meta:
         model = AppUser
         fields = [
@@ -117,6 +124,7 @@ class UserSerializer(serializers.ModelSerializer):
             "landlord_verification_profile",
             "tenant_verification_profile",
             "is_verified",
+            "verification_payment_required",
             "account_frozen",
             "account_frozen_at",
             "account_frozen_until",
@@ -332,10 +340,6 @@ class LoginSerializer(serializers.Serializer):
             raise serializers.ValidationError("Invalid credentials")
         if not user.email_verified:
             raise serializers.ValidationError("Email verification required before login")
-        try:
-            apply_active_role(user, attrs.get("role"))
-        except PermissionDenied as exc:
-            raise serializers.ValidationError({"role": [str(exc.detail)]}) from exc
         attrs["user"] = user
         return attrs
 
@@ -1998,6 +2002,10 @@ class ServicePaymentSerializer(serializers.ModelSerializer):
     def get_return_path(self, obj) -> str:
         if obj.purpose == ServicePayment.Purpose.AGENT_VERIFICATION:
             return "/agents/verification"
+        if obj.purpose == ServicePayment.Purpose.TENANT_VERIFICATION:
+            return "/verify"
+        if obj.purpose == ServicePayment.Purpose.LANDLORD_VERIFICATION:
+            return "/landlord/verification"
         if obj.purpose == ServicePayment.Purpose.LAWYER_TENANCY and obj.booking_id:
             return f"/landlord/tenancy-agreements/{obj.booking_id}"
         if obj.purpose == ServicePayment.Purpose.IN_PERSON_VERIFICATION:
@@ -2144,14 +2152,7 @@ class AgentProfileSerializer(serializers.ModelSerializer):
         return value
 
     def get_verification_payment_required(self, obj) -> bool:
-        if obj.verification_status == AgentProfile.VerificationStatus.VERIFIED:
-            return False
-        completed_payments = ServicePayment.objects.filter(
-            user=obj.user,
-            purpose=ServicePayment.Purpose.AGENT_VERIFICATION,
-            status=ServicePayment.Status.COMPLETED,
-        ).count()
-        return obj.verification_attempts >= completed_payments * AGENT_VERIFICATION_ATTEMPTS_PER_PAYMENT
+        return identity_verification_payment_required(obj.user, AppUser.Role.AGENT)
 
     def validate_account_name(self, value):
         value = (value or "").strip()

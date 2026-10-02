@@ -82,6 +82,8 @@ class AppUser(AbstractBaseUser, PermissionsMixin):
     whatsapp_number = models.CharField(max_length=40, blank=True, default="")
     nin_number = models.CharField(max_length=80, blank=True, default="")
     bvn_number = models.CharField(max_length=80, blank=True, default="")
+    tenant_verification_attempts = models.PositiveIntegerField(default=0)
+    landlord_verification_attempts = models.PositiveIntegerField(default=0)
     state_of_origin = models.CharField(max_length=120, blank=True, default="")
     residence = models.JSONField(blank=True, null=True)
     landlord_verification_type = models.CharField(max_length=20, blank=True, default="")
@@ -1762,6 +1764,8 @@ class AgentProfile(models.Model):
 class ServicePayment(models.Model):
     class Purpose(models.TextChoices):
         AGENT_VERIFICATION = "agent_verification", "Property Inspection Officer Verification"
+        TENANT_VERIFICATION = "tenant_verification", "Tenant Verification"
+        LANDLORD_VERIFICATION = "landlord_verification", "Landlord Verification"
         LAWYER_TENANCY = "lawyer_tenancy", "Lawyer Tenancy Agreement"
         IN_PERSON_VERIFICATION = "in_person_verification", "In-Person Property Verification"
 

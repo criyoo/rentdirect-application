@@ -1,18 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { getStoredUserRole, getWebSocketUrl } from './api'
 
 const storage = new Map<string, string>()
 
+vi.stubGlobal('window', {
+    location: { hostname: 'localhost', protocol: 'http:' },
+})
+vi.stubGlobal('localStorage', {
+    getItem: (key: string) => storage.get(key) ?? null,
+    setItem: (key: string, value: string) => void storage.set(key, String(value)),
+    removeItem: (key: string) => void storage.delete(key),
+})
+
+const { getStoredUserRole, getWebSocketUrl } = await import('./api')
+
 beforeEach(() => {
     storage.clear()
-    vi.stubGlobal('window', {
-        location: { hostname: 'localhost', protocol: 'http:' },
-    })
-    vi.stubGlobal('localStorage', {
-        getItem: (key: string) => storage.get(key) ?? null,
-        setItem: (key: string, value: string) => void storage.set(key, String(value)),
-        removeItem: (key: string) => void storage.delete(key),
-    })
 })
 
 describe('getStoredUserRole', () => {

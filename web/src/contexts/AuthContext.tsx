@@ -237,7 +237,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
             const response = await api.post('/auth/login', data)
             const nextUser = commitUser(response.data, data.email)
-            navigate(dashboardPathFor(nextUser))
+            const roleActivated = response.data?.role_activated === true
+            if (roleActivated && nextUser.role === 'tenant') {
+                navigate('/verify')
+            } else if (roleActivated && nextUser.role === 'landlord') {
+                localStorage.setItem(LANDLORD_IDENTITY_ONBOARDING_KEY, '1')
+                navigate('/landlord/verification')
+            } else if (roleActivated && nextUser.role === 'agent') {
+                navigate('/agents/verification')
+            } else {
+                navigate(dashboardPathFor(nextUser))
+            }
         } catch (err: any) {
             throw new Error(extractErrorMessage(err, 'Login failed'))
         }
@@ -249,17 +259,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const nextUser = commitUser(response.data)
 
             const isNewUser = response.data?.is_new_user === true
+            const needsOnboarding = isNewUser || response.data?.role_activated === true
             if (nextUser.role === 'landlord') {
-                if (isNewUser) {
+                if (needsOnboarding) {
                     localStorage.setItem(LANDLORD_IDENTITY_ONBOARDING_KEY, '1')
                     navigate('/landlord/verification')
                 } else {
                     navigate(`/dashboard/landlord/${nextUser.id}`)
                 }
             } else if (nextUser.role === 'tenant') {
-                navigate(isNewUser ? '/verify' : `/dashboard/tenant/${nextUser.id}`)
+                navigate(needsOnboarding ? '/verify' : `/dashboard/tenant/${nextUser.id}`)
             } else if (nextUser.role === 'agent') {
-                navigate(isNewUser ? '/agents/verification' : '/agents/dashboard')
+                navigate(needsOnboarding ? '/agents/verification' : '/agents/dashboard')
             } else if (nextUser.role === 'admin') {
                 navigate('/admin/dashboard')
             }

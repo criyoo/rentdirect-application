@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { clearFormDrafts } from '@/lib/formDrafts'
-import type { AccountRole } from '@/types'
+import type { AccountRole, ServicePaymentPurpose } from '@/types'
 
 export const ACCOUNT_ROLES: AccountRole[] = ['tenant', 'landlord', 'agent', 'admin']
 
@@ -100,6 +100,12 @@ export function extractApiErrorMessage(error: any, fallback: string): string {
     if (message) return message
   }
   return error?.message || fallback
+}
+
+export function verificationPaymentPurpose(error: any): ServicePaymentPurpose | null {
+    const value = error?.response?.data?.payment_required
+    const purpose = Array.isArray(value) ? value.find(Boolean) : value
+    return typeof purpose === 'string' && purpose ? purpose as ServicePaymentPurpose : null
 }
 
 export function resolveMediaUrl(value?: string | null): string {

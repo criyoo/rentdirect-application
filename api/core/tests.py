@@ -479,6 +479,55 @@ class AuthViewSetTests(TestCase):
         self.assertEqual(response.status_code, 400, response.json())
         self.assertIn("Sign in to add another role", str(response.json()))
 
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_verify_registration_preserves_default_role_for_existing_identity(self):
+        email = "unverified-multi@example.com"
+        user = AppUser.objects.create_user(
+            email=email,
+            password="password-123",
+            name="Unverified Multi",
+            role=AppUser.Role.TENANT,
+            email_verified=False,
+        )
+        response = self.client.post(
+            "/api/v1/auth/register",
+            {
+                "name": "Unverified Multi",
+                "email": email,
+                "password": "password-123",
+                "role": AppUser.Role.AGENT,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.json())
+        otp_match = re.search(r"\b([A-Z0-9]{6})\b", mail.outbox[-1].body)
+        self.assertIsNotNone(otp_match)
+
+        verify_response = self.client.post(
+            "/api/v1/auth/register/verify",
+            {"email": email, "otp_code": otp_match.group(1)},
+            format="json",
+        )
+
+        self.assertEqual(verify_response.status_code, 200, verify_response.json())
+        self.assertEqual(verify_response.json()["role"], AppUser.Role.AGENT)
+        self.assertEqual(
+            set(verify_response.json()["available_roles"]),
+            {AppUser.Role.TENANT, AppUser.Role.AGENT},
+        )
+        user.refresh_from_db()
+        self.assertEqual(user.role, AppUser.Role.TENANT)
+        self.assertTrue(
+            UserRole.objects.filter(
+                user=user, role=AppUser.Role.TENANT, status=UserRole.Status.ACTIVE
+            ).exists()
+        )
+        self.assertTrue(
+            UserRole.objects.filter(
+                user=user, role=AppUser.Role.AGENT, status=UserRole.Status.ACTIVE
+            ).exists()
+        )
+
     def test_login_selects_requested_active_role_in_memory_only(self):
         user = AppUser.objects.create_user(
             email="multi-login@example.com",
@@ -505,7 +554,7 @@ class AuthViewSetTests(TestCase):
         user.refresh_from_db()
         self.assertEqual(user.role, AppUser.Role.TENANT)
 
-    def test_login_rejects_role_without_active_membership(self):
+    def test_login_activates_requested_customer_role_for_existing_identity(self):
         user = AppUser.objects.create_user(
             email="single-login@example.com",
             password="password-123",
@@ -517,11 +566,162 @@ class AuthViewSetTests(TestCase):
 
         response = self.client.post(
             "/api/v1/auth/login",
-            {"email": user.email, "password": "password-123", "role": "landlord"},
+            {"email": user.email, "password": "password-123", "role": "agent"},
             format="json",
         )
 
-        self.assertEqual(response.status_code, 400, response.json())
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertEqual(response.json()["role"], AppUser.Role.AGENT)
+        self.assertTrue(response.json()["role_activated"])
+        self.assertEqual(
+            set(response.json()["available_roles"]),
+            {AppUser.Role.TENANT, AppUser.Role.AGENT},
+        )
+        self.assertTrue(
+            UserRole.objects.filter(
+                user=user, role=AppUser.Role.AGENT, status=UserRole.Status.ACTIVE
+            ).exists()
+        )
+        self.assertTrue(AgentProfile.objects.filter(user=user).exists())
+        self.assertTrue(
+            RoleAuditEvent.objects.filter(
+                user=user,
+                role=AppUser.Role.AGENT,
+                event=RoleAuditEvent.Event.ACTIVATED,
+            ).exists()
+        )
+        user.refresh_from_db()
+        self.assertEqual(user.role, AppUser.Role.TENANT)
+
+    def test_login_activation_prefills_agent_profile_from_verified_tenant_identity(self):
+        user = AppUser.objects.create_user(
+            email="verified-tenant-pio@example.com",
+            password="password-123",
+            name="Verified Tenant",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+            nin_number="12345678901",
+            mobile="08012345678",
+            tenant_verification_profile={
+                "first_name": "Subomi",
+                "last_name": "Career",
+                "date_of_birth": "1990-05-05",
+                "gender": "female",
+                "nationality": "Nigerian",
+                "state_of_origin": "Lagos",
+                "lga": "Ikeja",
+                "country_of_birth": "Nigeria",
+                "nin_number": "12345678901",
+                "mobile": "08012345678",
+            },
+        )
+        VerificationRequest.objects.create(
+            user=user,
+            role=AppUser.Role.TENANT,
+            request_type=VerificationRequest.RequestType.IDENTIFICATION,
+            status=VerificationRequest.Status.APPROVED,
+            identity_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
+            verification_method=VerificationRequest.Method.AUTOMATED,
+        )
+
+        response = self.client.post(
+            "/api/v1/auth/login",
+            {"email": user.email, "password": "password-123", "role": "agent"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        profile = AgentProfile.objects.get(user=user)
+        self.assertEqual(profile.first_name, "Subomi")
+        self.assertEqual(profile.last_name, "Career")
+        self.assertEqual(profile.date_of_birth.isoformat(), "1990-05-05")
+        self.assertEqual(profile.nin_number, "12345678901")
+        self.assertEqual(profile.lga_of_origin, "Ikeja")
+        self.assertEqual(profile.mobile, "08012345678")
+        self.assertEqual(profile.gender, "female")
+
+    def test_roles_endpoint_prefills_tenant_profile_from_verified_agent_identity(self):
+        user = AppUser.objects.create_user(
+            email="verified-agent-tenant@example.com",
+            password="password-123",
+            name="Verified Agent",
+            role=AppUser.Role.AGENT,
+            email_verified=True,
+        )
+        AgentProfile.objects.create(
+            user=user,
+            first_name="Subomi",
+            last_name="Career",
+            date_of_birth="1990-05-05",
+            gender="female",
+            nationality="Nigerian",
+            state_of_origin="Lagos",
+            lga_of_origin="Ikeja",
+            mobile="08012345678",
+            nin_number="12345678901",
+            bvn_number="10987654321",
+            verification_status=AgentProfile.VerificationStatus.VERIFIED,
+        )
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        response = client.post(
+            "/api/v1/users/me/roles",
+            {"role": AppUser.Role.TENANT},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.json())
+        user.refresh_from_db()
+        tenant_profile = user.tenant_verification_profile or {}
+        self.assertEqual(tenant_profile.get("first_name"), "Subomi")
+        self.assertEqual(tenant_profile.get("last_name"), "Career")
+        self.assertEqual(tenant_profile.get("date_of_birth"), "1990-05-05")
+        self.assertEqual(tenant_profile.get("nin_number"), "12345678901")
+        self.assertEqual(tenant_profile.get("lga"), "Ikeja")
+
+    def test_login_rejects_suspended_role_membership(self):
+        user = AppUser.objects.create_user(
+            email="suspended-login@example.com",
+            password="password-123",
+            name="Suspended Login",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        UserRole.objects.create(user=user, role=AppUser.Role.TENANT)
+        UserRole.objects.create(
+            user=user, role=AppUser.Role.AGENT, status=UserRole.Status.SUSPENDED
+        )
+
+        response = self.client.post(
+            "/api/v1/auth/login",
+            {"email": user.email, "password": "password-123", "role": "agent"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(
+            UserRole.objects.get(user=user, role=AppUser.Role.AGENT).status,
+            UserRole.Status.SUSPENDED,
+        )
+
+    def test_login_rejects_unknown_or_admin_role_request(self):
+        user = AppUser.objects.create_user(
+            email="admin-role-login@example.com",
+            password="password-123",
+            name="Admin Role Login",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        UserRole.objects.create(user=user, role=AppUser.Role.TENANT)
+
+        for requested in ("admin", "superuser"):
+            response = self.client.post(
+                "/api/v1/auth/login",
+                {"email": user.email, "password": "password-123", "role": requested},
+                format="json",
+            )
+            self.assertEqual(response.status_code, 403)
 
     def test_active_role_header_selects_in_memory_role_without_persisting(self):
         user = AppUser.objects.create_user(
@@ -2933,6 +3133,7 @@ class VerificationRequestViewSetTests(TestCase):
     def _complete_tenant_profile_payload(self):
         return {
             "nin_number": "12345678901",
+            "bvn_number": "22347235093",
             "first_name": "Christian",
             "middle_name": "Odezi",
             "last_name": "Aluya",
@@ -3026,6 +3227,16 @@ class VerificationRequestViewSetTests(TestCase):
             for title in ("Employment Letter", "Staff ID")
         ]
         return [str(document.id) for document in documents]
+
+    def _pay_identity_verification(self, user, purpose):
+        return ServicePayment.objects.create(
+            user=user,
+            purpose=purpose,
+            amount=Decimal("500.00"),
+            status=ServicePayment.Status.COMPLETED,
+            transaction_id=f"SVCTEST{uuid.uuid4().hex[:16].upper()}",
+            payment_date=timezone.now(),
+        )
 
     def test_tenant_nin_lga_is_validated_only_when_present(self):
         from core.dikript_verification import validate_nin_payload as validate_dikript_nin_payload
@@ -3277,8 +3488,8 @@ class VerificationRequestViewSetTests(TestCase):
         self.assertFalse(BvnVerificationRecord.objects.filter(provider="prembly", bvn="22347235093").exists())
 
     @patch("core.dikript_verification.dikript_lookup")
-    def test_tenant_profile_submission_verifies_nin_only(self, dikript_lookup_mock):
-        dikript_lookup_mock.return_value = self._nin_payload()
+    def test_tenant_profile_submission_verifies_nin_and_bvn(self, dikript_lookup_mock):
+        dikript_lookup_mock.side_effect = [self._nin_payload(), self._bvn_payload()]
         user = AppUser.objects.create_user(
             email="tenant-dikript@example.com",
             password="password-123",
@@ -3287,6 +3498,7 @@ class VerificationRequestViewSetTests(TestCase):
             email_verified=True,
             mobile="09080350066",
         )
+        self._pay_identity_verification(user, ServicePayment.Purpose.TENANT_VERIFICATION)
         client = APIClient()
         client.force_authenticate(user=user)
 
@@ -3294,6 +3506,7 @@ class VerificationRequestViewSetTests(TestCase):
             "/api/v1/users/me/tenant-profile",
             {
                 "nin_number": "12345678901",
+                "bvn_number": "22347235093",
                 "first_name": "Christian",
                 "middle_name": "Odezi",
                 "last_name": "Aluya",
@@ -3310,11 +3523,12 @@ class VerificationRequestViewSetTests(TestCase):
         self.assertEqual(response.status_code, 201, response.json())
         user.refresh_from_db()
         self.assertEqual(user.nin_number, "12345678901")
+        self.assertEqual(user.bvn_number, "22347235093")
         self.assertEqual(user.tenant_verification_profile["first_name"], "Christian")
         self.assertEqual(user.tenant_verification_profile["date_of_birth"], "1977-02-06")
         self.assertEqual(user.tenant_verification_profile["nin_number"], "12345678901")
-        self.assertNotIn("bvn_number", user.tenant_verification_profile)
-        self.assertEqual(dikript_lookup_mock.call_count, 1)
+        self.assertEqual(user.tenant_verification_profile["bvn_number"], "22347235093")
+        self.assertEqual(dikript_lookup_mock.call_count, 2)
         request = VerificationRequest.objects.get(user=user, role=user.role)
         profile = TenantProfile.objects.get(user=user)
         self.assertEqual(profile.status, TenantProfile.Status.APPROVED)
@@ -3337,6 +3551,7 @@ class VerificationRequestViewSetTests(TestCase):
             email_verified=True,
             mobile="09080350066",
         )
+        self._pay_identity_verification(user, ServicePayment.Purpose.TENANT_VERIFICATION)
         client = APIClient()
         client.force_authenticate(user=user)
         payload = self._complete_tenant_profile_payload()
@@ -3369,6 +3584,7 @@ class VerificationRequestViewSetTests(TestCase):
             email_verified=True,
             mobile="09080350066",
         )
+        self._pay_identity_verification(user, ServicePayment.Purpose.TENANT_VERIFICATION)
         client = APIClient()
         client.force_authenticate(user=user)
         payload = self._complete_tenant_profile_payload()
@@ -3388,7 +3604,7 @@ class VerificationRequestViewSetTests(TestCase):
     @override_settings(VERIFICATION_SERVICE="prembly")
     @patch("core.prembly_verification.prembly_lookup")
     def test_tenant_profile_submission_can_use_prembly_verification(self, prembly_lookup_mock):
-        prembly_lookup_mock.return_value = self._prembly_nin_payload()
+        prembly_lookup_mock.side_effect = [self._prembly_nin_payload(), self._prembly_bvn_payload()]
         user = AppUser.objects.create_user(
             email="tenant-prembly@example.com",
             password="password-123",
@@ -3397,6 +3613,7 @@ class VerificationRequestViewSetTests(TestCase):
             email_verified=True,
             mobile="09080350066",
         )
+        self._pay_identity_verification(user, ServicePayment.Purpose.TENANT_VERIFICATION)
         client = APIClient()
         client.force_authenticate(user=user)
 
@@ -3404,6 +3621,7 @@ class VerificationRequestViewSetTests(TestCase):
             "/api/v1/users/me/tenant-profile",
             {
                 "nin_number": "91231161558",
+                "bvn_number": "22347235093",
                 "first_name": "Christian",
                 "middle_name": "Odezi",
                 "last_name": "Aluya",
@@ -3418,8 +3636,8 @@ class VerificationRequestViewSetTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 201, response.json())
-        self.assertEqual(prembly_lookup_mock.call_count, 1)
-        self.assertEqual(prembly_lookup_mock.call_args.kwargs["body"], {"number_nin": "91231161558"})
+        self.assertEqual(prembly_lookup_mock.call_count, 2)
+        self.assertEqual(prembly_lookup_mock.call_args_list[0].kwargs["body"], {"number_nin": "91231161558"})
 
     @patch("core.dikript_verification.dikript_lookup")
     def test_tenant_identification_request_is_automated_without_manual_review(self, dikript_lookup_mock):
@@ -3445,6 +3663,7 @@ class VerificationRequestViewSetTests(TestCase):
                 "bvn_number": "22347235093",
             },
         )
+        self._pay_identity_verification(user, ServicePayment.Purpose.TENANT_VERIFICATION)
         client = APIClient()
         client.force_authenticate(user=user)
 
@@ -3519,8 +3738,8 @@ class VerificationRequestViewSetTests(TestCase):
         self.assertFalse(dikript_lookup_mock.called)
 
     @patch("core.dikript_verification.dikript_lookup")
-    def test_tenant_profile_submission_uses_only_nin(self, dikript_lookup_mock):
-        dikript_lookup_mock.return_value = self._nin_payload()
+    def test_tenant_profile_submission_validates_bvn_fields(self, dikript_lookup_mock):
+        dikript_lookup_mock.side_effect = [self._nin_payload(), self._bvn_payload()]
         user = AppUser.objects.create_user(
             email="tenant-dikript-fail@example.com",
             password="password-123",
@@ -3529,6 +3748,7 @@ class VerificationRequestViewSetTests(TestCase):
             email_verified=True,
             mobile="09080350066",
         )
+        self._pay_identity_verification(user, ServicePayment.Purpose.TENANT_VERIFICATION)
         client = APIClient()
         client.force_authenticate(user=user)
 
@@ -3550,9 +3770,208 @@ class VerificationRequestViewSetTests(TestCase):
             format="json",
         )
 
+        self.assertEqual(response.status_code, 400, response.json())
+        self.assertIn("lga", response.json())
+        self.assertEqual(dikript_lookup_mock.call_count, 2)
+
+    @patch("core.dikript_verification.dikript_lookup")
+    def test_tenant_profile_submission_requires_payment(self, dikript_lookup_mock):
+        user = AppUser.objects.create_user(
+            email="tenant-unpaid@example.com",
+            password="password-123",
+            name="Tenant Unpaid",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+            mobile="09080350066",
+        )
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        response = client.post(
+            "/api/v1/users/me/tenant-profile",
+            self._complete_tenant_profile_payload(),
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400, response.json())
+        self.assertIn("payment_required", response.json())
+        self.assertFalse(dikript_lookup_mock.called)
+        profile = TenantProfile.objects.get(user=user)
+        self.assertEqual(profile.status, TenantProfile.Status.REJECTED)
+        user.refresh_from_db()
+        self.assertEqual(user.tenant_verification_attempts, 0)
+
+    @patch("core.dikript_verification.dikript_lookup")
+    def test_tenant_identity_payment_covers_three_attempts(self, dikript_lookup_mock):
+        dikript_lookup_mock.side_effect = lambda **kwargs: (
+            self._nin_payload() if kwargs["verification_type"] == "nin" else self._bvn_payload()
+        )
+        user = AppUser.objects.create_user(
+            email="tenant-attempts@example.com",
+            password="password-123",
+            name="Tenant Attempts",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+            mobile="09080350066",
+        )
+        self._pay_identity_verification(user, ServicePayment.Purpose.TENANT_VERIFICATION)
+        client = APIClient()
+        client.force_authenticate(user=user)
+        payload = self._complete_tenant_profile_payload()
+        payload["lga"] = "Wrong LGA"
+
+        for _ in range(3):
+            response = client.post("/api/v1/users/me/tenant-profile", payload, format="json")
+            self.assertEqual(response.status_code, 400, response.json())
+            self.assertIn("lga", response.json())
+
+        user.refresh_from_db()
+        self.assertEqual(user.tenant_verification_attempts, 3)
+        self.assertEqual(dikript_lookup_mock.call_count, 6)
+
+        exhausted = client.post("/api/v1/users/me/tenant-profile", payload, format="json")
+        self.assertEqual(exhausted.status_code, 400, exhausted.json())
+        self.assertIn("payment_required", exhausted.json())
+        self.assertEqual(dikript_lookup_mock.call_count, 6)
+
+        self._pay_identity_verification(user, ServicePayment.Purpose.TENANT_VERIFICATION)
+        payload["lga"] = "Isoko North"
+        response = client.post("/api/v1/users/me/tenant-profile", payload, format="json")
+        self.assertIn(response.status_code, (200, 201), response.json())
+
+    @patch("core.dikript_verification.dikript_lookup")
+    def test_landlord_identification_requires_payment(self, dikript_lookup_mock):
+        user = AppUser.objects.create_user(
+            email="landlord-unpaid@example.com",
+            password="password-123",
+            name="Landlord Unpaid",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+            mobile="09080350066",
+            landlord_verification_type=AppUser.LandlordVerificationType.INDIVIDUAL,
+            landlord_verification_profile={
+                "first_name": "Christian",
+                "last_name": "Aluya",
+                "date_of_birth": "1977-02-06",
+                "nin": "12345678901",
+                "bvn": "22347235093",
+            },
+        )
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        response = client.post(
+            "/api/v1/landlord-verification-requests/submit",
+            {"document_ids": [], "request_type": "identification"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400, response.json())
+        self.assertIn("payment_required", response.json())
+        self.assertFalse(dikript_lookup_mock.called)
+
+    @patch("core.dikript_verification.dikript_lookup")
+    def test_verified_landlord_activating_tenant_needs_no_payment(self, dikript_lookup_mock):
+        user = AppUser.objects.create_user(
+            email="landlord-turned-tenant@example.com",
+            password="password-123",
+            name="Landlord Turned Tenant",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+            mobile="09080350066",
+            nin_number="12345678901",
+            bvn_number="22347235093",
+            landlord_verification_type=AppUser.LandlordVerificationType.INDIVIDUAL,
+            landlord_verification_profile={
+                "first_name": "Christian",
+                "middle_name": "Odezi",
+                "last_name": "Aluya",
+                "date_of_birth": "1977-02-06",
+                "gender": "Male",
+                "nationality": "Nigerian",
+                "state_of_origin": "Delta",
+                "lga_of_origin": "Isoko North",
+                "contact_number": "09080350066",
+                "nin": "12345678901",
+                "bvn": "22347235093",
+            },
+        )
+        VerificationRequest.objects.create(
+            user=user,
+            role=AppUser.Role.LANDLORD,
+            request_type=VerificationRequest.RequestType.IDENTIFICATION,
+            status=VerificationRequest.Status.APPROVED,
+            identity_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
+            verification_method=VerificationRequest.Method.AUTOMATED,
+        )
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        response = client.post("/api/v1/users/me/roles", {"role": "tenant"}, format="json")
+
+        self.assertIn(response.status_code, (200, 201), response.json())
+        self.assertFalse(dikript_lookup_mock.called)
+        user.refresh_from_db()
+        self.assertTrue(user.is_verified_for_role(AppUser.Role.TENANT))
+        self.assertEqual(user.tenant_verification_attempts, 0)
+        self.assertFalse(
+            ServicePayment.objects.filter(user=user, purpose=ServicePayment.Purpose.TENANT_VERIFICATION).exists()
+        )
+        self.assertEqual(
+            user.tenant_verification_profile.get("nin_number"), "12345678901"
+        )
+        self.assertEqual(
+            user.tenant_verification_profile.get("bvn_number"), "22347235093"
+        )
+
+    def test_service_payment_request_creates_tenant_verification_payment(self):
+        user = AppUser.objects.create_user(
+            email="tenant-pay-request@example.com",
+            password="password-123",
+            name="Tenant Pay Request",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        response = client.post(
+            "/api/v1/service-payments/request",
+            {"purpose": "tenant_verification"},
+            format="json",
+        )
+
         self.assertEqual(response.status_code, 201, response.json())
-        self.assertEqual(dikript_lookup_mock.call_count, 1)
-        self.assertTrue(TenantProfile.objects.filter(user=user).exists())
+        self.assertEqual(response.json()["amount"], "500.00")
+        self.assertEqual(response.json()["purpose"], "tenant_verification")
+        self.assertEqual(response.json()["return_path"], "/verify")
+
+        repeat = client.post(
+            "/api/v1/service-payments/request",
+            {"purpose": "tenant_verification"},
+            format="json",
+        )
+        self.assertEqual(repeat.status_code, 200)
+        self.assertEqual(repeat.json()["id"], response.json()["id"])
+
+    def test_service_payment_request_tenant_rejects_other_roles(self):
+        user = AppUser.objects.create_user(
+            email="landlord-pay-request@example.com",
+            password="password-123",
+            name="Landlord Pay Request",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+        )
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        response = client.post(
+            "/api/v1/service-payments/request",
+            {"purpose": "tenant_verification"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 403)
 
     @patch("core.dikript_verification.dikript_lookup")
     def test_landlord_individual_identification_verifies_nin_and_bvn(self, dikript_lookup_mock):
@@ -3583,6 +4002,7 @@ class VerificationRequestViewSetTests(TestCase):
                 "residential_address": "10 Marina Road",
             },
         )
+        self._pay_identity_verification(user, ServicePayment.Purpose.LANDLORD_VERIFICATION)
         client = APIClient()
         client.force_authenticate(user=user)
 
@@ -3602,6 +4022,67 @@ class VerificationRequestViewSetTests(TestCase):
         self.assertEqual(request.identity_verification_status, VerificationRequest.VerificationProgressStatus.VERIFIED)
         self.assertEqual(request.verification_method, VerificationRequest.Method.AUTOMATED)
         self.assertIsNotNone(request.reviewed_at)
+
+    @patch("core.views.verify_nin_and_bvn")
+    def test_landlord_submit_reuses_agent_verified_identity(self, verify_mock):
+        user = AppUser.objects.create_user(
+            email="landlord-reuse-agent@example.com",
+            password="password-123",
+            name="Landlord Reuse Agent",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+            mobile="09080350066",
+            landlord_verification_type=AppUser.LandlordVerificationType.INDIVIDUAL,
+            landlord_verification_profile={
+                "first_name": "Christian",
+                "middle_name": "Odezi",
+                "last_name": "Aluya",
+                "date_of_birth": "1977-02-06",
+                "country_of_birth": "Nigeria",
+                "state_of_birth": "Delta",
+                "gender": "Male",
+                "nationality": "Nigerian",
+                "state_of_origin": "Delta",
+                "lga_of_origin": "Isoko North",
+                "contact_number": "09080350066",
+                "email": "landlord-reuse-agent@example.com",
+                "nin": "12345678901",
+                "bvn": "22347235093",
+                "residential_address": "10 Marina Road",
+            },
+        )
+        AgentProfile.objects.create(
+            user=user,
+            first_name="Christian",
+            middle_name="Odezi",
+            last_name="Aluya",
+            date_of_birth="1977-02-06",
+            gender="Male",
+            nationality="Nigerian",
+            state_of_origin="Delta",
+            lga_of_origin="Isoko North",
+            mobile="09080350066",
+            nin_number="12345678901",
+            bvn_number="22347235093",
+            verification_status=AgentProfile.VerificationStatus.VERIFIED,
+        )
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        response = client.post(
+            "/api/v1/landlord-verification-requests/submit",
+            {"document_ids": [], "request_type": "identification"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.json())
+        self.assertFalse(verify_mock.called)
+        request = VerificationRequest.objects.get(user=user, role=user.role)
+        self.assertEqual(request.status, VerificationRequest.Status.APPROVED)
+        self.assertEqual(request.identity_verification_status, VerificationRequest.VerificationProgressStatus.VERIFIED)
+        user.refresh_from_db()
+        self.assertEqual(user.nin_number, "12345678901")
+        self.assertEqual(user.bvn_number, "22347235093")
 
     @patch("core.dikript_verification.dikript_lookup")
     def test_landlord_identification_ignores_bvn_phone_when_nin_phone_matches(self, dikript_lookup_mock):
@@ -3631,6 +4112,7 @@ class VerificationRequestViewSetTests(TestCase):
                 "bvn": "22347235093",
             },
         )
+        self._pay_identity_verification(user, ServicePayment.Purpose.LANDLORD_VERIFICATION)
         client = APIClient()
         client.force_authenticate(user=user)
 
@@ -3672,6 +4154,7 @@ class VerificationRequestViewSetTests(TestCase):
                 "bvn": "22347235093",
             },
         )
+        self._pay_identity_verification(user, ServicePayment.Purpose.LANDLORD_VERIFICATION)
         client = APIClient()
         client.force_authenticate(user=user)
 
@@ -3713,6 +4196,7 @@ class VerificationRequestViewSetTests(TestCase):
                 "bvn": "22347235093",
             },
         )
+        self._pay_identity_verification(user, ServicePayment.Purpose.LANDLORD_VERIFICATION)
         client = APIClient()
         client.force_authenticate(user=user)
 
@@ -3753,6 +4237,7 @@ class VerificationRequestViewSetTests(TestCase):
                 "bvn": "22347235093",
             },
         )
+        self._pay_identity_verification(user, ServicePayment.Purpose.LANDLORD_VERIFICATION)
         client = APIClient()
         client.force_authenticate(user=user)
 
@@ -3798,6 +4283,7 @@ class VerificationRequestViewSetTests(TestCase):
                 "account_number": "9041487757",
             },
         )
+        self._pay_identity_verification(user, ServicePayment.Purpose.LANDLORD_VERIFICATION)
         client = APIClient()
         client.force_authenticate(user=user)
 
@@ -3835,6 +4321,7 @@ class VerificationRequestViewSetTests(TestCase):
                 "email_address": "info@summitrockholdings.com",
             },
         )
+        self._pay_identity_verification(user, ServicePayment.Purpose.LANDLORD_VERIFICATION)
         client = APIClient()
         client.force_authenticate(user=user)
 
@@ -10786,6 +11273,82 @@ class AgentFeatureTests(TestCase):
         self.assertEqual(profile.nin_number, "12345678901")
         self.assertEqual(profile.account_number, "0123456789")
         self.assertEqual(profile.bank_name, "Test Bank")
+
+    @patch("core.views.verify_nin_and_bvn")
+    def test_verify_reuses_landlord_verified_identity_without_provider_call(self, verify_mock):
+        self.agent.landlord_verification_type = AppUser.LandlordVerificationType.INDIVIDUAL
+        self.agent.landlord_verification_profile = {
+            "first_name": "Inspection",
+            "last_name": "Agent",
+            "date_of_birth": "1992-04-10",
+            "gender": "male",
+            "country_of_birth": "Nigeria",
+            "nationality": "Nigeria",
+            "state_of_origin": "Lagos",
+            "lga_of_origin": "Ikeja",
+            "contact_number": "08012345678",
+            "email": self.agent.email,
+            "nin": "12345678901",
+            "bvn": "10987654321",
+            "residential_address": "3 Agent Street, Lagos",
+        }
+        self.agent.save(update_fields=["landlord_verification_type", "landlord_verification_profile"])
+        VerificationRequest.objects.create(
+            user=self.agent,
+            role=AppUser.Role.LANDLORD,
+            request_type=VerificationRequest.RequestType.IDENTIFICATION,
+            status=VerificationRequest.Status.APPROVED,
+            identity_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
+            verification_method=VerificationRequest.Method.AUTOMATED,
+        )
+        self._complete_agent_profile()
+        self._complete_verification_payment()
+        self.client.force_authenticate(user=self.agent)
+
+        response = self.client.post("/api/v1/agents/verify", {}, format="json")
+
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertEqual(response.json()["verification_status"], "verified")
+        self.assertFalse(verify_mock.called)
+        profile = AgentProfile.objects.get(user=self.agent)
+        self.assertEqual(profile.verification_status, AgentProfile.VerificationStatus.VERIFIED)
+
+    @patch("core.views.verify_nin_and_bvn")
+    def test_verify_calls_provider_when_credentials_differ_from_verified_persona(self, verify_mock):
+        verify_mock.return_value = {"nin": {"status": "verified"}, "bvn": {"status": "verified"}}
+        self.agent.landlord_verification_type = AppUser.LandlordVerificationType.INDIVIDUAL
+        self.agent.landlord_verification_profile = {
+            "first_name": "Inspection",
+            "last_name": "Agent",
+            "date_of_birth": "1992-04-10",
+            "gender": "male",
+            "country_of_birth": "Nigeria",
+            "nationality": "Nigeria",
+            "state_of_origin": "Lagos",
+            "lga_of_origin": "Ikeja",
+            "contact_number": "08012345678",
+            "email": self.agent.email,
+            "nin": "99999999999",
+            "bvn": "99999999999",
+            "residential_address": "3 Agent Street, Lagos",
+        }
+        self.agent.save(update_fields=["landlord_verification_type", "landlord_verification_profile"])
+        VerificationRequest.objects.create(
+            user=self.agent,
+            role=AppUser.Role.LANDLORD,
+            request_type=VerificationRequest.RequestType.IDENTIFICATION,
+            status=VerificationRequest.Status.APPROVED,
+            identity_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
+            verification_method=VerificationRequest.Method.AUTOMATED,
+        )
+        self._complete_agent_profile()
+        self._complete_verification_payment()
+        self.client.force_authenticate(user=self.agent)
+
+        response = self.client.post("/api/v1/agents/verify", {}, format="json")
+
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertTrue(verify_mock.called)
 
     def test_unverified_agent_cannot_claim_pending_listing(self):
         self.client.force_authenticate(user=self.agent)

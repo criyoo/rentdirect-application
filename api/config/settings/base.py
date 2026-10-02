@@ -6,6 +6,7 @@ from pathlib import Path
 from urllib.parse import quote_plus
 
 import dj_database_url
+from corsheaders.defaults import default_headers
 
 from core.financial_constants import DEFAULT_SUBSCRIPTION_VAT_RATE_PERCENT
 
@@ -282,6 +283,7 @@ CORS_ALLOWED_ORIGINS = env_list(
     "http://localhost:3600,http://localhost:3000,https://development.rentdirect.homes,https://rentdirect.homes,https://www.rentdirect.homes",
 )
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_HEADERS = list(default_headers) + ["x-rentdirect-role"]
 CSRF_TRUSTED_ORIGINS = env_list(
     "CSRF_TRUSTED_ORIGINS",
     "http://localhost:3600,http://localhost:3000,https://development.rentdirect.homes,https://rentdirect.homes,https://www.rentdirect.homes",

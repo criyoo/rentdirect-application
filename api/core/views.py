@@ -115,7 +115,9 @@ from .financial_constants import (
     FEATURED_PROPERTY_MONTHLY_DURATION_DAYS,
     FEATURED_PROPERTY_MONTHLY_FEE,
     AGENT_VERIFICATION_FEE,
-    AGENT_VERIFICATION_ATTEMPTS_PER_PAYMENT,
+    IDENTITY_VERIFICATION_ATTEMPTS_PER_PAYMENT,
+    LANDLORD_VERIFICATION_FEE,
+    TENANT_VERIFICATION_FEE,
     IN_PERSON_VERIFICATION_FEE,
     LAWYER_SERVICE_FEE_RATE,
     LISTING_DEPOSIT_RATE,
@@ -151,9 +153,16 @@ from .roles import (
     apply_active_role,
     available_roles,
     has_active_role,
+    identity_credentials_verified,
+    identity_verification_attempts_used,
+    identity_verification_payment_required,
+    prefill_role_identity,
     record_role_event,
+    require_identity_verification_payment,
     role_bound_user,
+    track_identity_verification_attempt,
     users_with_role,
+    verified_identity_matches,
 )
 
 AllowAny = AllowAnyUnlessFrozen
@@ -317,7 +326,7 @@ def extract_mobile_verification_warning(value: Any) -> str:
     return ""
 
 
-def verify_tenant_identity_or_raise(user, profile_data: dict, nin_number: str) -> dict:
+def verify_tenant_identity_or_raise(user, profile_data: dict, nin_number: str, bvn_number: str) -> dict:
     identity_data = {
         "first_name": profile_data.get("first_name"),
         "middle_name": profile_data.get("middle_name"),
@@ -327,48 +336,57 @@ def verify_tenant_identity_or_raise(user, profile_data: dict, nin_number: str) -
         "nationality": profile_data.get("nationality"),
         "state_of_origin": profile_data.get("state_of_origin"),
         "lga": profile_data.get("lga"),
-        "mobile": getattr(user, "mobile", ""),
+        "mobile": profile_data.get("mobile") or getattr(user, "mobile", ""),
     }
     if not nin_number:
         raise ValidationError({"nin_number": "NIN is required."})
-    return verify_nin(identity_data, nin_number)
+    if not bvn_number:
+        raise ValidationError({"bvn_number": "BVN is required."})
+    require_identity_verification_payment(user, AppUser.Role.TENANT)
+    track_identity_verification_attempt(user, AppUser.Role.TENANT)
+    nin_payload, bvn_payload = verify_nin_and_bvn(identity_data, nin_number, bvn_number)
+    return {"nin": nin_payload, "bvn": bvn_payload}
 
 
-def tenant_verified_identity_matches(user, profile_data: dict, nin_number: str) -> bool:
-    if not VerificationRequest.objects.filter(
-        user=user,
-        role=AppUser.Role.TENANT,
-        identity_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
-    ).exists():
-        return False
-
-    stored_profile = normalize_tenant_verification_profile(user.tenant_verification_profile, user)
-    if not stored_profile:
-        return False
-
+def tenant_verified_identity_matches(user, profile_data: dict, nin_number: str, bvn_number: str = "") -> bool:
     submitted_profile = normalize_tenant_verification_profile(
         {
             **profile_data,
             "nin_number": nin_number,
+            "bvn_number": bvn_number,
         },
         user,
     )
-    identity_fields = (
-        "first_name",
-        "middle_name",
-        "last_name",
-        "date_of_birth",
-        "gender",
-        "nationality",
-        "state_of_origin",
-        "lga",
-        "mobile",
-        "nin_number",
-    )
-    return all(
-        str(stored_profile.get(field_name) or "").strip().lower()
-        == str(submitted_profile.get(field_name) or "").strip().lower()
-        for field_name in identity_fields
+    if VerificationRequest.objects.filter(
+        user=user,
+        role=AppUser.Role.TENANT,
+        identity_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
+    ).exists():
+        stored_profile = normalize_tenant_verification_profile(user.tenant_verification_profile, user)
+        if stored_profile:
+            identity_fields = (
+                "first_name",
+                "middle_name",
+                "last_name",
+                "date_of_birth",
+                "gender",
+                "nationality",
+                "state_of_origin",
+                "lga",
+                "mobile",
+                "nin_number",
+                "bvn_number",
+            )
+            if all(
+                str(stored_profile.get(field_name) or "").strip().lower()
+                == str(submitted_profile.get(field_name) or "").strip().lower()
+                for field_name in identity_fields
+            ):
+                return True
+    # The same credentials may already be verified under another persona
+    # (e.g. a verified landlord or PIO activating the tenant role).
+    return verified_identity_matches(
+        user, submitted_profile, credential_fields=("nin_number", "bvn_number")
     )
 
 
@@ -393,12 +411,22 @@ def verify_landlord_identity_or_raise(user) -> dict[str, dict]:
             raise ValidationError({"nin": "NIN is required."})
         if not bvn_number:
             raise ValidationError({"bvn": "BVN is required."})
-        verification_payloads = verify_nin_and_bvn(identity_data, nin_number, bvn_number)
-        nin_payload, bvn_payload = verification_payloads
-        payloads = {
-            "nin": nin_payload,
-            "bvn": bvn_payload,
+        submitted_identity = {
+            **identity_data,
+            "nin_number": nin_number,
+            "bvn_number": bvn_number,
         }
+        if verified_identity_matches(user, submitted_identity, credential_fields=("nin_number", "bvn_number")):
+            # Same credentials already verified under another persona.
+            payloads = {"nin": {}, "bvn": {}}
+        else:
+            require_identity_verification_payment(user, AppUser.Role.LANDLORD)
+            track_identity_verification_attempt(user, AppUser.Role.LANDLORD)
+            nin_payload, bvn_payload = verify_nin_and_bvn(identity_data, nin_number, bvn_number)
+            payloads = {
+                "nin": nin_payload,
+                "bvn": bvn_payload,
+            }
         user.nin_number = nin_number
         user.bvn_number = bvn_number
         user.save(update_fields=["nin_number", "bvn_number", "updated_at"])
@@ -407,6 +435,8 @@ def verify_landlord_identity_or_raise(user) -> dict[str, dict]:
         registration_number = str(profile.get("cac_registration_number") or "").strip()
         if not registration_number:
             raise ValidationError({"cac_registration_number": "CAC registration number is required."})
+        require_identity_verification_payment(user, AppUser.Role.LANDLORD)
+        track_identity_verification_attempt(user, AppUser.Role.LANDLORD)
         return {"cac": verify_cac(profile, registration_number)}
     return {}
 
@@ -1036,11 +1066,11 @@ def lawyer_service_fee_for_booking(booking: Booking) -> Decimal:
 
 def build_service_checkout(payment: ServicePayment) -> dict:
     user = payment.user
-    purpose_label = (
-        "Property Inspection Officer Identity Verification"
-        if payment.purpose == ServicePayment.Purpose.AGENT_VERIFICATION
-        else "Lawyer-prepared Tenancy Agreement"
-    )
+    purpose_label = {
+        ServicePayment.Purpose.AGENT_VERIFICATION: "Property Inspection Officer Identity Verification",
+        ServicePayment.Purpose.TENANT_VERIFICATION: "Tenant Identity Verification",
+        ServicePayment.Purpose.LANDLORD_VERIFICATION: "Landlord Identity Verification",
+    }.get(payment.purpose, "Lawyer-prepared Tenancy Agreement")
     metadata = {
         "service_payment_id": str(payment.id),
         "purpose": payment.purpose,
@@ -3525,6 +3555,35 @@ def ensure_supported_subscription_role(user: AppUser) -> None:
         raise PermissionDenied("Subscriptions are available only to tenants and landlords.")
 
 
+def _activate_role_after_credentials(user, role: str, request=None, referral_code: str = "") -> bool:
+    """Activate a customer persona once credentials are verified.
+
+    Password and Google sign-in prove control of the identity, so a requested
+    customer role that has no membership yet is activated here instead of
+    dead-ending the sign-in. ``activate_customer_role`` still rejects admin
+    accounts and suspended memberships. Returns True when a membership was
+    newly activated.
+    """
+    role = str(role or "").strip().lower()
+    if role not in CUSTOMER_ROLES or has_active_role(user, role):
+        return False
+    _membership, activated = activate_customer_role(user, role)
+    if not activated:
+        return False
+    if role == AppUser.Role.AGENT:
+        agent_profile, _ = AgentProfile.objects.get_or_create(
+            user=user,
+            defaults={"first_name": "", "last_name": ""},
+        )
+        referrer = resolve_referrer(referral_code) if referral_code else None
+        if referrer and referrer.id != user.id and agent_profile.referred_by_id is None:
+            agent_profile.referred_by = referrer
+            agent_profile.save(update_fields=["referred_by", "updated_at"])
+    prefill_role_identity(user, role)
+    record_role_event(user, role, RoleAuditEvent.Event.ACTIVATED, request)
+    return True
+
+
 @method_decorator(production_ratelimit(key="ip", rate="10/m", method="POST", block=True), name="register")
 @method_decorator(production_ratelimit(key="ip", rate="10/m", method="POST", block=True), name="verify_registration")
 @method_decorator(production_ratelimit(key="ip", rate="10/m", method="POST", block=True), name="login")
@@ -3600,17 +3659,18 @@ class AuthViewSet(viewsets.ViewSet):
 
         with transaction.atomic():
             if user is None:
-                user = User(email=email)
+                user = User(email=email, role=pending.role)
+            # An existing (unverified) identity keeps its default role; the
+            # pending registration's role is added as a separate membership.
             user.name = pending.name
-            user.role = pending.role
             user.password = pending.password_hash
             user.email_verified = True
             user.registration_otp_hash = ""
             user.registration_otp_expires_at = None
             user.registration_otp_attempts = 0
             user.save()
-            activate_customer_role(user, user.role)
-            if user.role == AppUser.Role.AGENT:
+            activate_customer_role(user, pending.role)
+            if pending.role == AppUser.Role.AGENT:
                 agent_profile, _ = AgentProfile.objects.get_or_create(
                     user=user,
                     defaults={"first_name": "", "last_name": ""},
@@ -3621,8 +3681,9 @@ class AuthViewSet(viewsets.ViewSet):
                     agent_profile.save(update_fields=["referred_by", "updated_at"])
             pending.delete()
 
-        record_role_event(user, user.role, RoleAuditEvent.Event.ACTIVATED, request)
-        user.active_role = user.role
+        prefill_role_identity(user, pending.role)
+        record_role_event(user, pending.role, RoleAuditEvent.Event.ACTIVATED, request)
+        apply_active_role(user, pending.role)
         response = Response(UserSerializer(user, context={"request": request}).data)
         set_auth_cookies(response, user)
         return response
@@ -3656,7 +3717,13 @@ class AuthViewSet(viewsets.ViewSet):
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data["user"]
-        response = Response(UserSerializer(user, context={"request": request}).data)
+        requested_role = str(serializer.validated_data.get("role") or "").strip().lower()
+        role_activated = _activate_role_after_credentials(user, requested_role, request)
+        apply_active_role(user, requested_role or None)
+        payload = UserSerializer(user, context={"request": request}).data
+        if role_activated:
+            payload["role_activated"] = True
+        response = Response(payload)
         set_auth_cookies(response, user)
         return response
 
@@ -3731,6 +3798,7 @@ class AuthViewSet(viewsets.ViewSet):
 
         user = User.objects.filter(email=email).first()
         created = False
+        role_activated = False
         if user is None:
             requested_role = str(request.data.get("role") or "").strip().lower()
             role = requested_role if requested_role in {
@@ -3755,8 +3823,8 @@ class AuthViewSet(viewsets.ViewSet):
             PendingRegistration.objects.filter(email=email).delete()
         else:
             # Existing accounts keep their registered roles; a verified Google
-            # identity is sufficient proof of email ownership. A requested role
-            # must already be an active membership — it is never auto-activated.
+            # identity is sufficient proof of email ownership, so a requested
+            # customer role is activated for the identity like a password login.
             PendingRegistration.objects.filter(email=email).delete()
             if not user.email_verified:
                 user.email_verified = True
@@ -3772,10 +3840,19 @@ class AuthViewSet(viewsets.ViewSet):
                         "updated_at",
                     ]
                 )
-            apply_active_role(user, request.data.get("role"))
+            requested_role = str(request.data.get("role") or "").strip().lower()
+            role_activated = _activate_role_after_credentials(
+                user,
+                requested_role,
+                request,
+                str(request.data.get("referral_code") or ""),
+            )
+            apply_active_role(user, requested_role or None)
 
         payload = UserSerializer(user, context={"request": request}).data
         payload["is_new_user"] = created
+        if role_activated:
+            payload["role_activated"] = True
         response = Response(payload)
         set_auth_cookies(response, user)
         return response
@@ -3828,6 +3905,8 @@ class UserViewSet(viewsets.GenericViewSet):
             serializer = self.get_serializer(request.user, data=request.data, partial=True)
             serializer.is_valid(raise_exception=True)
             serializer.save()
+        else:
+            prefill_role_identity(request.user, request.user.role)
         return Response(self.get_serializer(request.user).data)
 
     @action(detail=False, methods=["post"], url_path="me/photo")
@@ -4161,6 +4240,7 @@ class UserViewSet(viewsets.GenericViewSet):
                 agent_profile.referred_by = referrer
                 agent_profile.save(update_fields=["referred_by", "updated_at"])
 
+        prefill_role_identity(user, role)
         apply_active_role(user, role)
         if activated:
             record_role_event(user, role, RoleAuditEvent.Event.ACTIVATED, request)
@@ -4202,7 +4282,7 @@ class UserViewSet(viewsets.GenericViewSet):
 
         data = request.data.copy()
         nin_number = str(data.pop("nin_number", request.user.nin_number) or "").strip()
-        data.pop("bvn_number", None)
+        bvn_number = str(data.pop("bvn_number", request.user.bvn_number) or "").strip()
         for verification_only_field in ("country_of_birth", "email", "mobile"):
             data.pop(verification_only_field, None)
         whatsapp_number = str(data.pop("whatsapp_number", "") or "").strip()
@@ -4214,8 +4294,8 @@ class UserViewSet(viewsets.GenericViewSet):
             serializer.is_valid(raise_exception=True)
             mobile_warning = ""
             try:
-                if not tenant_verified_identity_matches(request.user, serializer.validated_data, nin_number):
-                    verification_payloads = verify_tenant_identity_or_raise(request.user, serializer.validated_data, nin_number)
+                if not tenant_verified_identity_matches(request.user, serializer.validated_data, nin_number, bvn_number):
+                    verification_payloads = verify_tenant_identity_or_raise(request.user, serializer.validated_data, nin_number, bvn_number)
                     mobile_warning = extract_mobile_verification_warning(verification_payloads)
             except APIException:
                 rejected_profile = serializer.save(user=request.user)
@@ -4229,15 +4309,17 @@ class UserViewSet(viewsets.GenericViewSet):
                     "email": request.data.get("email") or request.user.email,
                     "mobile": request.data.get("mobile") or request.user.mobile,
                     "nin_number": nin_number,
+                    "bvn_number": bvn_number,
                 },
                 request.user,
             )
             with transaction.atomic():
                 request.user.nin_number = nin_number
+                request.user.bvn_number = bvn_number
                 request.user.tenant_verification_profile = verification_profile
                 if verification_profile.get("whatsapp_number"):
                     request.user.whatsapp_number = verification_profile["whatsapp_number"]
-                request.user.save(update_fields=["nin_number", "tenant_verification_profile", "whatsapp_number", "updated_at"])
+                request.user.save(update_fields=["nin_number", "bvn_number", "tenant_verification_profile", "whatsapp_number", "updated_at"])
                 new_profile = serializer.save(user=request.user)
             vr = sync_tenant_profile_approval(request.user, new_profile)
             if new_profile.supporting_documents.exists():
@@ -4265,8 +4347,8 @@ class UserViewSet(viewsets.GenericViewSet):
         }
         mobile_warning = ""
         try:
-            if not tenant_verified_identity_matches(request.user, merged_profile_data, nin_number):
-                verification_payloads = verify_tenant_identity_or_raise(request.user, merged_profile_data, nin_number)
+            if not tenant_verified_identity_matches(request.user, merged_profile_data, nin_number, bvn_number):
+                verification_payloads = verify_tenant_identity_or_raise(request.user, merged_profile_data, nin_number, bvn_number)
                 mobile_warning = extract_mobile_verification_warning(verification_payloads)
         except APIException:
             rejected_profile = serializer.save()
@@ -4280,15 +4362,17 @@ class UserViewSet(viewsets.GenericViewSet):
                 "email": request.data.get("email") or request.user.email,
                 "mobile": request.data.get("mobile") or request.user.mobile,
                 "nin_number": nin_number,
+                "bvn_number": bvn_number,
             },
             request.user,
         )
         with transaction.atomic():
             request.user.nin_number = nin_number
+            request.user.bvn_number = bvn_number
             request.user.tenant_verification_profile = verification_profile
             if verification_profile.get("whatsapp_number"):
                 request.user.whatsapp_number = verification_profile["whatsapp_number"]
-            request.user.save(update_fields=["nin_number", "tenant_verification_profile", "whatsapp_number", "updated_at"])
+            request.user.save(update_fields=["nin_number", "bvn_number", "tenant_verification_profile", "whatsapp_number", "updated_at"])
             updated_profile = serializer.save()
         vr = sync_tenant_profile_approval(request.user, updated_profile)
         if updated_profile.supporting_documents.exists():
@@ -5108,18 +5192,24 @@ class TenantVerificationRequestViewSet(VerificationRequestBaseViewSet):
                     request.user,
                 )
             nin_number = str(profile_data.get("nin_number") or request.user.nin_number or "").strip()
-            mobile_warning = extract_mobile_verification_warning(
-                verify_tenant_identity_or_raise(request.user, profile_data, nin_number)
-            )
+            bvn_number = str(profile_data.get("bvn_number") or request.user.bvn_number or "").strip()
+            if tenant_verified_identity_matches(request.user, profile_data, nin_number, bvn_number):
+                mobile_warning = ""
+            else:
+                mobile_warning = extract_mobile_verification_warning(
+                    verify_tenant_identity_or_raise(request.user, profile_data, nin_number, bvn_number)
+                )
             request.user.nin_number = nin_number
+            request.user.bvn_number = bvn_number
             request.user.tenant_verification_profile = normalize_tenant_verification_profile(
                 {
                     **profile_data,
                     "nin_number": nin_number,
+                    "bvn_number": bvn_number,
                 },
                 request.user,
             )
-            request.user.save(update_fields=["nin_number", "tenant_verification_profile", "updated_at"])
+            request.user.save(update_fields=["nin_number", "bvn_number", "tenant_verification_profile", "updated_at"])
             if profile and profile.status != TenantProfile.Status.APPROVED:
                 profile.status = TenantProfile.Status.APPROVED
                 profile.save(update_fields=["status", "updated_at"])
@@ -6975,14 +7065,37 @@ class ServicePaymentViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
 
             booking = None
             listing = None
-            if purpose == ServicePayment.Purpose.AGENT_VERIFICATION:
-                if user.role != AppUser.Role.AGENT:
-                    raise PermissionDenied("Only property inspection officers can request PIO verification payments.")
+            verification_roles = {
+                ServicePayment.Purpose.AGENT_VERIFICATION: (
+                    AppUser.Role.AGENT,
+                    "Only property inspection officers can request PIO verification payments.",
+                    AGENT_VERIFICATION_FEE,
+                ),
+                ServicePayment.Purpose.TENANT_VERIFICATION: (
+                    AppUser.Role.TENANT,
+                    "Only tenants can request tenant verification payments.",
+                    TENANT_VERIFICATION_FEE,
+                ),
+                ServicePayment.Purpose.LANDLORD_VERIFICATION: (
+                    AppUser.Role.LANDLORD,
+                    "Only landlords can request landlord verification payments.",
+                    LANDLORD_VERIFICATION_FEE,
+                ),
+            }
+            if purpose in verification_roles:
+                verification_role, denied_message, verification_fee = verification_roles[purpose]
+                if request.user.role != verification_role:
+                    raise PermissionDenied(denied_message)
                 if booking_id:
-                    raise ValidationError({"booking_id": "PIO verification is not linked to a booking."})
-                amount = quantize_money(AGENT_VERIFICATION_FEE)
+                    raise ValidationError({"booking_id": "Identity verification is not linked to a booking."})
+                if (
+                    request.user.is_verified_for_role(verification_role)
+                    or identity_credentials_verified(request.user, verification_role)
+                ):
+                    raise ValidationError("Your identity is already verified; no verification payment is required.")
+                amount = quantize_money(verification_fee)
             elif purpose == ServicePayment.Purpose.LAWYER_TENANCY:
-                if user.role != AppUser.Role.LANDLORD:
+                if request.user.role != AppUser.Role.LANDLORD:
                     raise PermissionDenied("Only landlords can request lawyer tenancy agreement payments.")
                 if not booking_id:
                     raise ValidationError({"booking_id": "A booking is required for a lawyer tenancy agreement."})
@@ -6996,7 +7109,7 @@ class ServicePaymentViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
                     raise ValidationError("A lawyer service cannot be requested for a cancelled booking.")
                 amount = lawyer_service_fee_for_booking(booking)
             elif purpose == ServicePayment.Purpose.IN_PERSON_VERIFICATION:
-                if user.role != AppUser.Role.LANDLORD:
+                if request.user.role != AppUser.Role.LANDLORD:
                     raise PermissionDenied("Only landlords can request in-person verification payments.")
                 if not listing_id:
                     raise ValidationError({"listing_id": "A listing is required for in-person verification."})
@@ -7019,13 +7132,13 @@ class ServicePaymentViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
             )
             completed = existing.filter(status=ServicePayment.Status.COMPLETED).first()
             if completed:
-                # A completed agent verification payment covers a fixed number of
-                # attempts. Once those are used, a new payment is required.
-                if purpose == ServicePayment.Purpose.AGENT_VERIFICATION:
+                # A completed identity verification payment covers a fixed
+                # number of attempts. Once those are used, a new payment is
+                # required.
+                if purpose in verification_roles:
                     completed_count = existing.filter(status=ServicePayment.Status.COMPLETED).count()
-                    agent_profile = AgentProfile.objects.filter(user=user).first()
-                    attempts_used = agent_profile.verification_attempts if agent_profile else 0
-                    if attempts_used < completed_count * AGENT_VERIFICATION_ATTEMPTS_PER_PAYMENT:
+                    attempts_used = identity_verification_attempts_used(user, verification_roles[purpose][0])
+                    if attempts_used < completed_count * IDENTITY_VERIFICATION_ATTEMPTS_PER_PAYMENT:
                         return Response(self.get_serializer(completed).data)
                 else:
                     return Response(self.get_serializer(completed).data)
@@ -7102,6 +7215,8 @@ class AgentViewSet(viewsets.ViewSet):
             user=user,
             defaults={"first_name": "", "last_name": ""},
         )
+        prefill_role_identity(user, AppUser.Role.AGENT)
+        profile.refresh_from_db()
         return profile
 
     @action(detail=False, methods=["get", "patch"], url_path="profile")
@@ -7157,18 +7272,6 @@ class AgentViewSet(viewsets.ViewSet):
                 {"profile": f"Complete your PIO profile before verification. Missing: {', '.join(missing)}."}
             )
 
-        # Each completed ₦500 payment covers AGENT_VERIFICATION_ATTEMPTS_PER_PAYMENT
-        # verification attempts. Attempts beyond that require a new payment.
-        completed_payments = ServicePayment.objects.filter(
-            user=request.user,
-            purpose=ServicePayment.Purpose.AGENT_VERIFICATION,
-            status=ServicePayment.Status.COMPLETED,
-        ).count()
-        if profile.verification_attempts >= completed_payments * AGENT_VERIFICATION_ATTEMPTS_PER_PAYMENT:
-            raise ValidationError(
-                "A ₦500 PIO verification payment is required before you can verify your identity."
-            )
-
         identity_data = {
             "first_name": profile.first_name,
             "middle_name": profile.middle_name,
@@ -7181,18 +7284,34 @@ class AgentViewSet(viewsets.ViewSet):
             "lga": profile.lga_of_origin,
             "mobile": profile.mobile,
         }
-        try:
-            verification_payloads = verify_nin_and_bvn(identity_data, profile.nin_number, profile.bvn_number)
-        except ValidationError:
-            profile.verification_attempts += 1
-            profile.save(update_fields=["verification_attempts", "updated_at"])
-            raise
+        submitted_identity = {
+            **identity_data,
+            "nin_number": profile.nin_number,
+            "bvn_number": profile.bvn_number,
+        }
+        if verified_identity_matches(
+            request.user, submitted_identity, credential_fields=("nin_number", "bvn_number")
+        ):
+            # Same credentials already verified under another persona — no
+            # provider call, no fee, and no paid attempt consumed.
+            verification_payloads = {}
+        else:
+            require_identity_verification_payment(request.user, AppUser.Role.AGENT)
+            try:
+                verification_payloads = verify_nin_and_bvn(identity_data, profile.nin_number, profile.bvn_number)
+            except ValidationError:
+                profile.verification_attempts += 1
+                profile.save(update_fields=["verification_attempts", "updated_at"])
+                raise
 
         verified_at = timezone.now()
-        profile.verification_attempts += 1
+        update_fields = ["verification_status", "verified_at", "updated_at"]
+        if verification_payloads:
+            profile.verification_attempts += 1
+            update_fields.insert(0, "verification_attempts")
         profile.verification_status = AgentProfile.VerificationStatus.VERIFIED
         profile.verified_at = verified_at
-        profile.save(update_fields=["verification_attempts", "verification_status", "verified_at", "updated_at"])
+        profile.save(update_fields=update_fields)
 
         verification, _ = VerificationRequest.objects.get_or_create(
             user=request.user,
