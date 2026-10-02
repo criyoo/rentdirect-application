@@ -102,19 +102,15 @@ import os
 
 command = (
     'cd /app && python manage.py shell -c "'
-    "from django.contrib.auth import get_user_model; import os; "
+    "from django.contrib.auth import get_user_model; from django.contrib.auth.hashers import make_password; import os; "
     "User = get_user_model(); "
     "email = os.environ['DJANGO_SUPERUSER_EMAIL']; "
     "password = os.environ['DJANGO_SUPERUSER_PASSWORD']; "
-    "user, created = User.objects.get_or_create(email=email, defaults={'role': 'admin'}); "
-    "user.role = 'admin'; "
-    "user.email_verified = True; "
-    "user.is_staff = True; "
-    "user.is_superuser = True; "
-    "user.is_active = True; "
-    "user.set_password(password); "
-    "user.save(); "
-    "print('Superuser ready: ' + email + (' (created)' if created else ' (updated)'))"
+    "user, created = User.objects.get_or_create("
+    "email=email, "
+    "defaults={'role': 'admin', 'email_verified': True, 'is_staff': True, 'is_superuser': True, 'is_active': True, 'password': make_password(password)}"
+    "); "
+    "print('Superuser ready: ' + email + (' (created)' if created else ' (already exists, skipped)'))"
     '"'
 )
 
@@ -284,7 +280,7 @@ subnet_csv="$(IFS=,; echo "${SUBNET_IDS[*]}")"
 network_configuration="awsvpcConfiguration={subnets=[${subnet_csv}],securityGroups=[${APP_SECURITY_GROUP_ID}],assignPublicIp=ENABLED}"
 overrides_json="$(build_overrides_json)"
 
-echo "Creating or updating ${ADMIN_EMAIL} with task definition ${TASK_DEFINITION_ARN}..."
+echo "Creating ${ADMIN_EMAIL} if missing with task definition ${TASK_DEFINITION_ARN}..."
 TASK_ARN="$(aws_with_auth ecs run-task \
   --region "${REGION}" \
   --cluster "${CLUSTER_NAME}" \

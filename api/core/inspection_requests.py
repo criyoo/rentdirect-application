@@ -32,14 +32,13 @@ def inspection_submission_deadline(inspection) -> object:
 
 
 def _eligible_agents():
-    from .models import AgentProfile, AppUser, ServicePayment
+    from .models import AgentProfile, AppUser
+    from .roles import active_membership_or_legacy_q
 
-    paid_agent_ids = ServicePayment.objects.filter(
-        purpose=ServicePayment.Purpose.AGENT_VERIFICATION,
-        status=ServicePayment.Status.COMPLETED,
-    ).values_list("user_id", flat=True)
+    # VERIFIED is the gate: it is only reached through paid provider
+    # verification or verified-identity reuse from another persona.
     return (
-        AppUser.objects.filter(role=AppUser.Role.AGENT, id__in=paid_agent_ids)
+        AppUser.objects.filter(active_membership_or_legacy_q(AppUser.Role.AGENT))
         .select_related("agent_profile")
         .exclude(agent_profile__isnull=True)
         .exclude(
@@ -50,13 +49,27 @@ def _eligible_agents():
                 AgentProfile.VerificationStatus.REJECTED,
             ]
         )
+        .distinct()
     )
+
+
+def _conflicted_agent_ids(listing) -> set:
+    """PIOs conflicted out of inspecting this listing: its landlord or any
+    user holding a booking on it."""
+    from .models import Booking
+
+    conflicted = {listing.landlord_id}
+    conflicted.update(
+        Booking.objects.filter(listing=listing).values_list("tenant_id", flat=True)
+    )
+    return conflicted
 
 
 def nearest_agents_for_listing(listing):
     """Return verified PIOs closest to the listing: same city, then same state,
     then every eligible PIO so the listing is never left unoffered."""
-    agents = _eligible_agents()
+    conflicted = _conflicted_agent_ids(listing)
+    agents = _eligible_agents().exclude(id__in=conflicted)
     city = (listing.city or "").strip()
     state = (listing.state or "").strip()
 

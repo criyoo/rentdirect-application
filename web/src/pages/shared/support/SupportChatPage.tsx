@@ -14,6 +14,7 @@ type SupportChatMessage = {
     sender_id: string
     sender_name: string
     sender_role: string
+    thread_role?: string
     sender_photo_url?: string | null
     is_support_message: boolean
     content: string

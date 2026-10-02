@@ -33,7 +33,7 @@ const footerHighlights = [
     },
     {
         label: 'Clear payments',
-        description: 'Track rental steps and billing in one workflow.',
+        description: 'Track rental steps with approval gates in one workflow.',
         icon: HiShieldCheck,
     },
 ]
@@ -126,16 +126,10 @@ export default function Footer() {
                             <Link to="/" aria-label="RentDirect home" className="inline-flex items-center">
                                 <BrandLogo className="h-24 w-36 shrink-0 rounded-lg bg-white p-1" />
                             </Link>
-                            {/* <span className="inline-flex gap-3 w-fit items-center rounded-full border border-blue-400/30 bg-blue-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-blue-100">
-                                Direct landlord rentals
-                            </span> */}
                             <div className="space-y-4">
                                 <p className="max-w-xl font-semibold leading-tight text-white sm:text-xl">
                                     Search, verify, and rent with a cleaner path from landlord to tenant.
                                 </p>
-                                {/* <p className="leading-6 text-slate-300 sm:text-base">
-                                    RentDirect keeps property discovery, verification, and payments simple and transparent, its a platform built for serious renters and landlords.
-                                </p> */}
                             </div>
 
                             <div className="flex flex-col gap-3 sm:flex-row">

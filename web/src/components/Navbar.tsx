@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { User } from '@/types'
 import BrandLogo from '@/components/BrandLogo'
+import RoleSwitcher from '@/components/RoleSwitcher'
 import {
     HiMenu,
     HiX,
@@ -120,6 +121,7 @@ export default function Navbar() {
 
                         {authenticatedUser && authenticatedUser.id ? (
                             <div className="flex items-center gap-3">
+                                <RoleSwitcher />
                                 {!isOnDashboard && (
                                     <NavLink
                                         to={dashboardPath}
@@ -248,6 +250,7 @@ export default function Navbar() {
 
                                 {authenticatedUser && authenticatedUser.id ? (
                                     <div className="flex flex-col gap-3">
+                                        <RoleSwitcher onComplete={() => setIsMobileMenuOpen(false)} />
                                         {!isOnDashboard && (
                                             <NavLink
                                                 to={dashboardPath}

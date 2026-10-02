@@ -12,7 +12,9 @@ import DashboardBackButton from '@/components/DashboardBackButton'
 interface Message {
     id: string
     sender_id: string
+    sender_role?: string
     receiver_id: string
+    receiver_role?: string
     listing_id: string | null
     content: string
     created_at: string

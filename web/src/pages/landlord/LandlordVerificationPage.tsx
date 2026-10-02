@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 
 import LegalDocumentsConsent from '@/components/LegalDocumentsConsent'
 import { useAppPopup } from '@/contexts/AppPopupContext'
-import { api, extractApiErrorMessage, extractApiFieldErrors } from '@/lib/api'
+import { api, extractApiErrorMessage, extractApiFieldErrors, verificationPaymentPurpose } from '@/lib/api'
 import { buildFormDraftKey, readFormDraft, removeFormDraft, writeFormDraft } from '@/lib/formDrafts'
 import { isNigeriaSelection, nigeriaStateLgaMap, nigerianStates, worldCountryOptions } from '@/lib/locations'
 import {
@@ -27,7 +27,7 @@ import {
 } from '@/lib/profile'
 import { nigerianBanks } from '@/lib/banks'
 import { SUBSCRIPTIONS_ENABLED } from '@/lib/featureFlags'
-import { LandlordVerificationType, User } from '@/types'
+import { LandlordVerificationType, ServicePayment, User } from '@/types'
 
 type PaginatedResponse<T> = { results?: T[] }
 
@@ -417,6 +417,7 @@ export default function LandlordVerificationPage() {
         || verificationStatus?.identification?.status === 'verified'
         || verificationStatus?.status === 'approved',
     )
+    const verificationPaymentRequired = Boolean(me?.verification_payment_required)
     const isTrackSelectionLocked = Boolean(isVerificationLocked || savedType)
     const countryOfBirthIsNigeria = isNigeriaSelection(individualForm.country_of_birth)
     const nationalityIsNigeria = isNigeriaSelection(individualForm.nationality)
@@ -681,6 +682,17 @@ export default function LandlordVerificationPage() {
         return Object.keys(nextErrors).length === 0
     }
 
+    const requestVerificationPayment = useMutation({
+        mutationFn: async () =>
+            (await api.post<ServicePayment>('/service-payments/request', { purpose: 'landlord_verification' })).data,
+        onSuccess: (payment) => {
+            navigate(`/service-payments/${payment.id}`)
+        },
+        onError: async (error) => {
+            setSubmitErrorMessage(extractApiErrorMessage(error, 'Unable to start the verification payment.'))
+        },
+    })
+
     const submitIdentity = useMutation({
         onMutate: () => {
             setSubmitStatusMessage('')
@@ -695,6 +707,11 @@ export default function LandlordVerificationPage() {
             }
             if (!validateForm()) {
                 throw new Error('Please complete the required identity verification fields.')
+            }
+
+            if (verificationPaymentRequired) {
+                const payment = await requestVerificationPayment.mutateAsync()
+                return { payment }
             }
 
             const profilePayload = verificationType === 'individual'
@@ -751,6 +768,9 @@ export default function LandlordVerificationPage() {
             return response.data
         },
         onSuccess: async (response) => {
+            if (!response || response.payment) {
+                return
+            }
             setDraftPersistenceEnabled(false)
             setHydratedDraftStorageKey(null)
             removeFormDraft(landlordVerificationDraftStorageKey)
@@ -788,6 +808,10 @@ export default function LandlordVerificationPage() {
             }
         },
         onError: (error: any) => {
+            if (verificationPaymentPurpose(error)) {
+                requestVerificationPayment.mutate()
+                return
+            }
             const fieldAliases: Record<string, string> = {
                 nin_number: 'nin',
                 bvn_number: 'bvn',
@@ -1443,10 +1467,10 @@ export default function LandlordVerificationPage() {
                                                 }
                                                 submitIdentity.mutate()
                                             }}
-                                            disabled={isVerificationLocked || submitIdentity.isPending || !hasAcceptedLegalConsent}
+                                            disabled={isVerificationLocked || submitIdentity.isPending || requestVerificationPayment.isPending || !hasAcceptedLegalConsent}
                                             className="btn btn-primary px-6 py-3 disabled:cursor-not-allowed disabled:opacity-50"
                                         >
-                                            {isVerificationLocked ? 'Identification Verified' : submitIdentity.isPending ? 'Submitting...' : 'Submit Verification'}
+                                            {isVerificationLocked ? 'Identification Verified' : submitIdentity.isPending || requestVerificationPayment.isPending ? 'Submitting...' : verificationPaymentRequired ? 'Pay ₦500 & Submit Verification' : 'Submit Verification'}
                                         </button>
                                     </div>
                                 </>

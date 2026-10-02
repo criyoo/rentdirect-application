@@ -8,11 +8,14 @@ export type UserResidence = {
 
 export type LandlordVerificationType = 'individual' | 'corporate'
 
+export type AccountRole = 'tenant' | 'landlord' | 'agent' | 'admin'
+
 export type User = {
     id: string
     name: string
     email: string
-    role: 'tenant' | 'landlord' | 'agent' | 'admin'
+    role: AccountRole
+    available_roles?: AccountRole[]
     token?: string
     email_verified?: boolean
     profile_photo_url?: string | null
@@ -26,6 +29,7 @@ export type User = {
     landlord_verification_profile?: Record<string, any> | null
     tenant_verification_profile?: Record<string, any> | null
     is_verified?: boolean
+    verification_payment_required?: boolean
     account_frozen?: boolean
     account_frozen_at?: string | null
     account_frozen_until?: string | null
@@ -514,7 +518,7 @@ export interface SearchRequirementMatch {
     match_reasons: string[]
 }
 
-export type ServicePaymentPurpose = 'agent_verification' | 'lawyer_tenancy' | 'in_person_verification'
+export type ServicePaymentPurpose = 'agent_verification' | 'tenant_verification' | 'landlord_verification' | 'lawyer_tenancy' | 'in_person_verification'
 export type ServicePaymentStatus = 'pending' | 'completed' | 'failed' | 'cancelled'
 
 export interface ServicePayment {

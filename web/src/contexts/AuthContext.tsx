@@ -2,13 +2,15 @@ import { createContext, useContext, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 
-import { api } from '@/lib/api'
+import { ACCOUNT_ROLES, api } from '@/lib/api'
 import { clearFormDrafts } from '@/lib/formDrafts'
-import { User } from '@/types'
+import type { AccountRole, User } from '@/types'
+
+type CustomerRole = Exclude<AccountRole, 'admin'>
 
 type RegistrationStarted = {
     email: string
-    role: 'tenant' | 'landlord' | 'agent'
+    role: CustomerRole
     expires_in_seconds: number
     message: string
 }
@@ -16,13 +18,14 @@ type RegistrationStarted = {
 type LoginForm = {
     email: string
     password: string
+    role?: AccountRole
 }
 
 type RegisterForm = {
     name: string
     email: string
     password: string
-    role: 'tenant' | 'landlord' | 'agent'
+    role: CustomerRole
     referral_code?: string
 }
 
@@ -32,9 +35,11 @@ type AuthContextValue = {
     user: User | null
     isRestoring: boolean
     login: (data: LoginForm) => Promise<void>
-    loginWithGoogle: (code: string, options?: { role?: 'tenant' | 'landlord' | 'agent'; referral_code?: string }) => Promise<void>
+    loginWithGoogle: (code: string, options?: { role?: CustomerRole; referral_code?: string }) => Promise<void>
     register: (data: RegisterForm) => Promise<RegistrationStarted>
     verifyRegistration: (data: { email: string; otp_code: string }, options?: { navigate?: boolean }) => Promise<User>
+    switchRole: (role: AccountRole) => Promise<void>
+    activateRole: (role: CustomerRole, referralCode?: string) => Promise<void>
     logout: () => Promise<void>
 }
 
@@ -46,7 +51,7 @@ function getStoredUser(): User | null {
 
     try {
         const parsedUser = JSON.parse(stored)
-        const isValidRole = ['tenant', 'landlord', 'agent', 'admin'].includes(parsedUser.role)
+        const isValidRole = ACCOUNT_ROLES.includes(parsedUser.role)
         const hasRequiredFields = parsedUser && parsedUser.id && parsedUser.role && parsedUser.name && parsedUser.email
 
         if (hasRequiredFields && isValidRole) {
@@ -61,6 +66,18 @@ function getStoredUser(): User | null {
     }
 }
 
+function normalizeAvailableRoles(payload: any): AccountRole[] {
+    const raw = Array.isArray(payload?.available_roles)
+        ? payload.available_roles
+        : payload?.role
+            ? [payload.role]
+            : []
+    return raw.filter(
+        (role: unknown): role is AccountRole =>
+            typeof role === 'string' && ACCOUNT_ROLES.includes(role as AccountRole),
+    )
+}
+
 function normalizeUser(payload: any, fallbackEmail?: string): User {
     const rawId = payload?.id ?? payload?.user_id
 
@@ -71,6 +88,7 @@ function normalizeUser(payload: any, fallbackEmail?: string): User {
     return {
         id: String(rawId),
         role: payload.role,
+        available_roles: normalizeAvailableRoles(payload),
         name: payload.name || payload.email?.split('@')[0] || fallbackEmail?.split('@')[0] || 'User',
         email: payload.email || fallbackEmail || '',
         whatsapp_number: payload.whatsapp_number ?? '',
@@ -81,6 +99,13 @@ function normalizeUser(payload: any, fallbackEmail?: string): User {
         account_frozen_until: payload.account_frozen_until ?? null,
         account_freeze_fee_percentage: payload.account_freeze_fee_percentage ?? 10,
     }
+}
+
+function dashboardPathFor(user: User): string {
+    if (user.role === 'landlord') return `/dashboard/landlord/${user.id}`
+    if (user.role === 'tenant') return `/dashboard/tenant/${user.id}`
+    if (user.role === 'agent') return '/agents/dashboard'
+    return '/admin/dashboard'
 }
 
 function firstErrorMessage(value: any): string {
@@ -164,6 +189,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return () => window.removeEventListener('rentdirect-user-updated', syncStoredUser)
     }, [])
 
+    function commitUser(payload: any, fallbackEmail?: string): User {
+        const nextUser = normalizeUser(payload, fallbackEmail)
+        setUser(nextUser)
+        localStorage.setItem('user', JSON.stringify(nextUser))
+        window.dispatchEvent(new Event('rentdirect-user-updated'))
+        // Persona-sensitive caches must not leak between roles.
+        queryClient.clear()
+        queryClient.setQueryData(['users', 'me'], payload)
+        return nextUser
+    }
+
     async function register(data: RegisterForm): Promise<RegistrationStarted> {
         try {
             const response = await api.post<RegistrationStarted>('/auth/register', data)
@@ -176,11 +212,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async function verifyRegistration(data: { email: string; otp_code: string }, options: { navigate?: boolean } = {}): Promise<User> {
         try {
             const response = await api.post<User>('/auth/register/verify', data)
-            const nextUser = normalizeUser(response.data, data.email)
-
-            setUser(nextUser)
-            localStorage.setItem('user', JSON.stringify(nextUser))
-            queryClient.setQueryData(['users', 'me'], response.data)
+            const nextUser = commitUser(response.data, data.email)
 
             if (options.navigate !== false) {
                 if (nextUser.role === 'landlord') {
@@ -204,52 +236,77 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async function login(data: LoginForm): Promise<void> {
         try {
             const response = await api.post('/auth/login', data)
-            const nextUser = normalizeUser(response.data, data.email)
-
-            setUser(nextUser)
-            localStorage.setItem('user', JSON.stringify(nextUser))
-            queryClient.setQueryData(['users', 'me'], response.data)
-
-            if (nextUser.role === 'landlord') {
-                navigate(`/dashboard/landlord/${nextUser.id}`)
-            } else if (nextUser.role === 'tenant') {
-                navigate(`/dashboard/tenant/${nextUser.id}`)
-            } else if (nextUser.role === 'agent') {
-                navigate('/agents/dashboard')
-            } else if (nextUser.role === 'admin') {
-                navigate('/admin/dashboard')
+            const nextUser = commitUser(response.data, data.email)
+            const roleActivated = response.data?.role_activated === true
+            if (roleActivated && nextUser.role === 'tenant') {
+                navigate('/verify')
+            } else if (roleActivated && nextUser.role === 'landlord') {
+                localStorage.setItem(LANDLORD_IDENTITY_ONBOARDING_KEY, '1')
+                navigate('/landlord/verification')
+            } else if (roleActivated && nextUser.role === 'agent') {
+                navigate('/agents/verification')
+            } else {
+                navigate(dashboardPathFor(nextUser))
             }
         } catch (err: any) {
             throw new Error(extractErrorMessage(err, 'Login failed'))
         }
     }
 
-    async function loginWithGoogle(code: string, options: { role?: 'tenant' | 'landlord' | 'agent'; referral_code?: string } = {}): Promise<void> {
+    async function loginWithGoogle(code: string, options: { role?: CustomerRole; referral_code?: string } = {}): Promise<void> {
         try {
             const response = await api.post('/auth/google/exchange', { code, role: options.role, referral_code: options.referral_code })
-            const nextUser = normalizeUser(response.data)
-
-            setUser(nextUser)
-            localStorage.setItem('user', JSON.stringify(nextUser))
-            queryClient.setQueryData(['users', 'me'], response.data)
+            const nextUser = commitUser(response.data)
 
             const isNewUser = response.data?.is_new_user === true
+            const needsOnboarding = isNewUser || response.data?.role_activated === true
             if (nextUser.role === 'landlord') {
-                if (isNewUser) {
+                if (needsOnboarding) {
                     localStorage.setItem(LANDLORD_IDENTITY_ONBOARDING_KEY, '1')
                     navigate('/landlord/verification')
                 } else {
                     navigate(`/dashboard/landlord/${nextUser.id}`)
                 }
             } else if (nextUser.role === 'tenant') {
-                navigate(isNewUser ? '/verify' : `/dashboard/tenant/${nextUser.id}`)
+                navigate(needsOnboarding ? '/verify' : `/dashboard/tenant/${nextUser.id}`)
             } else if (nextUser.role === 'agent') {
-                navigate(isNewUser ? '/agents/verification' : '/agents/dashboard')
+                navigate(needsOnboarding ? '/agents/verification' : '/agents/dashboard')
             } else if (nextUser.role === 'admin') {
                 navigate('/admin/dashboard')
             }
         } catch (err: any) {
             throw new Error(extractErrorMessage(err, 'Google sign-in failed'))
+        }
+    }
+
+    async function switchRole(role: AccountRole): Promise<void> {
+        try {
+            const response = await api.post('/users/me/active-role', { role })
+            const nextUser = commitUser(response.data)
+            navigate(dashboardPathFor(nextUser))
+        } catch (err: any) {
+            throw new Error(extractErrorMessage(err, 'Unable to switch role'))
+        }
+    }
+
+    async function activateRole(role: CustomerRole, referralCode?: string): Promise<void> {
+        try {
+            const trimmedCode = referralCode?.trim()
+            const response = await api.post('/users/me/roles', {
+                role,
+                referral_code: trimmedCode ? trimmedCode.toUpperCase() : undefined,
+            })
+            const nextUser = commitUser(response.data)
+            if (nextUser.role === 'tenant') {
+                navigate('/verify')
+            } else if (nextUser.role === 'landlord') {
+                localStorage.setItem(LANDLORD_IDENTITY_ONBOARDING_KEY, '1')
+                navigate('/landlord/verification')
+            } else if (nextUser.role === 'agent') {
+                navigate('/agents/verification')
+            }
+        } catch (err: any) {
+            throw new Error(extractErrorMessage(err, 'Unable to add role'))
         }
     }
 
@@ -264,12 +321,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsRestoring(false)
         localStorage.removeItem('user')
         clearFormDrafts()
-        queryClient.removeQueries({ queryKey: ['users', 'me'] })
+        queryClient.clear()
         navigate('/login')
     }
 
     return (
-        <AuthContext.Provider value={{ user, isRestoring, login, loginWithGoogle, register, verifyRegistration, logout }}>
+        <AuthContext.Provider value={{ user, isRestoring, login, loginWithGoogle, register, verifyRegistration, switchRole, activateRole, logout }}>
             {children}
         </AuthContext.Provider>
     )

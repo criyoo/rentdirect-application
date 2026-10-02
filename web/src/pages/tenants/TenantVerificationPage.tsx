@@ -8,10 +8,13 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useAuth } from '@/hooks/useAuth'
 import { useAppPopup } from '@/contexts/AppPopupContext'
 import LegalDocumentsConsent from '@/components/LegalDocumentsConsent'
-import { api, extractApiErrorMessage, extractApiFieldErrors } from '@/lib/api'
+import { api, extractApiErrorMessage, extractApiFieldErrors, verificationPaymentPurpose } from '@/lib/api'
 import { buildFormDraftKey, readFormDraft, removeFormDraft, writeFormDraft } from '@/lib/formDrafts'
 import { isNigeriaSelection, nigeriaStateLgaMap, nigerianStates, worldCountryOptions } from '@/lib/locations'
 import {
+    BVN_ERROR_MESSAGE,
+    BVN_INPUT_PATTERN,
+    BVN_INPUT_PLACEHOLDER,
     MOBILE_ERROR_MESSAGE,
     MOBILE_INPUT_PATTERN,
     MOBILE_INPUT_PLACEHOLDER,
@@ -19,10 +22,11 @@ import {
     NIN_INPUT_PATTERN,
     NIN_INPUT_PLACEHOLDER,
     formatIdentityNumberInput,
+    validateBvn,
     validateMobile,
     validateNin,
 } from '@/lib/profile'
-import { User } from '@/types'
+import { ServicePayment, User } from '@/types'
 
 const schema = z.object({
     first_name: z.string().min(1, 'First name is required'),
@@ -39,6 +43,7 @@ const schema = z.object({
     whatsapp_number: z.string().optional().refine((value) => !value || !validateMobile(value), MOBILE_ERROR_MESSAGE),
     employment_status: z.string().min(1, 'Employment status is required'),
     nin_number: z.string().min(1, 'NIN is required').refine((value) => !validateNin(value), NIN_ERROR_MESSAGE),
+    bvn_number: z.string().min(1, 'BVN is required').refine((value) => !validateBvn(value), BVN_ERROR_MESSAGE),
 })
 
 type VerificationFormValues = z.infer<typeof schema>
@@ -186,6 +191,14 @@ const ninInputProps = {
     formatValue: formatIdentityNumberInput,
 }
 
+const bvnInputProps = {
+    inputMode: 'numeric' as const,
+    pattern: BVN_INPUT_PATTERN,
+    maxLength: 11,
+    title: BVN_ERROR_MESSAGE,
+    formatValue: formatIdentityNumberInput,
+}
+
 function SelectInput({ register, name, options, placeholder, error }: { register: any; name: keyof VerificationFormValues; options: string[]; placeholder: string; error?: string }) {
     return (
         <select
@@ -255,6 +268,7 @@ export default function TenantVerificationPage() {
             whatsapp_number: stringValue(verificationProfile.whatsapp_number) || me?.whatsapp_number || '',
             employment_status: existingProfile?.employment_status || optionValue(verificationProfile.employment_status, employmentOptions),
             nin_number: me?.nin_number || stringValue(verificationProfile.nin_number || verificationProfile.nin),
+            bvn_number: me?.bvn_number || stringValue(verificationProfile.bvn_number || verificationProfile.bvn),
         }
     }, [existingProfile, me, user])
 
@@ -308,6 +322,7 @@ export default function TenantVerificationPage() {
     const nationalityIsNigeria = isNigeriaSelection(nationality)
     const lgaOptions = nationalityIsNigeria && stateOfOrigin ? nigeriaStateLgaMap[stateOfOrigin] || [] : []
     const identityVerificationStatus = verificationStatus?.identification?.status
+    const verificationPaymentRequired = Boolean(me?.verification_payment_required)
     const isVerificationLocked = Boolean(
         me?.is_verified
         || identityVerificationStatus === 'verified'
@@ -332,6 +347,17 @@ export default function TenantVerificationPage() {
         }
     }, [clearErrors, lga, lgaOptions, nationalityIsNigeria, setValue, stateOfOrigin])
 
+    const requestVerificationPayment = useMutation({
+        mutationFn: async () =>
+            (await api.post<ServicePayment>('/service-payments/request', { purpose: 'tenant_verification' })).data,
+        onSuccess: (payment) => {
+            navigate(`/service-payments/${payment.id}`)
+        },
+        onError: async (error) => {
+            setSubmitError(extractApiErrorMessage(error, 'Unable to start the verification payment.'))
+        },
+    })
+
     const saveVerification = useMutation({
         mutationFn: async (data: VerificationFormValues) => {
             await api.patch('/users/me', {
@@ -346,6 +372,7 @@ export default function TenantVerificationPage() {
                 ...emptyProfileDetails,
                 ...(existingProfile || {}),
                 nin_number: data.nin_number.trim(),
+                bvn_number: data.bvn_number.trim(),
                 first_name: data.first_name,
                 middle_name: data.middle_name || '',
                 last_name: data.last_name,
@@ -405,6 +432,10 @@ export default function TenantVerificationPage() {
             }
         },
         onError: (error: any) => {
+            if (verificationPaymentPurpose(error)) {
+                requestVerificationPayment.mutate()
+                return
+            }
             const fieldAliases: Record<string, keyof VerificationFormValues> = {
                 nin: 'nin_number',
                 contact_number: 'mobile',
@@ -437,6 +468,10 @@ export default function TenantVerificationPage() {
                         if (isVerificationLocked) return
                         if (!hasAcceptedLegalConsent) {
                             setSubmitError('Review all legal documents and click “I have read & consent” before submitting your verification.')
+                            return
+                        }
+                        if (verificationPaymentRequired) {
+                            requestVerificationPayment.mutate()
                             return
                         }
                         saveVerification.mutate(data)
@@ -492,6 +527,9 @@ export default function TenantVerificationPage() {
                             <InputRow label="National Identification Number (NIN)" error={errors.nin_number?.message}>
                                 <TextInput register={register} name="nin_number" placeholder={NIN_INPUT_PLACEHOLDER} error={errors.nin_number?.message} {...ninInputProps} />
                             </InputRow>
+                            <InputRow label="Bank Verification Number (BVN)" error={errors.bvn_number?.message}>
+                                <TextInput register={register} name="bvn_number" placeholder={BVN_INPUT_PLACEHOLDER} error={errors.bvn_number?.message} {...bvnInputProps} />
+                            </InputRow>
                             <InputRow label="Employment Status" error={errors.employment_status?.message}>
                                 <SelectInput register={register} name="employment_status" options={employmentOptions} placeholder="Select employment status" error={errors.employment_status?.message} />
                             </InputRow>
@@ -526,10 +564,10 @@ export default function TenantVerificationPage() {
                     <div className="mt-8 flex justify-end">
                         <button
                             type="submit"
-                            disabled={isVerificationLocked || isSubmitting || saveVerification.isPending || !hasAcceptedLegalConsent}
+                            disabled={isVerificationLocked || isSubmitting || saveVerification.isPending || requestVerificationPayment.isPending || !hasAcceptedLegalConsent}
                             className="rounded-lg bg-blue-600 px-8 py-3 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                            {isVerificationLocked ? 'Verified' : isSubmitting || saveVerification.isPending ? 'Saving...' : 'Submit Verification'}
+                            {isVerificationLocked ? 'Verified' : isSubmitting || saveVerification.isPending || requestVerificationPayment.isPending ? 'Saving...' : verificationPaymentRequired ? 'Pay ₦500 & Submit Verification' : 'Submit Verification'}
                         </button>
                     </div>
                 </form>
