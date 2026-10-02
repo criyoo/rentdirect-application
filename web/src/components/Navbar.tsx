@@ -304,18 +304,6 @@ export default function Navbar() {
                                                     <HiOfficeBuilding className="h-6 w-6 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:scale-120" />
                                                     <span>List a Property</span>
                                                 </NavLink>
-
-                                                <NavLink
-                                                    to="/agents"
-                                                    onClick={() => setIsMobileMenuOpen(false)}
-                                                    className={`group flex items-center gap-3 rounded-xl px-4 py-3 font-semibold shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md active:scale-[0.98] ${isAgentRegistrationActive
-                                                        ? 'bg-emerald-600 text-white shadow-md'
-                                                        : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                                                        }`}
-                                                >
-                                                    <HiUser className="h-6 w-6 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:scale-120" />
-                                                    <span>Become a PIO</span>
-                                                </NavLink>
                                             </>
                                         )}
                                     </div>
