@@ -544,6 +544,46 @@ def identity_credentials_verified(user, role: str) -> bool:
     return role in CUSTOMER_ROLES and set(IDENTITY_CREDENTIAL_FIELDS) <= verified_credentials(user)
 
 
+def identity_credentials_linked_to_other_user(user, nin_number: str = "", bvn_number: str = "") -> bool:
+    """True when a submitted NIN or BVN is already linked to a different
+    account — blocks referral/identity farming through extra email accounts.
+
+    A credential only counts as "linked" when its holder actually passed
+    identity verification (a VERIFIED ``VerificationRequest`` for any of
+    their personas). Unverified copies of ``nin_number``/``bvn_number`` —
+    e.g. an agent profile PATCH syncing to ``AppUser`` — must not let anyone
+    squat on another person's credentials.
+    """
+    credentials = {
+        str(value or "").strip().lower()
+        for value in (nin_number, bvn_number)
+        if str(value or "").strip()
+    }
+    if not credentials:
+        return False
+    user_pk = getattr(user, "pk", None)
+    credential_q = Q(nin_number__in=credentials) | Q(bvn_number__in=credentials)
+    verified_holder_ids = VerificationRequest.objects.filter(
+        identity_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED
+    ).values("user_id")
+    return (
+        AppUser.objects.filter(credential_q, pk__in=verified_holder_ids)
+        .exclude(pk=user_pk)
+        .exists()
+        or AgentProfile.objects.filter(credential_q, user_id__in=verified_holder_ids)
+        .exclude(user_id=user_pk)
+        .exists()
+    )
+
+
+def require_unique_identity_credentials(user, nin_number: str = "", bvn_number: str = "") -> None:
+    """Reject a verification whose NIN/BVN already belongs to another user."""
+    if identity_credentials_linked_to_other_user(user, nin_number, bvn_number):
+        raise ValidationError(
+            {"nin_number": "This NIN or BVN is already linked to another account."}
+        )
+
+
 def identity_verification_attempts_used(user, role: str) -> int:
     role = str(role or "").strip().lower()
     if role == AppUser.Role.AGENT:

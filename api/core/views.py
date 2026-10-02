@@ -159,6 +159,7 @@ from .roles import (
     prefill_role_identity,
     record_role_event,
     require_identity_verification_payment,
+    require_unique_identity_credentials,
     role_bound_user,
     track_identity_verification_attempt,
     users_with_role,
@@ -342,6 +343,7 @@ def verify_tenant_identity_or_raise(user, profile_data: dict, nin_number: str, b
         raise ValidationError({"nin_number": "NIN is required."})
     if not bvn_number:
         raise ValidationError({"bvn_number": "BVN is required."})
+    require_unique_identity_credentials(user, nin_number, bvn_number)
     require_identity_verification_payment(user, AppUser.Role.TENANT)
     track_identity_verification_attempt(user, AppUser.Role.TENANT)
     nin_payload, bvn_payload = verify_nin_and_bvn(identity_data, nin_number, bvn_number)
@@ -420,6 +422,7 @@ def verify_landlord_identity_or_raise(user) -> dict[str, dict]:
             # Same credentials already verified under another persona.
             payloads = {"nin": {}, "bvn": {}}
         else:
+            require_unique_identity_credentials(user, nin_number, bvn_number)
             require_identity_verification_payment(user, AppUser.Role.LANDLORD)
             track_identity_verification_attempt(user, AppUser.Role.LANDLORD)
             nin_payload, bvn_payload = verify_nin_and_bvn(identity_data, nin_number, bvn_number)
@@ -7296,6 +7299,7 @@ class AgentViewSet(viewsets.ViewSet):
             # provider call, no fee, and no paid attempt consumed.
             verification_payloads = {}
         else:
+            require_unique_identity_credentials(request.user, profile.nin_number, profile.bvn_number)
             require_identity_verification_payment(request.user, AppUser.Role.AGENT)
             try:
                 verification_payloads = verify_nin_and_bvn(identity_data, profile.nin_number, profile.bvn_number)

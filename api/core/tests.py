@@ -3870,6 +3870,122 @@ class VerificationRequestViewSetTests(TestCase):
         self.assertIn("payment_required", response.json())
         self.assertFalse(dikript_lookup_mock.called)
 
+    def _verified_credential_holder(self, email="verified-holder@example.com"):
+        holder = AppUser.objects.create_user(
+            email=email,
+            password="password-123",
+            name="Verified Holder",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+            nin_number="12345678901",
+            bvn_number="22347235093",
+        )
+        VerificationRequest.objects.create(
+            user=holder,
+            role=AppUser.Role.TENANT,
+            request_type=VerificationRequest.RequestType.IDENTIFICATION,
+            status=VerificationRequest.Status.APPROVED,
+            identity_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
+            verification_method=VerificationRequest.Method.AUTOMATED,
+        )
+        return holder
+
+    @patch("core.dikript_verification.dikript_lookup")
+    def test_tenant_verification_rejects_credentials_linked_to_another_account(self, dikript_lookup_mock):
+        self._verified_credential_holder()
+        user = AppUser.objects.create_user(
+            email="tenant-duplicate-credentials@example.com",
+            password="password-123",
+            name="Tenant Duplicate",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+            mobile="09080350066",
+        )
+        self._pay_identity_verification(user, ServicePayment.Purpose.TENANT_VERIFICATION)
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        response = client.post(
+            "/api/v1/users/me/tenant-profile",
+            self._complete_tenant_profile_payload(),
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400, response.json())
+        self.assertIn("nin_number", response.json())
+        self.assertFalse(dikript_lookup_mock.called)
+        user.refresh_from_db()
+        self.assertEqual(user.tenant_verification_attempts, 0)
+        self.assertEqual(TenantProfile.objects.get(user=user).status, TenantProfile.Status.REJECTED)
+
+    @patch("core.dikript_verification.dikript_lookup")
+    def test_unverified_account_cannot_squat_on_credentials(self, dikript_lookup_mock):
+        # A stored NIN/BVN without a completed verification must not block the
+        # real owner from verifying under their own account.
+        AppUser.objects.create_user(
+            email="squatter@example.com",
+            password="password-123",
+            name="Squatter",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+            nin_number="12345678901",
+            bvn_number="22347235093",
+        )
+        dikript_lookup_mock.side_effect = [self._nin_payload(), self._bvn_payload()]
+        user = AppUser.objects.create_user(
+            email="tenant-real-owner@example.com",
+            password="password-123",
+            name="Real Owner",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+            mobile="09080350066",
+        )
+        self._pay_identity_verification(user, ServicePayment.Purpose.TENANT_VERIFICATION)
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        response = client.post(
+            "/api/v1/users/me/tenant-profile",
+            self._complete_tenant_profile_payload(),
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.json())
+        self.assertEqual(dikript_lookup_mock.call_count, 2)
+
+    @patch("core.dikript_verification.dikript_lookup")
+    def test_landlord_verification_rejects_credentials_linked_to_another_account(self, dikript_lookup_mock):
+        self._verified_credential_holder()
+        user = AppUser.objects.create_user(
+            email="landlord-duplicate-credentials@example.com",
+            password="password-123",
+            name="Landlord Duplicate",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+            mobile="09080350066",
+            landlord_verification_type=AppUser.LandlordVerificationType.INDIVIDUAL,
+            landlord_verification_profile={
+                "first_name": "Christian",
+                "last_name": "Aluya",
+                "date_of_birth": "1977-02-06",
+                "nin": "12345678901",
+                "bvn": "22347235093",
+            },
+        )
+        self._pay_identity_verification(user, ServicePayment.Purpose.LANDLORD_VERIFICATION)
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        response = client.post(
+            "/api/v1/landlord-verification-requests/submit",
+            {"document_ids": [], "request_type": "identification"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400, response.json())
+        self.assertIn("nin_number", response.json())
+        self.assertFalse(dikript_lookup_mock.called)
+
     @patch("core.dikript_verification.dikript_lookup")
     def test_verified_landlord_activating_tenant_needs_no_payment(self, dikript_lookup_mock):
         user = AppUser.objects.create_user(
@@ -11312,6 +11428,38 @@ class AgentFeatureTests(TestCase):
         self.assertFalse(verify_mock.called)
         profile = AgentProfile.objects.get(user=self.agent)
         self.assertEqual(profile.verification_status, AgentProfile.VerificationStatus.VERIFIED)
+
+    @patch("core.views.verify_nin_and_bvn")
+    def test_verify_rejects_credentials_linked_to_another_account(self, verify_mock):
+        holder = AppUser.objects.create_user(
+            email="verified-holder@example.com",
+            password="password-123",
+            name="Verified Holder",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+            nin_number="12345678901",
+            bvn_number="10987654321",
+        )
+        VerificationRequest.objects.create(
+            user=holder,
+            role=AppUser.Role.TENANT,
+            request_type=VerificationRequest.RequestType.IDENTIFICATION,
+            status=VerificationRequest.Status.APPROVED,
+            identity_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
+            verification_method=VerificationRequest.Method.AUTOMATED,
+        )
+        self._complete_agent_profile()
+        self._complete_verification_payment()
+        self.client.force_authenticate(user=self.agent)
+
+        response = self.client.post("/api/v1/agents/verify", {}, format="json")
+
+        self.assertEqual(response.status_code, 400, response.json())
+        self.assertIn("nin_number", response.json())
+        self.assertFalse(verify_mock.called)
+        profile = AgentProfile.objects.get(user=self.agent)
+        self.assertNotEqual(profile.verification_status, AgentProfile.VerificationStatus.VERIFIED)
+        self.assertEqual(profile.verification_attempts, 0)
 
     @patch("core.views.verify_nin_and_bvn")
     def test_verify_calls_provider_when_credentials_differ_from_verified_persona(self, verify_mock):
