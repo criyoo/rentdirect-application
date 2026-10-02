@@ -31,6 +31,7 @@ export default function RegisterPage({ lockedRole }: RegisterPageProps = {}) {
     const navigate = useNavigate()
     const [searchParams] = useSearchParams()
     const requestedRole = searchParams.get('role')
+    const referralLocked = Boolean(searchParams.get('ref')?.trim())
     const isRoleLocked = Boolean(lockedRole) || requestedRole === 'tenant' || requestedRole === 'landlord'
     const initialRole = lockedRole ?? (requestedRole === 'landlord' ? 'landlord' : 'tenant')
     const [formData, setFormData] = useState({
@@ -490,6 +491,9 @@ export default function RegisterPage({ lockedRole }: RegisterPageProps = {}) {
                                             name="referralCode"
                                             type="text"
                                             maxLength={16}
+                                            readOnly={referralLocked}
+                                            aria-readonly={referralLocked}
+                                            title={referralLocked ? 'Referral code applied from your invite link' : undefined}
                                             value={formData.referralCode}
                                             onChange={(event) =>
                                                 setFormData((prev) => ({
@@ -497,11 +501,13 @@ export default function RegisterPage({ lockedRole }: RegisterPageProps = {}) {
                                                     referralCode: event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''),
                                                 }))
                                             }
-                                            className="form-input uppercase tracking-widest"
+                                            className={`form-input uppercase tracking-widest${referralLocked ? ' bg-gray-100 text-gray-500 cursor-not-allowed opacity-75' : ''}`}
                                             placeholder="e.g. AB2C3D4E"
                                         />
                                         <p className="mt-2 text-sm text-gray-500">
-                                            Have a referral code from an existing Property Inspection Officer? Enter it here.
+                                            {referralLocked
+                                                ? 'This referral code was applied from your invite link.'
+                                                : 'Have a referral code from an existing Property Inspection Officer? Enter it here.'}
                                         </p>
                                     </div>
                                 )}
