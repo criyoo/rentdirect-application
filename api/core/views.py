@@ -57,6 +57,7 @@ from .models import (
     PropertyInspection,
     RepresentativeKyc,
     Review,
+    RoleAuditEvent,
     ServicePayment,
     SubscriptionPayment,
     SubscriptionPaymentMethod,
@@ -66,6 +67,7 @@ from .models import (
     TenantProfile,
     TenantRefund,
     TenantSearchRequirement,
+    UserRole,
     VerificationRequest,
 )
 from .flutterwave import (
@@ -140,6 +142,18 @@ from .permissions import (
     IsAdminRole,
     IsAuthenticatedUnlessFrozen,
     IsLandlordOrAdmin,
+)
+from .roles import (
+    ACTIVE_ROLE_HEADER,
+    CUSTOMER_ROLES,
+    activate_customer_role,
+    active_role_membership,
+    apply_active_role,
+    available_roles,
+    has_active_role,
+    record_role_event,
+    role_bound_user,
+    users_with_role,
 )
 
 AllowAny = AllowAnyUnlessFrozen
@@ -323,6 +337,7 @@ def verify_tenant_identity_or_raise(user, profile_data: dict, nin_number: str) -
 def tenant_verified_identity_matches(user, profile_data: dict, nin_number: str) -> bool:
     if not VerificationRequest.objects.filter(
         user=user,
+        role=AppUser.Role.TENANT,
         identity_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
     ).exists():
         return False
@@ -956,6 +971,7 @@ def sync_tenant_profile_approval(user: AppUser, profile: TenantProfile) -> Verif
     verified_at = timezone.now()
     verification, _ = VerificationRequest.objects.get_or_create(
         user=user,
+        role=AppUser.Role.TENANT,
         defaults={
             "request_type": VerificationRequest.RequestType.IDENTIFICATION,
             "status": VerificationRequest.Status.APPROVED,
@@ -1165,7 +1181,9 @@ def build_landlord_public_profile_payload(landlord: AppUser, viewer=None) -> dic
         status__in=[Booking.Status.CONFIRMED, Booking.Status.ACTIVE, Booking.Status.COMPLETED],
     ).count()
     total_applications = bookings.count()
-    latest_verification = VerificationRequest.objects.filter(user=landlord).order_by("-submitted_at").first()
+    latest_verification = VerificationRequest.objects.filter(
+        user=landlord, role=AppUser.Role.LANDLORD
+    ).order_by("-submitted_at").first()
     average_response_seconds = calculate_landlord_average_response_seconds(landlord)
     years_on_platform = round(max((timezone.now().date() - landlord.created_at.date()).days / 365.25, 0), 1)
     total_properties = listings.count()
@@ -1277,7 +1295,11 @@ def build_tenant_public_profile_payload(tenant: AppUser) -> dict:
             "criminal_declaration": profile.criminal_declaration,
         }
 
-    enquiry_count = Message.objects.filter(sender=tenant, receiver__role=AppUser.Role.LANDLORD).count()
+    enquiry_count = Message.objects.filter(
+        sender=tenant,
+        sender_role=AppUser.Role.TENANT,
+        receiver_role=AppUser.Role.LANDLORD,
+    ).count()
     application_count = Booking.objects.filter(tenant=tenant).count()
     completed_tenancies = Booking.objects.filter(tenant=tenant, status=Booking.Status.COMPLETED).count()
     years_on_platform = round(max((timezone.now().date() - tenant.created_at.date()).days / 365.25, 0), 1)
@@ -1285,11 +1307,11 @@ def build_tenant_public_profile_payload(tenant: AppUser) -> dict:
     payload = {
         "id": str(tenant.id),
         "name": tenant.name,
-        "role": tenant.role,
+        "role": AppUser.Role.TENANT,
         "profile_photo_url": tenant.profile_photo_url,
         "state_of_origin": tenant.state_of_origin,
         "residence": tenant.residence,
-        "is_verified": tenant.is_verified,
+        "is_verified": tenant.is_verified_for_role(AppUser.Role.TENANT),
         "email_verified": tenant.email_verified,
         "tenant_profile": profile_payload,
         "metrics": {
@@ -1902,8 +1924,14 @@ def subscription_duration_days(billing_cycle: str) -> int:
     return 30 if billing_cycle == SubscriptionPayment.BillingCycle.MONTHLY else 365
 
 
-def user_account_freeze_active(user: AppUser, *, now=None) -> bool:
+def user_account_freeze_active(user: AppUser, role: str | None = None, *, now=None) -> bool:
     now = now or timezone.now()
+    membership = active_role_membership(user, role)
+    if membership is not None:
+        return bool(
+            membership.account_frozen
+            and (not membership.account_frozen_until or membership.account_frozen_until > now)
+        )
     return bool(
         getattr(user, "account_frozen", False)
         and (not user.account_frozen_until or user.account_frozen_until > now)
@@ -1911,14 +1939,16 @@ def user_account_freeze_active(user: AppUser, *, now=None) -> bool:
 
 
 def subscription_renewal_amount_for(payment: SubscriptionPayment, *, now=None) -> Decimal:
-    if not user_account_freeze_active(payment.user, now=now):
+    if not user_account_freeze_active(payment.user, payment.role, now=now):
         return payment.amount
 
     monthly_amount = get_subscription_pricing().get(payment.role, {}).get(payment.plan_code, {}).get(
         SubscriptionPayment.BillingCycle.MONTHLY,
         payment.amount,
     )
-    percentage = Decimal(str(payment.user.account_freeze_fee_percentage or ACCOUNT_FREEZE_FEE_PERCENTAGE))
+    membership = active_role_membership(payment.user, payment.role)
+    fee_source = membership if membership is not None else payment.user
+    percentage = Decimal(str(fee_source.account_freeze_fee_percentage or ACCOUNT_FREEZE_FEE_PERCENTAGE))
     return (Decimal(str(monthly_amount)) * percentage / PERCENT_DENOMINATOR).quantize(MONEY_PRECISION)
 
 
@@ -2095,7 +2125,7 @@ def process_due_subscription_renewals(*, now=None) -> dict[str, int]:
     failed = 0
     for payment in due_payments:
         checked += 1
-        account_frozen = user_account_freeze_active(payment.user, now=now)
+        account_frozen = user_account_freeze_active(payment.user, payment.role, now=now)
         renewal_billing_cycle = SubscriptionPayment.BillingCycle.MONTHLY if account_frozen else payment.billing_cycle
         renewal_amount = subscription_renewal_amount_for(payment, now=now)
         renewal_vat_amount = calculate_subscription_vat(renewal_amount)
@@ -3511,7 +3541,7 @@ class AuthViewSet(viewsets.ViewSet):
         email = data["email"].strip().lower()
         existing = User.objects.filter(email=email).first()
         if existing and existing.email_verified:
-            raise ValidationError({"email": "Email already registered"})
+            raise ValidationError({"email": "Email already registered. Sign in to add another role."})
 
         otp = generate_otp()
         expires_at = timezone.now() + timedelta(minutes=OTP_TTL_MINUTES)
@@ -3579,6 +3609,7 @@ class AuthViewSet(viewsets.ViewSet):
             user.registration_otp_expires_at = None
             user.registration_otp_attempts = 0
             user.save()
+            activate_customer_role(user, user.role)
             if user.role == AppUser.Role.AGENT:
                 agent_profile, _ = AgentProfile.objects.get_or_create(
                     user=user,
@@ -3590,7 +3621,9 @@ class AuthViewSet(viewsets.ViewSet):
                     agent_profile.save(update_fields=["referred_by", "updated_at"])
             pending.delete()
 
-        response = Response(UserSerializer(user).data)
+        record_role_event(user, user.role, RoleAuditEvent.Event.ACTIVATED, request)
+        user.active_role = user.role
+        response = Response(UserSerializer(user, context={"request": request}).data)
         set_auth_cookies(response, user)
         return response
 
@@ -3612,7 +3645,9 @@ class AuthViewSet(viewsets.ViewSet):
         user.registration_otp_expires_at = None
         user.registration_otp_attempts = 0
         user.save(update_fields=["email_verified", "registration_otp_hash", "registration_otp_expires_at", "registration_otp_attempts", "updated_at"])
-        response = Response(UserSerializer(user).data)
+        if user.role in CUSTOMER_ROLES:
+            activate_customer_role(user, user.role)
+        response = Response(UserSerializer(user, context={"request": request}).data)
         set_auth_cookies(response, user)
         return response
 
@@ -3621,7 +3656,7 @@ class AuthViewSet(viewsets.ViewSet):
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data["user"]
-        response = Response(UserSerializer(user).data)
+        response = Response(UserSerializer(user, context={"request": request}).data)
         set_auth_cookies(response, user)
         return response
 
@@ -3707,6 +3742,7 @@ class AuthViewSet(viewsets.ViewSet):
             user = User(email=email, name=name, role=role, email_verified=True)
             user.set_unusable_password()
             user.save()
+            activate_customer_role(user, role)
             if role == AppUser.Role.AGENT:
                 agent_profile = AgentProfile(user=user, first_name="", last_name="")
                 referrer = resolve_referrer(str(request.data.get("referral_code") or ""))
@@ -3714,11 +3750,13 @@ class AuthViewSet(viewsets.ViewSet):
                     agent_profile.referred_by = referrer
                 agent_profile.save()
             created = True
+            record_role_event(user, role, RoleAuditEvent.Event.ACTIVATED, request)
             # Clear any pending registration challenge for this email.
             PendingRegistration.objects.filter(email=email).delete()
         else:
-            # Existing accounts keep their registered role; a verified Google
-            # identity is sufficient proof of email ownership.
+            # Existing accounts keep their registered roles; a verified Google
+            # identity is sufficient proof of email ownership. A requested role
+            # must already be an active membership — it is never auto-activated.
             PendingRegistration.objects.filter(email=email).delete()
             if not user.email_verified:
                 user.email_verified = True
@@ -3734,8 +3772,9 @@ class AuthViewSet(viewsets.ViewSet):
                         "updated_at",
                     ]
                 )
+            apply_active_role(user, request.data.get("role"))
 
-        payload = UserSerializer(user).data
+        payload = UserSerializer(user, context={"request": request}).data
         payload["is_new_user"] = created
         response = Response(payload)
         set_auth_cookies(response, user)
@@ -3757,7 +3796,8 @@ class AuthViewSet(viewsets.ViewSet):
             user = User.objects.get(id=refresh["user_id"])
         except Exception:
             return Response({"detail": "Invalid refresh token"}, status=401)
-        response = Response(UserSerializer(user).data)
+        apply_active_role(user, request.META.get(ACTIVE_ROLE_HEADER))
+        response = Response(UserSerializer(user, context={"request": request}).data)
         set_auth_cookies(response, user)
         return response
 
@@ -3806,8 +3846,8 @@ class UserViewSet(viewsets.GenericViewSet):
         return Response(
             {
                 "properties": Listing.objects.filter(status=Listing.Status.AVAILABLE, is_hidden=False).count(),
-                "landlords": User.objects.filter(role="landlord").count(),
-                "tenants": User.objects.filter(role="tenant").count(),
+                "landlords": users_with_role(User.objects.all(), AppUser.Role.LANDLORD).count(),
+                "tenants": users_with_role(User.objects.all(), AppUser.Role.TENANT).count(),
             }
         )
 
@@ -4008,6 +4048,17 @@ class UserViewSet(viewsets.GenericViewSet):
         if request.user.role not in {AppUser.Role.TENANT, AppUser.Role.LANDLORD}:
             raise PermissionDenied("Only tenant and landlord accounts can be frozen.")
 
+        membership = active_role_membership(request.user)
+        if membership is None:
+            membership, _ = UserRole.objects.get_or_create(
+                user=request.user,
+                role=request.user.role,
+                defaults={"status": UserRole.Status.ACTIVE},
+            )
+            if membership.status != UserRole.Status.ACTIVE:
+                raise PermissionDenied("This role is not active for your account.")
+            setattr(request.user, f"_active_membership_{request.user.role}", membership)
+
         if request.method == "DELETE":
             ensure_valid_settings_otp(
                 request.user,
@@ -4015,13 +4066,12 @@ class UserViewSet(viewsets.GenericViewSet):
                 target_email=request.user.email.strip().lower(),
                 code=str(request.data.get("otp_code", "")),
             )
-            request.user.account_frozen = False
-            request.user.account_frozen_until = None
+            membership.account_frozen = False
+            membership.account_frozen_until = None
+            membership.save(update_fields=["account_frozen", "account_frozen_until", "updated_at"])
             clear_settings_otp(request.user, save=False)
             request.user.save(
                 update_fields=[
-                    "account_frozen",
-                    "account_frozen_until",
                     "settings_otp_hash",
                     "settings_otp_expires_at",
                     "settings_otp_attempts",
@@ -4046,17 +4096,22 @@ class UserViewSet(viewsets.GenericViewSet):
             code=str(request.data.get("otp_code", "")),
         )
 
-        request.user.account_frozen = True
-        request.user.account_frozen_at = timezone.now()
-        request.user.account_frozen_until = timezone.now() + timedelta(days=30 * duration_months)
-        request.user.account_freeze_fee_percentage = ACCOUNT_FREEZE_FEE_PERCENTAGE
-        clear_settings_otp(request.user, save=False)
-        request.user.save(
+        membership.account_frozen = True
+        membership.account_frozen_at = timezone.now()
+        membership.account_frozen_until = timezone.now() + timedelta(days=30 * duration_months)
+        membership.account_freeze_fee_percentage = ACCOUNT_FREEZE_FEE_PERCENTAGE
+        membership.save(
             update_fields=[
                 "account_frozen",
                 "account_frozen_at",
                 "account_frozen_until",
                 "account_freeze_fee_percentage",
+                "updated_at",
+            ]
+        )
+        clear_settings_otp(request.user, save=False)
+        request.user.save(
+            update_fields=[
                 "settings_otp_hash",
                 "settings_otp_expires_at",
                 "settings_otp_attempts",
@@ -4066,6 +4121,63 @@ class UserViewSet(viewsets.GenericViewSet):
             ]
         )
         return Response(self.get_serializer(request.user).data)
+
+    @action(detail=False, methods=["get", "post"], url_path="me/roles")
+    def roles(self, request):
+        user = request.user
+        if request.method == "GET":
+            return Response(
+                {
+                    "roles": available_roles(user),
+                    "active_role": getattr(user, "active_role", None) or user.role,
+                }
+            )
+
+        role = str(request.data.get("role") or "").strip().lower()
+        if role not in CUSTOMER_ROLES:
+            raise ValidationError({"role": "Choose a valid role."})
+        if getattr(user, "role", None) == AppUser.Role.ADMIN or getattr(user, "active_role", None) == AppUser.Role.ADMIN:
+            raise PermissionDenied("This role is not active for your account.")
+        if not user.email_verified:
+            raise ValidationError({"detail": "Verify your email address before adding a role."})
+
+        referrer = None
+        if role == AppUser.Role.AGENT:
+            referral_code = str(request.data.get("referral_code") or "").strip().upper()
+            if referral_code:
+                referrer = resolve_referrer(referral_code)
+                if referrer is None:
+                    raise ValidationError({"referral_code": "This referral code is not recognised."})
+                if referrer.id == user.id:
+                    raise ValidationError({"referral_code": "You cannot refer yourself."})
+
+        _membership, activated = activate_customer_role(user, role)
+        if role == AppUser.Role.AGENT:
+            agent_profile, _ = AgentProfile.objects.get_or_create(
+                user=user,
+                defaults={"first_name": "", "last_name": ""},
+            )
+            if referrer and agent_profile.referred_by_id is None:
+                agent_profile.referred_by = referrer
+                agent_profile.save(update_fields=["referred_by", "updated_at"])
+
+        apply_active_role(user, role)
+        if activated:
+            record_role_event(user, role, RoleAuditEvent.Event.ACTIVATED, request)
+        return Response(
+            self.get_serializer(user).data,
+            status=status.HTTP_201_CREATED if activated else status.HTTP_200_OK,
+        )
+
+    @action(detail=False, methods=["post"], url_path="me/active-role")
+    def active_role(self, request):
+        user = request.user
+        role = str(request.data.get("role") or "").strip().lower()
+        if not role:
+            raise ValidationError({"role": "This field is required."})
+        apply_active_role(user, role)
+        record_role_event(user, role, RoleAuditEvent.Event.SWITCHED, request)
+        return Response(self.get_serializer(user).data)
 
     @action(detail=False, methods=["post", "delete"], url_path="me/favourites/(?P<listing_id>[^/.]+)")
     def manage_favourite(self, request, listing_id=None):
@@ -4237,7 +4349,7 @@ class UserViewSet(viewsets.GenericViewSet):
     @action(detail=False, methods=["get"], url_path="tenants/(?P<tenant_id>[^/.]+)/profile")
     def tenant_profile_detail(self, request, tenant_id=None):
         tenant = get_object_or_404(
-            User.objects.filter(role=AppUser.Role.TENANT),
+            users_with_role(User.objects.all(), AppUser.Role.TENANT),
             id=tenant_id,
         )
 
@@ -4280,7 +4392,7 @@ class UserViewSet(viewsets.GenericViewSet):
     @action(detail=False, methods=["get"], url_path="tenants/(?P<tenant_id>[^/.]+)/public-profile", permission_classes=[AllowAny])
     def tenant_public_profile(self, request, tenant_id=None):
         tenant = get_object_or_404(
-            User.objects.filter(role=AppUser.Role.TENANT),
+            users_with_role(User.objects.all(), AppUser.Role.TENANT),
             id=tenant_id,
         )
         return Response(build_tenant_public_profile_payload(tenant))
@@ -4288,7 +4400,7 @@ class UserViewSet(viewsets.GenericViewSet):
     @action(detail=False, methods=["get"], url_path="landlords/(?P<landlord_id>[^/.]+)/public-profile", permission_classes=[AllowAny])
     def landlord_public_profile(self, request, landlord_id=None):
         landlord = get_object_or_404(
-            User.objects.filter(role=AppUser.Role.LANDLORD),
+            users_with_role(User.objects.all(), AppUser.Role.LANDLORD),
             id=landlord_id,
         )
         return Response(build_landlord_public_profile_payload(landlord, request.user))
@@ -4709,7 +4821,7 @@ class VerificationRequestBaseViewSet(viewsets.GenericViewSet):
     def get_queryset(self):
         queryset = VerificationRequest.objects.select_related("user").order_by("-submitted_at")
         if self.user_role:
-            queryset = queryset.filter(user__role=self.user_role)
+            queryset = queryset.filter(role=self.user_role)
         if getattr(self.request.user, "role", None) == AppUser.Role.ADMIN:
             return queryset
         return queryset.filter(user=self.request.user)
@@ -4792,7 +4904,10 @@ class VerificationRequestBaseViewSet(viewsets.GenericViewSet):
     def get_or_create_user_verification(self, user):
         verification = self.get_queryset().filter(user=user).order_by("-submitted_at").first()
         if not verification:
-            verification = VerificationRequest.objects.create(user=user)
+            verification = VerificationRequest.objects.create(
+                user=user,
+                role=self.user_role or getattr(user, "active_role", None) or user.role,
+            )
         return verification
 
     def serialize_submission_response(self, verification, mobile_warning: str = ""):
@@ -4865,7 +4980,7 @@ class VerificationRequestBaseViewSet(viewsets.GenericViewSet):
                 "user_id": item.user_id,
                 "user_email": item.user.email,
                 "user_name": item.user.name,
-                "user_role": item.user.role,
+                "user_role": item.role,
                 "request_type": item.request_type,
                 "status": item.status,
                 "verification_method": item.verification_method,
@@ -6407,10 +6522,14 @@ class ReviewViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         if self.request.user.role != AppUser.Role.TENANT:
             raise PermissionDenied("Only tenants can submit reviews.")
+
+        listing = get_object_or_404(Listing, id=self.request.data.get("listing_id"))
+        # Same-identity gate: a landlord cannot review their own property.
+        if listing.landlord_id == self.request.user.id:
+            raise ValidationError({"detail": "You cannot review your own property or landlord profile."})
         if not user_has_gold_access(self.request.user):
             raise PermissionDenied("Landlord and property reviews are available from the Gold plan.")
 
-        listing = get_object_or_404(Listing, id=self.request.data.get("listing_id"))
         review_type = serializer.validated_data.get("review_type") or Review.ReviewType.PROPERTY
         if Review.objects.filter(listing=listing, tenant=self.request.user, review_type=review_type).exists():
             target = "landlord" if review_type == Review.ReviewType.LANDLORD else "property"
@@ -6421,6 +6540,11 @@ class ReviewViewSet(viewsets.ModelViewSet):
         review = self.get_object()
         if self.request.user.role != AppUser.Role.ADMIN and review.tenant_id != self.request.user.id:
             raise PermissionDenied("Forbidden")
+        if (
+            self.request.user.role != AppUser.Role.ADMIN
+            and review.listing.landlord_id == self.request.user.id
+        ):
+            raise ValidationError({"detail": "You cannot review your own property or landlord profile."})
         if self.request.user.role == AppUser.Role.TENANT and not user_has_gold_access(self.request.user):
             raise PermissionDenied("Landlord and property reviews are available from the Gold plan.")
         serializer.save()
@@ -6495,9 +6619,16 @@ class MessageViewSet(viewsets.ModelViewSet):
             raise PermissionDenied("Complete your tenant profile before accessing landlord conversations.")
         if self.request.user.role == AppUser.Role.TENANT and not user_has_silver_access(self.request.user):
             raise PermissionDenied("Landlord conversations and enquiries are available from the Silver plan.")
-        filters = Q(sender=self.request.user) | Q(receiver=self.request.user)
-        if self.request.user.role == AppUser.Role.LANDLORD:
-            filters |= Q(listing__landlord=self.request.user)
+        role = self.request.user.role
+        filters = (
+            Q(sender=self.request.user, sender_role=role)
+            | Q(receiver=self.request.user, receiver_role=role)
+        )
+        if role == AppUser.Role.LANDLORD:
+            filters |= Q(listing__landlord=self.request.user) & (
+                Q(sender_role=AppUser.Role.LANDLORD)
+                | Q(receiver_role=AppUser.Role.LANDLORD)
+            )
 
         return (
             Message.objects.filter(filters)
@@ -6508,12 +6639,16 @@ class MessageViewSet(viewsets.ModelViewSet):
 
     def _conversation_counterpart(self, msg):
         if self.request.user.role == AppUser.Role.LANDLORD:
-            if msg.sender.role == AppUser.Role.TENANT:
+            if msg.sender_role == AppUser.Role.TENANT:
                 return msg.sender
-            if msg.receiver.role == AppUser.Role.TENANT:
+            if msg.receiver_role == AppUser.Role.TENANT:
                 return msg.receiver
 
         return msg.receiver if msg.sender_id == self.request.user.id else msg.sender
+
+    def _conversation_counterpart_role(self, msg):
+        counterpart = self._conversation_counterpart(msg)
+        return msg.sender_role if counterpart.id == msg.sender_id else msg.receiver_role
 
     def _viewing_arranged_for(self, *, tenant_user, listing):
         if not tenant_user or not listing:
@@ -6566,12 +6701,12 @@ class MessageViewSet(viewsets.ModelViewSet):
         receiver = AppUser.objects.filter(id=receiver_id).first()
         if receiver is None:
             raise ValidationError({"receiver_id": "Receiver not found."})
-        if self.request.user.role == AppUser.Role.TENANT and receiver.role == AppUser.Role.LANDLORD:
+        if self.request.user.role == AppUser.Role.TENANT and has_active_role(receiver, AppUser.Role.LANDLORD):
             if not user_has_silver_access(self.request.user):
                 raise PermissionDenied("Contacting landlords is available from the Silver plan.")
-            if user_has_bronze_access(receiver):
+            if user_has_bronze_access(role_bound_user(receiver, AppUser.Role.LANDLORD)):
                 raise PermissionDenied("Landlord is unable to receive messages at this time until fully verified.")
-        if self.request.user.role == AppUser.Role.LANDLORD and receiver.role == AppUser.Role.TENANT and user_has_bronze_access(self.request.user):
+        if self.request.user.role == AppUser.Role.LANDLORD and has_active_role(receiver, AppUser.Role.TENANT) and user_has_bronze_access(self.request.user):
             raise PermissionDenied("Contacting tenants is not available on the Bronze free plan.")
         if contains_contact_info(serializer.validated_data.get("content", "")):
             raise ValidationError("Phone numbers, emails, and social media handles are not allowed. Please use chat only.")
@@ -6591,7 +6726,7 @@ class MessageViewSet(viewsets.ModelViewSet):
         conversation_meta = {}
         for msg in self.get_queryset():
             counterpart_user = self._conversation_counterpart(msg)
-            if request.user.role == AppUser.Role.LANDLORD and counterpart_user.role != AppUser.Role.TENANT:
+            if request.user.role == AppUser.Role.LANDLORD and self._conversation_counterpart_role(msg) != AppUser.Role.TENANT:
                 continue
             counterpart = str(counterpart_user.id)
             listing_key = str(msg.listing_id or "")
@@ -6655,13 +6790,13 @@ class MessageViewSet(viewsets.ModelViewSet):
         messages = (
             Message.objects
             .filter(listing=listing)
-            .filter(Q(sender__role=AppUser.Role.TENANT) | Q(receiver__role=AppUser.Role.TENANT))
+            .filter(Q(sender_role=AppUser.Role.TENANT) | Q(receiver_role=AppUser.Role.TENANT))
             .select_related("sender", "receiver")
             .order_by("-created_at")
         )
         grouped = {}
         for msg in messages:
-            tenant = msg.sender if msg.sender.role == AppUser.Role.TENANT else msg.receiver
+            tenant = msg.sender if msg.sender_role == AppUser.Role.TENANT else msg.receiver
             tenant_key = str(tenant.id)
             entry = grouped.setdefault(
                 tenant_key,
@@ -6720,11 +6855,16 @@ class MessageViewSet(viewsets.ModelViewSet):
         if not listing_id:
             raise ValidationError({"listing_id": "This field is required."})
         listing = get_object_or_404(Listing.objects.select_related("landlord"), id=listing_id)
+        # Payer/payee same-identity gate, matching BookingSerializer.create.
+        if listing.landlord_id == request.user.id:
+            raise ValidationError({"listing_id": "You cannot rent your own property."})
 
         has_tenant_message = self.get_queryset().filter(
             listing=listing,
             sender=request.user,
+            sender_role=AppUser.Role.TENANT,
             receiver=listing.landlord,
+            receiver_role=AppUser.Role.LANDLORD,
         ).exists()
         if not has_tenant_message:
             raise PermissionDenied("Message the landlord about this listing before marking a viewing as booked.")
@@ -6773,7 +6913,7 @@ class MessageViewSet(viewsets.ModelViewSet):
             {
                 "counterpart_id": key,
                 "counterpart_name": counterpart_user.name,
-                "counterpart_role": counterpart_user.role,
+                "counterpart_role": msg.sender_role if counterpart_user.id == msg.sender_id else msg.receiver_role,
                 "counterpart_profile_photo_url": counterpart_user.profile_photo_url,
                 "last_message": {"id": msg.id, "content": msg.content, "created_at": msg.created_at},
                 "listing_id": msg.listing_id,
@@ -6794,7 +6934,7 @@ class CommunityChatMessageViewSet(viewsets.GenericViewSet, mixins.ListModelMixin
             raise PermissionDenied("Community chat is available only to active Gold or Platinum subscription accounts.")
         return (
             CommunityChatMessage.objects.select_related("sender")
-            .filter(sender__role=self.request.user.role)
+            .filter(role=self.request.user.role)
             .order_by("-created_at")
         )
 
@@ -7056,6 +7196,7 @@ class AgentViewSet(viewsets.ViewSet):
 
         verification, _ = VerificationRequest.objects.get_or_create(
             user=request.user,
+            role=AppUser.Role.AGENT,
             defaults={
                 "request_type": VerificationRequest.RequestType.IDENTIFICATION,
             },
@@ -7211,6 +7352,14 @@ class AgentInspectionViewSet(viewsets.GenericViewSet, mixins.ListModelMixin, mix
         listing_id = request.data.get("listing_id")
         if not listing_id:
             raise ValidationError({"listing_id": "A listing is required."})
+        listing = get_object_or_404(Listing, id=listing_id)
+        # Conflict of interest: the PIO must not be the listing's landlord or a tenant of it.
+        if listing.landlord_id == request.user.id or Booking.objects.filter(
+            tenant=request.user, listing=listing
+        ).exists():
+            raise PermissionDenied(
+                "You cannot inspect a property in which you have an ownership or tenancy interest."
+            )
         profile = AgentProfile.objects.filter(user=request.user).first()
         if not profile or profile.verification_status != AgentProfile.VerificationStatus.VERIFIED:
             raise PermissionDenied("Complete PIO verification before claiming inspections.")
@@ -7221,7 +7370,6 @@ class AgentInspectionViewSet(viewsets.GenericViewSet, mixins.ListModelMixin, mix
         ).exists():
             raise PermissionDenied("Complete the PIO verification payment before claiming inspections.")
 
-        listing = get_object_or_404(Listing, id=listing_id)
         submission = (
             listing.property_document_submission
             if isinstance(listing.property_document_submission, dict)
@@ -7360,7 +7508,7 @@ class SupportChatMessageViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
     def get_queryset(self):
         queryset = SupportChatMessage.objects.select_related("thread_user", "sender").order_by("-created_at")
         if self.request.user.role in {AppUser.Role.TENANT, AppUser.Role.LANDLORD, AppUser.Role.AGENT}:
-            return queryset.filter(thread_user=self.request.user)
+            return queryset.filter(thread_user=self.request.user, thread_role=self.request.user.role)
 
         thread_user_id = (
             self.request.query_params.get("user_id")
@@ -7370,7 +7518,17 @@ class SupportChatMessageViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
             or self.request.query_params.get("thread_user")
         )
         if thread_user_id:
-            return queryset.filter(thread_user_id=thread_user_id)
+            thread_user = AppUser.objects.filter(id=thread_user_id).first()
+            if thread_user is None:
+                return queryset.none()
+            thread_role = (
+                self.request.query_params.get("thread_role")
+                or self.request.query_params.get("active_role")
+                or thread_user.role
+            )
+            if not has_active_role(thread_user, thread_role):
+                raise PermissionDenied("The selected role is not active for this account.")
+            return queryset.filter(thread_user_id=thread_user_id, thread_role=thread_role)
         return queryset
 
 
@@ -7411,9 +7569,9 @@ class AdminViewSet(viewsets.ViewSet):
     def stats(self, request):
         return Response({
             "total_users": User.objects.count(),
-            "total_landlords": User.objects.filter(role="landlord").count(),
-            "total_tenants": User.objects.filter(role="tenant").count(),
-            "total_agents": User.objects.filter(role="agent").count(),
+            "total_landlords": users_with_role(User.objects.all(), AppUser.Role.LANDLORD).count(),
+            "total_tenants": users_with_role(User.objects.all(), AppUser.Role.TENANT).count(),
+            "total_agents": users_with_role(User.objects.all(), AppUser.Role.AGENT).count(),
             "total_admins": User.objects.filter(role="admin").count(),
             "total_listings": Listing.objects.count(),
             "active_listings": Listing.objects.filter(status="available").count(),

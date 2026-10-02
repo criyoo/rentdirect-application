@@ -3,14 +3,17 @@ import json
 import os
 import ssl
 from http.cookies import SimpleCookie
+from urllib.parse import parse_qs
 
 from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from rest_framework.exceptions import PermissionDenied
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import AccessToken
 
 from .models import AppUser, CommunityChatMessage
+from .roles import apply_active_role
 from .subscription_access import user_has_active_community_chat_subscription
 
 try:
@@ -51,12 +54,18 @@ def _authenticate_user(scope):
     if not user_id:
         return None
 
-    return (
-        get_user_model()
-        .objects
-        .filter(id=user_id, is_active=True, role__in=[AppUser.Role.TENANT, AppUser.Role.LANDLORD])
-        .first()
-    )
+    user = get_user_model().objects.filter(id=user_id, is_active=True).first()
+    if user is None:
+        return None
+    query = parse_qs(scope.get("query_string", b"").decode("utf-8"))
+    requested_role = (query.get("active_role") or [""])[0] or None
+    try:
+        apply_active_role(user, requested_role)
+    except PermissionDenied:
+        return None
+    if user.role not in COMMUNITY_CHAT_ROLES:
+        return None
+    return user
 
 
 def _message_payload(message):
@@ -66,6 +75,7 @@ def _message_payload(message):
         "sender_id": str(sender.id),
         "sender_name": sender.name,
         "sender_photo_url": sender.profile_photo_url,
+        "role": message.role,
         "content": message.content,
         "created_at": message.created_at.isoformat(),
     }
@@ -79,6 +89,7 @@ def _channel_name(role):
 def _create_message(user, content):
     message = CommunityChatMessage.objects.select_related("sender").create(
         sender=user,
+        role=user.role,
         content=content,
     )
     return _message_payload(message)

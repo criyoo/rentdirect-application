@@ -8,10 +8,12 @@ from urllib.parse import parse_qs
 from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from rest_framework.exceptions import PermissionDenied
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import AccessToken
 
 from .models import AppUser, Listing, Message
+from .roles import apply_active_role, has_active_role, role_bound_user
 from .security import contains_contact_info
 from .subscription_access import user_has_bronze_access, user_has_completed_tenant_profile, user_has_silver_access
 
@@ -52,19 +54,27 @@ def _authenticate_user(scope):
     if not user_id:
         return None
 
-    return (
-        get_user_model()
-        .objects
-        .filter(id=user_id, is_active=True, role__in=[AppUser.Role.TENANT, AppUser.Role.LANDLORD])
-        .first()
-    )
+    user = get_user_model().objects.filter(id=user_id, is_active=True).first()
+    if user is None:
+        return None
+    query = parse_qs(scope.get("query_string", b"").decode("utf-8"))
+    requested_role = (query.get("active_role") or [""])[0] or None
+    try:
+        apply_active_role(user, requested_role)
+    except PermissionDenied:
+        return None
+    if user.role not in {AppUser.Role.TENANT, AppUser.Role.LANDLORD}:
+        return None
+    return user
 
 
 def _message_payload(message):
     return {
         "id": str(message.id),
         "sender_id": str(message.sender_id),
+        "sender_role": message.sender_role,
         "receiver_id": str(message.receiver_id),
+        "receiver_role": message.receiver_role,
         "listing_id": str(message.listing_id) if message.listing_id else None,
         "content": message.content,
         "created_at": message.created_at.isoformat(),
@@ -98,10 +108,10 @@ def _resolve_conversation(user, scope):
         counterpart = (
             get_user_model()
             .objects
-            .filter(id=counterpart_id, role=AppUser.Role.TENANT, is_active=True)
+            .filter(id=counterpart_id, is_active=True)
             .first()
         )
-        if counterpart is None:
+        if counterpart is None or not has_active_role(counterpart, AppUser.Role.TENANT):
             return None
     else:
         return None
@@ -116,12 +126,12 @@ def _can_send_message(sender, receiver, content):
         return False, "Your account must be verified before contacting landlords. Please submit your NIN for verification."
     if sender.role == AppUser.Role.TENANT and not user_has_completed_tenant_profile(sender):
         return False, "Complete your tenant profile before contacting landlords."
-    if sender.role == AppUser.Role.TENANT and receiver.role == AppUser.Role.LANDLORD:
+    if sender.role == AppUser.Role.TENANT and has_active_role(receiver, AppUser.Role.LANDLORD):
         if not user_has_silver_access(sender):
             return False, "Contacting landlords is available from the Silver plan."
-        if user_has_bronze_access(receiver):
+        if user_has_bronze_access(role_bound_user(receiver, AppUser.Role.LANDLORD)):
             return False, "Landlord is unable to receive messages at this time until fully verified."
-    if sender.role == AppUser.Role.LANDLORD and receiver.role == AppUser.Role.TENANT and user_has_bronze_access(sender):
+    if sender.role == AppUser.Role.LANDLORD and has_active_role(receiver, AppUser.Role.TENANT) and user_has_bronze_access(sender):
         return False, "Contacting tenants is not available on the Bronze free plan."
     if contains_contact_info(content):
         return False, "Phone numbers, emails, and social media handles are not allowed. Please use chat only."
@@ -130,10 +140,16 @@ def _can_send_message(sender, receiver, content):
 
 @sync_to_async
 def _create_message(sender, receiver, listing, content):
+    sender_role = sender.role
+    receiver_role = (
+        AppUser.Role.LANDLORD if sender_role == AppUser.Role.TENANT else AppUser.Role.TENANT
+    )
     message = Message.objects.create(
         sender=sender,
         receiver=receiver,
         listing=listing,
+        sender_role=sender_role,
+        receiver_role=receiver_role,
         content=content,
     )
     return _message_payload(message)

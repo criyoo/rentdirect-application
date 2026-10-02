@@ -1,5 +1,19 @@
 import axios from 'axios'
 import { clearFormDrafts } from '@/lib/formDrafts'
+import type { AccountRole } from '@/types'
+
+export const ACCOUNT_ROLES: AccountRole[] = ['tenant', 'landlord', 'agent', 'admin']
+
+export function getStoredUserRole(): AccountRole | null {
+    const stored = localStorage.getItem('user')
+    if (!stored) return null
+    try {
+        const role = JSON.parse(stored)?.role
+        return ACCOUNT_ROLES.includes(role) ? role : null
+    } catch {
+        return null
+    }
+}
 
 export function getApiUrl(): string {
   const configured = import.meta.env.VITE_API_URL
@@ -33,12 +47,15 @@ export function getMediaBaseUrl(): string {
 
 export function getWebSocketUrl(path: string): string {
   const configured = import.meta.env.VITE_WS_URL
-  if (configured) {
-    return `${configured.replace(/\/$/, '')}${path.startsWith('/') ? path : `/${path}`}`
+  const base = configured
+    ? configured.replace(/\/$/, '')
+    : getApiUrl().replace(/\/api\/v1$/, '').replace(/^https:/, 'wss:').replace(/^http:/, 'ws:')
+  const url = new URL(`${base}${path.startsWith('/') ? path : `/${path}`}`)
+  const activeRole = getStoredUserRole()
+  if (activeRole) {
+    url.searchParams.set('active_role', activeRole)
   }
-  const apiBase = getApiUrl().replace(/\/api\/v1$/, '')
-  const wsBase = apiBase.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:')
-  return `${wsBase}${path.startsWith('/') ? path : `/${path}`}`
+  return url.toString()
 }
 
 export const api = axios.create({
@@ -47,6 +64,14 @@ export const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+})
+
+api.interceptors.request.use((config) => {
+  const role = getStoredUserRole()
+  if (role) {
+    config.headers.set('X-RentDirect-Role', role)
+  }
+  return config
 })
 
 export function extractApiFieldErrors(error: any): Record<string, string> {
@@ -108,7 +133,15 @@ api.interceptors.response.use(
     ) {
       error.config._retry = true
       try {
-        await axios.post(`${getApiUrl()}/auth/refresh`, {}, { withCredentials: true })
+        const role = getStoredUserRole()
+        await axios.post(
+          `${getApiUrl()}/auth/refresh`,
+          {},
+          {
+            withCredentials: true,
+            headers: role ? { 'X-RentDirect-Role': role } : {},
+          },
+        )
         return api(error.config)
       } catch {
         localStorage.removeItem('user')

@@ -6,7 +6,8 @@ from django.db.models import OuterRef, Prefetch, Subquery
 from django.utils.html import format_html, format_html_join
 from django.utils import timezone
 
-from .models import AdminUser, Agent, AgentProfile, AgentReferralEarning, AppUser, Booking, Document, Feedback, Favourite, FeaturedPayment, Landlord, LandlordProfile, Listing, ListingImage, Message, Payment, PaymentSettlement, PropertyInspection, InspectionRequest, RepresentativeKyc, Review, ServicePayment, SubscriptionPayment, SubscriptionVATPayment, Tenant, TenantProfile, TenantRefund, TenantSearchRequirement, VerificationRequest, infer_listing_rental_status, sync_listing_status_from_rental_progress
+from .models import AdminUser, Agent, AgentProfile, AgentReferralEarning, AppUser, Booking, Document, Feedback, Favourite, FeaturedPayment, Landlord, LandlordProfile, Listing, ListingImage, Message, Payment, PaymentSettlement, PropertyInspection, InspectionRequest, RepresentativeKyc, Review, ServicePayment, SubscriptionPayment, SubscriptionVATPayment, Tenant, TenantProfile, TenantRefund, TenantSearchRequirement, UserRole, VerificationRequest, infer_listing_rental_status, sync_listing_status_from_rental_progress
+from .roles import CUSTOMER_ROLES, users_with_role
 
 
 PREFERRED_CONTACT_METHOD_CHOICES = (
@@ -742,11 +743,18 @@ class RoleAdminMixin:
     role = ""
 
     def get_queryset(self, request):
-        return super().get_queryset(request).filter(role=self.role)
+        return users_with_role(super().get_queryset(request), self.role)
 
     def save_model(self, request, obj, form, change):
-        obj.role = self.role
+        if not change:
+            obj.role = self.role
         super().save_model(request, obj, form, change)
+        if self.role in CUSTOMER_ROLES:
+            UserRole.objects.get_or_create(
+                user_id=obj.pk,
+                role=self.role,
+                defaults={"status": UserRole.Status.ACTIVE},
+            )
 
     def get_model_perms(self, request):
         return {
@@ -1062,6 +1070,7 @@ class VerificationRequestAdmin(admin.ModelAdmin):
     )
     list_display_links = ("id", "user_email")
     list_filter = (
+        "role",
         "identity_verification_status",
         "verification_method",
         "submitted_at",
@@ -1073,6 +1082,7 @@ class VerificationRequestAdmin(admin.ModelAdmin):
     ordering = ("-submitted_at",)
     fields = (
         "user",
+        "role",
         "documents",
         "identity_verification_status",
         "verification_method",
@@ -1103,9 +1113,9 @@ class VerificationRequestAdmin(admin.ModelAdmin):
     def user_email(self, obj):
         return obj.user.email
 
-    @admin.display(ordering="user__role", description="Role")
+    @admin.display(ordering="role", description="Role")
     def user_role(self, obj):
-        return obj.user.role
+        return obj.role
 
 
 @admin.register(FeaturedPayment)

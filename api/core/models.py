@@ -120,22 +120,38 @@ class AppUser(AbstractBaseUser, PermissionsMixin):
     def profile_photo_url(self) -> str:
         return self.profile_photo.url if self.profile_photo else ""
 
-    @property
-    def is_verified(self) -> bool:
-        if self.role == self.Role.LANDLORD:
+    def is_verified_for_role(self, role: str) -> bool:
+        if role == self.Role.LANDLORD:
             return self.verification_requests.filter(
+                role=role,
                 identity_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
             ).exists()
 
-        tenant_profile = getattr(self, "tenant_profile", None)
-        if self.role == self.Role.TENANT and self.verification_requests.filter(
-            identity_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
-        ).exists():
-            return True
-        if tenant_profile and tenant_profile.status == TenantProfile.Status.APPROVED:
-            return True
+        if role == self.Role.AGENT:
+            agent_profile = getattr(self, "agent_profile", None)
+            return bool(
+                agent_profile
+                and agent_profile.verification_status == AgentProfile.VerificationStatus.VERIFIED
+            )
 
-        return self.verification_requests.filter(status=VerificationRequest.Status.APPROVED).exists()
+        if role == self.Role.TENANT:
+            if self.verification_requests.filter(
+                role=role,
+                identity_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
+            ).exists():
+                return True
+            tenant_profile = getattr(self, "tenant_profile", None)
+            if tenant_profile and tenant_profile.status == TenantProfile.Status.APPROVED:
+                return True
+
+        return self.verification_requests.filter(
+            role=role,
+            status=VerificationRequest.Status.APPROVED,
+        ).exists()
+
+    @property
+    def is_verified(self) -> bool:
+        return self.is_verified_for_role(getattr(self, "active_role", None) or self.role)
 
     @property
     def is_account_frozen(self) -> bool:
@@ -150,6 +166,53 @@ class AppUser(AbstractBaseUser, PermissionsMixin):
             models.Index(fields=["role", "created_at"], name="core_user_role_created_idx"),
             models.Index(fields=["email_verified"], name="core_user_verified_idx"),
         ]
+
+
+class UserRole(models.Model):
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Active"
+        SUSPENDED = "suspended", "Suspended"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name="role_memberships")
+    role = models.CharField(max_length=20, choices=AppUser.Role.choices)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
+    account_frozen = models.BooleanField(default=False)
+    account_frozen_at = models.DateTimeField(null=True, blank=True)
+    account_frozen_until = models.DateTimeField(null=True, blank=True)
+    account_freeze_fee_percentage = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=ACCOUNT_FREEZE_FEE_PERCENTAGE,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["user", "role"], name="core_userrole_user_role_uniq")]
+        indexes = [models.Index(fields=["role", "status"], name="core_userrole_role_status_idx")]
+
+    @property
+    def is_frozen(self):
+        return bool(self.account_frozen and (not self.account_frozen_until or self.account_frozen_until > timezone.now()))
+
+
+class RoleAuditEvent(models.Model):
+    class Event(models.TextChoices):
+        ACTIVATED = "activated", "Activated"
+        SWITCHED = "switched", "Switched"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name="role_audit_events")
+    role = models.CharField(max_length=20, choices=AppUser.Role.choices)
+    event = models.CharField(max_length=20, choices=Event.choices)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=512, blank=True, default="")
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["user", "-created_at"], name="core_roleaudit_user_ct_idx")]
 
 
 class Tenant(AppUser):
@@ -862,6 +925,7 @@ class VerificationRequest(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name="verification_requests")
+    role = models.CharField(max_length=20, choices=AppUser.Role.choices)
     documents = models.ManyToManyField(Document, blank=True)
     request_type = models.CharField(max_length=30, choices=RequestType.choices, default=RequestType.GENERAL)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
@@ -893,7 +957,7 @@ class VerificationRequest(models.Model):
             models.Index(fields=["user", "-submitted_at"], name="core_verify_user_ct_idx"),
         ]
         constraints = [
-            models.UniqueConstraint(fields=["user"], name="core_verify_unique_user"),
+            models.UniqueConstraint(fields=["user", "role"], name="core_verify_user_role_uniq"),
         ]
 
 
@@ -1581,6 +1645,8 @@ class Message(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     sender = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name="sent_messages")
     receiver = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name="received_messages")
+    sender_role = models.CharField(max_length=20, choices=AppUser.Role.choices, db_index=True)
+    receiver_role = models.CharField(max_length=20, choices=AppUser.Role.choices, db_index=True)
     listing = models.ForeignKey(Listing, on_delete=models.SET_NULL, null=True, blank=True, related_name="messages")
     content = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
@@ -1596,6 +1662,7 @@ class Message(models.Model):
 class CommunityChatMessage(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     sender = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name="community_chat_messages")
+    role = models.CharField(max_length=20, choices=AppUser.Role.choices, db_index=True)
     content = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -1609,7 +1676,9 @@ class CommunityChatMessage(models.Model):
 class SupportChatMessage(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     thread_user = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name="support_chat_threads")
+    thread_role = models.CharField(max_length=20, choices=AppUser.Role.choices, db_index=True)
     sender = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name="support_chat_messages")
+    sender_role = models.CharField(max_length=20, choices=AppUser.Role.choices)
     content = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -1671,6 +1740,12 @@ class AgentProfile(models.Model):
         verbose_name_plural = "Property Inspection Officer Profiles"
         indexes = [
             models.Index(fields=["verification_status", "-updated_at"], name="core_agentprof_status_idx"),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(referred_by__isnull=True) | ~models.Q(referred_by=models.F("user")),
+                name="core_agentprof_no_self_ref",
+            ),
         ]
 
     def save(self, *args, **kwargs):

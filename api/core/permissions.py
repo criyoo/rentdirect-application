@@ -1,15 +1,20 @@
 from rest_framework.permissions import BasePermission
 
+from .roles import active_role_membership
+
 
 FROZEN_ACCOUNT_MESSAGE = "Your account is frozen. Unfreeze it to access RentDirect services."
 
 
 def is_frozen_account(user) -> bool:
-    return bool(
-        getattr(user, "is_authenticated", False)
-        and getattr(user, "role", None) in {"tenant", "landlord"}
-        and getattr(user, "is_account_frozen", False)
-    )
+    if not getattr(user, "is_authenticated", False):
+        return False
+    if getattr(user, "role", None) not in {"tenant", "landlord"}:
+        return False
+    membership = active_role_membership(user)
+    if membership is not None:
+        return membership.is_frozen
+    return bool(getattr(user, "is_account_frozen", False))
 
 
 class AllowAnyUnlessFrozen(BasePermission):

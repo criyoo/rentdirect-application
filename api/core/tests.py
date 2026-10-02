@@ -17,6 +17,7 @@ from django.core.cache import cache
 from django.core.management import call_command
 from django.core.files.storage import FileSystemStorage
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import IntegrityError, transaction
 from django.test import TestCase
 from django.test.utils import override_settings
 from django.utils import timezone
@@ -27,8 +28,9 @@ from core import flutterwave
 from core.management.commands.seed_demo_data import Command as SeedDemoDataCommand
 from core.flutterwave import FlutterwaveError
 from core.inspection_checklist import INSPECTION_CHECKLIST_SCHEMA
-from core.models import AgentProfile, AgentReferralEarning, AppUser, Booking, BvnVerificationRecord, CacVerificationRecord, CommunityChatMessage, Document, Feedback, FeaturedPayment, InspectionRequest, Listing, ListingImage, Message, NinVerificationRecord, Payment, PaymentSettlement, PendingRegistration, PropertyInspection, Review, ServicePayment, SubscriptionPayment, SubscriptionPaymentMethod, SubscriptionVATPayment, SupportChatMessage, TenancyAgreement, TenantProfile, VerificationRequest
+from core.models import AgentProfile, AgentReferralEarning, AppUser, Booking, BvnVerificationRecord, CacVerificationRecord, CommunityChatMessage, Document, Feedback, FeaturedPayment, InspectionRequest, Listing, ListingImage, Message, NinVerificationRecord, Payment, PaymentSettlement, PendingRegistration, PropertyInspection, Review, RoleAuditEvent, ServicePayment, SubscriptionPayment, SubscriptionPaymentMethod, SubscriptionVATPayment, SupportChatMessage, TenancyAgreement, TenantProfile, UserRole, VerificationRequest
 from core.referrals import award_referral_earning, generate_unique_referral_code, resolve_referrer
+from core.roles import users_with_role
 from core.payment_queue import TASK_PROCESS_READY_PAYOUTS, TASK_RECONCILE_PENDING_PAYMENTS, TASK_SEND_RENEWAL_REMINDERS, enqueue_payment_task
 from core.prembly_verification import (
     PremblyWebhookVerificationError,
@@ -417,6 +419,154 @@ class AuthViewSetTests(TestCase):
         self.assertEqual(response.json()["email"], "active-login@example.com")
         self.assertIn(settings.ACCESS_COOKIE_NAME, response.cookies)
         self.assertIn(settings.REFRESH_COOKIE_NAME, response.cookies)
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_verify_registration_creates_active_role_membership(self):
+        email = "membership-user@example.com"
+        response = self.client.post(
+            "/api/v1/auth/register",
+            {
+                "name": "Membership User",
+                "email": email,
+                "password": "password-123",
+                "role": AppUser.Role.TENANT,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.json())
+        otp_match = re.search(r"\b([A-Z0-9]{6})\b", mail.outbox[-1].body)
+        self.assertIsNotNone(otp_match)
+
+        verify_response = self.client.post(
+            "/api/v1/auth/register/verify",
+            {"email": email, "otp_code": otp_match.group(1)},
+            format="json",
+        )
+
+        self.assertEqual(verify_response.status_code, 200, verify_response.json())
+        user = AppUser.objects.get(email=email)
+        membership = UserRole.objects.get(user=user, role=AppUser.Role.TENANT)
+        self.assertEqual(membership.status, UserRole.Status.ACTIVE)
+        self.assertEqual(verify_response.json()["role"], AppUser.Role.TENANT)
+        self.assertEqual(verify_response.json()["available_roles"], [AppUser.Role.TENANT])
+        self.assertTrue(
+            RoleAuditEvent.objects.filter(
+                user=user,
+                role=AppUser.Role.TENANT,
+                event=RoleAuditEvent.Event.ACTIVATED,
+            ).exists()
+        )
+
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+    def test_register_duplicate_email_directs_to_sign_in(self):
+        AppUser.objects.create_user(
+            email="existing-multi@example.com",
+            password="password-123",
+            name="Existing Multi",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        response = self.client.post(
+            "/api/v1/auth/register",
+            {
+                "name": "Duplicate",
+                "email": "existing-multi@example.com",
+                "password": "password-123",
+                "role": AppUser.Role.LANDLORD,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400, response.json())
+        self.assertIn("Sign in to add another role", str(response.json()))
+
+    def test_login_selects_requested_active_role_in_memory_only(self):
+        user = AppUser.objects.create_user(
+            email="multi-login@example.com",
+            password="password-123",
+            name="Multi Login",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        UserRole.objects.create(user=user, role=AppUser.Role.TENANT)
+        UserRole.objects.create(user=user, role=AppUser.Role.LANDLORD)
+
+        response = self.client.post(
+            "/api/v1/auth/login",
+            {"email": user.email, "password": "password-123", "role": "landlord"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertEqual(response.json()["role"], AppUser.Role.LANDLORD)
+        self.assertEqual(
+            set(response.json()["available_roles"]),
+            {AppUser.Role.TENANT, AppUser.Role.LANDLORD},
+        )
+        user.refresh_from_db()
+        self.assertEqual(user.role, AppUser.Role.TENANT)
+
+    def test_login_rejects_role_without_active_membership(self):
+        user = AppUser.objects.create_user(
+            email="single-login@example.com",
+            password="password-123",
+            name="Single Login",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        UserRole.objects.create(user=user, role=AppUser.Role.TENANT)
+
+        response = self.client.post(
+            "/api/v1/auth/login",
+            {"email": user.email, "password": "password-123", "role": "landlord"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400, response.json())
+
+    def test_active_role_header_selects_in_memory_role_without_persisting(self):
+        user = AppUser.objects.create_user(
+            email="header-role@example.com",
+            password="password-123",
+            name="Header Role",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        UserRole.objects.create(user=user, role=AppUser.Role.TENANT)
+        UserRole.objects.create(user=user, role=AppUser.Role.LANDLORD)
+        token = str(RefreshToken.for_user(user).access_token)
+
+        response = self.client.get(
+            "/api/v1/users/me",
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+            HTTP_X_RENTDIRECT_ROLE="landlord",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertEqual(response.json()["role"], AppUser.Role.LANDLORD)
+        user.refresh_from_db()
+        self.assertEqual(user.role, AppUser.Role.TENANT)
+
+    def test_active_role_header_rejects_suspended_membership(self):
+        user = AppUser.objects.create_user(
+            email="suspended-role@example.com",
+            password="password-123",
+            name="Suspended Role",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        UserRole.objects.create(user=user, role=AppUser.Role.TENANT)
+        UserRole.objects.create(
+            user=user, role=AppUser.Role.LANDLORD, status=UserRole.Status.SUSPENDED
+        )
+        token = str(RefreshToken.for_user(user).access_token)
+
+        response = self.client.get(
+            "/api/v1/users/me",
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+            HTTP_X_RENTDIRECT_ROLE="landlord",
+        )
+
+        self.assertEqual(response.status_code, 403)
 
 
 class ListingTests(TestCase):
@@ -1000,6 +1150,7 @@ class ListingTests(TestCase):
         )
         VerificationRequest.objects.create(
             user=landlord,
+            role=landlord.role,
             status=VerificationRequest.Status.APPROVED,
             identity_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
             property_document_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
@@ -1145,6 +1296,7 @@ class ListingTests(TestCase):
         )
         VerificationRequest.objects.create(
             user=landlord,
+            role=landlord.role,
             status=VerificationRequest.Status.APPROVED,
             identity_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
         )
@@ -1203,6 +1355,7 @@ class ListingTests(TestCase):
         )
         VerificationRequest.objects.create(
             user=landlord,
+            role=landlord.role,
             status=VerificationRequest.Status.APPROVED,
             identity_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
         )
@@ -1268,6 +1421,7 @@ class ListingTests(TestCase):
         )
         VerificationRequest.objects.create(
             user=landlord,
+            role=landlord.role,
             status=VerificationRequest.Status.APPROVED,
             identity_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
             property_document_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
@@ -1857,9 +2011,12 @@ class UserViewSetTests(TestCase):
 
         self.assertEqual(response.status_code, 200, response.json())
         user.refresh_from_db()
-        self.assertTrue(user.account_frozen)
-        self.assertEqual(user.account_freeze_fee_percentage, Decimal("10.00"))
-        self.assertTrue(user.account_frozen_until)
+        # Freeze state lives on the active role membership, not legacy AppUser fields.
+        self.assertFalse(user.account_frozen)
+        membership = UserRole.objects.get(user=user, role=AppUser.Role.LANDLORD)
+        self.assertTrue(membership.is_frozen)
+        self.assertEqual(membership.account_freeze_fee_percentage, Decimal("10.00"))
+        self.assertTrue(membership.account_frozen_until)
 
         client.post("/api/v1/users/me/settings/request-otp", {"purpose": "account"}, format="json")
         unfreeze_otp = re.search(r"\b([A-Z0-9]{6})\b", mail.outbox[-1].body).group(1)
@@ -1867,8 +2024,10 @@ class UserViewSetTests(TestCase):
 
         self.assertEqual(response.status_code, 200, response.json())
         user.refresh_from_db()
+        membership.refresh_from_db()
         self.assertFalse(user.account_frozen)
-        self.assertIsNone(user.account_frozen_until)
+        self.assertFalse(membership.is_frozen)
+        self.assertIsNone(membership.account_frozen_until)
 
     @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
     def test_tenant_can_freeze_account_and_only_manage_it_until_unfrozen(self):
@@ -1892,8 +2051,10 @@ class UserViewSetTests(TestCase):
 
         self.assertEqual(response.status_code, 200, response.json())
         user.refresh_from_db()
-        self.assertTrue(user.is_account_frozen)
-        self.assertEqual(user.account_freeze_fee_percentage, Decimal("10.00"))
+        membership = UserRole.objects.get(user=user, role=AppUser.Role.TENANT)
+        self.assertTrue(membership.is_frozen)
+        self.assertFalse(user.account_frozen)
+        self.assertEqual(membership.account_freeze_fee_percentage, Decimal("10.00"))
         self.assertEqual(client.get("/api/v1/users/me").status_code, 200)
         self.assertEqual(client.get("/api/v1/users/subscription-pricing").status_code, 403)
 
@@ -1903,7 +2064,9 @@ class UserViewSetTests(TestCase):
 
         self.assertEqual(response.status_code, 200, response.json())
         user.refresh_from_db()
-        self.assertFalse(user.is_account_frozen)
+        membership.refresh_from_db()
+        self.assertFalse(user.account_frozen)
+        self.assertFalse(membership.is_frozen)
 
     @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
     def test_tenant_can_update_residence_and_guarantor_after_otp_verification(self):
@@ -2146,6 +2309,307 @@ class UserViewSetTests(TestCase):
         self.assertEqual(payload[0]["id"], str(listing.id))
         self.assertEqual(payload[0]["title"], "Favourite Listing")
         self.assertNotIn("listing", payload[0])
+
+    def test_user_role_membership_is_unique_per_role(self):
+        user = AppUser.objects.create_user(
+            email="unique-membership@example.com",
+            password="password-123",
+            name="Unique Membership",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        UserRole.objects.create(user=user, role=AppUser.Role.TENANT)
+        with self.assertRaises(IntegrityError):
+            UserRole.objects.create(user=user, role=AppUser.Role.TENANT)
+
+    def test_user_can_hold_multiple_active_roles(self):
+        user = AppUser.objects.create_user(
+            email="multi-membership@example.com",
+            password="password-123",
+            name="Multi Membership",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        UserRole.objects.create(user=user, role=AppUser.Role.TENANT)
+        UserRole.objects.create(user=user, role=AppUser.Role.LANDLORD)
+        self.assertEqual(
+            set(user.role_memberships.values_list("role", flat=True)),
+            {AppUser.Role.TENANT, AppUser.Role.LANDLORD},
+        )
+
+    def test_activate_role_endpoint_creates_membership_and_audits(self):
+        user = AppUser.objects.create_user(
+            email="activate-landlord@example.com",
+            password="password-123",
+            name="Activate Landlord",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        UserRole.objects.create(user=user, role=AppUser.Role.TENANT)
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        response = client.post(
+            "/api/v1/users/me/roles", {"role": "landlord"}, format="json"
+        )
+
+        self.assertEqual(response.status_code, 201, response.json())
+        self.assertEqual(response.json()["role"], AppUser.Role.LANDLORD)
+        membership = UserRole.objects.get(user=user, role=AppUser.Role.LANDLORD)
+        self.assertEqual(membership.status, UserRole.Status.ACTIVE)
+        self.assertTrue(
+            RoleAuditEvent.objects.filter(
+                user=user, role=AppUser.Role.LANDLORD, event=RoleAuditEvent.Event.ACTIVATED
+            ).exists()
+        )
+        user.refresh_from_db()
+        self.assertEqual(user.role, AppUser.Role.TENANT)
+
+    def test_activate_role_is_idempotent(self):
+        user = AppUser.objects.create_user(
+            email="idem-activate@example.com",
+            password="password-123",
+            name="Idem Activate",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        UserRole.objects.create(user=user, role=AppUser.Role.TENANT)
+        UserRole.objects.create(user=user, role=AppUser.Role.LANDLORD)
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        response = client.post(
+            "/api/v1/users/me/roles", {"role": "landlord"}, format="json"
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertEqual(UserRole.objects.filter(user=user, role=AppUser.Role.LANDLORD).count(), 1)
+
+    def test_activate_admin_role_rejected(self):
+        user = AppUser.objects.create_user(
+            email="activate-admin@example.com",
+            password="password-123",
+            name="Activate Admin",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        response = client.post(
+            "/api/v1/users/me/roles", {"role": "admin"}, format="json"
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(UserRole.objects.filter(user=user, role=AppUser.Role.ADMIN).exists())
+
+    def test_admin_identity_cannot_activate_customer_role(self):
+        admin = AppUser.objects.create_superuser(
+            email="admin-identity@example.com",
+            password="password-123",
+        )
+        client = APIClient()
+        client.force_authenticate(user=admin)
+
+        response = client.post(
+            "/api/v1/users/me/roles", {"role": "tenant"}, format="json"
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(UserRole.objects.filter(user=admin).exists())
+
+    def test_activation_rejects_self_referral(self):
+        agent = AppUser.objects.create_user(
+            email="self-referral@example.com",
+            password="password-123",
+            name="Self Referral",
+            role=AppUser.Role.AGENT,
+            email_verified=True,
+        )
+        UserRole.objects.create(user=agent, role=AppUser.Role.AGENT)
+        AgentProfile.objects.create(user=agent, first_name="Self", last_name="Referral")
+        client = APIClient()
+        client.force_authenticate(user=agent)
+
+        response = client.post(
+            "/api/v1/users/me/roles",
+            {"role": "agent", "referral_code": agent.agent_profile.referral_code},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400, response.json())
+        self.assertIn("referral_code", response.json())
+
+    def test_active_role_switch_returns_requested_role(self):
+        user = AppUser.objects.create_user(
+            email="switch-role@example.com",
+            password="password-123",
+            name="Switch Role",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        UserRole.objects.create(user=user, role=AppUser.Role.TENANT)
+        UserRole.objects.create(user=user, role=AppUser.Role.LANDLORD)
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        response = client.post(
+            "/api/v1/users/me/active-role", {"role": "landlord"}, format="json"
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertEqual(response.json()["role"], AppUser.Role.LANDLORD)
+        user.refresh_from_db()
+        self.assertEqual(user.role, AppUser.Role.TENANT)
+        self.assertTrue(
+            RoleAuditEvent.objects.filter(
+                user=user, role=AppUser.Role.LANDLORD, event=RoleAuditEvent.Event.SWITCHED
+            ).exists()
+        )
+
+    def test_active_role_switch_rejects_unauthorized_role(self):
+        user = AppUser.objects.create_user(
+            email="unauthorized-switch@example.com",
+            password="password-123",
+            name="Unauthorized Switch",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        UserRole.objects.create(user=user, role=AppUser.Role.TENANT)
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        response = client.post(
+            "/api/v1/users/me/active-role", {"role": "agent"}, format="json"
+        )
+
+        self.assertIn(response.status_code, {400, 403})
+        user.refresh_from_db()
+        self.assertEqual(user.role, AppUser.Role.TENANT)
+
+    def test_users_with_role_excludes_suspended_default_membership(self):
+        suspended_default = AppUser.objects.create_user(
+            email="suspended-default-member@example.com",
+            password="password-123",
+            name="Suspended Default",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        UserRole.objects.create(
+            user=suspended_default,
+            role=AppUser.Role.TENANT,
+            status=UserRole.Status.SUSPENDED,
+        )
+        active_tenant = AppUser.objects.create_user(
+            email="active-tenant-member@example.com",
+            password="password-123",
+            name="Active Tenant",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        UserRole.objects.create(user=active_tenant, role=AppUser.Role.TENANT)
+
+        queryset = users_with_role(AppUser.objects.all(), AppUser.Role.TENANT)
+        self.assertIn(active_tenant, queryset)
+        self.assertNotIn(suspended_default, queryset)
+
+    def test_activate_role_cannot_unsuspend_membership(self):
+        user = AppUser.objects.create_user(
+            email="suspended-activate@example.com",
+            password="password-123",
+            name="Suspended Activate",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        UserRole.objects.create(user=user, role=AppUser.Role.TENANT)
+        UserRole.objects.create(
+            user=user, role=AppUser.Role.LANDLORD, status=UserRole.Status.SUSPENDED
+        )
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        response = client.post(
+            "/api/v1/users/me/roles", {"role": "landlord"}, format="json"
+        )
+
+        self.assertEqual(response.status_code, 403)
+        membership = UserRole.objects.get(user=user, role=AppUser.Role.LANDLORD)
+        self.assertEqual(membership.status, UserRole.Status.SUSPENDED)
+
+    def test_activate_second_role_preserves_legacy_membership(self):
+        user = AppUser.objects.create_user(
+            email="pre-backfill-member@example.com",
+            password="password-123",
+            name="Pre Backfill",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        self.assertFalse(UserRole.objects.filter(user=user).exists())
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        response = client.post(
+            "/api/v1/users/me/roles", {"role": "landlord"}, format="json"
+        )
+
+        self.assertEqual(response.status_code, 201, response.json())
+        memberships = UserRole.objects.filter(user=user)
+        self.assertEqual(memberships.count(), 2)
+        for membership in memberships:
+            self.assertEqual(membership.status, UserRole.Status.ACTIVE)
+        user.refresh_from_db()
+        self.assertEqual(user.role, AppUser.Role.TENANT)
+
+    def test_verification_is_scoped_to_active_role(self):
+        user = AppUser.objects.create_user(
+            email="scoped-verification@example.com",
+            password="password-123",
+            name="Scoped Verification",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        UserRole.objects.create(user=user, role=AppUser.Role.TENANT)
+        UserRole.objects.create(user=user, role=AppUser.Role.LANDLORD)
+        VerificationRequest.objects.create(
+            user=user,
+            role=AppUser.Role.TENANT,
+            status=VerificationRequest.Status.APPROVED,
+        )
+
+        user.active_role = AppUser.Role.TENANT
+        self.assertTrue(user.is_verified)
+        user.active_role = AppUser.Role.LANDLORD
+        self.assertFalse(user.is_verified)
+        self.assertTrue(
+            VerificationRequest.objects.filter(
+                user=user, role=AppUser.Role.TENANT
+            ).exists()
+        )
+        self.assertFalse(
+            VerificationRequest.objects.filter(
+                user=user, role=AppUser.Role.LANDLORD
+            ).exists()
+        )
+
+    def test_account_freeze_is_scoped_to_active_role(self):
+        user = AppUser.objects.create_user(
+            email="scoped-freeze@example.com",
+            password="password-123",
+            name="Scoped Freeze",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        tenant_membership = UserRole.objects.create(user=user, role=AppUser.Role.TENANT)
+        landlord_membership = UserRole.objects.create(user=user, role=AppUser.Role.LANDLORD)
+        tenant_membership.account_frozen = True
+        tenant_membership.account_frozen_until = timezone.now() + timedelta(days=30)
+        tenant_membership.save(update_fields=["account_frozen", "account_frozen_until"])
+
+        from core.views import user_account_freeze_active
+
+        self.assertTrue(user_account_freeze_active(user, AppUser.Role.TENANT))
+        self.assertFalse(user_account_freeze_active(user, AppUser.Role.LANDLORD))
+        self.assertFalse(landlord_membership.is_frozen)
 
 
 class AdminSiteTests(TestCase):
@@ -2851,7 +3315,7 @@ class VerificationRequestViewSetTests(TestCase):
         self.assertEqual(user.tenant_verification_profile["nin_number"], "12345678901")
         self.assertNotIn("bvn_number", user.tenant_verification_profile)
         self.assertEqual(dikript_lookup_mock.call_count, 1)
-        request = VerificationRequest.objects.get(user=user)
+        request = VerificationRequest.objects.get(user=user, role=user.role)
         profile = TenantProfile.objects.get(user=user)
         self.assertEqual(profile.status, TenantProfile.Status.APPROVED)
         self.assertEqual(request.status, VerificationRequest.Status.APPROVED)
@@ -2888,7 +3352,7 @@ class VerificationRequestViewSetTests(TestCase):
         self.assertEqual(response.json()["status"], TenantProfile.Status.APPROVED)
         profile = TenantProfile.objects.get(user=user)
         self.assertEqual(profile.status, TenantProfile.Status.APPROVED)
-        request = VerificationRequest.objects.get(user=user)
+        request = VerificationRequest.objects.get(user=user, role=user.role)
         self.assertEqual(request.status, VerificationRequest.Status.APPROVED)
         self.assertEqual(request.identity_verification_status, VerificationRequest.VerificationProgressStatus.VERIFIED)
         self.assertEqual(request.verification_method, VerificationRequest.Method.AUTOMATED)
@@ -2991,7 +3455,7 @@ class VerificationRequestViewSetTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 201, response.json())
-        request = VerificationRequest.objects.get(user=user)
+        request = VerificationRequest.objects.get(user=user, role=user.role)
         self.assertEqual(response.json()["status"], VerificationRequest.Status.APPROVED)
         self.assertEqual(request.status, VerificationRequest.Status.APPROVED)
         self.assertEqual(request.identity_verification_status, VerificationRequest.VerificationProgressStatus.VERIFIED)
@@ -3027,6 +3491,7 @@ class VerificationRequestViewSetTests(TestCase):
         )
         VerificationRequest.objects.create(
             user=user,
+            role=user.role,
             request_type=VerificationRequest.RequestType.IDENTIFICATION,
             status=VerificationRequest.Status.APPROVED,
             identity_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
@@ -3131,7 +3596,7 @@ class VerificationRequestViewSetTests(TestCase):
         user.refresh_from_db()
         self.assertEqual(user.nin_number, "12345678901")
         self.assertEqual(user.bvn_number, "22347235093")
-        request = VerificationRequest.objects.get(user=user)
+        request = VerificationRequest.objects.get(user=user, role=user.role)
         self.assertEqual(response.json()["status"], VerificationRequest.Status.APPROVED)
         self.assertEqual(request.status, VerificationRequest.Status.APPROVED)
         self.assertEqual(request.identity_verification_status, VerificationRequest.VerificationProgressStatus.VERIFIED)
@@ -3217,7 +3682,7 @@ class VerificationRequestViewSetTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 201, response.json())
-        request = VerificationRequest.objects.get(user=user)
+        request = VerificationRequest.objects.get(user=user, role=user.role)
         self.assertEqual(request.identity_verification_status, VerificationRequest.VerificationProgressStatus.VERIFIED)
 
     @patch("core.dikript_verification.dikript_lookup")
@@ -3343,7 +3808,7 @@ class VerificationRequestViewSetTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 201, response.json())
-        request = VerificationRequest.objects.get(user=user)
+        request = VerificationRequest.objects.get(user=user, role=user.role)
         self.assertEqual(response.json()["status"], VerificationRequest.Status.APPROVED)
         self.assertEqual(request.status, VerificationRequest.Status.APPROVED)
         self.assertEqual(request.identity_verification_status, VerificationRequest.VerificationProgressStatus.VERIFIED)
@@ -3393,6 +3858,7 @@ class VerificationRequestViewSetTests(TestCase):
         )
         existing = VerificationRequest.objects.create(
             user=user,
+            role=user.role,
             status=VerificationRequest.Status.PENDING,
         )
         client = APIClient()
@@ -3449,6 +3915,7 @@ class VerificationRequestViewSetTests(TestCase):
 
         VerificationRequest.objects.create(
             user=user,
+            role=user.role,
             status=VerificationRequest.Status.PENDING,
             identity_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
             property_document_verification_status=VerificationRequest.VerificationProgressStatus.PENDING,
@@ -3474,6 +3941,7 @@ class VerificationRequestViewSetTests(TestCase):
 
         VerificationRequest.objects.create(
             user=user,
+            role=user.role,
             status=VerificationRequest.Status.PENDING,
             identity_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
             property_document_verification_status=VerificationRequest.VerificationProgressStatus.PENDING,
@@ -5068,6 +5536,106 @@ class BookingPaymentTests(TestCase):
         self.assertEqual(settlement.status, PaymentSettlement.Status.PENDING)
         self.assertEqual(settlement.last_error, "")
 
+    def _landlord_as_tenant_client(self):
+        UserRole.objects.create(user=self.landlord, role=AppUser.Role.TENANT)
+        TenantProfile.objects.create(
+            user=self.landlord,
+            first_name="Booking",
+            last_name="Landlord",
+            date_of_birth=date(1990, 1, 1),
+            gender="Male",
+            nationality="Nigeria",
+            state_of_origin="Lagos",
+            lga="Ikeja",
+            employment_status="Employed",
+            residence_country="Nigeria",
+            residence_state="Lagos",
+            residence_city="Ikeja",
+            residence_lga="Ikeja",
+            residence_address="1 Test Street",
+            length_of_stay="2 years",
+            housing_status="Rented",
+            status=TenantProfile.Status.APPROVED,
+        )
+        SubscriptionPayment.objects.create(
+            user=self.landlord,
+            role=AppUser.Role.TENANT,
+            plan_code=SubscriptionPayment.PlanCode.SILVER,
+            billing_cycle=SubscriptionPayment.BillingCycle.MONTHLY,
+            amount=100,
+            currency="NGN",
+            status=SubscriptionPayment.Status.COMPLETED,
+            transaction_id=f"SUBTESTSELF{self.landlord.id.hex[:20]}",
+            payment_date=timezone.now(),
+            expires_at=timezone.now() + timedelta(days=30),
+        )
+        token = str(RefreshToken.for_user(self.landlord).access_token)
+        client = APIClient()
+        client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+            HTTP_X_RENTDIRECT_ROLE="tenant",
+        )
+        return client
+
+    def test_landlord_cannot_rent_own_listing(self):
+        client = self._landlord_as_tenant_client()
+
+        response = client.post(
+            "/api/v1/bookings",
+            {
+                "listing_id": str(self.listing.id),
+                "start_date": "2026-06-19",
+                "end_date": "2027-06-19",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400, response.json())
+        self.assertIn("You cannot rent your own property.", str(response.json()))
+        self.assertFalse(Booking.objects.filter(tenant=self.landlord).exists())
+
+    def test_viewing_booked_rejects_listing_landlord(self):
+        client = self._landlord_as_tenant_client()
+        Message.objects.create(
+            sender=self.landlord,
+            receiver=self.landlord,
+            sender_role=AppUser.Role.TENANT,
+            receiver_role=AppUser.Role.LANDLORD,
+            listing=self.listing,
+            content="Interested in my own listing",
+        )
+
+        response = client.post(
+            "/api/v1/messages/viewing-booked",
+            {"listing_id": str(self.listing.id)},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400, response.json())
+        self.assertFalse(
+            Booking.objects.filter(tenant=self.landlord, listing=self.listing).exists()
+        )
+
+    def test_landlord_cannot_review_own_listing(self):
+        client = self._landlord_as_tenant_client()
+
+        response = client.post(
+            "/api/v1/reviews",
+            {
+                "listing_id": str(self.listing.id),
+                "rating": 5,
+                "comment": "Reviewing my own property.",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400, response.json())
+        self.assertIn(
+            "You cannot review your own property or landlord profile.",
+            str(response.json()),
+        )
+        self.assertFalse(Review.objects.filter(tenant=self.landlord).exists())
+
 
 class BookingRentalProgressTests(TestCase):
     def setUp(self):
@@ -6414,7 +6982,7 @@ class SeedDemoTests(TestCase):
 
         for user in seed_users:
             self.assert_seed_subscription(SubscriptionPayment.objects.get(user=user), user)
-            verification = VerificationRequest.objects.get(user=user)
+            verification = VerificationRequest.objects.get(user=user, role=user.role)
             self.assertEqual(verification.status, VerificationRequest.Status.APPROVED)
             self.assertEqual(verification.identity_verification_status, VerificationRequest.VerificationProgressStatus.VERIFIED)
             self.assertEqual(verification.property_document_verification_status, VerificationRequest.VerificationProgressStatus.VERIFIED)
@@ -7836,6 +8404,63 @@ class ReviewTests(TestCase):
         review.refresh_from_db()
         self.assertEqual(review.listing_id, listing_one.id)
 
+    def test_review_update_rejected_after_identity_gains_listing_ownership(self):
+        landlord = AppUser.objects.create_user(
+            email="review-ownership-landlord@example.com",
+            password="password-123",
+            name="Review Ownership Landlord",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+        )
+        tenant = AppUser.objects.create_user(
+            email="review-ownership-tenant@example.com",
+            password="password-123",
+            name="Review Ownership Tenant",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        create_active_subscription(tenant, SubscriptionPayment.PlanCode.GOLD)
+        listing = Listing.objects.create(
+            landlord=landlord,
+            title="Ownership Review Listing",
+            description="Review me",
+            address="20 Review Street",
+            city="Lagos",
+            property_type="Apartment",
+            bedrooms=2,
+            bathrooms=2,
+            price_per_year=2000000,
+        )
+        review = Review.objects.create(
+            listing=listing,
+            landlord=landlord,
+            tenant=tenant,
+            rating=5,
+            comment="Created before ownership changed.",
+        )
+
+        # The reviewing identity subsequently gains ownership of the listing
+        # (multi-role account became its landlord) - updates must be rejected.
+        listing.landlord = tenant
+        listing.save(update_fields=["landlord"])
+
+        client = APIClient()
+        client.force_authenticate(user=tenant)
+        response = client.patch(
+            f"/api/v1/reviews/{review.id}",
+            {
+                "listing_id": str(listing.id),
+                "rating": 1,
+                "comment": "Updated after ownership change.",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400, response.json())
+        self.assertIn("You cannot review your own property", str(response.json()))
+        review.refresh_from_db()
+        self.assertEqual(review.rating, 5)
+
 
 class FeedbackTests(TestCase):
     @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
@@ -7972,6 +8597,7 @@ class MessageSubscriptionAccessTests(TestCase):
         )
         VerificationRequest.objects.create(
             user=tenant,
+            role=tenant.role,
             status=VerificationRequest.Status.APPROVED,
         )
         TenantProfile.objects.create(
@@ -8009,6 +8635,18 @@ class MessageSubscriptionAccessTests(TestCase):
         landlord = self.create_landlord("message-landlord@example.com")
         create_active_subscription(tenant, SubscriptionPayment.PlanCode.BRONZE, days=14)
         create_active_subscription(landlord, SubscriptionPayment.PlanCode.SILVER)
+        listing = Listing.objects.create(
+            landlord=landlord,
+            title="Bronze Access Listing",
+            description="Listing for messaging",
+            address="1 Access Street",
+            city="Lagos",
+            property_type="Apartment",
+            bedrooms=1,
+            bathrooms=1,
+            price_per_year=1000000,
+            status=Listing.Status.AVAILABLE,
+        )
 
         client = APIClient()
         client.force_authenticate(user=tenant)
@@ -8016,6 +8654,7 @@ class MessageSubscriptionAccessTests(TestCase):
             "/api/v1/messages",
             {
                 "receiver_id": str(landlord.id),
+                "listing_id": str(listing.id),
                 "content": "I would like to arrange a viewing.",
             },
             format="json",
@@ -8029,6 +8668,18 @@ class MessageSubscriptionAccessTests(TestCase):
         landlord = self.create_landlord("message-silver-access-landlord@example.com")
         create_active_subscription(tenant, SubscriptionPayment.PlanCode.SILVER)
         create_active_subscription(landlord, SubscriptionPayment.PlanCode.SILVER)
+        listing = Listing.objects.create(
+            landlord=landlord,
+            title="Silver Access Listing",
+            description="Listing for messaging",
+            address="2 Access Street",
+            city="Lagos",
+            property_type="Apartment",
+            bedrooms=1,
+            bathrooms=1,
+            price_per_year=1000000,
+            status=Listing.Status.AVAILABLE,
+        )
 
         client = APIClient()
         client.force_authenticate(user=tenant)
@@ -8036,6 +8687,7 @@ class MessageSubscriptionAccessTests(TestCase):
             "/api/v1/messages",
             {
                 "receiver_id": str(landlord.id),
+                "listing_id": str(listing.id),
                 "content": "I would like to arrange a viewing.",
             },
             format="json",
@@ -8053,10 +8705,22 @@ class MessageSubscriptionAccessTests(TestCase):
             role=AppUser.Role.TENANT,
             email_verified=True,
         )
-        VerificationRequest.objects.create(user=tenant, status=VerificationRequest.Status.APPROVED)
+        VerificationRequest.objects.create(user=tenant, role=tenant.role, status=VerificationRequest.Status.APPROVED)
         landlord = self.create_landlord("message-incomplete-profile-landlord@example.com")
         create_active_subscription(tenant, SubscriptionPayment.PlanCode.SILVER)
         create_active_subscription(landlord, SubscriptionPayment.PlanCode.SILVER)
+        listing = Listing.objects.create(
+            landlord=landlord,
+            title="Profile Gate Listing",
+            description="Listing for messaging",
+            address="3 Access Street",
+            city="Lagos",
+            property_type="Apartment",
+            bedrooms=1,
+            bathrooms=1,
+            price_per_year=1000000,
+            status=Listing.Status.AVAILABLE,
+        )
 
         client = APIClient()
         client.force_authenticate(user=tenant)
@@ -8064,6 +8728,7 @@ class MessageSubscriptionAccessTests(TestCase):
             "/api/v1/messages",
             {
                 "receiver_id": str(landlord.id),
+                "listing_id": str(listing.id),
                 "content": "I would like to arrange a viewing.",
             },
             format="json",
@@ -8079,6 +8744,8 @@ class MessageSubscriptionAccessTests(TestCase):
         Message.objects.create(
             sender=tenant,
             receiver=landlord,
+            sender_role=AppUser.Role.TENANT,
+            receiver_role=AppUser.Role.LANDLORD,
             content="An existing conversation.",
         )
 
@@ -8093,6 +8760,18 @@ class MessageSubscriptionAccessTests(TestCase):
         landlord = self.create_landlord("message-bronze-landlord@example.com")
         create_active_subscription(tenant, SubscriptionPayment.PlanCode.SILVER)
         create_active_subscription(landlord, SubscriptionPayment.PlanCode.BRONZE, days=14)
+        listing = Listing.objects.create(
+            landlord=landlord,
+            title="Bronze Landlord Listing",
+            description="Listing for messaging",
+            address="4 Access Street",
+            city="Lagos",
+            property_type="Apartment",
+            bedrooms=1,
+            bathrooms=1,
+            price_per_year=1000000,
+            status=Listing.Status.AVAILABLE,
+        )
 
         client = APIClient()
         client.force_authenticate(user=tenant)
@@ -8100,6 +8779,7 @@ class MessageSubscriptionAccessTests(TestCase):
             "/api/v1/messages",
             {
                 "receiver_id": str(landlord.id),
+                "listing_id": str(listing.id),
                 "content": "Can I view this property?",
             },
             format="json",
@@ -8113,6 +8793,18 @@ class MessageSubscriptionAccessTests(TestCase):
         tenant = self.create_verified_tenant("message-receiver-tenant@example.com")
         create_active_subscription(landlord, SubscriptionPayment.PlanCode.BRONZE, days=14)
         create_active_subscription(tenant, SubscriptionPayment.PlanCode.SILVER)
+        listing = Listing.objects.create(
+            landlord=landlord,
+            title="Bronze Sender Listing",
+            description="Listing for messaging",
+            address="5 Access Street",
+            city="Lagos",
+            property_type="Apartment",
+            bedrooms=1,
+            bathrooms=1,
+            price_per_year=1000000,
+            status=Listing.Status.AVAILABLE,
+        )
 
         client = APIClient()
         client.force_authenticate(user=landlord)
@@ -8120,6 +8812,7 @@ class MessageSubscriptionAccessTests(TestCase):
             "/api/v1/messages",
             {
                 "receiver_id": str(tenant.id),
+                "listing_id": str(listing.id),
                 "content": "Following up on your enquiry.",
             },
             format="json",
@@ -8140,6 +8833,7 @@ class MessageEnquiryTests(TestCase):
         )
         VerificationRequest.objects.create(
             user=tenant,
+            role=tenant.role,
             status=VerificationRequest.Status.APPROVED,
         )
         TenantProfile.objects.create(
@@ -8193,18 +8887,24 @@ class MessageEnquiryTests(TestCase):
         Message.objects.create(
             sender=tenant,
             receiver=landlord,
+            sender_role=AppUser.Role.TENANT,
+            receiver_role=AppUser.Role.LANDLORD,
             listing=listing,
             content="Viewing Availability: Tomorrow by 6 pm\n\nHi, can I view your house?",
         )
         Message.objects.create(
             sender=tenant,
             receiver=landlord,
+            sender_role=AppUser.Role.TENANT,
+            receiver_role=AppUser.Role.LANDLORD,
             listing=listing,
             content="Let me know if you are available",
         )
         latest_message = Message.objects.create(
             sender=tenant,
             receiver=landlord,
+            sender_role=AppUser.Role.TENANT,
+            receiver_role=AppUser.Role.LANDLORD,
             listing=listing,
             content="I am still unable to see enquiries",
         )
@@ -8299,7 +8999,7 @@ class MessageEnquiryTests(TestCase):
         self.assertEqual(viewing_requests[0]["stage"], "Viewing arranged")
         self.assertEqual(viewing_requests[0]["rental_progress"]["completed_count"], 0)
 
-    def test_landlord_enquiries_include_messages_attached_to_landlord_listing(self):
+    def test_landlord_enquiries_exclude_non_landlord_context_messages_on_their_listing(self):
         landlord = AppUser.objects.create_user(
             email="attached-listing-landlord@example.com",
             password="password-123",
@@ -8336,6 +9036,8 @@ class MessageEnquiryTests(TestCase):
         Message.objects.create(
             sender=tenant,
             receiver=admin,
+            sender_role=AppUser.Role.TENANT,
+            receiver_role=AppUser.Role.ADMIN,
             listing=listing,
             content="I sent this about the landlord listing.",
         )
@@ -8345,11 +9047,9 @@ class MessageEnquiryTests(TestCase):
         response = client.get("/api/v1/messages/enquiries")
 
         self.assertEqual(response.status_code, 200, response.json())
-        payload = response.json()
-        self.assertEqual(len(payload), 1)
-        self.assertEqual(payload[0]["listing_id"], str(listing.id))
-        self.assertEqual(payload[0]["tenant_id"], str(tenant.id))
-        self.assertEqual(payload[0]["last_message"], "I sent this about the landlord listing.")
+        # A tenant->admin message that merely references the listing is private
+        # and must not surface in the landlord's persona inbox.
+        self.assertEqual(response.json(), [])
 
     def test_listing_thread_can_be_filtered_to_a_single_tenant_conversation(self):
         landlord = AppUser.objects.create_user(
@@ -8385,9 +9085,9 @@ class MessageEnquiryTests(TestCase):
             price_per_year=1500000,
             status=Listing.Status.AVAILABLE,
         )
-        Message.objects.create(sender=tenant, receiver=landlord, listing=listing, content="Tenant enquiry")
-        reply = Message.objects.create(sender=landlord, receiver=tenant, listing=listing, content="Landlord reply")
-        Message.objects.create(sender=other_tenant, receiver=landlord, listing=listing, content="Other tenant enquiry")
+        Message.objects.create(sender=tenant, receiver=landlord, sender_role=AppUser.Role.TENANT, receiver_role=AppUser.Role.LANDLORD, listing=listing, content="Tenant enquiry")
+        reply = Message.objects.create(sender=landlord, receiver=tenant, sender_role=AppUser.Role.LANDLORD, receiver_role=AppUser.Role.TENANT, listing=listing, content="Landlord reply")
+        Message.objects.create(sender=other_tenant, receiver=landlord, sender_role=AppUser.Role.TENANT, receiver_role=AppUser.Role.LANDLORD, listing=listing, content="Other tenant enquiry")
 
         client = APIClient()
         client.force_authenticate(user=landlord)
@@ -8430,6 +9130,8 @@ class MessageEnquiryTests(TestCase):
         Message.objects.create(
             sender=tenant,
             receiver=landlord,
+            sender_role=AppUser.Role.TENANT,
+            receiver_role=AppUser.Role.LANDLORD,
             listing=listing,
             content="Viewing Availability: Saturday afternoon\n\nI would like to arrange a viewing.",
         )
@@ -8472,6 +9174,8 @@ class MessageEnquiryTests(TestCase):
         Message.objects.create(
             sender=landlord,
             receiver=tenant,
+            sender_role=AppUser.Role.LANDLORD,
+            receiver_role=AppUser.Role.TENANT,
             listing=listing,
             content="Hello, let me know if you have questions about the listing.",
         )
@@ -8487,8 +9191,269 @@ class MessageEnquiryTests(TestCase):
         self.assertEqual(response.status_code, 403, response.json())
         self.assertFalse(Booking.objects.filter(tenant=tenant, listing=listing).exists())
 
+    def _role_context_listing(self, landlord, title="Role Context Listing"):
+        return Listing.objects.create(
+            landlord=landlord,
+            title=title,
+            description="Listing for messaging",
+            address="7 Context Street",
+            city="Lagos",
+            property_type="Apartment",
+            bedrooms=1,
+            bathrooms=1,
+            price_per_year=1000000,
+            status=Listing.Status.AVAILABLE,
+        )
+
+    def _create_landlord(self, email):
+        return AppUser.objects.create_user(
+            email=email,
+            password="password-123",
+            name="Context Landlord",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+        )
+
+    def test_messages_persist_role_context(self):
+        tenant = self.create_verified_tenant("role-context-tenant@example.com")
+        landlord = self._create_landlord("role-context-landlord@example.com")
+        create_active_subscription(tenant, SubscriptionPayment.PlanCode.SILVER)
+        create_active_subscription(landlord, SubscriptionPayment.PlanCode.SILVER)
+        listing = self._role_context_listing(landlord)
+
+        client = APIClient()
+        client.force_authenticate(user=tenant)
+        tenant_response = client.post(
+            "/api/v1/messages",
+            {
+                "receiver_id": str(landlord.id),
+                "listing_id": str(listing.id),
+                "content": "Is this still available?",
+            },
+            format="json",
+        )
+        self.assertEqual(tenant_response.status_code, 201, tenant_response.json())
+        tenant_message = Message.objects.get(id=tenant_response.json()["id"])
+        self.assertEqual(tenant_message.sender_role, AppUser.Role.TENANT)
+        self.assertEqual(tenant_message.receiver_role, AppUser.Role.LANDLORD)
+        self.assertEqual(tenant_response.json()["sender_role"], AppUser.Role.TENANT)
+        self.assertEqual(tenant_response.json()["receiver_role"], AppUser.Role.LANDLORD)
+
+        client.force_authenticate(user=landlord)
+        landlord_response = client.post(
+            "/api/v1/messages",
+            {
+                "receiver_id": str(tenant.id),
+                "listing_id": str(listing.id),
+                "content": "Yes, it is available.",
+            },
+            format="json",
+        )
+        self.assertEqual(landlord_response.status_code, 201, landlord_response.json())
+        landlord_message = Message.objects.get(id=landlord_response.json()["id"])
+        self.assertEqual(landlord_message.sender_role, AppUser.Role.LANDLORD)
+        self.assertEqual(landlord_message.receiver_role, AppUser.Role.TENANT)
+
+    def test_messages_reject_invalid_counterparts(self):
+        tenant = self.create_verified_tenant("invalid-counterpart-tenant@example.com")
+        landlord = self._create_landlord("invalid-counterpart-landlord@example.com")
+        other_landlord = self._create_landlord("invalid-counterpart-other@example.com")
+        create_active_subscription(tenant, SubscriptionPayment.PlanCode.SILVER)
+        create_active_subscription(landlord, SubscriptionPayment.PlanCode.SILVER)
+        create_active_subscription(other_landlord, SubscriptionPayment.PlanCode.SILVER)
+        listing = self._role_context_listing(landlord)
+
+        client = APIClient()
+        client.force_authenticate(user=tenant)
+        response = client.post(
+            "/api/v1/messages",
+            {
+                "receiver_id": str(other_landlord.id),
+                "listing_id": str(listing.id),
+                "content": "Wrong landlord",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400, response.json())
+
+        client.force_authenticate(user=landlord)
+        response = client.post(
+            "/api/v1/messages",
+            {
+                "receiver_id": str(tenant.id),
+                "listing_id": str(self._role_context_listing(other_landlord).id),
+                "content": "Not my listing",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400, response.json())
+
+        response = client.post(
+            "/api/v1/messages",
+            {
+                "receiver_id": str(other_landlord.id),
+                "listing_id": str(listing.id),
+                "content": "Receiver is not a tenant",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400, response.json())
+        self.assertFalse(Message.objects.exists())
+
+    def test_multi_role_user_cannot_message_own_listing(self):
+        landlord = self._create_landlord("self-listing-sender@example.com")
+        UserRole.objects.create(user=landlord, role=AppUser.Role.TENANT)
+        TenantProfile.objects.create(
+            user=landlord,
+            first_name="Self",
+            last_name="Listing",
+            date_of_birth=date(1990, 1, 1),
+            gender="Male",
+            nationality="Nigeria",
+            state_of_origin="Lagos",
+            lga="Ikeja",
+            employment_status="Employed",
+            residence_country="Nigeria",
+            residence_state="Lagos",
+            residence_city="Ikeja",
+            residence_lga="Ikeja",
+            residence_address="1 Test Street",
+            length_of_stay="2 years",
+            housing_status="Rented",
+            status=TenantProfile.Status.APPROVED,
+        )
+        VerificationRequest.objects.create(
+            user=landlord,
+            role=AppUser.Role.TENANT,
+            status=VerificationRequest.Status.APPROVED,
+        )
+        SubscriptionPayment.objects.create(
+            user=landlord,
+            role=AppUser.Role.TENANT,
+            plan_code=SubscriptionPayment.PlanCode.SILVER,
+            billing_cycle=SubscriptionPayment.BillingCycle.MONTHLY,
+            amount=100,
+            currency="NGN",
+            status=SubscriptionPayment.Status.COMPLETED,
+            transaction_id=f"SUBTESTSELFTEN{landlord.id.hex[:20]}",
+            payment_date=timezone.now(),
+            expires_at=timezone.now() + timedelta(days=30),
+        )
+        listing = self._role_context_listing(landlord)
+        token = str(RefreshToken.for_user(landlord).access_token)
+
+        client = APIClient()
+        client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+            HTTP_X_RENTDIRECT_ROLE=AppUser.Role.TENANT,
+        )
+        response = client.post(
+            "/api/v1/messages",
+            {
+                "receiver_id": str(landlord.id),
+                "listing_id": str(listing.id),
+                "content": "Messaging my own listing",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400, response.json())
+        self.assertFalse(Message.objects.exists())
+
+    def test_message_list_isolated_by_active_persona(self):
+        user = self.create_verified_tenant("persona-isolation-user@example.com")
+        UserRole.objects.create(user=user, role=AppUser.Role.TENANT)
+        UserRole.objects.create(user=user, role=AppUser.Role.LANDLORD)
+        create_active_subscription(user, SubscriptionPayment.PlanCode.SILVER)
+        other_landlord = self._create_landlord("persona-isolation-landlord@example.com")
+        other_tenant = self.create_verified_tenant("persona-isolation-tenant@example.com")
+        their_listing = self._role_context_listing(other_landlord)
+        own_listing = self._role_context_listing(user, title="Own Listing")
+        Message.objects.create(
+            sender=user,
+            receiver=other_landlord,
+            sender_role=AppUser.Role.TENANT,
+            receiver_role=AppUser.Role.LANDLORD,
+            listing=their_listing,
+            content="Tenant persona enquiry",
+        )
+        Message.objects.create(
+            sender=other_tenant,
+            receiver=user,
+            sender_role=AppUser.Role.TENANT,
+            receiver_role=AppUser.Role.LANDLORD,
+            listing=own_listing,
+            content="Landlord persona enquiry",
+        )
+
+        client = APIClient()
+        client.force_authenticate(user=user)
+        tenant_response = client.get("/api/v1/messages")
+        self.assertEqual(tenant_response.status_code, 200, tenant_response.json())
+        tenant_results = tenant_response.json()
+        tenant_results = (
+            tenant_results["results"]
+            if isinstance(tenant_results, dict) and "results" in tenant_results
+            else tenant_results
+        )
+        self.assertEqual([item["content"] for item in tenant_results], ["Tenant persona enquiry"])
+
+        token = str(RefreshToken.for_user(user).access_token)
+        landlord_client = APIClient()
+        landlord_client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+            HTTP_X_RENTDIRECT_ROLE=AppUser.Role.LANDLORD,
+        )
+        landlord_response = landlord_client.get("/api/v1/messages")
+        self.assertEqual(landlord_response.status_code, 200, landlord_response.json())
+        landlord_results = landlord_response.json()
+        landlord_results = (
+            landlord_results["results"]
+            if isinstance(landlord_results, dict) and "results" in landlord_results
+            else landlord_results
+        )
+        self.assertEqual(
+            [item["content"] for item in landlord_results], ["Landlord persona enquiry"]
+        )
+
 
 class TenantPublicProfileTests(TestCase):
+    def test_public_tenant_profile_reports_tenant_role_for_legacy_landlord(self):
+        user = AppUser.objects.create_user(
+            email="legacy-landlord-tenant@example.com",
+            password="password-123",
+            name="Legacy Landlord Tenant",
+            role=AppUser.Role.LANDLORD,
+            email_verified=True,
+        )
+        UserRole.objects.create(user=user, role=AppUser.Role.TENANT)
+        UserRole.objects.create(user=user, role=AppUser.Role.LANDLORD)
+        TenantProfile.objects.create(
+            user=user,
+            status=TenantProfile.Status.APPROVED,
+            first_name="Legacy",
+            last_name="Landlord",
+            date_of_birth=date(1990, 1, 1),
+            gender="Male",
+            nationality="Nigeria",
+            state_of_origin="Lagos",
+            lga="Ikeja",
+            employment_status="Employed",
+            residence_country="Nigeria",
+            residence_state="Lagos",
+            residence_city="Ikeja",
+            residence_lga="Ikeja",
+            residence_address="1 Test Street",
+            length_of_stay="2 years",
+            housing_status="Rented",
+        )
+
+        response = APIClient().get(f"/api/v1/users/tenants/{user.id}/public-profile")
+
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        self.assertEqual(payload["role"], AppUser.Role.TENANT)
+        self.assertTrue(payload["is_verified"])
+
     def test_public_tenant_profile_exposes_screening_summary_without_private_contacts(self):
         tenant = AppUser.objects.create_user(
             email="public-tenant@example.com",
@@ -8597,8 +9562,8 @@ class CommunityChatMessageTests(TestCase):
             email_verified=True,
         )
         self.activate_gold_subscription(tenant)
-        CommunityChatMessage.objects.create(sender=other_tenant, content="Hello tenants.")
-        CommunityChatMessage.objects.create(sender=landlord, content="Hello landlords.")
+        CommunityChatMessage.objects.create(sender=other_tenant, role=AppUser.Role.TENANT, content="Hello tenants.")
+        CommunityChatMessage.objects.create(sender=landlord, role=AppUser.Role.LANDLORD, content="Hello landlords.")
 
         client = APIClient()
         client.force_authenticate(user=tenant)
@@ -8634,8 +9599,8 @@ class CommunityChatMessageTests(TestCase):
             email_verified=True,
         )
         self.activate_gold_subscription(landlord)
-        CommunityChatMessage.objects.create(sender=tenant, content="Welcome tenants.")
-        CommunityChatMessage.objects.create(sender=other_landlord, content="Welcome landlords.")
+        CommunityChatMessage.objects.create(sender=tenant, role=AppUser.Role.TENANT, content="Welcome tenants.")
+        CommunityChatMessage.objects.create(sender=other_landlord, role=AppUser.Role.LANDLORD, content="Welcome landlords.")
 
         client = APIClient()
         client.force_authenticate(user=landlord)
@@ -8646,6 +9611,64 @@ class CommunityChatMessageTests(TestCase):
         results = payload["results"] if isinstance(payload, dict) and "results" in payload else payload
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["content"], "Welcome landlords.")
+
+    def test_community_history_isolated_by_stored_role_for_multi_role_sender(self):
+        user = AppUser.objects.create_user(
+            email="community-multi@example.com",
+            password="password-123",
+            name="Community Multi",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        UserRole.objects.create(user=user, role=AppUser.Role.TENANT)
+        UserRole.objects.create(user=user, role=AppUser.Role.LANDLORD)
+        self.activate_gold_subscription(user)
+        SubscriptionPayment.objects.create(
+            user=user,
+            role=AppUser.Role.LANDLORD,
+            plan_code=SubscriptionPayment.PlanCode.GOLD,
+            billing_cycle=SubscriptionPayment.BillingCycle.MONTHLY,
+            amount=100,
+            currency="NGN",
+            status=SubscriptionPayment.Status.COMPLETED,
+            transaction_id=f"SUBTESTGOLDLL{user.id.hex[:20]}",
+            payment_date=timezone.now(),
+            expires_at=timezone.now() + timedelta(days=30),
+        )
+        CommunityChatMessage.objects.create(
+            sender=user, role=AppUser.Role.TENANT, content="Tenant persona message."
+        )
+        CommunityChatMessage.objects.create(
+            sender=user, role=AppUser.Role.LANDLORD, content="Landlord persona message."
+        )
+
+        client = APIClient()
+        client.force_authenticate(user=user)
+        tenant_response = client.get("/api/v1/community-chat/messages")
+        self.assertEqual(tenant_response.status_code, 200, tenant_response.json())
+        tenant_results = tenant_response.json()
+        tenant_results = (
+            tenant_results["results"]
+            if isinstance(tenant_results, dict) and "results" in tenant_results
+            else tenant_results
+        )
+        self.assertEqual([item["content"] for item in tenant_results], ["Tenant persona message."])
+
+        token = str(RefreshToken.for_user(user).access_token)
+        landlord_client = APIClient()
+        landlord_client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+            HTTP_X_RENTDIRECT_ROLE=AppUser.Role.LANDLORD,
+        )
+        landlord_response = landlord_client.get("/api/v1/community-chat/messages")
+        self.assertEqual(landlord_response.status_code, 200, landlord_response.json())
+        landlord_results = landlord_response.json()
+        landlord_results = (
+            landlord_results["results"]
+            if isinstance(landlord_results, dict) and "results" in landlord_results
+            else landlord_results
+        )
+        self.assertEqual([item["content"] for item in landlord_results], ["Landlord persona message."])
 
 
 class SupportChatMessageTests(TestCase):
@@ -8672,8 +9695,8 @@ class SupportChatMessageTests(TestCase):
             email_verified=True,
             is_staff=True,
         )
-        SupportChatMessage.objects.create(thread_user=tenant, sender=tenant, content="I need help.")
-        SupportChatMessage.objects.create(thread_user=other_tenant, sender=admin, content="Other tenant reply.")
+        SupportChatMessage.objects.create(thread_user=tenant, thread_role=AppUser.Role.TENANT, sender=tenant, sender_role=AppUser.Role.TENANT, content="I need help.")
+        SupportChatMessage.objects.create(thread_user=other_tenant, thread_role=AppUser.Role.TENANT, sender=admin, sender_role=AppUser.Role.ADMIN, content="Other tenant reply.")
 
         client = APIClient()
         client.force_authenticate(user=tenant)
@@ -8701,8 +9724,8 @@ class SupportChatMessageTests(TestCase):
             role=AppUser.Role.LANDLORD,
             email_verified=True,
         )
-        SupportChatMessage.objects.create(thread_user=landlord, sender=landlord, content="I need listing help.")
-        SupportChatMessage.objects.create(thread_user=other_landlord, sender=other_landlord, content="Other landlord issue.")
+        SupportChatMessage.objects.create(thread_user=landlord, thread_role=AppUser.Role.LANDLORD, sender=landlord, sender_role=AppUser.Role.LANDLORD, content="I need listing help.")
+        SupportChatMessage.objects.create(thread_user=other_landlord, thread_role=AppUser.Role.LANDLORD, sender=other_landlord, sender_role=AppUser.Role.LANDLORD, content="Other landlord issue.")
 
         client = APIClient()
         client.force_authenticate(user=landlord)
@@ -8713,6 +9736,129 @@ class SupportChatMessageTests(TestCase):
         results = payload["results"] if isinstance(payload, dict) and "results" in payload else payload
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["content"], "I need listing help.")
+
+    def test_support_history_isolated_by_thread_role(self):
+        user = AppUser.objects.create_user(
+            email="support-multi@example.com",
+            password="password-123",
+            name="Support Multi",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        UserRole.objects.create(user=user, role=AppUser.Role.TENANT)
+        UserRole.objects.create(user=user, role=AppUser.Role.LANDLORD)
+        admin = AppUser.objects.create_user(
+            email="support-multi-admin@example.com",
+            password="password-123",
+            name="Support Admin",
+            role=AppUser.Role.ADMIN,
+            email_verified=True,
+            is_staff=True,
+        )
+        SupportChatMessage.objects.create(
+            thread_user=user,
+            thread_role=AppUser.Role.TENANT,
+            sender=user,
+            sender_role=AppUser.Role.TENANT,
+            content="Tenant thread message.",
+        )
+        SupportChatMessage.objects.create(
+            thread_user=user,
+            thread_role=AppUser.Role.LANDLORD,
+            sender=user,
+            sender_role=AppUser.Role.LANDLORD,
+            content="Landlord thread message.",
+        )
+        SupportChatMessage.objects.create(
+            thread_user=user,
+            thread_role=AppUser.Role.LANDLORD,
+            sender=admin,
+            sender_role=AppUser.Role.ADMIN,
+            content="Admin reply on landlord thread.",
+        )
+
+        client = APIClient()
+        client.force_authenticate(user=user)
+        tenant_response = client.get("/api/v1/support-chat/messages")
+        self.assertEqual(tenant_response.status_code, 200, tenant_response.json())
+        tenant_results = tenant_response.json()
+        tenant_results = (
+            tenant_results["results"]
+            if isinstance(tenant_results, dict) and "results" in tenant_results
+            else tenant_results
+        )
+        self.assertEqual(
+            [item["content"] for item in tenant_results], ["Tenant thread message."]
+        )
+
+        token = str(RefreshToken.for_user(user).access_token)
+        landlord_client = APIClient()
+        landlord_client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+            HTTP_X_RENTDIRECT_ROLE=AppUser.Role.LANDLORD,
+        )
+        landlord_response = landlord_client.get("/api/v1/support-chat/messages")
+        self.assertEqual(landlord_response.status_code, 200, landlord_response.json())
+        landlord_results = landlord_response.json()
+        landlord_results = (
+            landlord_results["results"]
+            if isinstance(landlord_results, dict) and "results" in landlord_results
+            else landlord_results
+        )
+        self.assertEqual(
+            [item["content"] for item in landlord_results],
+            ["Admin reply on landlord thread.", "Landlord thread message."],
+        )
+        admin_message = next(
+            item for item in landlord_results if item["content"] == "Admin reply on landlord thread."
+        )
+        self.assertEqual(admin_message["sender_role"], AppUser.Role.ADMIN)
+        self.assertEqual(admin_message["thread_role"], AppUser.Role.LANDLORD)
+
+    def test_admin_can_select_support_thread_role_with_validation(self):
+        user = AppUser.objects.create_user(
+            email="support-select@example.com",
+            password="password-123",
+            name="Support Select",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        UserRole.objects.create(user=user, role=AppUser.Role.TENANT)
+        admin = AppUser.objects.create_user(
+            email="support-select-admin@example.com",
+            password="password-123",
+            name="Support Admin",
+            role=AppUser.Role.ADMIN,
+            email_verified=True,
+            is_staff=True,
+        )
+        SupportChatMessage.objects.create(
+            thread_user=user,
+            thread_role=AppUser.Role.TENANT,
+            sender=user,
+            sender_role=AppUser.Role.TENANT,
+            content="Tenant thread only.",
+        )
+
+        client = APIClient()
+        client.force_authenticate(user=admin)
+        response = client.get(
+            f"/api/v1/support-chat/messages?thread_user={user.id}&thread_role=landlord"
+        )
+        self.assertEqual(response.status_code, 403)
+
+        response = client.get(
+            f"/api/v1/support-chat/messages?thread_user={user.id}&thread_role=tenant"
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        results = response.json()
+        results = (
+            results["results"]
+            if isinstance(results, dict) and "results" in results
+            else results
+        )
+        self.assertEqual([item["content"] for item in results], ["Tenant thread only."])
+        self.assertEqual(results[0]["sender_role"], AppUser.Role.TENANT)
 
 
 class LandlordPublicProfileTests(TestCase):
@@ -8729,6 +9875,7 @@ class LandlordPublicProfileTests(TestCase):
         landlord.save(update_fields=["landlord_verification_type", "updated_at"])
         VerificationRequest.objects.create(
             user=landlord,
+            role=landlord.role,
             status=VerificationRequest.Status.APPROVED,
             identity_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
             property_document_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
@@ -8809,12 +9956,16 @@ class LandlordPublicProfileTests(TestCase):
         inbound = Message.objects.create(
             sender=tenant,
             receiver=landlord,
+            sender_role=AppUser.Role.TENANT,
+            receiver_role=AppUser.Role.LANDLORD,
             listing=listing_one,
             content="Is the apartment still available?",
         )
         outbound = Message.objects.create(
             sender=landlord,
             receiver=tenant,
+            sender_role=AppUser.Role.LANDLORD,
+            receiver_role=AppUser.Role.TENANT,
             listing=listing_one,
             content="Yes, it is available.",
         )
@@ -9609,7 +10760,7 @@ class AgentFeatureTests(TestCase):
         self.assertEqual(profile.verification_status, AgentProfile.VerificationStatus.VERIFIED)
         self.assertIsNotNone(profile.verified_at)
 
-        verification = VerificationRequest.objects.get(user=self.agent)
+        verification = VerificationRequest.objects.get(user=self.agent, role=AppUser.Role.AGENT)
         self.assertEqual(verification.status, VerificationRequest.Status.APPROVED)
         self.assertEqual(
             verification.identity_verification_status,
@@ -9986,10 +11137,10 @@ class AgentFeatureTests(TestCase):
             is_staff=True,
         )
         SupportChatMessage.objects.create(
-            thread_user=self.agent, sender=self.agent, content="Agent needs help."
+            thread_user=self.agent, thread_role=AppUser.Role.AGENT, sender=self.agent, sender_role=AppUser.Role.AGENT, content="Agent needs help."
         )
         SupportChatMessage.objects.create(
-            thread_user=self.other_agent, sender=admin, content="Other agent reply."
+            thread_user=self.other_agent, thread_role=AppUser.Role.AGENT, sender=admin, sender_role=AppUser.Role.ADMIN, content="Other agent reply."
         )
         tenant = AppUser.objects.create_user(
             email="support-tenant3@example.com",
@@ -9999,7 +11150,7 @@ class AgentFeatureTests(TestCase):
             email_verified=True,
         )
         SupportChatMessage.objects.create(
-            thread_user=tenant, sender=tenant, content="Tenant message."
+            thread_user=tenant, thread_role=AppUser.Role.TENANT, sender=tenant, sender_role=AppUser.Role.TENANT, content="Tenant message."
         )
 
         self.client.force_authenticate(user=self.agent)
@@ -10083,6 +11234,24 @@ class AgentReferralTests(TestCase):
         codes = {generate_unique_referral_code() for _ in range(20)}
         self.assertEqual(len(codes), 20)
         self.assertNotIn(code, codes)
+
+    def test_agent_profile_cannot_refer_itself(self):
+        user = AppUser.objects.create_user(
+            email="self-referral-pio@example.com",
+            password="password-123",
+            name="Self Referral Pio",
+            role=AppUser.Role.AGENT,
+            email_verified=True,
+        )
+        profile = AgentProfile(
+            user=user,
+            first_name="Self",
+            last_name="Referral",
+            referred_by=user,
+        )
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                profile.save()
 
     def test_resolve_referrer_case_insensitive(self):
         code = self.referrer_profile.referral_code
@@ -10204,6 +11373,26 @@ class AgentReferralTests(TestCase):
         response = self.client.get("/api/v1/agents/referrals")
         self.assertEqual(response.status_code, 403)
 
+    def test_resolve_referrer_uses_active_agent_membership(self):
+        # PIO identity is AgentProfile + active agent membership, independent of
+        # the legacy AppUser.role.
+        hybrid = AppUser.objects.create_user(
+            email="hybrid-pio@example.com",
+            password="password-123",
+            name="Hybrid Pio",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        membership = UserRole.objects.create(user=hybrid, role=AppUser.Role.AGENT)
+        profile = AgentProfile.objects.create(
+            user=hybrid, first_name="Hybrid", last_name="Pio"
+        )
+        self.assertEqual(resolve_referrer(profile.referral_code).id, hybrid.id)
+
+        membership.status = UserRole.Status.SUSPENDED
+        membership.save(update_fields=["status"])
+        self.assertIsNone(resolve_referrer(profile.referral_code))
+
 
 class InspectionRequestTests(TestCase):
     def setUp(self):
@@ -10271,6 +11460,7 @@ class InspectionRequestTests(TestCase):
         make_landlord_listing_ready(self.landlord)
         VerificationRequest.objects.create(
             user=self.landlord,
+            role=AppUser.Role.LANDLORD,
             status=VerificationRequest.Status.APPROVED,
             identity_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
         )
@@ -10425,3 +11615,72 @@ class InspectionRequestTests(TestCase):
             str(self.listing.id),
             [listing["id"] for listing in response.json()["available_inspections"]],
         )
+
+    def test_claim_rejects_pio_who_owns_listing(self):
+        UserRole.objects.create(user=self.landlord, role=AppUser.Role.AGENT)
+        AgentProfile.objects.create(
+            user=self.landlord,
+            first_name="Owner",
+            last_name="Pio",
+            verification_status=AgentProfile.VerificationStatus.VERIFIED,
+        )
+        ServicePayment.objects.create(
+            user=self.landlord,
+            purpose=ServicePayment.Purpose.AGENT_VERIFICATION,
+            amount=Decimal("500.00"),
+            status=ServicePayment.Status.COMPLETED,
+            transaction_id=f"SVCTEST{uuid.uuid4().hex[:16].upper()}",
+            payment_date=timezone.now(),
+        )
+
+        token = str(RefreshToken.for_user(self.landlord).access_token)
+        client = APIClient()
+        client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {token}", HTTP_X_RENTDIRECT_ROLE="agent"
+        )
+        response = client.post(
+            "/api/v1/agent-inspections/claim",
+            {"listing_id": str(self.listing.id)},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("ownership or tenancy interest", str(response.json()))
+        self.assertFalse(
+            PropertyInspection.objects.filter(agent=self.landlord).exists()
+        )
+
+    def test_claim_rejects_pio_with_booking_on_listing(self):
+        agent = self._verified_agent("tenant-pio@example.com")
+        Booking.objects.create(
+            tenant=agent,
+            listing=self.listing,
+            start_date=date(2026, 8, 1),
+            end_date=date(2027, 8, 1),
+            status=Booking.Status.PENDING,
+            total_amount=None,
+        )
+
+        response = self._claim(agent)
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("ownership or tenancy interest", str(response.json()))
+
+    def test_conflicted_pio_omitted_from_inspection_routing(self):
+        conflicted = self._verified_agent("conflicted-pio@example.com", city="Lagos")
+        clean = self._verified_agent("clean-pio@example.com", city="Lagos")
+        Booking.objects.create(
+            tenant=conflicted,
+            listing=self.listing,
+            start_date=date(2026, 8, 1),
+            end_date=date(2027, 8, 1),
+            status=Booking.Status.CONFIRMED,
+            total_amount=None,
+        )
+        from core.inspection_requests import nearest_agents_for_listing
+
+        agent_ids = {agent.id for agent in nearest_agents_for_listing(self.listing)}
+
+        self.assertIn(clean.id, agent_ids)
+        self.assertNotIn(conflicted.id, agent_ids)
+        self.assertNotIn(self.landlord.id, agent_ids)

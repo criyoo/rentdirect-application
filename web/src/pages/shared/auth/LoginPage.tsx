@@ -36,7 +36,7 @@ export default function LoginPage({ lockedRole }: LoginPageProps = {}) {
         setError('')
 
         try {
-            await login({ email, password })
+            await login({ email, password, role: lockedRole })
             removeFormDraft(draftStorageKey)
         } catch (err: any) {
             setError(err.message || 'Login failed')
@@ -54,7 +54,7 @@ export default function LoginPage({ lockedRole }: LoginPageProps = {}) {
                 return
             }
             const code = await requestGoogleAuthorizationCode(clientId)
-            await loginWithGoogle(code)
+            await loginWithGoogle(code, { role: lockedRole })
             removeFormDraft(draftStorageKey)
         } catch (err: any) {
             setError(err.message || 'Google sign-in could not be completed. Please try again.')

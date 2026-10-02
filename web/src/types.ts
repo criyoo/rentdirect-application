@@ -8,11 +8,14 @@ export type UserResidence = {
 
 export type LandlordVerificationType = 'individual' | 'corporate'
 
+export type AccountRole = 'tenant' | 'landlord' | 'agent' | 'admin'
+
 export type User = {
     id: string
     name: string
     email: string
-    role: 'tenant' | 'landlord' | 'agent' | 'admin'
+    role: AccountRole
+    available_roles?: AccountRole[]
     token?: string
     email_verified?: boolean
     profile_photo_url?: string | null

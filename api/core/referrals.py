@@ -52,8 +52,14 @@ def generate_unique_referral_code() -> str:
 
 
 def resolve_referrer(code: str):
-    """Return the AppUser that owns ``code`` or ``None``."""
+    """Return the AppUser that owns ``code`` or ``None``.
+
+    PIO identity is established by an ``AgentProfile`` row whose user holds an
+    active agent membership (or whose legacy role is agent when no membership
+    rows exist yet).
+    """
     from .models import AgentProfile, AppUser
+    from .roles import active_membership_or_legacy_q
 
     normalized = (code or "").strip().upper()
     if not normalized:
@@ -61,8 +67,8 @@ def resolve_referrer(code: str):
     profile = (
         AgentProfile.objects.filter(
             referral_code__iexact=normalized,
-            user__role=AppUser.Role.AGENT,
         )
+        .filter(active_membership_or_legacy_q(AppUser.Role.AGENT, prefix="user__"))
         .select_related("user")
         .first()
     )
@@ -110,6 +116,7 @@ def award_referral_earning(inspection):
 def build_referral_tree(user) -> dict:
     """Referral payload for a PIO dashboard: own code, tree and earnings."""
     from .models import AgentProfile, AgentReferralEarning, AppUser, PropertyInspection
+    from .roles import active_membership_or_legacy_q
 
     profile, _created = AgentProfile.objects.get_or_create(
         user=user,
@@ -121,9 +128,9 @@ def build_referral_tree(user) -> dict:
 
     referred_profiles = list(
         AgentProfile.objects.filter(
-            user__role=AppUser.Role.AGENT,
             referred_by__isnull=False,
         )
+        .filter(active_membership_or_legacy_q(AppUser.Role.AGENT, prefix="user__"))
         .select_related("user")
     )
     children_map: dict = defaultdict(list)

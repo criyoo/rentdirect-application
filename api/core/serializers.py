@@ -7,6 +7,7 @@ from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
 from rest_framework import serializers
+from rest_framework.exceptions import PermissionDenied
 
 from .profile_validation import (
     normalize_residence,
@@ -56,6 +57,7 @@ from .models import (
     VerificationRequest,
 )
 from .financial_constants import AGENT_VERIFICATION_ATTEMPTS_PER_PAYMENT, REFUNDABLE_CAUTION_FEE_RATE, ZERO_AMOUNT
+from .roles import active_role_membership, apply_active_role, available_roles, has_active_role
 from .pricing import calculate_booking_total, calculate_listing_deposit_amount, calculate_remaining_balance, quantize_money, resolve_booking_total
 from .subscription_access import user_has_completed_tenant_profile, user_has_silver_access
 from .tenant_scoring import build_tenant_screening_summary
@@ -66,10 +68,34 @@ from .image_optimization import optimize_listing_image
 class UserSerializer(serializers.ModelSerializer):
     profile_photo_url = serializers.CharField(read_only=True)
     is_verified = serializers.BooleanField(read_only=True)
+    available_roles = serializers.SerializerMethodField()
     account_frozen = serializers.SerializerMethodField()
+    account_frozen_at = serializers.SerializerMethodField()
+    account_frozen_until = serializers.SerializerMethodField()
+    account_freeze_fee_percentage = serializers.SerializerMethodField()
+
+    def get_available_roles(self, obj):
+        return available_roles(obj)
+
+    def _freeze_source(self, obj):
+        membership = active_role_membership(obj)
+        return membership if membership is not None else obj
 
     def get_account_frozen(self, obj):
-        return obj.is_account_frozen
+        source = self._freeze_source(obj)
+        is_frozen = getattr(source, "is_frozen", None)
+        if is_frozen is not None:
+            return is_frozen
+        return source.is_account_frozen
+
+    def get_account_frozen_at(self, obj):
+        return getattr(self._freeze_source(obj), "account_frozen_at", None)
+
+    def get_account_frozen_until(self, obj):
+        return getattr(self._freeze_source(obj), "account_frozen_until", None)
+
+    def get_account_freeze_fee_percentage(self, obj):
+        return getattr(self._freeze_source(obj), "account_freeze_fee_percentage", None)
 
     class Meta:
         model = AppUser
@@ -78,6 +104,7 @@ class UserSerializer(serializers.ModelSerializer):
             "name",
             "email",
             "role",
+            "available_roles",
             "email_verified",
             "profile_photo_url",
             "mobile",
@@ -297,6 +324,7 @@ class SettingsPasswordSerializer(serializers.Serializer):
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
+    role = serializers.CharField(required=False, allow_blank=True, write_only=True)
 
     def validate(self, attrs):
         user = authenticate(username=attrs["email"].strip().lower(), password=attrs["password"])
@@ -304,6 +332,10 @@ class LoginSerializer(serializers.Serializer):
             raise serializers.ValidationError("Invalid credentials")
         if not user.email_verified:
             raise serializers.ValidationError("Email verification required before login")
+        try:
+            apply_active_role(user, attrs.get("role"))
+        except PermissionDenied as exc:
+            raise serializers.ValidationError({"role": [str(exc.detail)]}) from exc
         attrs["user"] = user
         return attrs
 
@@ -1191,6 +1223,10 @@ class BookingSerializer(serializers.ModelSerializer):
         listing_id = validated_data.pop("listing_id")
         with transaction.atomic():
             listing = Listing.objects.select_for_update().get(id=listing_id, status=Listing.Status.AVAILABLE)
+            # Payer/payee same-identity gate: a landlord cannot rent their own
+            # listing; no cross-table database constraint can express this.
+            if listing.landlord_id == request.user.id:
+                raise serializers.ValidationError({"listing_id": "You cannot rent your own property."})
             if listing_has_deposit_secured_booking(listing):
                 raise serializers.ValidationError({"listing_id": "This property is no longer available for new rental applications."})
             total_amount = calculate_booking_total(listing.price_per_year)
@@ -1686,22 +1722,59 @@ class FavouriteSerializer(serializers.ModelSerializer):
 
 class MessageSerializer(serializers.ModelSerializer):
     sender_id = serializers.UUIDField(source="sender.id", read_only=True)
+    sender_role = serializers.CharField(read_only=True)
     receiver_id = serializers.UUIDField()
-    listing_id = serializers.UUIDField(required=False, allow_null=True)
+    receiver_role = serializers.CharField(read_only=True)
+    listing_id = serializers.UUIDField()
 
     class Meta:
         model = Message
-        fields = ["id", "sender_id", "receiver_id", "listing_id", "content", "created_at"]
-        read_only_fields = ["id", "sender_id", "created_at"]
+        fields = [
+            "id",
+            "sender_id",
+            "sender_role",
+            "receiver_id",
+            "receiver_role",
+            "listing_id",
+            "content",
+            "created_at",
+        ]
+        read_only_fields = ["id", "sender_id", "sender_role", "receiver_role", "created_at"]
 
     def create(self, validated_data):
         receiver_id = validated_data.pop("receiver_id")
         listing_id = validated_data.pop("listing_id", None)
         listing = Listing.objects.filter(id=listing_id).first() if listing_id else None
+        if listing is None:
+            raise serializers.ValidationError({"listing_id": "A valid listing is required."})
+        sender = self.context["request"].user
+        receiver = AppUser.objects.filter(id=receiver_id).first()
+        if receiver is None:
+            raise serializers.ValidationError({"receiver_id": "Receiver not found."})
+        if receiver.id == sender.id:
+            raise serializers.ValidationError({"receiver_id": "You cannot message yourself."})
+        if sender.role == AppUser.Role.TENANT:
+            if receiver.id != listing.landlord_id:
+                raise serializers.ValidationError(
+                    {"receiver_id": "Messages must target the landlord of the selected listing."}
+                )
+            sender_role, receiver_role = AppUser.Role.TENANT, AppUser.Role.LANDLORD
+        elif sender.role == AppUser.Role.LANDLORD:
+            if listing.landlord_id != sender.id:
+                raise serializers.ValidationError(
+                    {"listing_id": "You can only message tenants about your own listings."}
+                )
+            if not has_active_role(receiver, AppUser.Role.TENANT):
+                raise serializers.ValidationError({"receiver_id": "Receiver is not an active tenant."})
+            sender_role, receiver_role = AppUser.Role.LANDLORD, AppUser.Role.TENANT
+        else:
+            raise serializers.ValidationError({"detail": "Only tenant and landlord accounts can exchange messages."})
         return Message.objects.create(
-            sender=self.context["request"].user,
-            receiver=AppUser.objects.get(id=receiver_id),
+            sender=sender,
+            receiver=receiver,
             listing=listing,
+            sender_role=sender_role,
+            receiver_role=receiver_role,
             **validated_data,
         )
 
@@ -1713,15 +1786,16 @@ class CommunityChatMessageSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CommunityChatMessage
-        fields = ["id", "sender_id", "sender_name", "sender_photo_url", "content", "created_at"]
-        read_only_fields = ["id", "sender_id", "sender_name", "sender_photo_url", "created_at"]
+        fields = ["id", "sender_id", "sender_name", "sender_photo_url", "role", "content", "created_at"]
+        read_only_fields = ["id", "sender_id", "sender_name", "sender_photo_url", "role", "created_at"]
 
 
 class SupportChatMessageSerializer(serializers.ModelSerializer):
     thread_user_id = serializers.UUIDField(source="thread_user.id", read_only=True)
     sender_id = serializers.UUIDField(source="sender.id", read_only=True)
     sender_name = serializers.CharField(source="sender.name", read_only=True)
-    sender_role = serializers.CharField(source="sender.role", read_only=True)
+    sender_role = serializers.CharField(read_only=True)
+    thread_role = serializers.CharField(read_only=True)
     sender_photo_url = serializers.CharField(source="sender.profile_photo_url", read_only=True)
     is_support_message = serializers.SerializerMethodField()
 
@@ -1733,6 +1807,7 @@ class SupportChatMessageSerializer(serializers.ModelSerializer):
             "sender_id",
             "sender_name",
             "sender_role",
+            "thread_role",
             "sender_photo_url",
             "is_support_message",
             "content",

@@ -8,10 +8,12 @@ from urllib.parse import parse_qs
 from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from rest_framework.exceptions import PermissionDenied
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import AccessToken
 
 from .models import AppUser, SupportChatMessage
+from .roles import apply_active_role, has_active_role
 
 try:
     import redis.asyncio as redis_async
@@ -50,13 +52,22 @@ def _authenticate_user(scope):
     if not user_id:
         return None
 
-    return get_user_model().objects.filter(id=user_id, is_active=True).first()
+    user = get_user_model().objects.filter(id=user_id, is_active=True).first()
+    if user is None:
+        return None
+    query = parse_qs(scope.get("query_string", b"").decode("utf-8"))
+    requested_role = (query.get("active_role") or [""])[0] or None
+    try:
+        apply_active_role(user, requested_role)
+    except PermissionDenied:
+        return None
+    return user
 
 
 @sync_to_async
 def _resolve_thread_user(user, scope):
     if user.role in {AppUser.Role.TENANT, AppUser.Role.LANDLORD, AppUser.Role.AGENT}:
-        return user
+        return user, user.role
     if user.role != AppUser.Role.ADMIN:
         return None
 
@@ -65,12 +76,13 @@ def _resolve_thread_user(user, scope):
     if not thread_user_id:
         return None
 
-    return (
-        get_user_model()
-        .objects
-        .filter(id=thread_user_id, role__in=[AppUser.Role.TENANT, AppUser.Role.LANDLORD, AppUser.Role.AGENT], is_active=True)
-        .first()
-    )
+    thread_user = get_user_model().objects.filter(id=thread_user_id, is_active=True).first()
+    if thread_user is None:
+        return None
+    thread_role = (query.get("thread_role") or [""])[0] or thread_user.role
+    if not has_active_role(thread_user, thread_role):
+        return None
+    return thread_user, thread_role
 
 
 def _message_payload(message):
@@ -78,9 +90,10 @@ def _message_payload(message):
     return {
         "id": str(message.id),
         "thread_user_id": str(message.thread_user_id),
+        "thread_role": message.thread_role,
         "sender_id": str(sender.id),
         "sender_name": sender.name,
-        "sender_role": sender.role,
+        "sender_role": message.sender_role,
         "sender_photo_url": sender.profile_photo_url,
         "is_support_message": message.sender_id != message.thread_user_id,
         "content": message.content,
@@ -89,10 +102,13 @@ def _message_payload(message):
 
 
 @sync_to_async
-def _create_message(thread_user, sender, content):
+def _create_message(thread_user, thread_role, sender, content):
+    sender_role = sender.role if sender.id == thread_user.id else AppUser.Role.ADMIN
     message = SupportChatMessage.objects.select_related("thread_user", "sender").create(
         thread_user=thread_user,
+        thread_role=thread_role,
         sender=sender,
+        sender_role=sender_role,
         content=content,
     )
     return _message_payload(message)
@@ -119,8 +135,8 @@ class SupportChatHub:
             kwargs["ssl_cert_reqs"] = ssl.CERT_NONE
         return redis_async.from_url(url, decode_responses=True, **kwargs)
 
-    def channel_name(self, thread_user_id):
-        return f"{SUPPORT_CHAT_CHANNEL_PREFIX}.{thread_user_id}"
+    def channel_name(self, thread_user_id, thread_role):
+        return f"{SUPPORT_CHAT_CHANNEL_PREFIX}.{thread_user_id}.{thread_role}"
 
     async def publish(self, channel_name, payload):
         encoded = json.dumps(payload)
@@ -174,18 +190,19 @@ class SupportChatHub:
             await send({"type": "websocket.close", "code": 4401})
             return
 
-        thread_user = await _resolve_thread_user(user, scope)
-        if thread_user is None:
+        thread = await _resolve_thread_user(user, scope)
+        if thread is None:
             await receive()
             await send({"type": "websocket.close", "code": 4403})
             return
+        thread_user, thread_role = thread
 
         connect_event = await receive()
         if connect_event.get("type") != "websocket.connect":
             return
 
         await send({"type": "websocket.accept"})
-        channel_name = self.channel_name(thread_user.id)
+        channel_name = self.channel_name(thread_user.id, thread_role)
         queue = asyncio.Queue(maxsize=100)
         self.local_queues_by_channel.setdefault(channel_name, set()).add(queue)
 
@@ -210,7 +227,7 @@ class SupportChatHub:
                 if len(content) > 2000:
                     content = content[:2000]
 
-                message_payload = await _create_message(thread_user, user, content)
+                message_payload = await _create_message(thread_user, thread_role, user, content)
                 await self.publish(channel_name, message_payload)
 
         async def send_loop():

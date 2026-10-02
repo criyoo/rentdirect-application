@@ -15,6 +15,7 @@ type CommunityChatMessage = {
     sender_id: string
     sender_name: string
     sender_photo_url?: string | null
+    role?: string
     content: string
     created_at: string
 }

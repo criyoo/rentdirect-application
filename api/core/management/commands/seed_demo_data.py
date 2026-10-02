@@ -547,6 +547,7 @@ class Command(BaseCommand):
 
         request, _ = VerificationRequest.objects.get_or_create(
             user=user,
+            role=user.role,
             defaults={
                 "request_type": VerificationRequest.RequestType.IDENTIFICATION,
             },
@@ -805,6 +806,7 @@ class Command(BaseCommand):
 
         request, _ = VerificationRequest.objects.get_or_create(
             user=user,
+            role=user.role,
             defaults={
                 "request_type": VerificationRequest.RequestType.IDENTIFICATION,
             },
