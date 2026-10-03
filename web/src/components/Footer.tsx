@@ -108,7 +108,6 @@ export default function Footer() {
             { label: 'Forgot password', href: '/forgot-password' },
             { label: 'Issues', href: '/issues' },
             { label: 'Complaint', href: '/complaint' },
-            // { label: 'Saved homes', href: '/favourites' },
         ]
 
     const agentLinks = [
@@ -183,10 +182,10 @@ export default function Footer() {
                             </div>
                         </div>
 
-                        <div className="grid items-start gap-10 sm:grid-cols-2 xl:grid-cols-[repeat(3,minmax(0,1fr))]">
+                        <div className={`grid items-start gap-10 ${isAnonymous ? 'sm:grid-cols-2 xl:grid-cols-[repeat(4,minmax(0,1fr))]' : 'sm:grid-cols-3 xl:grid-cols-[repeat(3,minmax(0,1fr))]'}`}>
                             <nav aria-label="Browse">
                                 <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-200">Browse</p>
-                                <ul className="mt-4 space-y-3 text-sm text-slate-300">
+                                <ul className="mt-4 space-y-2 text-sm text-slate-300">
                                     {browseLinks.map((link) => (
                                         <li key={link.label}>
                                             <Link className="transition hover:text-white" to={link.href}>
@@ -199,7 +198,7 @@ export default function Footer() {
 
                             <nav aria-label="Account">
                                 <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-200">Account</p>
-                                <ul className="mt-4 space-y-3 text-sm text-slate-300">
+                                <ul className="mt-4 space-y-2 text-sm text-slate-300">
                                     {accountLinks.map((link) => (
                                         <li key={link.label}>
                                             <Link className="transition hover:text-white" to={link.href}>
@@ -214,7 +213,7 @@ export default function Footer() {
                                 <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-200">
                                     {isAgent ? 'Property Inspection Officers' : 'Landlords'}
                                 </p>
-                                <ul className="mt-4 space-y-3 text-sm text-slate-300">
+                                <ul className="mt-4 space-y-2 text-sm text-slate-300">
                                     {(isAgent ? agentLinks : landlordLinks).map((link) => (
                                         <li key={link.label}>
                                             <Link className="transition hover:text-white" to={link.href}>
@@ -223,8 +222,8 @@ export default function Footer() {
                                         </li>
                                     ))}
                                     {isAnonymous && (
-                                        <li className="pt-2 text-xs text-slate-400">
-                                            Want to become a PIO and earn extra income?{' '}
+                                        <li className="pt-1 text-xs text-slate-400">
+                                            Become a PIO and earn extra income{' '}
                                             <Link to="/agents" className="font-semibold text-blue-200 transition hover:text-white">
                                                 Click Here
                                             </Link>
@@ -236,9 +235,9 @@ export default function Footer() {
                             {isAnonymous && (
                                 <nav aria-label="Property Inspection Officers">
                                     <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-200">
-                                        Property Inspection Officers
+                                        PIO
                                     </p>
-                                    <ul className="mt-4 space-y-3 text-sm text-slate-300">
+                                    <ul className="mt-4 space-y-2 text-sm text-slate-300">
                                         {agentPublicLinks.map((link) => (
                                             <li key={link.label}>
                                                 <Link className="transition hover:text-white" to={link.href}>
@@ -246,8 +245,8 @@ export default function Footer() {
                                                 </Link>
                                             </li>
                                         ))}
-                                        <li className="pt-2 text-xs text-slate-400">
-                                            Want to search for a property?{' '}
+                                        <li className="pt-1 text-xs text-slate-400">
+                                            Searching for a property?{' '}
                                             <Link to="/" className="font-semibold text-blue-200 transition hover:text-white">
                                                 Click Here
                                             </Link>
@@ -256,7 +255,7 @@ export default function Footer() {
                                 </nav>
                             )}
 
-                            <div className="min-w-0 sm:col-span-2 xl:col-span-3">
+                            <div className={`min-w-0 sm:col-span-2 ${isAnonymous ? 'xl:col-span-4' : 'xl:col-span-3'}`}>
                                 <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-200">Support</p>
                                 <div className="mt-8 grid auto-rows-fr items-stretch gap-3 md:grid-cols-3">
                                     <a
