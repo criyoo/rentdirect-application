@@ -327,6 +327,34 @@ def extract_mobile_verification_warning(value: Any) -> str:
     return ""
 
 
+def extract_identity_verification_badge(value: Any) -> str:
+    if isinstance(value, dict):
+        badge = str(value.get("verification_badge") or "").strip()
+        if badge:
+            return badge
+        for nested_value in value.values():
+            badge = extract_identity_verification_badge(nested_value)
+            if badge:
+                return badge
+    elif isinstance(value, (list, tuple)):
+        for nested_value in value:
+            badge = extract_identity_verification_badge(nested_value)
+            if badge:
+                return badge
+    return ""
+
+
+def apply_identity_verification_badge(verification: VerificationRequest, verification_payloads: Any, update_fields: list[str] | None = None) -> str:
+    """Persist the Good/Excellent confidence badge from a provider run onto the
+    verification request. Returns the badge (or the stored one)."""
+    badge = extract_identity_verification_badge(verification_payloads)
+    if badge:
+        verification.automated_decision = badge
+        if update_fields is not None:
+            _append_update_fields(update_fields, "automated_decision")
+    return badge or verification.automated_decision or ""
+
+
 def verify_tenant_identity_or_raise(user, profile_data: dict, nin_number: str, bvn_number: str) -> dict:
     identity_data = {
         "first_name": profile_data.get("first_name"),
@@ -1019,7 +1047,7 @@ def mark_identity_verification_outcome(user, role: str, verification: Verificati
     return True
 
 
-def sync_tenant_profile_verification_state(user: AppUser, profile: TenantProfile) -> VerificationRequest:
+def sync_tenant_profile_verification_state(user: AppUser, profile: TenantProfile, verification_payloads: Any = None) -> VerificationRequest:
     verified_at = timezone.now()
     verification, _ = VerificationRequest.objects.get_or_create(
         user=user,
@@ -1034,6 +1062,7 @@ def sync_tenant_profile_verification_state(user: AppUser, profile: TenantProfile
     verification.verification_method = VerificationRequest.Method.AUTOMATED
     verification.reviewed_at = verified_at
     awaiting_payment = mark_identity_verification_outcome(user, AppUser.Role.TENANT, verification)
+    apply_identity_verification_badge(verification, verification_payloads)
     target_status = (
         TenantProfile.Status.PENDING if awaiting_payment else TenantProfile.Status.APPROVED
     )
@@ -1048,6 +1077,7 @@ def sync_tenant_profile_verification_state(user: AppUser, profile: TenantProfile
             "identity_verification_status",
             "verification_method",
             "reviewed_at",
+            "automated_decision",
         ]
     )
     return verification
@@ -4319,6 +4349,7 @@ class UserViewSet(viewsets.GenericViewSet):
             serializer = TenantProfileSerializer(data=data)
             serializer.is_valid(raise_exception=True)
             mobile_warning = ""
+            verification_payloads = None
             try:
                 if not tenant_verified_identity_matches(request.user, serializer.validated_data, nin_number, bvn_number):
                     verification_payloads = verify_tenant_identity_or_raise(request.user, serializer.validated_data, nin_number, bvn_number)
@@ -4347,10 +4378,11 @@ class UserViewSet(viewsets.GenericViewSet):
                     request.user.whatsapp_number = verification_profile["whatsapp_number"]
                 request.user.save(update_fields=["nin_number", "bvn_number", "tenant_verification_profile", "whatsapp_number", "updated_at"])
                 new_profile = serializer.save(user=request.user)
-            vr = sync_tenant_profile_verification_state(request.user, new_profile)
+            vr = sync_tenant_profile_verification_state(request.user, new_profile, verification_payloads)
             if new_profile.supporting_documents.exists():
                 vr.documents.set(new_profile.supporting_documents.all())
             response_data = TenantProfileSerializer(new_profile).data
+            response_data["verification_badge"] = vr.automated_decision or ""
             if vr.identity_verification_status == VerificationRequest.VerificationProgressStatus.AWAITING_PAYMENT:
                 response_data["verification_payment"] = ServicePaymentSerializer(
                     pending_identity_verification_payment(request.user, AppUser.Role.TENANT),
@@ -4377,6 +4409,7 @@ class UserViewSet(viewsets.GenericViewSet):
             **serializer.validated_data,
         }
         mobile_warning = ""
+        verification_payloads = None
         try:
             if not tenant_verified_identity_matches(request.user, merged_profile_data, nin_number, bvn_number):
                 verification_payloads = verify_tenant_identity_or_raise(request.user, merged_profile_data, nin_number, bvn_number)
@@ -4405,10 +4438,11 @@ class UserViewSet(viewsets.GenericViewSet):
                 request.user.whatsapp_number = verification_profile["whatsapp_number"]
             request.user.save(update_fields=["nin_number", "bvn_number", "tenant_verification_profile", "whatsapp_number", "updated_at"])
             updated_profile = serializer.save()
-        vr = sync_tenant_profile_verification_state(request.user, updated_profile)
+        vr = sync_tenant_profile_verification_state(request.user, updated_profile, verification_payloads)
         if updated_profile.supporting_documents.exists():
             vr.documents.set(updated_profile.supporting_documents.all())
         response_data = TenantProfileSerializer(updated_profile).data
+        response_data["verification_badge"] = vr.automated_decision or ""
         if vr.identity_verification_status == VerificationRequest.VerificationProgressStatus.AWAITING_PAYMENT:
             response_data["verification_payment"] = ServicePaymentSerializer(
                 pending_identity_verification_payment(request.user, AppUser.Role.TENANT),
@@ -5020,6 +5054,7 @@ class VerificationRequestBaseViewSet(viewsets.GenericViewSet):
             "verification_method": latest.verification_method,
             "confidence_score": latest.confidence_score,
             "automated_decision": latest.automated_decision,
+            "verification_badge": latest.automated_decision or "",
             "estimated_completion": "Within 3-5 business days" if overall_progress == "pending" else None,
             "identification": {
                 "status": identification_status,
@@ -5070,6 +5105,7 @@ class VerificationRequestBaseViewSet(viewsets.GenericViewSet):
             "identity_verification_status": verification.identity_verification_status,
             "property_document_verification_status": verification.property_document_verification_status,
             "physical_property_status": verification.physical_property_status,
+            "verification_badge": verification.automated_decision or "",
             "message": message,
         }
         if awaiting_payment:
@@ -5215,8 +5251,10 @@ class LandlordVerificationRequestViewSet(VerificationRequestBaseViewSet):
 
         if request_type == VerificationRequest.RequestType.IDENTIFICATION:
             if request.user.role == AppUser.Role.LANDLORD and request.user.landlord_verification_profile:
-                mobile_warning = extract_mobile_verification_warning(verify_landlord_identity_or_raise(request.user))
+                verification_payloads = verify_landlord_identity_or_raise(request.user)
+                mobile_warning = extract_mobile_verification_warning(verification_payloads)
                 mark_identity_verification_outcome(request.user, AppUser.Role.LANDLORD, verification)
+                apply_identity_verification_badge(verification, verification_payloads, update_fields)
                 verification.verification_method = VerificationRequest.Method.AUTOMATED
                 verification.reviewed_at = timezone.now()
                 _append_update_fields(update_fields, "identity_verification_status", "verification_method", "status", "reviewed_at")
@@ -5265,10 +5303,10 @@ class TenantVerificationRequestViewSet(VerificationRequestBaseViewSet):
             bvn_number = str(profile_data.get("bvn_number") or request.user.bvn_number or "").strip()
             if tenant_verified_identity_matches(request.user, profile_data, nin_number, bvn_number):
                 mobile_warning = ""
+                verification_payloads = None
             else:
-                mobile_warning = extract_mobile_verification_warning(
-                    verify_tenant_identity_or_raise(request.user, profile_data, nin_number, bvn_number)
-                )
+                verification_payloads = verify_tenant_identity_or_raise(request.user, profile_data, nin_number, bvn_number)
+                mobile_warning = extract_mobile_verification_warning(verification_payloads)
             request.user.nin_number = nin_number
             request.user.bvn_number = bvn_number
             request.user.tenant_verification_profile = normalize_tenant_verification_profile(
@@ -5283,6 +5321,7 @@ class TenantVerificationRequestViewSet(VerificationRequestBaseViewSet):
             awaiting_payment = mark_identity_verification_outcome(
                 request.user, AppUser.Role.TENANT, verification
             )
+            apply_identity_verification_badge(verification, verification_payloads, update_fields)
             target_status = (
                 TenantProfile.Status.PENDING if awaiting_payment else TenantProfile.Status.APPROVED
             )
@@ -7400,6 +7439,7 @@ class AgentViewSet(viewsets.ViewSet):
         )
         verification.verification_method = VerificationRequest.Method.AUTOMATED
         verification.reviewed_at = verified_at
+        apply_identity_verification_badge(verification, verification_payloads)
         verification.save(
             update_fields=[
                 "request_type",
@@ -7408,6 +7448,7 @@ class AgentViewSet(viewsets.ViewSet):
                 "identity_verification_status",
                 "verification_method",
                 "reviewed_at",
+                "automated_decision",
             ]
         )
 
@@ -7426,6 +7467,7 @@ class AgentViewSet(viewsets.ViewSet):
         user.save(update_fields=["nin_number", "bvn_number", "updated_at"])
 
         data = AgentProfileSerializer(profile, context={"request": request}).data
+        data["verification_badge"] = verification.automated_decision or ""
         if awaiting_payment:
             data["verification_payment"] = ServicePaymentSerializer(
                 pending_identity_verification_payment(request.user, AppUser.Role.AGENT),

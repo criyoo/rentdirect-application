@@ -68,7 +68,7 @@ jobs:
               - "package.json"
               - "package-lock.json"
               - "turbo.json"
-              - ".github/workflows/$${{ vars.ENVIRONMENT }}.yml"
+              - ".github/workflows/${{ vars.ENVIRONMENT }}.yml"
 
 
   check-web:
@@ -185,7 +185,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Deploy Web
-        run: BUILD_WEB=0 INSTALL_DEPS=0 bash scripts/deploy/web.sh $${{ vars.ENVIRONMENT }}
+        run: BUILD_WEB=0 INSTALL_DEPS=0 bash scripts/deploy/web.sh ${{ vars.ENVIRONMENT }}
 
 
   detect-api-changes:
@@ -293,7 +293,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Deploy API
-        run: SEED_DEMO_ACCOUNTS=1 MIGRATION_START_DB_INSTANCE=1 bash scripts/deploy/api.sh $${{ vars.ENVIRONMENT }}
+        run: SEED_DEMO_ACCOUNTS=1 MIGRATION_START_DB_INSTANCE=1 bash scripts/deploy/api.sh ${{ vars.ENVIRONMENT }}
 
 
   django-superuser:
@@ -318,6 +318,7 @@ jobs:
 
       - name: Create Django Superuser
         env:
+          ADMIN_EMAIL: ${{ vars.ADMIN_EMAIL }}
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
           DJANGO_SUPERUSER_PASSWORD: ${{ secrets.DJANGO_SUPERUSER_PASSWORD }}
-        run: bash scripts/admin.sh $${{ vars.ENVIRONMENT }}
+        run: bash scripts/admin.sh ${{ vars.ENVIRONMENT }}

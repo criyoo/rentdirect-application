@@ -883,7 +883,14 @@ export default function LandlordVerificationPage() {
                 <section className="space-y-8 rounded-2xl border bg-white p-6 shadow-sm">
                     <div>
                         <p className="text-sm font-medium uppercase tracking-[0.2em] text-blue-600">Landlord onboarding</p>
-                        <h1 className="mt-2 text-3xl font-bold text-gray-900">Landlord Verification</h1>
+                        <div className="mt-2 flex items-center gap-3">
+                            <h1 className="text-3xl font-bold text-gray-900">Landlord Verification</h1>
+                            {isVerificationLocked && me?.verification_badge && (
+                                <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
+                                    {me.verification_badge}
+                                </span>
+                            )}
+                        </div>
                         <p className="mt-2 text-gray-600">
                             Verification status, landlord type selection, verification form, and verification steps are all on this page.
                         </p>
