@@ -49,6 +49,7 @@ interface ListingSummary {
     cover_image_url?: string
     image_urls?: string[]
     featured?: boolean
+    is_hidden?: boolean
 }
 
 function normalizeResults<T>(payload: T[] | PaginatedResponse<T> | undefined): T[] {
@@ -129,6 +130,22 @@ export default function LandlordDashboardPage() {
         },
         onError: (error: any) => {
             alert(error?.response?.data?.detail || 'Failed to delete listing.')
+        },
+    })
+
+    const toggleVisibility = useMutation({
+        mutationFn: async ({ id, isHidden }: { id: string; isHidden: boolean }) => {
+            await api.post(`/listings/${id}/visibility`, { is_hidden: isHidden })
+        },
+        onSuccess: (_data, variables) => {
+            qc.invalidateQueries({ queryKey: ['dashboard', 'landlord', 'listings', userId] })
+            qc.invalidateQueries({ queryKey: ['listings'] })
+            if (variables.isHidden) {
+                void alert("This property listing is now hidden from search results. To display it in search results, click the 'Show listing' button.", { variant: 'info' })
+            }
+        },
+        onError: (error: any) => {
+            alert(error?.response?.data?.detail || 'Failed to update listing visibility.')
         },
     })
 
@@ -446,14 +463,19 @@ export default function LandlordDashboardPage() {
                                             }}
                                         />
 
-                                        {listing.featured && (
-                                            <div className="absolute top-3 left-3">
+                                        <div className="absolute top-3 left-3 flex flex-col items-start gap-1.5">
+                                            {listing.featured && (
                                                 <span className="badge badge-primary">
                                                     <HiStar className="w-3 h-3 mr-1" />
                                                     Featured
                                                 </span>
-                                            </div>
-                                        )}
+                                            )}
+                                            {listing.is_hidden && (
+                                                <span className="badge bg-slate-700 text-white">
+                                                    Hidden
+                                                </span>
+                                            )}
+                                        </div>
 
                                         <div className="absolute top-3 right-3 flex space-x-2">
                                             <Link to={`/listings/${listing.id}`} className="p-2 bg-white/90 backdrop-blur-sm rounded-full shadow-lg hover:bg-white transition-all duration-200">
@@ -477,10 +499,20 @@ export default function LandlordDashboardPage() {
                                             {listing.title}
                                         </h3>
                                         <p className="text-gray-600 text-sm mb-1">{listing.city}</p>
-                                        <div className="text-2xl font-bold text-blue-600 mb-2">
-                                            {formatCurrencyWithSymbol(Number(listing.price_per_year || 0))}
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="text-2xl font-bold text-blue-600">
+                                                {formatCurrencyWithSymbol(Number(listing.price_per_year || 0))}
+                                                <span className="text-sm font-normal text-gray-500"> / year</span>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => toggleVisibility.mutate({ id: listing.id, isHidden: !listing.is_hidden })}
+                                                disabled={toggleVisibility.isPending}
+                                                className="btn btn-outline"
+                                            >
+                                                {listing.is_hidden ? 'Show listing' : 'Hide listing'}
+                                            </button>
                                         </div>
-                                        <div className="text-sm text-gray-500">per year</div>
                                     </div>
                                 </div>
                             ))}

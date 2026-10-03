@@ -211,7 +211,7 @@ function formatVerificationRequirementLabel(key: keyof VerificationStatusRespons
 
 const ownershipTypeOptions = [
     'Sole Owner',
-    'Rental',
+    'Rental/Tenant',
     'Joint Owner',
     'Family Property Representative',
     'Attorney/Power of Attorney Holder',
@@ -1392,10 +1392,12 @@ export default function ListingFormPage() {
                                     {ownershipTypeOptions.map((option) => (
                                         <label key={option} className="flex items-center gap-3 rounded-lg border px-4 py-2">
                                             <input
-                                                {...register('ownership_types')}
-                                                type="checkbox"
+                                                type="radio"
+                                                name="ownership_types"
                                                 value={option}
-                                                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                                checked={selectedOwnershipTypes[0] === option}
+                                                onChange={() => setValue('ownership_types', [option], { shouldValidate: true })}
+                                                className="h-4 w-4 rounded-full border-gray-300 text-blue-600 focus:ring-blue-500"
                                             />
                                             <span className="text-sm text-gray-800">{option}</span>
                                         </label>

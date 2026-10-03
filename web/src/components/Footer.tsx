@@ -13,11 +13,26 @@ import {
 import { FaInstagram, FaLinkedinIn, FaXTwitter } from 'react-icons/fa6'
 import { SUBSCRIPTIONS_ENABLED } from '@/lib/featureFlags'
 
-const browseLinks = [
+const mainBrowseLinks = [
     { label: 'Home', href: '/' },
     { label: 'About', href: '/about' },
     { label: 'How it works', href: '/how-it-works' },
     { label: 'Search', href: '/search' },
+]
+
+const agentBrowseLinks = [
+    { label: 'Home', href: '/agents' },
+    { label: 'About', href: '/agents/about' },
+    { label: 'How it works', href: '/agents/how-it-works' },
+    { label: 'Become a PIO', href: '/agents/register' },
+]
+
+const agentPublicLinks = [
+    { label: 'PIO home', href: '/agents' },
+    { label: 'About PIOs', href: '/agents/about' },
+    { label: 'How it works', href: '/agents/how-it-works' },
+    { label: 'Become a PIO', href: '/agents/register' },
+    { label: 'PIO login', href: '/agents/login' },
 ]
 
 const footerHighlights = [
@@ -56,6 +71,9 @@ export default function Footer() {
     const { user } = useAuth()
     const location = useLocation()
     const isAgentPublicPage = AGENT_PUBLIC_PATHS.has(location.pathname)
+    const isAgent = user?.role === 'agent'
+    const isAnonymous = !user?.id
+    const browseLinks = isAgent ? agentBrowseLinks : mainBrowseLinks
 
     const dashboardPath = user?.id
         ? user.role === 'landlord'
@@ -114,7 +132,6 @@ export default function Footer() {
             { label: 'Identity checks', href: '/landlord/verification' },
             { label: 'Featured placements', href: '/dashboard/featured-properties' },
             { label: 'Feedback', href: '/feedback' },
-            { label: 'Become an agent', href: '/agents' },
         ]
 
     return (
@@ -123,7 +140,7 @@ export default function Footer() {
                 <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
                     <div className="grid items-start gap-12 border-b border-white/10 pb-10 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1.35fr)]">
                         <div className="flex h-full flex-col gap-6">
-                            <Link to="/" aria-label="RentDirect home" className="inline-flex items-center">
+                            <Link to={isAgent ? '/agents' : '/'} aria-label={isAgent ? 'RentDirect PIO home' : 'RentDirect home'} className="inline-flex items-center">
                                 <BrandLogo className="h-24 w-36 shrink-0 rounded-lg bg-white p-1" />
                             </Link>
                             <div className="space-y-4">
@@ -193,20 +210,51 @@ export default function Footer() {
                                 </ul>
                             </nav>
 
-                            <nav aria-label={user?.role === 'agent' ? 'Property Inspection Officers' : 'Landlords'}>
+                            <nav aria-label={isAgent ? 'Property Inspection Officers' : 'Landlords'}>
                                 <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-200">
-                                    {user?.role === 'agent' ? 'Property Inspection Officers' : 'Landlords'}
+                                    {isAgent ? 'Property Inspection Officers' : 'Landlords'}
                                 </p>
                                 <ul className="mt-4 space-y-3 text-sm text-slate-300">
-                                    {(user?.role === 'agent' ? agentLinks : landlordLinks).map((link) => (
+                                    {(isAgent ? agentLinks : landlordLinks).map((link) => (
                                         <li key={link.label}>
                                             <Link className="transition hover:text-white" to={link.href}>
                                                 {link.label}
                                             </Link>
                                         </li>
                                     ))}
+                                    {isAnonymous && (
+                                        <li className="pt-2 text-xs text-slate-400">
+                                            Want to become a PIO and earn extra income?{' '}
+                                            <Link to="/agents" className="font-semibold text-blue-200 transition hover:text-white">
+                                                Click Here
+                                            </Link>
+                                        </li>
+                                    )}
                                 </ul>
                             </nav>
+
+                            {isAnonymous && (
+                                <nav aria-label="Property Inspection Officers">
+                                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-200">
+                                        Property Inspection Officers
+                                    </p>
+                                    <ul className="mt-4 space-y-3 text-sm text-slate-300">
+                                        {agentPublicLinks.map((link) => (
+                                            <li key={link.label}>
+                                                <Link className="transition hover:text-white" to={link.href}>
+                                                    {link.label}
+                                                </Link>
+                                            </li>
+                                        ))}
+                                        <li className="pt-2 text-xs text-slate-400">
+                                            Want to search for a property?{' '}
+                                            <Link to="/" className="font-semibold text-blue-200 transition hover:text-white">
+                                                Click Here
+                                            </Link>
+                                        </li>
+                                    </ul>
+                                </nav>
+                            )}
 
                             <div className="min-w-0 sm:col-span-2 xl:col-span-3">
                                 <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-200">Support</p>

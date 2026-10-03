@@ -121,7 +121,7 @@ export default function Navbar() {
 
                         {authenticatedUser && authenticatedUser.id ? (
                             <div className="flex items-center gap-3">
-                                <RoleSwitcher />
+                                {authenticatedUser.role !== 'landlord' && <RoleSwitcher />}
                                 {!isOnDashboard && (
                                     <NavLink
                                         to={dashboardPath}
@@ -250,7 +250,9 @@ export default function Navbar() {
 
                                 {authenticatedUser && authenticatedUser.id ? (
                                     <div className="flex flex-col gap-3">
-                                        <RoleSwitcher onComplete={() => setIsMobileMenuOpen(false)} />
+                                        {authenticatedUser.role !== 'landlord' && (
+                                            <RoleSwitcher onComplete={() => setIsMobileMenuOpen(false)} />
+                                        )}
                                         {!isOnDashboard && (
                                             <NavLink
                                                 to={dashboardPath}

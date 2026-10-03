@@ -10965,6 +10965,55 @@ class ServicePaymentTests(TestCase):
         )
         self.assertEqual(forbidden.status_code, 403)
 
+    def test_in_person_verification_fee_is_category_based(self):
+        def _request_for(listing):
+            listing.property_document_submission = {"in_person_verification_requested": True}
+            listing.save(update_fields=["property_document_submission", "updated_at"])
+            self.client.force_authenticate(user=self.landlord)
+            return self.client.post(
+                "/api/v1/service-payments/request",
+                {"purpose": "in_person_verification", "listing_id": str(listing.id)},
+                format="json",
+            )
+
+        residential = _request_for(self.listing)
+        self.assertEqual(residential.status_code, 201, residential.json())
+        self.assertEqual(Decimal(residential.json()["amount"]), Decimal("15000.00"))
+
+        shortlet_listing = Listing.objects.create(
+            landlord=self.landlord,
+            title="Shortlet Listing",
+            description="Shortlet service payment test",
+            address="12 Shortlet Road",
+            city="Lagos",
+            state="Lagos",
+            property_type="Apartment",
+            bedrooms=1,
+            bathrooms=1,
+            price_per_year=900000,
+            category=Listing.Category.SHORTLET,
+        )
+        shortlet = _request_for(shortlet_listing)
+        self.assertEqual(shortlet.status_code, 201, shortlet.json())
+        self.assertEqual(Decimal(shortlet.json()["amount"]), Decimal("15000.00"))
+
+        commercial_listing = Listing.objects.create(
+            landlord=self.landlord,
+            title="Commercial Listing",
+            description="Commercial service payment test",
+            address="20 Commerce Way",
+            city="Lagos",
+            state="Lagos",
+            property_type="Office",
+            bedrooms=0,
+            bathrooms=1,
+            price_per_year=5000000,
+            category=Listing.Category.COMMERCIAL,
+        )
+        commercial = _request_for(commercial_listing)
+        self.assertEqual(commercial.status_code, 201, commercial.json())
+        self.assertEqual(Decimal(commercial.json()["amount"]), Decimal("25000.00"))
+
     def test_lawyer_request_creates_five_percent_for_booking_landlord(self):
         original_total = self.booking.total_amount
         self.client.force_authenticate(user=self.landlord)
@@ -11611,7 +11660,7 @@ class AgentFeatureTests(TestCase):
 
         invalid_option = self.client.patch(
             f"/api/v1/agent-inspections/{inspection.id}",
-            {"responses": {"boundary_condition": "bogus"}},
+            {"responses": {"drainage_condition": "bogus"}},
             format="json",
         )
         self.assertEqual(invalid_option.status_code, 400)
@@ -11632,7 +11681,7 @@ class AgentFeatureTests(TestCase):
 
         incomplete = self.client.post(
             f"/api/v1/agent-inspections/{inspection.id}/submit",
-            {"responses": {"boundary_condition": "verified"}},
+            {"responses": {"drainage_condition": "verified"}},
             format="json",
         )
         self.assertEqual(incomplete.status_code, 400)
@@ -11644,7 +11693,7 @@ class AgentFeatureTests(TestCase):
         responses = build_complete_inspection_responses(
             overall_status="inspection_completed_with_issues",
             critical_red_flags=["suspected_fraud"],
-            structural_condition="requires_specialist",
+            drainage_condition="issue_found",
         )
 
         response = self.client.post(
@@ -11669,16 +11718,16 @@ class AgentFeatureTests(TestCase):
         self.assertEqual(analysis["overall_status"], "inspection_completed_with_issues")
         self.assertEqual(analysis["total_item_count"], len(responses))
         self.assertEqual(analysis["completed_item_count"], len(responses))
-        self.assertIn("structural_condition", analysis["issue_item_keys"])
+        self.assertIn("drainage_condition", analysis["issue_item_keys"])
 
         update_after_submit = self.client.patch(
             f"/api/v1/agent-inspections/{inspection.id}",
-            {"responses": {"boundary_condition": "issue_found"}},
+            {"responses": {"drainage_condition": "issue_found"}},
             format="json",
         )
         self.assertEqual(update_after_submit.status_code, 400)
         inspection.refresh_from_db()
-        self.assertEqual(inspection.responses["boundary_condition"], "verified")
+        self.assertEqual(inspection.responses["drainage_condition"], "issue_found")
 
     def test_clean_submission_without_red_flags_marks_listing_verified(self):
         clean_listing = Listing.objects.create(
