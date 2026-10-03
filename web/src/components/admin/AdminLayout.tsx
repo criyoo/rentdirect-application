@@ -74,6 +74,15 @@ export default function AdminLayout({ children }: AdminLayoutProps)
                                 Dashboard
                             </Link>
                             <Link
+                                to="/admin/analytics"
+                                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 ${isActiveRoute('/admin/analytics')
+                                    ? 'bg-purple-100 text-purple-700'
+                                    : 'text-gray-600 hover:text-purple-600 hover:bg-purple-50'
+                                    }`}
+                            >
+                                Analytics
+                            </Link>
+                            <Link
                                 to="/admin/verification"
                                 className={`px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 ${isActiveRoute('/admin/verification')
                                     ? 'bg-purple-100 text-purple-700'

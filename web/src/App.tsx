@@ -53,6 +53,11 @@ import AdminLoginPage from './pages/shared/admin/AdminLoginPage'
 import AdminDashboardPage from './pages/shared/admin/AdminDashboardPage'
 import AdminRegisterPage from './pages/shared/admin/AdminRegisterPage'
 import AdminSupportChatPage from './pages/shared/admin/AdminSupportChatPage'
+import AdminAnalyticsPage from './pages/shared/admin/AdminAnalyticsPage'
+import AdminPioMetricsPage from './pages/shared/admin/AdminPioMetricsPage'
+import AdminUsersPage from './pages/shared/admin/AdminUsersPage'
+import AdminListingsPage from './pages/shared/admin/AdminListingsPage'
+import AdminSettingsPage from './pages/shared/admin/AdminSettingsPage'
 import AgentLandingPage from './pages/agents/AgentLandingPage'
 import AgentRegistrationPage from './pages/agents/AgentRegistrationPage'
 import AgentLoginPage from './pages/agents/AgentLoginPage'
@@ -291,6 +296,13 @@ function App() {
                                     <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
                                     <Route path="/admin/verification" element={<AdminVerificationPage />} />
                                     <Route path="/admin/support" element={<AdminSupportChatPage />} />
+                                    <Route path="/admin/analytics" element={<AdminAnalyticsPage />} />
+                                    <Route path="/admin/pios" element={<AdminPioMetricsPage />} />
+                                    <Route path="/admin/users" element={<AdminUsersPage />} />
+                                    <Route path="/admin/tenants" element={<AdminUsersPage role="tenant" />} />
+                                    <Route path="/admin/landlords" element={<AdminUsersPage role="landlord" />} />
+                                    <Route path="/admin/listings" element={<AdminListingsPage />} />
+                                    <Route path="/admin/settings" element={<AdminSettingsPage />} />
                                 </Routes>
                             </AdminRouteWrapper>
                         </AccountFreezeGate>

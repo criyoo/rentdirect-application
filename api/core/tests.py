@@ -10788,6 +10788,69 @@ class SupportChatMessageTests(TestCase):
         self.assertEqual(response.status_code, 403)
 
 
+class AdminAnalyticsTests(TestCase):
+    def test_admin_analytics_returns_revenue_and_pio_metrics(self):
+        admin = AppUser.objects.create_user(
+            email="analytics-admin@example.com",
+            password="password-123",
+            name="Analytics Admin",
+            role=AppUser.Role.ADMIN,
+            email_verified=True,
+            is_staff=True,
+        )
+        agent = AppUser.objects.create_user(
+            email="analytics-agent@example.com",
+            password="password-123",
+            name="Analytics Agent",
+            role=AppUser.Role.AGENT,
+            email_verified=True,
+        )
+        AgentProfile.objects.create(user=agent, first_name="Analytics", last_name="Agent")
+        ServicePayment.objects.create(
+            user=agent,
+            purpose=ServicePayment.Purpose.AGENT_VERIFICATION,
+            amount=Decimal("500.00"),
+            status=ServicePayment.Status.COMPLETED,
+            transaction_id="ANALYTICSAGENTFEE1",
+            payment_date=timezone.now(),
+        )
+        ServicePayment.objects.create(
+            user=agent,
+            purpose=ServicePayment.Purpose.LANDLORD_VERIFICATION,
+            amount=Decimal("2000.00"),
+            status=ServicePayment.Status.COMPLETED,
+            transaction_id="ANALYTICSLLDFEE1",
+            payment_date=timezone.now(),
+        )
+
+        client = APIClient()
+        client.force_authenticate(user=admin)
+        response = client.get("/api/v1/admin/analytics")
+
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        self.assertEqual(payload["users"]["pios"], 1)
+        self.assertEqual(float(payload["revenue"]["pio_verification_fees"]), 500.0)
+        self.assertEqual(float(payload["revenue"]["landlord_verification_fees"]), 2000.0)
+        self.assertIn("admin_fees", payload["revenue"])
+        self.assertEqual(payload["pios"]["totals"]["total"], 1)
+        self.assertEqual(len(payload["pios"]["list"]), 1)
+        self.assertEqual(payload["pios"]["list"][0]["email"], agent.email)
+
+    def test_non_admin_cannot_access_analytics(self):
+        tenant = AppUser.objects.create_user(
+            email="analytics-tenant@example.com",
+            password="password-123",
+            name="Analytics Tenant",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        client = APIClient()
+        client.force_authenticate(user=tenant)
+        response = client.get("/api/v1/admin/analytics")
+        self.assertEqual(response.status_code, 403)
+
+
 class LandlordPublicProfileTests(TestCase):
     def test_public_landlord_profile_returns_metrics_and_reviews(self):
         landlord = AppUser.objects.create_user(

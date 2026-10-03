@@ -10,6 +10,7 @@ interface SystemStats
     total_users: number
     total_landlords: number
     total_tenants: number
+    total_agents: number
     total_admins: number
     total_listings: number
     active_listings: number
@@ -91,7 +92,7 @@ export default function AdminDashboardPage()
                 <div className="mb-8">
                     <div className="bg-white rounded-xl border shadow-sm p-6">
                         <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Navigation</h2>
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
                             {/* Verifications */}
                             <Link
                                 to="/admin/verification"
@@ -170,12 +171,25 @@ export default function AdminDashboardPage()
                                 </div>
                                 <span className="text-sm font-medium text-indigo-700">Analytics</span>
                             </Link>
+
+                            {/* PIOs */}
+                            <Link
+                                to="/admin/pios"
+                                className="flex flex-col items-center p-4 bg-teal-50 hover:bg-teal-100 rounded-lg transition-colors duration-200 group"
+                            >
+                                <div className="w-10 h-10 bg-teal-100 rounded-lg flex items-center justify-center group-hover:bg-teal-200 transition-colors duration-200 mb-2">
+                                    <svg className="w-5 h-5 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                                    </svg>
+                                </div>
+                                <span className="text-sm font-medium text-teal-700">PIOs</span>
+                            </Link>
                         </div>
                     </div>
                 </div>
 
                 {/* Quick Stats */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 mb-8">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6 mb-8">
                     <div className="bg-white rounded-xl border shadow-sm p-6">
                         <div className="flex items-center">
                             <div className="p-2 bg-orange-100 rounded-lg">
@@ -219,6 +233,22 @@ export default function AdminDashboardPage()
                                 <p className="text-sm font-medium text-gray-600">Total Listings</p>
                                 <p className="text-2xl font-bold text-gray-900">
                                     {statsLoading ? '...' : stats?.total_listings || 0}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="bg-white rounded-xl border shadow-sm p-6">
+                        <div className="flex items-center">
+                            <div className="p-2 bg-teal-100 rounded-lg">
+                                <svg className="w-6 h-6 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                                </svg>
+                            </div>
+                            <div className="ml-4">
+                                <p className="text-sm font-medium text-gray-600">Total PIOs</p>
+                                <p className="text-2xl font-bold text-gray-900">
+                                    {statsLoading ? '...' : stats?.total_agents || 0}
                                 </p>
                             </div>
                         </div>

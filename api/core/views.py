@@ -36,6 +36,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import (
     AgentProfile,
+    AgentReferralEarning,
     AppUser,
     build_booking_progress_data,
     booking_progress_step_completed,
@@ -7942,6 +7943,179 @@ class AdminViewSet(viewsets.ViewSet):
         if listing_status:
             qs = qs.filter(status=listing_status)
         return Response(ListingSerializer(qs[: int(request.query_params.get("limit", 50))], many=True, context={"request": request}).data)
+
+    @action(detail=False, methods=["get"], url_path="analytics")
+    def analytics(self, request):
+        def sum_field(qs, field="amount"):
+            return qs.aggregate(total=Sum(field))["total"] or 0
+
+        def counts_by(model_or_qs, field):
+            return {
+                str(row[field]): row["count"]
+                for row in model_or_qs.values(field).annotate(count=Count("id"))
+            }
+
+        all_users = User.objects.all()
+        completed_service = ServicePayment.objects.filter(status=ServicePayment.Status.COMPLETED)
+        completed_subscriptions = SubscriptionPayment.objects.filter(status=SubscriptionPayment.Status.COMPLETED)
+        completed_featured = FeaturedPayment.objects.filter(status=FeaturedPayment.Status.COMPLETED)
+        completed_payments = Payment.objects.filter(status="completed")
+        settlements = PaymentSettlement.objects.filter(payment__status="completed")
+
+        verification_fees = {
+            purpose: sum_field(completed_service.filter(purpose=purpose))
+            for purpose in ServicePayment.Purpose.values
+        }
+
+        revenue = {
+            "pio_verification_fees": verification_fees.get(ServicePayment.Purpose.AGENT_VERIFICATION, 0),
+            "tenant_verification_fees": verification_fees.get(ServicePayment.Purpose.TENANT_VERIFICATION, 0),
+            "landlord_verification_fees": verification_fees.get(ServicePayment.Purpose.LANDLORD_VERIFICATION, 0),
+            "lawyer_tenancy_fees": verification_fees.get(ServicePayment.Purpose.LAWYER_TENANCY, 0),
+            "in_person_verification_fees": verification_fees.get(ServicePayment.Purpose.IN_PERSON_VERIFICATION, 0),
+            "admin_fees": sum_field(settlements.filter(purpose=PaymentSettlement.Purpose.OPERATIONS)),
+            "admin_fee_vat": sum_field(settlements.filter(purpose=PaymentSettlement.Purpose.ADMINISTRATION_FEE_VAT)),
+            "subscription_revenue": sum_field(completed_subscriptions),
+            "subscription_vat": sum_field(completed_subscriptions, "vat_amount"),
+            "featured_listing_revenue": sum_field(completed_featured),
+            "rent_collected": sum_field(completed_payments),
+            "caution_fee_collected": sum_field(settlements.filter(purpose=PaymentSettlement.Purpose.CAUTION_FEE)),
+            "landlord_rent_paid_out": sum_field(settlements.filter(purpose=PaymentSettlement.Purpose.LANDLORD_RENT, status=PaymentSettlement.Status.PAID)),
+            "landlord_rent_pending_payout": sum_field(
+                settlements.filter(purpose=PaymentSettlement.Purpose.LANDLORD_RENT).exclude(status=PaymentSettlement.Status.PAID)
+            ),
+        }
+        revenue["total_platform_revenue"] = (
+            verification_fees.get(ServicePayment.Purpose.AGENT_VERIFICATION, 0)
+            + verification_fees.get(ServicePayment.Purpose.TENANT_VERIFICATION, 0)
+            + verification_fees.get(ServicePayment.Purpose.LANDLORD_VERIFICATION, 0)
+            + verification_fees.get(ServicePayment.Purpose.LAWYER_TENANCY, 0)
+            + verification_fees.get(ServicePayment.Purpose.IN_PERSON_VERIFICATION, 0)
+            + revenue["admin_fees"]
+            + revenue["admin_fee_vat"]
+            + revenue["subscription_revenue"]
+            + revenue["featured_listing_revenue"]
+        )
+
+        inspection_stats = {
+            row["agent_id"]: row
+            for row in PropertyInspection.objects.values("agent_id").annotate(
+                total=Count("id"),
+                submitted=Count("id", filter=Q(status=PropertyInspection.Status.SUBMITTED)),
+                draft=Count("id", filter=Q(status=PropertyInspection.Status.DRAFT)),
+                claimed=Count("id", filter=Q(status=PropertyInspection.Status.CLAIMED)),
+                earnings=Sum("earning_amount"),
+                paid_out=Sum("earning_amount", filter=Q(payout_status=PropertyInspection.PayoutStatus.PAID)),
+            )
+        }
+        referral_stats = {
+            row["referrer_id"]: row
+            for row in AgentReferralEarning.objects.values("referrer_id").annotate(
+                count=Count("id"),
+                total=Sum("amount"),
+                paid=Sum("amount", filter=Q(payout_status=AgentReferralEarning.PayoutStatus.PAID)),
+            )
+        }
+        pio_verification_fees = {
+            row["user_id"]: row["total"]
+            for row in completed_service.filter(purpose=ServicePayment.Purpose.AGENT_VERIFICATION)
+            .values("user_id").annotate(total=Sum("amount"))
+        }
+        inspection_request_stats = {
+            row["agent_id"]: row
+            for row in InspectionRequest.objects.values("agent_id").annotate(
+                total=Count("id"),
+                accepted=Count("id", filter=Q(status__in=(InspectionRequest.Status.ACCEPTED, InspectionRequest.Status.TAKEN))),
+            )
+        }
+
+        pios = []
+        for profile in AgentProfile.objects.select_related("user").order_by("user__name", "user__email"):
+            agent = profile.user
+            inspections = inspection_stats.get(agent.id) or {}
+            referrals = referral_stats.get(agent.id) or {}
+            requests = inspection_request_stats.get(agent.id) or {}
+            earnings_total = inspections.get("earnings") or 0
+            earnings_paid = inspections.get("paid_out") or 0
+            referral_total = referrals.get("total") or 0
+            referral_paid = referrals.get("paid") or 0
+            pios.append({
+                "id": str(agent.id),
+                "name": agent.name,
+                "email": agent.email,
+                "verification_status": profile.verification_status,
+                "verification_attempts": profile.verification_attempts,
+                "verified_at": profile.verified_at,
+                "verification_fees_paid": pio_verification_fees.get(agent.id) or 0,
+                "referral_code": profile.referral_code,
+                "referred_by": str(profile.referred_by_id) if profile.referred_by_id else None,
+                "inspection_requests_received": requests.get("total", 0),
+                "inspection_requests_accepted": requests.get("accepted", 0),
+                "inspections_claimed": inspections.get("claimed", 0),
+                "inspections_draft": inspections.get("draft", 0),
+                "inspections_submitted": inspections.get("submitted", 0),
+                "inspections_total": inspections.get("total", 0),
+                "earnings_total": earnings_total,
+                "earnings_paid_out": earnings_paid,
+                "earnings_pending": earnings_total - earnings_paid,
+                "referral_count": referrals.get("count", 0),
+                "referral_earnings_total": referral_total,
+                "referral_earnings_paid": referral_paid,
+                "referral_earnings_pending": referral_total - referral_paid,
+                "created_at": agent.created_at,
+            })
+
+        pio_totals = {
+            "total": len(pios),
+            "verification_status": counts_by(AgentProfile.objects.all(), "verification_status"),
+            "verification_attempts": AgentProfile.objects.aggregate(total=Sum("verification_attempts"))["total"] or 0,
+            "inspections": counts_by(PropertyInspection.objects.all(), "status"),
+            "inspection_requests": counts_by(InspectionRequest.objects.all(), "status"),
+            "earnings_total": sum_field(PropertyInspection.objects.all(), "earning_amount"),
+            "earnings_paid_out": sum_field(
+                PropertyInspection.objects.filter(payout_status=PropertyInspection.PayoutStatus.PAID), "earning_amount"
+            ),
+            "referral_earnings_total": sum_field(AgentReferralEarning.objects.all()),
+            "referral_earnings_paid": sum_field(
+                AgentReferralEarning.objects.filter(payout_status=AgentReferralEarning.PayoutStatus.PAID)
+            ),
+            "verification_fees_collected": verification_fees.get(ServicePayment.Purpose.AGENT_VERIFICATION, 0),
+        }
+        pio_totals["earnings_pending"] = pio_totals["earnings_total"] - pio_totals["earnings_paid_out"]
+        pio_totals["referral_earnings_pending"] = pio_totals["referral_earnings_total"] - pio_totals["referral_earnings_paid"]
+
+        return Response({
+            "users": {
+                "total": all_users.count(),
+                "tenants": users_with_role(all_users, AppUser.Role.TENANT).count(),
+                "landlords": users_with_role(all_users, AppUser.Role.LANDLORD).count(),
+                "pios": users_with_role(all_users, AppUser.Role.AGENT).count(),
+                "admins": all_users.filter(role=AppUser.Role.ADMIN).count(),
+                "email_verified": all_users.filter(email_verified=True).count(),
+                "frozen": all_users.filter(account_frozen=True).count(),
+            },
+            "listings": {
+                "total": Listing.objects.count(),
+                "by_status": counts_by(Listing.objects.all(), "status"),
+                "featured_active": Listing.objects.filter(featured_until__gt=timezone.now()).count(),
+            },
+            "bookings": {
+                "total": Booking.objects.count(),
+                "by_status": counts_by(Booking.objects.all(), "status"),
+                "total_paid": sum_field(Booking.objects.all(), "paid_amount"),
+            },
+            "verifications": {
+                "total": VerificationRequest.objects.count(),
+                "by_status": counts_by(VerificationRequest.objects.all(), "status"),
+                "by_role": counts_by(VerificationRequest.objects.all(), "role"),
+            },
+            "revenue": revenue,
+            "pios": {
+                "totals": pio_totals,
+                "list": pios,
+            },
+            "generated_at": timezone.now(),
+        })
 
 
 @api_view(["GET"])
