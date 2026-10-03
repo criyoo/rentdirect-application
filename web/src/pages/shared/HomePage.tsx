@@ -192,23 +192,31 @@ export default function HomePage() {
                                     <div className="space-y-4">
                                         <div className="flex items-center space-x-3">
                                             <div className="w-3 h-3 bg-green-400 rounded-full"></div>
+                                            <span className="text-white/90">No subscription, enjoy all the benefit of cost savings</span>
+                                        </div>
+                                        <div className="flex items-center space-x-3">
+                                            <div className="w-3 h-3 bg-indigo-500 rounded-full"></div>
                                             <span className="text-white/90">Verified tenants, landlord and properties</span>
                                         </div>
                                         <div className="flex items-center space-x-3">
-                                            <div className="w-3 h-3 bg-blue-400 rounded-full"></div>
-                                            <span className="text-white/90">Refunds guaranteed up until property handover</span>
+                                            <div className="w-3 h-3 bg-red-400 rounded-full"></div>
+                                            <span className="text-white/90">One flat fee with no hidden charges</span>
                                         </div>
                                         <div className="flex items-center space-x-3">
                                             <div className="w-3 h-3 bg-purple-400 rounded-full"></div>
                                             <span className="text-white/90">Secure and transparent payments</span>
                                         </div>
                                         <div className="flex items-center space-x-3">
-                                            <div className="w-3 h-3 bg-red-400 rounded-full"></div>
-                                            <span className="text-white/90">One flat fee with no hidden fees</span>
+                                            <div className="w-3 h-3 bg-yellow-400 rounded-full"></div>
+                                            <span className="text-white/90">Funds held in Escrow until rental conditions fulfilled</span>
                                         </div>
                                         <div className="flex items-center space-x-3">
-                                            <div className="w-3 h-3 bg-red-400 rounded-full"></div>
-                                            <span className="text-white/90">Funds held in Escrow until rental condition fulfilled</span>
+                                            <div className="w-3 h-3 bg-blue-400 rounded-full"></div>
+                                            <span className="text-white/90">Guaranteed refunds up until property handover</span>
+                                        </div>
+                                        <div className="flex items-center space-x-3">
+                                            <div className="w-3 h-3 bg-pink-400 rounded-full"></div>
+                                            <span className="text-white/90">No stale listings, all listings are automatically updated</span>
                                         </div>
                                     </div>
                                 </div>

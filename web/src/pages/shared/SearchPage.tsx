@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import ListingCard from '@/components/ListingCard'
@@ -9,7 +9,6 @@ import { useAuth } from '@/hooks/useAuth'
 import { nigeriaStateLgaMap, nigerianStates } from '@/lib/locations'
 import { hasSilverAccess, SubscriptionPaymentRecord } from '@/lib/subscriptions'
 
-const OTHER_CITY_OPTION = '__other__'
 const radiusOptions = [1, 5, 10, 25, 50, 100]
 
 function numberParam(value: string | null) {
@@ -32,6 +31,10 @@ function hasAreaLocationSearch(searchFilters: SearchFilters) {
 
 function hasLocationSearch(searchFilters: SearchFilters) {
     return hasCoordinateLocationSearch(searchFilters) || hasAreaLocationSearch(searchFilters)
+}
+
+function parseCitySelection(city?: string) {
+    return (city || '').split(',').map((value) => value.trim()).filter(Boolean)
 }
 
 function filterSearchParams(searchFilters: SearchFilters) {
@@ -70,8 +73,9 @@ export default function SearchPage() {
     const [aiTotalCount, setAiTotalCount] = useState<number | null>(null)
     const [loading, setLoading] = useState(false)
     const [locationStatus, setLocationStatus] = useState('')
-    const [selectedCityOption, setSelectedCityOption] = useState(searchParams.get('city') || '')
     const [otherCity, setOtherCity] = useState('')
+    const [cityDropdownOpen, setCityDropdownOpen] = useState(false)
+    const cityDropdownRef = useRef<HTMLDivElement>(null)
     const [filters, setFilters] = useState<SearchFilters>({
         query: searchParams.get('q') || '',
         city: searchParams.get('city') || '',
@@ -125,6 +129,7 @@ export default function SearchPage() {
         () => (filters.state ? (nigeriaStateLgaMap[filters.state] || []) : []),
         [filters.state],
     )
+    const selectedCities = parseCitySelection(filters.city)
     const locationButtonActive = Boolean(locationStatus)
         && !locationStatus.startsWith('Unable')
         && !locationStatus.startsWith('Location is not')
@@ -143,27 +148,22 @@ export default function SearchPage() {
     }
 
     useEffect(() => {
-        if (!filters.state) {
-            setSelectedCityOption('')
-            setOtherCity('')
-            return
-        }
+        const customCities = parseCitySelection(filters.city)
+            .filter((city) => !availableCities.includes(city))
+            .join(', ')
+        setOtherCity((current) => (current.trim() === customCities.trim() ? current : customCities))
+    }, [availableCities, filters.city])
 
-        if (!filters.city) {
-            setSelectedCityOption('')
-            setOtherCity('')
-            return
+    useEffect(() => {
+        if (!cityDropdownOpen) return
+        const handleClickOutside = (event: MouseEvent) => {
+            if (cityDropdownRef.current && !cityDropdownRef.current.contains(event.target as Node)) {
+                setCityDropdownOpen(false)
+            }
         }
-
-        if (availableCities.includes(filters.city)) {
-            setSelectedCityOption(filters.city)
-            setOtherCity('')
-            return
-        }
-
-        setSelectedCityOption(OTHER_CITY_OPTION)
-        setOtherCity(filters.city)
-    }, [availableCities, filters.city, filters.state])
+        document.addEventListener('mousedown', handleClickOutside)
+        return () => document.removeEventListener('mousedown', handleClickOutside)
+    }, [cityDropdownOpen])
 
     const searchListings = async (searchFilters: SearchFilters) => {
         if (!canUseLocationFeatures && (
@@ -199,21 +199,22 @@ export default function SearchPage() {
             if (hasFilters) {
                 // Use search endpoint with filters
                 const params = new URLSearchParams()
+                const cityList = parseCitySelection(searchFilters.city)
 
                 if (searchFilters.query) params.append('query', searchFilters.query)
-                if (searchFilters.city && !locationSearch) params.append('city', searchFilters.city)
+                if (cityList.length && !locationSearch) cityList.forEach((city) => params.append('city', city))
                 if (searchFilters.state) params.append('state', searchFilters.state)
                 if (coordinateLocationSearch) {
                     params.append('latitude', searchFilters.latitude!.toString())
                     params.append('longitude', searchFilters.longitude!.toString())
                     params.append('radius_km', searchFilters.radius_km!.toString())
                 } else if (areaLocationSearch) {
-                    if (searchFilters.city) params.append('origin_city', searchFilters.city)
+                    if (cityList.length) params.append('origin_city', cityList[0])
                     if (searchFilters.state) params.append('origin_state', searchFilters.state)
                     params.append('radius_km', searchFilters.radius_km!.toString())
                 }
-                if (searchFilters.min_price) params.append('min_price', searchFilters.min_price.toString())
-                if (searchFilters.max_price) params.append('max_price', searchFilters.max_price.toString())
+                if (searchFilters.min_price !== undefined) params.append('min_price', searchFilters.min_price.toString())
+                if (searchFilters.max_price !== undefined) params.append('max_price', searchFilters.max_price.toString())
                 if (searchFilters.bedrooms) params.append('bedrooms', searchFilters.bedrooms.toString())
                 if (searchFilters.bathrooms) params.append('bathrooms', searchFilters.bathrooms.toString())
                 if (searchFilters.toilets) params.append('toilets', searchFilters.toilets.toString())
@@ -256,8 +257,8 @@ export default function SearchPage() {
     }
 
     const handleStateChange = (state: string) => {
-        setSelectedCityOption('')
         setOtherCity('')
+        setCityDropdownOpen(false)
         setLocationStatus('')
         setFilters((current) => ({
             ...current,
@@ -268,49 +269,26 @@ export default function SearchPage() {
         }))
     }
 
-    const handleCityOptionChange = (value: string) => {
-        setSelectedCityOption(value)
+    const handleCityToggle = (city: string) => {
         setLocationStatus('')
-
-        if (!value) {
-            setOtherCity('')
-            setFilters((current) => ({
-                ...current,
-                city: '',
-                latitude: undefined,
-                longitude: undefined,
-            }))
-            return
-        }
-
-        if (value === OTHER_CITY_OPTION) {
-            setFilters((current) => ({
-                ...current,
-                city: otherCity,
-                latitude: undefined,
-                longitude: undefined,
-            }))
-            return
-        }
-
-        setOtherCity('')
-        setFilters((current) => ({
-            ...current,
-            city: value,
-            latitude: undefined,
-            longitude: undefined,
-        }))
+        setFilters((current) => {
+            const selected = parseCitySelection(current.city)
+            const next = selected.includes(city)
+                ? selected.filter((item) => item !== city)
+                : [...selected, city]
+            return { ...current, city: next.join(', '), latitude: undefined, longitude: undefined }
+        })
     }
 
     const handleOtherCityChange = (value: string) => {
         setOtherCity(value)
         setLocationStatus('')
-        setFilters((current) => ({
-            ...current,
-            city: value,
-            latitude: undefined,
-            longitude: undefined,
-        }))
+        setFilters((current) => {
+            const knownCities = parseCitySelection(current.city).filter((city) => availableCities.includes(city))
+            const customCity = value.trim()
+            const next = customCity ? [...knownCities, customCity] : knownCities
+            return { ...current, city: next.join(', '), latitude: undefined, longitude: undefined }
+        })
     }
 
     const handleUseCurrentLocation = () => {
@@ -326,9 +304,10 @@ export default function SearchPage() {
                 longitude: undefined,
                 radius_km: filters.radius_km || 10,
             }
-            const locationLabel = [nextFilters.city, nextFilters.state].filter(Boolean).join(', ')
+            const locationLabel = [parseCitySelection(nextFilters.city)[0], nextFilters.state].filter(Boolean).join(', ')
             setFilters(nextFilters)
             setLocationStatus(`Within ${nextFilters.radius_km} km of ${locationLabel}.`)
+            setCityDropdownOpen(false)
             searchListings(nextFilters)
             return
         }
@@ -393,8 +372,8 @@ export default function SearchPage() {
             furnished: false,
             utilities_included: false
         }
-        setSelectedCityOption('')
         setOtherCity('')
+        setCityDropdownOpen(false)
         setLocationStatus('')
         setFilters(clearedFilters)
         searchListings(clearedFilters)
@@ -480,28 +459,43 @@ export default function SearchPage() {
                             {/* City */}
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
-                                <div className="space-y-2">
-                                    <select
-                                        value={selectedCityOption}
-                                        onChange={(e) => handleCityOptionChange(e.target.value)}
+                                <div className="relative" ref={cityDropdownRef}>
+                                    <button
+                                        type="button"
+                                        onClick={() => setCityDropdownOpen((open) => !open)}
                                         disabled={!filters.state}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-left focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
                                     >
-                                        <option value="">{filters.state ? 'All Cities' : 'Select state first'}</option>
-                                        {availableCities.map((city) => (
-                                            <option key={city} value={city}>{city}</option>
-                                        ))}
-                                        {filters.state ? <option value={OTHER_CITY_OPTION}>Other</option> : null}
-                                    </select>
+                                        <span className="block truncate">
+                                            {selectedCities.length
+                                                ? filters.city
+                                                : filters.state ? 'All Cities' : 'Select state first'}
+                                        </span>
+                                    </button>
 
-                                    {selectedCityOption === OTHER_CITY_OPTION ? (
-                                        <input
-                                            type="text"
-                                            value={otherCity}
-                                            onChange={(e) => handleOtherCityChange(e.target.value)}
-                                            placeholder="Enter city"
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        />
+                                    {cityDropdownOpen && filters.state ? (
+                                        <div className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-md border border-gray-300 bg-white py-1 shadow-lg">
+                                            {availableCities.map((city) => (
+                                                <label key={city} className="flex cursor-pointer items-center px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedCities.includes(city)}
+                                                        onChange={() => handleCityToggle(city)}
+                                                        className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                                    />
+                                                    {city}
+                                                </label>
+                                            ))}
+                                            <div className="border-t border-gray-200 px-3 py-2">
+                                                <input
+                                                    type="text"
+                                                    value={otherCity}
+                                                    onChange={(e) => handleOtherCityChange(e.target.value)}
+                                                    placeholder="Other city"
+                                                    className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                />
+                                            </div>
+                                        </div>
                                     ) : null}
                                 </div>
                             </div>
@@ -589,6 +583,8 @@ export default function SearchPage() {
                                 <input
                                     type="number"
                                     placeholder="Min"
+                                    value={filters.min_price ?? ''}
+                                    onChange={(e) => handleFilterChange('min_price', e.target.value ? Number(e.target.value) : undefined)}
                                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 />
                             </div>
@@ -597,6 +593,8 @@ export default function SearchPage() {
                                 <input
                                     type="number"
                                     placeholder="Max"
+                                    value={filters.max_price ?? ''}
+                                    onChange={(e) => handleFilterChange('max_price', e.target.value ? Number(e.target.value) : undefined)}
                                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 />
                                 {/* </div> */}

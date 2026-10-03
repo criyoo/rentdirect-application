@@ -119,6 +119,7 @@ from .financial_constants import (
     LANDLORD_VERIFICATION_FEE,
     TENANT_VERIFICATION_FEE,
     IN_PERSON_VERIFICATION_FEE,
+    IN_PERSON_VERIFICATION_FEE_COMMERCIAL,
     LAWYER_SERVICE_FEE_RATE,
     LISTING_DEPOSIT_RATE,
     MONEY_MINOR_UNIT_FACTOR,
@@ -4624,6 +4625,22 @@ class ListingViewSet(viewsets.ModelViewSet):
         cities = qs.values_list("city", flat=True).distinct().order_by("city")
         return Response(list(cities))
 
+    @staticmethod
+    def _city_query_params(request):
+        return [
+            value.strip()
+            for param in request.query_params.getlist("city")
+            for value in param.split(",")
+            if value.strip()
+        ]
+
+    @staticmethod
+    def _filter_by_cities(qs, cities):
+        city_query = Q()
+        for city_value in cities:
+            city_query |= Q(city__icontains=city_value) | Q(address__icontains=city_value)
+        return qs.filter(city_query)
+
     def _distance_query_params(self, request):
         latitude = request.query_params.get("latitude") or request.query_params.get("lat")
         longitude = (
@@ -4673,7 +4690,7 @@ class ListingViewSet(viewsets.ModelViewSet):
 
         using_filter_location_as_origin = False
         if origin_city is None and origin_state is None:
-            fallback_city = (request.query_params.get("city") or "").strip()
+            fallback_city = (self._city_query_params(request) or [""])[0]
             fallback_state = (request.query_params.get("state") or "").strip()
             if fallback_city or fallback_state:
                 origin_city = fallback_city
@@ -4762,7 +4779,7 @@ class ListingViewSet(viewsets.ModelViewSet):
     def search(self, request):
         qs = self.get_queryset()
         query = request.query_params.get("query") or request.query_params.get("q")
-        city = request.query_params.get("city")
+        cities = self._city_query_params(request)
         state = request.query_params.get("state")
         min_price = request.query_params.get("min_price")
         max_price = request.query_params.get("max_price")
@@ -4783,8 +4800,8 @@ class ListingViewSet(viewsets.ModelViewSet):
                 qs = qs.filter(**{key: str(value).lower() == "true"})
         if query:
             qs = qs.filter(Q(title__icontains=query) | Q(description__icontains=query) | Q(address__icontains=query))
-        if city and not using_filter_location_as_origin:
-            qs = qs.filter(Q(city__icontains=city) | Q(address__icontains=city))
+        if cities and not using_filter_location_as_origin:
+            qs = self._filter_by_cities(qs, cities)
         if state:
             qs = qs.filter(
                 Q(state__icontains=state)
@@ -4821,15 +4838,15 @@ class ListingViewSet(viewsets.ModelViewSet):
             raise PermissionDenied("Property location analytics is available from the Silver plan.")
         qs = self.get_queryset()
         state = (request.query_params.get("state") or "").strip()
-        city = (request.query_params.get("city") or "").strip()
+        cities = self._city_query_params(request)
         if state:
             qs = qs.filter(
                 Q(state__icontains=state)
                 | Q(address__icontains=state)
                 | Q(landlord__residence__state__icontains=state)
             )
-        if city:
-            qs = qs.filter(Q(city__icontains=city) | Q(address__icontains=city))
+        if cities:
+            qs = self._filter_by_cities(qs, cities)
 
         listings = list(qs)
         return Response(
@@ -7122,7 +7139,11 @@ class ServicePaymentViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
                 submission = listing.property_document_submission or {}
                 if not submission.get("in_person_verification_requested"):
                     raise ValidationError("In-person verification was not selected for this listing.")
-                amount = quantize_money(IN_PERSON_VERIFICATION_FEE)
+                amount = quantize_money(
+                    IN_PERSON_VERIFICATION_FEE_COMMERCIAL
+                    if listing.category == Listing.Category.COMMERCIAL
+                    else IN_PERSON_VERIFICATION_FEE
+                )
             else:
                 raise ValidationError({"purpose": "Unsupported service payment purpose."})
 
@@ -7794,6 +7815,19 @@ def representative_kyc_public_submit(request, token):
     kyc.nin_number = nin_number
     if date_of_birth:
         kyc.date_of_birth = date_of_birth
+    for field_name in (
+        "country_of_birth",
+        "place_of_birth",
+        "nationality",
+        "state_of_origin",
+        "lga_of_origin",
+        "state_of_residence",
+        "city_of_residence",
+        "residential_address",
+    ):
+        value = str(request.data.get(field_name) or "").strip()
+        if value:
+            setattr(kyc, field_name, value)
     if request.FILES.get("passport_photo"):
         kyc.passport_photo = request.FILES["passport_photo"]
     if request.FILES.get("id_document"):
@@ -7808,6 +7842,9 @@ def representative_kyc_public_submit(request, token):
             "last_name": last_name,
             "date_of_birth": date_of_birth,
             "mobile": phone,
+            "nationality": kyc.nationality,
+            "state_of_origin": kyc.state_of_origin,
+            "lga": kyc.lga_of_origin,
         }
         try:
             verification_payload = verify_nin(identity_data, nin_number)

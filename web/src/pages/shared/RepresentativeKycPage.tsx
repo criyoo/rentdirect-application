@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api, extractApiErrorMessage } from '@/lib/api'
+import { nigeriaStateCitiesMap, nigeriaStateLgaMap, nigerianStates, worldCountryOptions } from '@/lib/locations'
 import BrandLogo from '@/components/BrandLogo'
 import { HiCheckCircle, HiIdentification, HiShieldCheck } from 'react-icons/hi'
 
@@ -27,12 +28,24 @@ export default function RepresentativeKycPage() {
     const [email, setEmail] = useState('')
     const [phone, setPhone] = useState('')
     const [dateOfBirth, setDateOfBirth] = useState('')
+    const [countryOfBirth, setCountryOfBirth] = useState('')
+    const [placeOfBirth, setPlaceOfBirth] = useState('')
+    const [nationality, setNationality] = useState('')
+    const [stateOfOrigin, setStateOfOrigin] = useState('')
+    const [lgaOfOrigin, setLgaOfOrigin] = useState('')
+    const [stateOfResidence, setStateOfResidence] = useState('')
+    const [cityOfResidence, setCityOfResidence] = useState('')
+    const [residentialAddress, setResidentialAddress] = useState('')
     const [ninNumber, setNinNumber] = useState('')
     const [passportPhoto, setPassportPhoto] = useState<File | null>(null)
     const [idDocument, setIdDocument] = useState<File | null>(null)
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [error, setError] = useState('')
     const [resultDetail, setResultDetail] = useState('')
+
+    const lgaOfOriginOptions = stateOfOrigin ? nigeriaStateLgaMap[stateOfOrigin] || [] : []
+    const cityOfResidenceOptions = stateOfResidence ? nigeriaStateCitiesMap[stateOfResidence] || [] : []
+    const inputClassName = 'w-full rounded-lg border border-gray-300 px-4 py-2 outline-none focus:border-blue-500 focus:ring focus:ring-blue-500/20'
 
     useEffect(() => {
         if (!token) return
@@ -69,6 +82,14 @@ export default function RepresentativeKycPage() {
             formData.append('email', email)
             formData.append('phone', phone)
             if (dateOfBirth) formData.append('date_of_birth', dateOfBirth)
+            if (countryOfBirth) formData.append('country_of_birth', countryOfBirth)
+            if (placeOfBirth) formData.append('place_of_birth', placeOfBirth)
+            if (nationality) formData.append('nationality', nationality)
+            if (stateOfOrigin) formData.append('state_of_origin', stateOfOrigin)
+            if (lgaOfOrigin) formData.append('lga_of_origin', lgaOfOrigin)
+            if (stateOfResidence) formData.append('state_of_residence', stateOfResidence)
+            if (cityOfResidence) formData.append('city_of_residence', cityOfResidence)
+            if (residentialAddress) formData.append('residential_address', residentialAddress)
             if (ninNumber) formData.append('nin_number', ninNumber)
             if (passportPhoto) formData.append('passport_photo', passportPhoto)
             if (idDocument) formData.append('id_document', idDocument)
@@ -165,10 +186,7 @@ export default function RepresentativeKycPage() {
                     </div>
                     <h1 className="text-2xl font-bold text-gray-900">Representative KYC Verification</h1>
                     <p className="mt-2 text-sm text-gray-600">
-                        {context.landlord_name
-                            ? `${context.landlord_name} has listed a property on RentDirect${context.listing_title ? ` (${context.listing_title})` : ''} and named you as the property representative.`
-                            : 'You have been named as a property representative on RentDirect.'}{' '}
-                        Complete this KYC verification to proceed.
+                        Complete this KYC verification for property representative to proceed.
                     </p>
                 </div>
 
@@ -208,7 +226,127 @@ export default function RepresentativeKycPage() {
                             type="date"
                             value={dateOfBirth}
                             onChange={(e) => setDateOfBirth(e.target.value)}
-                            className="w-full rounded-lg border border-gray-300 px-4 py-2 outline-none focus:border-blue-500 focus:ring focus:ring-blue-500/20"
+                            className={inputClassName}
+                        />
+                    </div>
+                    <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Country of Birth</label>
+                        <select
+                            value={countryOfBirth}
+                            onChange={(e) => setCountryOfBirth(e.target.value)}
+                            className={inputClassName}
+                        >
+                            <option value="">Select country</option>
+                            {worldCountryOptions.map((country) => (
+                                <option key={country} value={country}>{country}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Place of Birth</label>
+                        <input
+                            type="text"
+                            value={placeOfBirth}
+                            onChange={(e) => setPlaceOfBirth(e.target.value)}
+                            className={inputClassName}
+                        />
+                    </div>
+                    <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Nationality</label>
+                        <select
+                            value={nationality}
+                            onChange={(e) => setNationality(e.target.value)}
+                            className={inputClassName}
+                        >
+                            <option value="">Select nationality</option>
+                            {worldCountryOptions.map((country) => (
+                                <option key={country} value={country}>{country}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">State of Origin</label>
+                        <select
+                            value={stateOfOrigin}
+                            onChange={(e) => {
+                                setStateOfOrigin(e.target.value)
+                                setLgaOfOrigin('')
+                            }}
+                            className={inputClassName}
+                        >
+                            <option value="">Select state</option>
+                            {nigerianStates.map((stateOption) => (
+                                <option key={stateOption} value={stateOption}>{stateOption}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">LGA of Origin</label>
+                        {lgaOfOriginOptions.length > 0 ? (
+                            <select
+                                value={lgaOfOrigin}
+                                onChange={(e) => setLgaOfOrigin(e.target.value)}
+                                className={inputClassName}
+                            >
+                                <option value="">Select LGA</option>
+                                {lgaOfOriginOptions.map((lga) => (
+                                    <option key={lga} value={lga}>{lga}</option>
+                                ))}
+                            </select>
+                        ) : (
+                            <input
+                                type="text"
+                                value={lgaOfOrigin}
+                                onChange={(e) => setLgaOfOrigin(e.target.value)}
+                                className={inputClassName}
+                            />
+                        )}
+                    </div>
+                    <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">State of Residence</label>
+                        <select
+                            value={stateOfResidence}
+                            onChange={(e) => {
+                                setStateOfResidence(e.target.value)
+                                setCityOfResidence('')
+                            }}
+                            className={inputClassName}
+                        >
+                            <option value="">Select state</option>
+                            {nigerianStates.map((stateOption) => (
+                                <option key={stateOption} value={stateOption}>{stateOption}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">City of Residence</label>
+                        {cityOfResidenceOptions.length > 0 ? (
+                            <select
+                                value={cityOfResidence}
+                                onChange={(e) => setCityOfResidence(e.target.value)}
+                                className={inputClassName}
+                            >
+                                <option value="">Select city</option>
+                                {cityOfResidenceOptions.map((city) => (
+                                    <option key={city} value={city}>{city}</option>
+                                ))}
+                            </select>
+                        ) : (
+                            <input
+                                type="text"
+                                value={cityOfResidence}
+                                onChange={(e) => setCityOfResidence(e.target.value)}
+                                className={inputClassName}
+                            />
+                        )}
+                    </div>
+                    <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Full Residential Address</label>
+                        <textarea
+                            rows={3}
+                            value={residentialAddress}
+                            onChange={(e) => setResidentialAddress(e.target.value)}
+                            className={inputClassName}
                         />
                     </div>
                     <div>
@@ -234,7 +372,7 @@ export default function RepresentativeKycPage() {
                         />
                     </div>
                     <div>
-                        <label className="mb-1 block text-sm font-medium text-gray-700">Valid ID Document</label>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Valid Government ID Document</label>
                         <input
                             type="file"
                             accept=".pdf,.jpg,.jpeg,.png"
