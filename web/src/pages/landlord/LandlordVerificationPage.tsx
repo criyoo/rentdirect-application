@@ -418,6 +418,7 @@ export default function LandlordVerificationPage() {
         || verificationStatus?.status === 'approved',
     )
     const verificationPaymentRequired = Boolean(me?.verification_payment_required)
+    const verificationAttempts = Number(me?.verification_attempts || 0)
     const isTrackSelectionLocked = Boolean(isVerificationLocked || savedType)
     const countryOfBirthIsNigeria = isNigeriaSelection(individualForm.country_of_birth)
     const nationalityIsNigeria = isNigeriaSelection(individualForm.nationality)
@@ -714,6 +715,21 @@ export default function LandlordVerificationPage() {
                 return { payment }
             }
 
+            if (verificationAttempts >= 3) {
+                const proceed = await confirm(
+                    'Your next attempts will attract extra fees of N100 for each attempt to cover verification cost',
+                    {
+                        title: 'Extra Verification Fee',
+                        variant: 'warning',
+                        confirmLabel: 'Continue',
+                        cancelLabel: 'Cancel',
+                    },
+                )
+                if (!proceed) {
+                    return { cancelled: true }
+                }
+            }
+
             const profilePayload = verificationType === 'individual'
                 ? buildIndividualProfilePayload(individualForm, me?.landlord_verification_profile || {})
                 : buildCorporateProfilePayload(corporateForm)
@@ -768,7 +784,12 @@ export default function LandlordVerificationPage() {
             return response.data
         },
         onSuccess: async (response) => {
-            if (!response || response.payment) {
+            if (!response || response.payment || response.cancelled) {
+                return
+            }
+            const paymentId = response?.verification_payment?.id
+            if (paymentId) {
+                navigate(`/service-payments/${paymentId}`)
                 return
             }
             setDraftPersistenceEnabled(false)
@@ -1470,7 +1491,7 @@ export default function LandlordVerificationPage() {
                                             disabled={isVerificationLocked || submitIdentity.isPending || requestVerificationPayment.isPending || !hasAcceptedLegalConsent}
                                             className="btn btn-primary px-6 py-3 disabled:cursor-not-allowed disabled:opacity-50"
                                         >
-                                            {isVerificationLocked ? 'Identification Verified' : submitIdentity.isPending || requestVerificationPayment.isPending ? 'Submitting...' : verificationPaymentRequired ? 'Pay ₦500 & Submit Verification' : 'Submit Verification'}
+                                            {isVerificationLocked ? 'Identification Verified' : submitIdentity.isPending || requestVerificationPayment.isPending ? 'Submitting...' : verificationPaymentRequired ? 'Proceed to Payment' : 'Submit Verification'}
                                         </button>
                                     </div>
                                 </>

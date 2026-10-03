@@ -11,14 +11,21 @@ role so pre-migration data and tests keep working.
 from __future__ import annotations
 
 import copy
+import uuid
 from datetime import date
+from decimal import Decimal
 
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
-from .financial_constants import IDENTITY_VERIFICATION_ATTEMPTS_PER_PAYMENT
+from .financial_constants import (
+    IDENTITY_VERIFICATION_EXTRA_ATTEMPT_FEE,
+    IDENTITY_VERIFICATION_FEE,
+    IDENTITY_VERIFICATION_FREE_ATTEMPTS,
+    MONEY_PRECISION,
+)
 from .models import (
     AgentProfile,
     AppUser,
@@ -212,7 +219,10 @@ def _identity_verified(user, role: str) -> bool:
     return VerificationRequest.objects.filter(
         user_id=user.pk,
         role=role,
-        identity_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
+        identity_verification_status__in=(
+            VerificationRequest.VerificationProgressStatus.AWAITING_PAYMENT,
+            VerificationRequest.VerificationProgressStatus.VERIFIED,
+        ),
     ).exists()
 
 
@@ -564,7 +574,10 @@ def identity_credentials_linked_to_other_user(user, nin_number: str = "", bvn_nu
     user_pk = getattr(user, "pk", None)
     credential_q = Q(nin_number__in=credentials) | Q(bvn_number__in=credentials)
     verified_holder_ids = VerificationRequest.objects.filter(
-        identity_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED
+        identity_verification_status__in=(
+            VerificationRequest.VerificationProgressStatus.AWAITING_PAYMENT,
+            VerificationRequest.VerificationProgressStatus.VERIFIED,
+        )
     ).values("user_id")
     return (
         AppUser.objects.filter(credential_q, pk__in=verified_holder_ids)
@@ -603,52 +616,115 @@ def track_identity_verification_attempt(user, role: str) -> None:
     user.save(update_fields=[field_name, "updated_at"])
 
 
-def identity_verification_attempts_exhausted(user, role: str) -> bool:
+def identity_verification_extra_attempt_fee(user, role) -> Decimal:
+    """₦100 surcharge for each provider attempt beyond the three free ones."""
+    extra_attempts = max(
+        0, identity_verification_attempts_used(user, role) - IDENTITY_VERIFICATION_FREE_ATTEMPTS
+    )
+    return (IDENTITY_VERIFICATION_EXTRA_ATTEMPT_FEE * extra_attempts).quantize(MONEY_PRECISION)
+
+
+def identity_verification_fee_amount(user, role) -> Decimal:
+    """The ₦500 verification fee plus any extra-attempt surcharges."""
+    return (
+        IDENTITY_VERIFICATION_FEE + identity_verification_extra_attempt_fee(user, role)
+    ).quantize(MONEY_PRECISION)
+
+
+def completed_identity_verification_payment(user, role) -> bool:
+    purpose = VERIFICATION_PAYMENT_PURPOSES.get(str(role or "").strip().lower())
+    return bool(purpose) and ServicePayment.objects.filter(
+        user_id=user.pk, purpose=purpose, status=ServicePayment.Status.COMPLETED
+    ).exists()
+
+
+def pending_identity_verification_payment(user, role):
     purpose = VERIFICATION_PAYMENT_PURPOSES.get(str(role or "").strip().lower())
     if purpose is None:
-        return False
-    completed = ServicePayment.objects.filter(
-        user_id=user.pk, purpose=purpose, status=ServicePayment.Status.COMPLETED
-    ).count()
-    return identity_verification_attempts_used(user, role) >= completed * IDENTITY_VERIFICATION_ATTEMPTS_PER_PAYMENT
-
-
-def require_identity_verification_payment(user, role: str) -> None:
-    """Raise until a completed ₦500 payment covers the next verification attempt."""
-    role = str(role or "").strip().lower()
-    if identity_verification_attempts_exhausted(user, role):
-        raise ValidationError(
-            {
-                "payment_required": VERIFICATION_PAYMENT_PURPOSES[role],
-                "detail": "A ₦500 identity verification payment is required before you can verify your identity.",
-            }
+        return None
+    return (
+        ServicePayment.objects.filter(
+            user_id=user.pk, purpose=purpose, status=ServicePayment.Status.PENDING
         )
+        .order_by("-created_at")
+        .first()
+    )
 
 
-def _persona_credentials_conflict(user, role: str, identity: dict) -> bool:
-    """True when a persona holds a NIN/BVN that differs from the verified identity."""
-    persona_nin, persona_bvn = _persona_credential_values(user, role)
-    for persona_value, field_name in ((persona_nin, "nin_number"), (persona_bvn, "bvn_number")):
-        persona_value = persona_value.strip()
-        verified_value = str(identity.get(field_name) or "").strip()
-        if persona_value and verified_value and persona_value.lower() != verified_value.lower():
-            return True
-    return False
+def ensure_identity_verification_payment(user, role: str) -> ServicePayment | None:
+    """Get-or-create the pending verification payment, keeping the amount in
+    sync with the ₦500 fee plus any extra-attempt surcharges."""
+    role = str(role or "").strip().lower()
+    purpose = VERIFICATION_PAYMENT_PURPOSES.get(role)
+    if purpose is None:
+        return None
+    amount = identity_verification_fee_amount(user, role)
+    payment = pending_identity_verification_payment(user, role)
+    if payment is None:
+        return ServicePayment.objects.create(
+            user=user,
+            purpose=purpose,
+            amount=amount,
+            transaction_id=f"SVC{uuid.uuid4().hex[:20].upper()}",
+        )
+    if payment.amount != amount:
+        payment.amount = amount
+        payment.save(update_fields=["amount", "updated_at"])
+    return payment
+
+
+def identity_verification_fee_due(user, role: str) -> bool:
+    """True when a verification passed but its payment is still outstanding."""
+    return VerificationRequest.objects.filter(
+        user_id=user.pk,
+        role=str(role or "").strip().lower(),
+        identity_verification_status=VerificationRequest.VerificationProgressStatus.AWAITING_PAYMENT,
+    ).exists()
 
 
 def identity_verification_payment_required(user, role: str) -> bool:
-    """Whether the UI should prompt for the ₦500 identity verification fee."""
+    """Whether the UI should route the user to the verification payment page."""
     role = str(role or "").strip().lower()
-    if role not in VERIFICATION_PAYMENT_PURPOSES:
+    if role not in VERIFICATION_PAYMENT_PURPOSES or user.is_verified_for_role(role):
         return False
-    if user.is_verified_for_role(role):
+    return (
+        pending_identity_verification_payment(user, role) is not None
+        or identity_verification_fee_due(user, role)
+    )
+
+
+def finalize_identity_verification(user, role) -> bool:
+    """Mark an awaiting-payment identity verification verified after payment."""
+    role = str(role or "").strip().lower()
+    verification = (
+        VerificationRequest.objects.filter(
+            user_id=user.pk,
+            role=role,
+            identity_verification_status=VerificationRequest.VerificationProgressStatus.AWAITING_PAYMENT,
+        )
+        .order_by("-submitted_at")
+        .first()
+    )
+    if verification is None:
         return False
-    if role != AppUser.Role.LANDLORD or user.landlord_verification_type != AppUser.LandlordVerificationType.CORPORATE:
-        if identity_credentials_verified(user, role) and not _persona_credentials_conflict(
-            user, role, verified_identity_data(user)
-        ):
-            return False
-    return identity_verification_attempts_exhausted(user, role)
+    now = timezone.now()
+    verification.identity_verification_status = VerificationRequest.VerificationProgressStatus.VERIFIED
+    verification.status = VerificationRequest.Status.APPROVED
+    verification.reviewed_at = now
+    verification.save(
+        update_fields=["identity_verification_status", "status", "reviewed_at"]
+    )
+    if role == AppUser.Role.TENANT:
+        TenantProfile.objects.filter(user_id=user.pk).exclude(
+            status=TenantProfile.Status.REJECTED
+        ).update(status=TenantProfile.Status.APPROVED)
+    elif role == AppUser.Role.AGENT:
+        profile = AgentProfile.objects.filter(user_id=user.pk).first()
+        if profile and profile.verification_status != AgentProfile.VerificationStatus.VERIFIED:
+            profile.verification_status = AgentProfile.VerificationStatus.VERIFIED
+            profile.verified_at = now
+            profile.save(update_fields=["verification_status", "verified_at", "updated_at"])
+    return True
 
 
 def _persona_credential_values(user, role: str) -> tuple[str, str]:
@@ -696,10 +772,12 @@ def auto_verify_role_identity(user, role: str) -> bool:
 
     if role == AppUser.Role.AGENT:
         profile, _ = AgentProfile.objects.get_or_create(user=user)
-        if profile.verification_status != AgentProfile.VerificationStatus.VERIFIED:
-            profile.verification_status = AgentProfile.VerificationStatus.VERIFIED
-            profile.verified_at = verified_at
-            profile.save(update_fields=["verification_status", "verified_at", "updated_at"])
+        if profile.verification_status not in (
+            AgentProfile.VerificationStatus.VERIFIED,
+            AgentProfile.VerificationStatus.PAYMENT_REQUIRED,
+        ):
+            profile.verification_status = AgentProfile.VerificationStatus.PAYMENT_REQUIRED
+            profile.save(update_fields=["verification_status", "updated_at"])
             changed = True
 
     verification = (
@@ -714,16 +792,26 @@ def auto_verify_role_identity(user, role: str) -> bool:
             request_type=VerificationRequest.RequestType.IDENTIFICATION,
         )
     # An admin rejection on this persona is respected; it is never auto-approved.
+    # The persona activates only after the verification fee is paid, so the
+    # request is parked at AWAITING_PAYMENT rather than VERIFIED.
     if verification.status != VerificationRequest.Status.REJECTED and (
-        verification.status != VerificationRequest.Status.APPROVED
-        or verification.identity_verification_status != VerificationRequest.VerificationProgressStatus.VERIFIED
+        verification.identity_verification_status
+        not in (
+            VerificationRequest.VerificationProgressStatus.AWAITING_PAYMENT,
+            VerificationRequest.VerificationProgressStatus.VERIFIED,
+        )
     ):
         if not verification.request_type:
             verification.request_type = VerificationRequest.RequestType.IDENTIFICATION
-        verification.identity_verification_status = VerificationRequest.VerificationProgressStatus.VERIFIED
+        verification.identity_verification_status = (
+            VerificationRequest.VerificationProgressStatus.AWAITING_PAYMENT
+        )
         verification.verification_method = VerificationRequest.Method.AUTOMATED
-        verification.status = VerificationRequest.Status.APPROVED
+        # Stay PENDING so is_verified_for_role does not count the unpaid
+        # persona as verified; payment completion approves it.
+        verification.status = VerificationRequest.Status.PENDING
         verification.reviewed_at = verified_at
+        ensure_identity_verification_payment(user, role)
         verification.save(
             update_fields=[
                 "request_type",

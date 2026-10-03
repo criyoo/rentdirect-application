@@ -323,6 +323,7 @@ export default function TenantVerificationPage() {
     const lgaOptions = nationalityIsNigeria && stateOfOrigin ? nigeriaStateLgaMap[stateOfOrigin] || [] : []
     const identityVerificationStatus = verificationStatus?.identification?.status
     const verificationPaymentRequired = Boolean(me?.verification_payment_required)
+    const verificationAttempts = Number(me?.verification_attempts || 0)
     const isVerificationLocked = Boolean(
         me?.is_verified
         || identityVerificationStatus === 'verified'
@@ -415,6 +416,12 @@ export default function TenantVerificationPage() {
                 }
             }
 
+            const paymentId = profile?.verification_payment?.id
+            if (paymentId) {
+                navigate(`/service-payments/${paymentId}`)
+                return
+            }
+
             const profilePath = user?.id ? `/tenants/${user.id}/profile` : '/search'
             const shouldGoToProfile = await confirm(
                 'Tenant verification completed successfully.',
@@ -464,7 +471,7 @@ export default function TenantVerificationPage() {
                 )}
 
                 <form
-                    onSubmit={handleSubmit((data) => {
+                    onSubmit={handleSubmit(async (data) => {
                         if (isVerificationLocked) return
                         if (!hasAcceptedLegalConsent) {
                             setSubmitError('Review all legal documents and click “I have read & consent” before submitting your verification.')
@@ -473,6 +480,18 @@ export default function TenantVerificationPage() {
                         if (verificationPaymentRequired) {
                             requestVerificationPayment.mutate()
                             return
+                        }
+                        if (verificationAttempts >= 3) {
+                            const proceed = await confirm(
+                                'Your next attempts will attract extra fees of N100 for each attempt to cover verification cost',
+                                {
+                                    title: 'Extra Verification Fee',
+                                    variant: 'warning',
+                                    confirmLabel: 'Continue',
+                                    cancelLabel: 'Cancel',
+                                },
+                            )
+                            if (!proceed) return
                         }
                         saveVerification.mutate(data)
                     })}
@@ -567,7 +586,7 @@ export default function TenantVerificationPage() {
                             disabled={isVerificationLocked || isSubmitting || saveVerification.isPending || requestVerificationPayment.isPending || !hasAcceptedLegalConsent}
                             className="rounded-lg bg-blue-600 px-8 py-3 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                            {isVerificationLocked ? 'Verified' : isSubmitting || saveVerification.isPending || requestVerificationPayment.isPending ? 'Saving...' : verificationPaymentRequired ? 'Pay ₦500 & Submit Verification' : 'Submit Verification'}
+                            {isVerificationLocked ? 'Verified' : isSubmitting || saveVerification.isPending || requestVerificationPayment.isPending ? 'Saving...' : verificationPaymentRequired ? 'Proceed to Payment' : 'Submit Verification'}
                         </button>
                     </div>
                 </form>
