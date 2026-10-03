@@ -5,6 +5,7 @@ from typing import Any
 
 from django.conf import settings
 from django.core.management import call_command
+from django.db import close_old_connections
 from django.utils import timezone
 
 
@@ -194,6 +195,13 @@ def run_sqs_worker(*, once: bool = False, max_messages: int | None = None) -> No
 
 
 def execute_payment_task(task: str, payload: dict[str, Any] | None = None):
+    try:
+        return _execute_payment_task(task, payload)
+    finally:
+        close_old_connections()
+
+
+def _execute_payment_task(task: str, payload: dict[str, Any] | None = None):
     payload = payload or {}
     if task == TASK_FLUTTERWAVE_WEBHOOK:
         from core.views import process_flutterwave_webhook_event
