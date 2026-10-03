@@ -6,6 +6,9 @@ export { nigerianStates, stateOfOriginOptions }
 export const MOBILE_INPUT_PATTERN = '^(0[789][0-9]{9}|\\+234[789][0-9]{9})$'
 export const MOBILE_INPUT_PLACEHOLDER = '08012345678 or +2348012345678'
 export const MOBILE_ERROR_MESSAGE = 'Enter an 11 digit mobile number starting with 07, 08, or 09, or a +234 number starting with 07, 08, or 09.'
+export const WHATSAPP_INPUT_PATTERN = '^(0[789][0-9]{9}|\\+[0-9]{7,15})$'
+export const WHATSAPP_INPUT_PLACEHOLDER = '08012345678 or +2348012345678 or +447911123456'
+export const WHATSAPP_ERROR_MESSAGE = 'Enter a WhatsApp number with an international dialling code (e.g. +2348012345678 or +447911123456) or an 11 digit Nigerian number starting with 07, 08, or 09.'
 export const NIN_INPUT_PATTERN = '^\\d{11}$'
 export const NIN_INPUT_PLACEHOLDER = '11 digit NIN'
 export const NIN_ERROR_MESSAGE = 'NIN must be exactly 11 digits.'
@@ -18,6 +21,7 @@ export const CAC_REGISTRATION_ERROR_MESSAGE = 'CAC registration number must star
 
 const localMobilePattern = /^0[789]\d{9}$/
 const internationalMobilePattern = /^\+234[789]\d{9}$/
+const internationalWhatsappPattern = /^\+\d{7,15}$/
 const ninPattern = /^\d{11}$/
 const bvnPattern = /^\d{11}$/
 const cacRegistrationPattern = /^(RC|BN|IT|LP)\d{5,8}$/
@@ -29,6 +33,15 @@ export function validateMobile(value: string): string | null {
         return null
     }
     return MOBILE_ERROR_MESSAGE
+}
+
+export function validateWhatsapp(value: string): string | null {
+    const trimmed = value.trim()
+    if (!trimmed) return null
+    if (localMobilePattern.test(trimmed) || internationalWhatsappPattern.test(trimmed)) {
+        return null
+    }
+    return WHATSAPP_ERROR_MESSAGE
 }
 
 export function validateNin(value: string): string | null {

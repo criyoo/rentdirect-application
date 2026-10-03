@@ -155,7 +155,7 @@ export const agentSupportFaqs = [
 ] as const
 
 export const tenantSupportContacts = {
-    phone: '+234 800 736 8347',
+    phone: '+2349163046786',
     email: 'support@rentdirect.homes',
     chat: 'Support Chat',
 } as const

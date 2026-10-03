@@ -559,7 +559,8 @@ export interface AgentProfile {
     lga_of_origin?: string
     mobile?: string
     whatsapp_number?: string
-    city?: string
+    state_of_residence?: string
+    city_of_residence?: string
     residential_address?: string
     nin_number?: string
     bvn_number?: string

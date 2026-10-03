@@ -7,6 +7,7 @@ import {
   validateMobile,
   validateNin,
   validateResidence,
+  validateWhatsapp,
 } from './profile'
 
 describe('profile validation', () => {
@@ -21,6 +22,16 @@ describe('profile validation', () => {
     expect(validateMobile('070123')).not.toBeNull()
     expect(validateNin('123')).not.toBeNull()
     expect(validateBvn('1234567890a')).not.toBeNull()
+  })
+
+  it('accepts WhatsApp numbers with international dialling codes', () => {
+    expect(validateWhatsapp('08012345678')).toBeNull()
+    expect(validateWhatsapp('+2348012345678')).toBeNull()
+    expect(validateWhatsapp('+447911123456')).toBeNull()
+    expect(validateWhatsapp('+233241234567')).toBeNull()
+    expect(validateWhatsapp('447911123456')).not.toBeNull()
+    expect(validateWhatsapp('+44')).not.toBeNull()
+    expect(validateWhatsapp('070123')).not.toBeNull()
   })
 
   it('normalizes identity and CAC inputs before validation', () => {

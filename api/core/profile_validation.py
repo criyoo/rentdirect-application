@@ -47,11 +47,26 @@ RESIDENCE_KEYS = ["state", "city", "address", "origin_country", "origin_state", 
 
 LOCAL_MOBILE_RE = re.compile(r"^0[789]\d{9}$")
 INTL_MOBILE_RE = re.compile(r"^\+234(70|71|80|81|90|91)\d{7}$")
+INTL_WHATSAPP_RE = re.compile(r"^\+\d{7,15}$")
 NIN_RE = re.compile(r"^\d{11}$")
+
+MOBILE_ERROR_MESSAGE = "Enter an 11 digit mobile number starting with 07, 08, or 09, or a +234 number starting with 70, 71, 80, 81, 90, or 91."
+WHATSAPP_ERROR_MESSAGE = "Enter a WhatsApp number with an international dialling code (e.g. +2348012345678 or +447911123456) or an 11 digit Nigerian number starting with 07, 08, or 09."
 
 
 def is_valid_mobile(value: str) -> bool:
     return bool(LOCAL_MOBILE_RE.fullmatch(value) or INTL_MOBILE_RE.fullmatch(value))
+
+
+def is_valid_whatsapp_number(value: str) -> bool:
+    """WhatsApp numbers may use any international dialling code (+CC...);
+    numbers without one are treated as Nigerian local numbers."""
+    text = (value or "").strip()
+    if not text:
+        return False
+    if text.startswith("+"):
+        return bool(INTL_WHATSAPP_RE.fullmatch(text))
+    return bool(LOCAL_MOBILE_RE.fullmatch(text))
 
 
 def is_valid_nin(value: str) -> bool:

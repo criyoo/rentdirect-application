@@ -74,11 +74,11 @@ def nearest_agents_for_listing(listing):
     state = (listing.state or "").strip()
 
     if city:
-        matches = agents.filter(agent_profile__city__iexact=city)
+        matches = agents.filter(agent_profile__city_of_residence__iexact=city)
         if matches.exists():
             return list(matches)
     if state:
-        matches = agents.filter(agent_profile__state_of_origin__iexact=state)
+        matches = agents.filter(agent_profile__state_of_residence__iexact=state)
         if matches.exists():
             return list(matches)
     return list(agents)

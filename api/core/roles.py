@@ -201,6 +201,7 @@ IDENTITY_FIELDS = (
     "nin_number",
     "bvn_number",
     "city",
+    "state_of_residence",
     "residential_address",
     "employment_status",
 )
@@ -256,7 +257,8 @@ def verified_identity_data(user) -> dict:
                 "email": user.email,
                 "nin_number": agent_profile.nin_number,
                 "bvn_number": agent_profile.bvn_number,
-                "city": agent_profile.city,
+                "city": agent_profile.city_of_residence,
+                "state_of_residence": agent_profile.state_of_residence,
                 "residential_address": agent_profile.residential_address,
             },
         )
@@ -286,6 +288,7 @@ def verified_identity_data(user) -> dict:
                 "nin_number": profile.get("nin") or user.nin_number,
                 "bvn_number": profile.get("bvn") or user.bvn_number,
                 "city": residence.get("city"),
+                "state_of_residence": residence.get("state"),
                 "residential_address": profile.get("residential_address") or residence.get("address"),
                 "employment_status": profile.get("employment_status"),
             },
@@ -299,6 +302,7 @@ def verified_identity_data(user) -> dict:
                 data,
                 {
                     "city": tenant_profile.residence_city,
+                    "state_of_residence": tenant_profile.residence_state,
                     "residential_address": tenant_profile.residence_address,
                     "employment_status": tenant_profile.employment_status,
                 },
@@ -381,7 +385,8 @@ AGENT_IDENTITY_FIELD_MAP = {
     "mobile": "mobile",
     "whatsapp_number": "whatsapp_number",
     "country_of_birth": "country_of_birth",
-    "city": "city",
+    "city": "city_of_residence",
+    "state_of_residence": "state_of_residence",
     "residential_address": "residential_address",
     "nin_number": "nin_number",
     "bvn_number": "bvn_number",
@@ -504,6 +509,9 @@ def prefill_landlord_verification_profile(user) -> bool:
     residence = dict(profile.get("residential_information") or {})
     if data.get("city") and not str(residence.get("city") or "").strip():
         residence["city"] = str(data["city"]).strip()
+        changed = True
+    if data.get("state_of_residence") and not str(residence.get("state") or "").strip():
+        residence["state"] = str(data["state_of_residence"]).strip()
         changed = True
     if data.get("residential_address") and not str(residence.get("address") or "").strip():
         residence["address"] = str(data["residential_address"]).strip()

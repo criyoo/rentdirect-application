@@ -19,7 +19,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.files.storage import default_storage
 from django.db import connection, transaction
 from django.db.migrations.executor import MigrationExecutor
-from django.db.models import Avg, Q, Sum
+from django.db.models import Avg, Count, Max, Q, Sum
 from django.db.utils import IntegrityError, OperationalError, ProgrammingError
 from django.http import FileResponse, Http404, HttpResponse, HttpResponseRedirect, JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404
@@ -129,6 +129,7 @@ from .financial_constants import (
     ZERO_AMOUNT,
 )
 from .banks import normalize_bank_name_key
+from .verification_records import get_verification_record_payload
 from .verification_service import verify_cac, verify_nin, verify_nin_and_bvn
 from .notifications import (
     send_feedback_acknowledgement,
@@ -186,7 +187,7 @@ from .docuseal import (
     verify_webhook_signature as verify_docuseal_webhook_signature,
 )
 from .security import OTP_MAX_ATTEMPTS, OTP_TTL_MINUTES, contains_contact_info, generate_otp, hash_otp, otp_matches
-from .profile_validation import is_valid_mobile, is_valid_nin
+from .profile_validation import WHATSAPP_ERROR_MESSAGE, is_valid_mobile, is_valid_nin, is_valid_whatsapp_number
 from .tenancy_agreements import (
     agreement_form_fields,
     agreement_missing_fields,
@@ -289,7 +290,8 @@ SETTINGS_PROFILE_MUTABLE_FIELDS = {
 
 AGENT_SETTINGS_MUTABLE_FIELDS = {
     "residential_address",
-    "city",
+    "state_of_residence",
+    "city_of_residence",
     "bank_name",
     "bank_code",
     "account_name",
@@ -325,6 +327,48 @@ def extract_mobile_verification_warning(value: Any) -> str:
             if warning:
                 return warning
     return ""
+
+
+def _bvn_record_from_payloads(verification_payloads: Any) -> dict:
+    """Extract the BVN provider record from ``verify_nin_and_bvn`` output
+    (a ``(nin_payload, bvn_payload)`` tuple or a ``{"bvn": ...}`` mapping)."""
+    bvn_payload = None
+    if isinstance(verification_payloads, dict):
+        bvn_payload = verification_payloads.get("bvn")
+    elif isinstance(verification_payloads, (list, tuple)) and len(verification_payloads) > 1:
+        bvn_payload = verification_payloads[1]
+    if not isinstance(bvn_payload, dict):
+        return {}
+    data = bvn_payload.get("data")
+    if not isinstance(data, dict):
+        data = bvn_payload.get("bvn_data")
+    return data if isinstance(data, dict) else {}
+
+
+def _name_token_set(value: Any) -> set:
+    return {
+        token
+        for token in re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).split()
+        if token
+    }
+
+
+def _first_present_record_value(data: dict, *keys: str):
+    for key in keys:
+        value = data.get(key)
+        if value not in (None, ""):
+            return value
+    return ""
+
+
+def agent_account_name_matches_bvn(account_name: str, bvn_data: dict) -> bool:
+    """The payout account name must carry the first and last name on the BVN record."""
+    first_name = _first_present_record_value(bvn_data, "firstName", "firstname", "first_name")
+    last_name = _first_present_record_value(bvn_data, "lastName", "surname", "lastname", "last_name")
+    required_tokens = _name_token_set(first_name) | _name_token_set(last_name)
+    if not required_tokens:
+        return True
+    return required_tokens <= _name_token_set(account_name)
 
 
 def extract_identity_verification_badge(value: Any) -> str:
@@ -4342,8 +4386,8 @@ class UserViewSet(viewsets.GenericViewSet):
         for verification_only_field in ("country_of_birth", "email", "mobile"):
             data.pop(verification_only_field, None)
         whatsapp_number = str(data.pop("whatsapp_number", "") or "").strip()
-        if whatsapp_number and not is_valid_mobile(whatsapp_number):
-            raise ValidationError({"whatsapp_number": "Enter a valid mobile number."})
+        if whatsapp_number and not is_valid_whatsapp_number(whatsapp_number):
+            raise ValidationError({"whatsapp_number": WHATSAPP_ERROR_MESSAGE})
         data["user"] = request.user.id
         if request.method == "POST" and not profile:
             serializer = TenantProfileSerializer(data=data)
@@ -7412,10 +7456,26 @@ class AgentViewSet(viewsets.ViewSet):
             # Same credentials already verified under another persona — no
             # provider call and no verification attempt consumed.
             verification_payloads = {}
+            stored_bvn = (
+                get_verification_record_payload(provider="dikript", verification_type="bvn", lookup_value=profile.bvn_number)
+                or get_verification_record_payload(provider="prembly", verification_type="bvn", lookup_value=profile.bvn_number)
+            )
+            if not agent_account_name_matches_bvn(
+                profile.account_name, _bvn_record_from_payloads({"bvn": stored_bvn or {}})
+            ):
+                raise ValidationError(
+                    {"account_name": "Bank account name must match the first and last name on the BVN record."}
+                )
         else:
             require_unique_identity_credentials(request.user, profile.nin_number, profile.bvn_number)
             try:
                 verification_payloads = verify_nin_and_bvn(identity_data, profile.nin_number, profile.bvn_number)
+                if not agent_account_name_matches_bvn(
+                    profile.account_name, _bvn_record_from_payloads(verification_payloads)
+                ):
+                    raise ValidationError(
+                        {"account_name": "Bank account name must match the first and last name on the BVN record."}
+                    )
             except ValidationError:
                 profile.verification_attempts += 1
                 profile.save(update_fields=["verification_attempts", "updated_at"])
@@ -7747,6 +7807,49 @@ class AgentInspectionViewSet(viewsets.GenericViewSet, mixins.ListModelMixin, mix
 class SupportChatMessageViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
     serializer_class = SupportChatMessageSerializer
     permission_classes = [IsAuthenticated]
+
+    @action(detail=False, methods=["get"], url_path="threads")
+    def threads(self, request):
+        if request.user.role != AppUser.Role.ADMIN:
+            raise PermissionDenied("Forbidden")
+        thread_role = (request.query_params.get("thread_role") or request.query_params.get("role") or "").strip().lower()
+        aggregates = {}
+        rows = (
+            SupportChatMessage.objects
+            .values("thread_user_id", "thread_role")
+            .annotate(last_at=Max("created_at"), message_count=Count("id"))
+        )
+        for row in rows:
+            if thread_role and row["thread_role"] != thread_role:
+                continue
+            aggregates[(row["thread_user_id"], row["thread_role"])] = row
+        latest_messages = (
+            SupportChatMessage.objects
+            .select_related("thread_user", "sender")
+            .filter(created_at__in=[row["last_at"] for row in aggregates.values()])
+            .order_by("-created_at")
+        )
+        seen = set()
+        threads = []
+        for message in latest_messages:
+            key = (message.thread_user_id, message.thread_role)
+            if key in seen:
+                continue
+            seen.add(key)
+            aggregate = aggregates.get(key) or {}
+            threads.append({
+                "thread_user_id": str(message.thread_user_id),
+                "thread_role": message.thread_role,
+                "user_name": message.thread_user.name,
+                "user_email": message.thread_user.email,
+                "user_photo_url": message.thread_user.profile_photo_url,
+                "last_message": message.content,
+                "last_message_at": message.created_at.isoformat(),
+                "last_sender_role": message.sender_role,
+                "is_last_from_support": message.sender_id != message.thread_user_id,
+                "message_count": aggregate.get("message_count", 0),
+            })
+        return Response(threads)
 
     def get_queryset(self):
         queryset = SupportChatMessage.objects.select_related("thread_user", "sender").order_by("-created_at")

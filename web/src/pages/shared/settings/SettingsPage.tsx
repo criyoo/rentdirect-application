@@ -11,8 +11,12 @@ import {
     MOBILE_ERROR_MESSAGE,
     MOBILE_INPUT_PATTERN,
     MOBILE_INPUT_PLACEHOLDER,
+    WHATSAPP_ERROR_MESSAGE,
+    WHATSAPP_INPUT_PATTERN,
+    WHATSAPP_INPUT_PLACEHOLDER,
     validateMobile,
     validateResidence,
+    validateWhatsapp,
 } from '@/lib/profile'
 import { nigerianBanks } from '@/lib/banks'
 import { AgentProfile, User, UserResidence } from '@/types'
@@ -145,7 +149,8 @@ export default function SettingsPage() {
     const [mobile, setMobile] = useState('')
     const [whatsappNumber, setWhatsappNumber] = useState('')
     const [residentialAddress, setResidentialAddress] = useState('')
-    const [agentCity, setAgentCity] = useState('')
+    const [agentStateOfResidence, setAgentStateOfResidence] = useState('')
+    const [agentCityOfResidence, setAgentCityOfResidence] = useState('')
     const [bankDetails, setBankDetails] = useState({ bank_name: '', account_name: '', account_number: '' })
     const [biodata, setBiodata] = useState({ first_name: '', middle_name: '', last_name: '' })
     const [residence, setResidence] = useState<UserResidence>(normalizeResidence())
@@ -194,7 +199,8 @@ export default function SettingsPage() {
                 : asRecord(me.tenant_verification_profile)
         if (me.role === 'agent' && agentProfile) {
             setResidentialAddress(agentProfile.residential_address || '')
-            setAgentCity(agentProfile.city || '')
+            setAgentStateOfResidence(agentProfile.state_of_residence || '')
+            setAgentCityOfResidence(agentProfile.city_of_residence || '')
             setBankDetails({
                 bank_name: agentProfile.bank_name || '',
                 account_name: agentProfile.account_name || '',
@@ -247,7 +253,7 @@ export default function SettingsPage() {
     const validateProfile = () => {
         const nextErrors: Record<string, string> = {}
         const mobileError = validateMobile(mobile)
-        const whatsappError = whatsappNumber ? validateMobile(whatsappNumber) : ''
+        const whatsappError = whatsappNumber ? validateWhatsapp(whatsappNumber) : ''
         const guarantorMobileError = validateMobile(guarantorDetails.mobile_number)
 
         if (mobileError) nextErrors.mobile = mobileError
@@ -288,7 +294,8 @@ export default function SettingsPage() {
         if (me?.role === 'agent') {
             payload.agent_profile = {
                 residential_address: residentialAddress.trim(),
-                city: agentCity.trim(),
+                state_of_residence: agentStateOfResidence.trim(),
+                city_of_residence: agentCityOfResidence.trim(),
                 bank_name: bankDetails.bank_name.trim(),
                 account_name: bankDetails.account_name.trim(),
                 account_number: bankDetails.account_number.trim(),
@@ -590,12 +597,12 @@ export default function SettingsPage() {
                                 className="form-input"
                                 type="tel"
                                 inputMode="tel"
-                                pattern={MOBILE_INPUT_PATTERN}
-                                maxLength={14}
-                                title={MOBILE_ERROR_MESSAGE}
+                                pattern={WHATSAPP_INPUT_PATTERN}
+                                maxLength={16}
+                                title={WHATSAPP_ERROR_MESSAGE}
                                 value={whatsappNumber}
                                 onChange={e => setWhatsappNumber(e.target.value)}
-                                placeholder={MOBILE_INPUT_PLACEHOLDER}
+                                placeholder={WHATSAPP_INPUT_PLACEHOLDER}
                             />
                             {fieldErrors.whatsapp_number && <p className="form-error">{fieldErrors.whatsapp_number}</p>}
                         </Field>
@@ -630,9 +637,14 @@ export default function SettingsPage() {
                     </div>
                     {me.role === 'agent' ? (
                         <div className="grid flex-1 gap-5">
-                            <Field label="City">
-                                <input className="form-input" value={agentCity} onChange={e => setAgentCity(e.target.value)} placeholder="Enter your city" />
-                            </Field>
+                            <div className="grid gap-5 sm:grid-cols-2">
+                                <Field label="State of residence">
+                                    <input className="form-input" value={agentStateOfResidence} onChange={e => setAgentStateOfResidence(e.target.value)} placeholder="Enter your state" />
+                                </Field>
+                                <Field label="City of residence">
+                                    <input className="form-input" value={agentCityOfResidence} onChange={e => setAgentCityOfResidence(e.target.value)} placeholder="Enter your city" />
+                                </Field>
+                            </div>
                             <Field label="Full residential address">
                                 <textarea className="form-input min-h-24" value={residentialAddress} onChange={e => setResidentialAddress(e.target.value)} placeholder="Enter your full address" />
                             </Field>

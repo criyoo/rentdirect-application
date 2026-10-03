@@ -9,7 +9,8 @@ import LegalConsentCheckbox from '@/components/LegalConsentCheckbox'
 import { api, extractApiErrorMessage } from '@/lib/api'
 import { nigerianBanks } from '@/lib/banks'
 import { getLegalDocumentBySlug } from '@/lib/legalDocuments'
-import { nigeriaStateLgaMap, stateOfOriginOptions, worldCountryOptions } from '@/lib/locations'
+import { nigerianStates, nigeriaStateLgaMap, stateOfOriginOptions, worldCountryOptions } from '@/lib/locations'
+import { WHATSAPP_ERROR_MESSAGE, WHATSAPP_INPUT_PATTERN, WHATSAPP_INPUT_PLACEHOLDER } from '@/lib/profile'
 import { AgentProfile, ServicePayment } from '@/types'
 
 const GENDER_OPTIONS = ['Male', 'Female']
@@ -28,7 +29,8 @@ type AgentProfileFormState = {
     lga_of_origin: string
     mobile: string
     whatsapp_number: string
-    city: string
+    state_of_residence: string
+    city_of_residence: string
     residential_address: string
     nin_number: string
     bvn_number: string
@@ -50,7 +52,8 @@ const EMPTY_FORM: AgentProfileFormState = {
     lga_of_origin: '',
     mobile: '',
     whatsapp_number: '',
-    city: '',
+    state_of_residence: '',
+    city_of_residence: '',
     residential_address: '',
     nin_number: '',
     bvn_number: '',
@@ -99,7 +102,8 @@ export default function AgentVerificationPage() {
             lga_of_origin: profile.lga_of_origin || '',
             mobile: profile.mobile || '',
             whatsapp_number: profile.whatsapp_number || '',
-            city: profile.city || '',
+            state_of_residence: profile.state_of_residence || '',
+            city_of_residence: profile.city_of_residence || '',
             residential_address: profile.residential_address || '',
             nin_number: profile.nin_number || '',
             bvn_number: profile.bvn_number || '',
@@ -270,7 +274,7 @@ export default function AgentVerificationPage() {
                         <fieldset disabled={isVerified} className="space-y-4 disabled:opacity-80">
                             <div className="grid gap-4 sm:grid-cols-3">
                                 <div>
-                                    <label className="form-label" htmlFor="agent-first-name">First name</label>
+                                    <label className="form-label" htmlFor="agent-first-name">First name *</label>
                                     <input id="agent-first-name" className="form-input" required value={form.first_name} onChange={(e) => updateField('first_name', e.target.value)} />
                                 </div>
                                 <div>
@@ -278,18 +282,18 @@ export default function AgentVerificationPage() {
                                     <input id="agent-middle-name" className="form-input" value={form.middle_name} onChange={(e) => updateField('middle_name', e.target.value)} />
                                 </div>
                                 <div>
-                                    <label className="form-label" htmlFor="agent-last-name">Last name</label>
+                                    <label className="form-label" htmlFor="agent-last-name">Last name *</label>
                                     <input id="agent-last-name" className="form-input" required value={form.last_name} onChange={(e) => updateField('last_name', e.target.value)} />
                                 </div>
                             </div>
 
                             <div className="grid gap-4 sm:grid-cols-3">
                                 <div>
-                                    <label className="form-label" htmlFor="agent-dob">Date of birth</label>
+                                    <label className="form-label" htmlFor="agent-dob">Date of birth *</label>
                                     <input id="agent-dob" type="date" className="form-input" required value={form.date_of_birth} onChange={(e) => updateField('date_of_birth', e.target.value)} />
                                 </div>
                                 <div>
-                                    <label className="form-label" htmlFor="agent-gender">Gender</label>
+                                    <label className="form-label" htmlFor="agent-gender">Gender *</label>
                                     <select id="agent-gender" className="form-input" required value={form.gender} onChange={(e) => updateField('gender', e.target.value)}>
                                         <option value="">Select</option>
                                         {GENDER_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
@@ -301,7 +305,7 @@ export default function AgentVerificationPage() {
                                 </div>
                             </div>
 
-                            <div className="grid gap-4 sm:grid-cols-2">
+                            <div className="grid gap-4 sm:grid-cols-3">
                                 <div>
                                     <label className="form-label" htmlFor="agent-country-of-birth">Country of birth</label>
                                     <select id="agent-country-of-birth" className="form-input" required value={form.country_of_birth} onChange={(e) => updateField('country_of_birth', e.target.value)}>
@@ -310,14 +314,21 @@ export default function AgentVerificationPage() {
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="form-label" htmlFor="agent-city">City</label>
-                                    <input id="agent-city" className="form-input" required placeholder="City of residence" value={form.city} onChange={(e) => updateField('city', e.target.value)} />
+                                    <label className="form-label" htmlFor="agent-state-of-residence">State of residence *</label>
+                                    <select id="agent-state-of-residence" className="form-input" required value={form.state_of_residence} onChange={(e) => updateField('state_of_residence', e.target.value)}>
+                                        <option value="">Select state</option>
+                                        {nigerianStates.map((option) => <option key={option} value={option}>{option}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="form-label" htmlFor="agent-city-of-residence">City of residence *</label>
+                                    <input id="agent-city-of-residence" className="form-input" required placeholder="City of residence" value={form.city_of_residence} onChange={(e) => updateField('city_of_residence', e.target.value)} />
                                 </div>
                             </div>
 
                             <div className="grid gap-4 sm:grid-cols-2">
                                 <div>
-                                    <label className="form-label" htmlFor="agent-state">State of origin</label>
+                                    <label className="form-label" htmlFor="agent-state">State of origin *</label>
                                     <select id="agent-state" className="form-input" required value={form.state_of_origin} onChange={(e) => updateField('state_of_origin', e.target.value)}>
                                         <option value="">Select state</option>
                                         {stateOfOriginOptions.map((option) => <option key={option} value={option}>{option}</option>)}
@@ -338,7 +349,7 @@ export default function AgentVerificationPage() {
 
                             <div className="grid gap-4 sm:grid-cols-2">
                                 <div>
-                                    <label className="form-label" htmlFor="agent-mobile">Mobile number</label>
+                                    <label className="form-label" htmlFor="agent-mobile">Mobile number * (NIN/BVN)</label>
                                     <input id="agent-mobile" className="form-input" required placeholder="08012345678" value={form.mobile} onChange={(e) => updateField('mobile', e.target.value)} />
                                 </div>
                                 <div>
@@ -346,7 +357,11 @@ export default function AgentVerificationPage() {
                                     <input
                                         id="agent-whatsapp"
                                         className="form-input disabled:bg-gray-100 disabled:text-gray-500"
-                                        placeholder="08012345678"
+                                        type="tel"
+                                        inputMode="tel"
+                                        pattern={WHATSAPP_INPUT_PATTERN}
+                                        title={WHATSAPP_ERROR_MESSAGE}
+                                        placeholder={WHATSAPP_INPUT_PLACEHOLDER}
                                         value={form.whatsapp_number}
                                         disabled={whatsappSameAsMobile}
                                         onChange={(e) => updateField('whatsapp_number', e.target.value)}
@@ -373,11 +388,11 @@ export default function AgentVerificationPage() {
 
                             <div className="grid gap-4 sm:grid-cols-2">
                                 <div>
-                                    <label className="form-label" htmlFor="agent-nin">NIN (11 digits)</label>
+                                    <label className="form-label" htmlFor="agent-nin">NIN (11 digits) *</label>
                                     <input id="agent-nin" className="form-input" required inputMode="numeric" maxLength={11} value={form.nin_number} onChange={(e) => updateField('nin_number', e.target.value.replace(/\D/g, ''))} />
                                 </div>
                                 <div>
-                                    <label className="form-label" htmlFor="agent-bvn">BVN (11 digits)</label>
+                                    <label className="form-label" htmlFor="agent-bvn">BVN (11 digits) *</label>
                                     <input id="agent-bvn" className="form-input" required inputMode="numeric" maxLength={11} value={form.bvn_number} onChange={(e) => updateField('bvn_number', e.target.value.replace(/\D/g, ''))} />
                                 </div>
                             </div>
@@ -385,18 +400,18 @@ export default function AgentVerificationPage() {
                             <h3 className="pt-2 text-lg font-semibold text-gray-900">Payout bank details</h3>
                             <div className="grid gap-4 sm:grid-cols-3">
                                 <div>
-                                    <label className="form-label" htmlFor="agent-bank">Bank name</label>
+                                    <label className="form-label" htmlFor="agent-bank">Bank name *</label>
                                     <select id="agent-bank" className="form-input" required value={form.bank_name} onChange={(e) => updateField('bank_name', e.target.value)}>
                                         <option value="">Select bank</option>
                                         {nigerianBanks.map((bank) => <option key={bank} value={bank}>{bank}</option>)}
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="form-label" htmlFor="agent-account-name">Account name</label>
+                                    <label className="form-label" htmlFor="agent-account-name">Account name *</label>
                                     <input id="agent-account-name" className="form-input" required value={form.account_name} onChange={(e) => updateField('account_name', e.target.value.replace(/[^A-Za-z\s'\-.]/g, ''))} />
                                 </div>
                                 <div>
-                                    <label className="form-label" htmlFor="agent-account-number">Account number (10 digits)</label>
+                                    <label className="form-label" htmlFor="agent-account-number">Account number * (10 digits)</label>
                                     <input id="agent-account-number" className="form-input" required inputMode="numeric" maxLength={10} value={form.account_number} onChange={(e) => updateField('account_number', e.target.value.replace(/\D/g, ''))} />
                                 </div>
                             </div>

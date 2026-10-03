@@ -164,7 +164,8 @@ export default function AgentProfilePage() {
                             <ProfileRow label="LGA of origin" value={profile?.lga_of_origin} />
                             <ProfileRow label="Mobile" value={profile?.mobile} />
                             <ProfileRow label="WhatsApp" value={profile?.whatsapp_number} />
-                            <ProfileRow label="City" value={profile?.city} />
+                            <ProfileRow label="State of residence" value={profile?.state_of_residence} />
+                            <ProfileRow label="City of residence" value={profile?.city_of_residence} />
                             <ProfileRow label="Residential address" value={profile?.residential_address} />
                         </div>
 

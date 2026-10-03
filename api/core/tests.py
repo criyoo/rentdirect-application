@@ -11572,7 +11572,8 @@ class AgentFeatureTests(TestCase):
                 "state_of_origin": "Lagos",
                 "lga_of_origin": "Ikeja",
                 "mobile": "08012345678",
-                "city": "Ikeja",
+                "state_of_residence": "Lagos",
+                "city_of_residence": "Ikeja",
                 "residential_address": "3 Agent Street, Lagos",
                 "nin_number": "12345678901",
                 "bvn_number": "10987654321",
@@ -11645,7 +11646,8 @@ class AgentFeatureTests(TestCase):
                 "state_of_origin": "Lagos",
                 "lga_of_origin": "Ikeja",
                 "mobile": "08012345678",
-                "city": "Ikeja",
+                "state_of_residence": "Lagos",
+                "city_of_residence": "Ikeja",
                 "residential_address": "3 Agent Street, Lagos",
                 "nin_number": "12345678901",
                 "bvn_number": "10987654321",
@@ -11834,6 +11836,45 @@ class AgentFeatureTests(TestCase):
 
         self.assertEqual(response.status_code, 200, response.json())
         self.assertTrue(verify_mock.called)
+
+    @patch("core.views.verify_nin_and_bvn")
+    def test_verify_rejects_account_name_mismatched_to_bvn_record(self, verify_mock):
+        verify_mock.return_value = {
+            "nin": {"status": "verified"},
+            "bvn": {
+                "status": "verified",
+                "data": {"firstName": "Different", "lastName": "Person"},
+            },
+        }
+        self._complete_agent_profile()
+        self._complete_verification_payment()
+        self.client.force_authenticate(user=self.agent)
+
+        response = self.client.post("/api/v1/agents/verify", {}, format="json")
+
+        self.assertEqual(response.status_code, 400, response.json())
+        self.assertIn("account_name", response.json())
+        profile = AgentProfile.objects.get(user=self.agent)
+        self.assertNotEqual(profile.verification_status, AgentProfile.VerificationStatus.VERIFIED)
+        self.assertEqual(profile.verification_attempts, 1)
+
+    @patch("core.views.verify_nin_and_bvn")
+    def test_verify_accepts_account_name_matching_bvn_names(self, verify_mock):
+        verify_mock.return_value = {
+            "nin": {"status": "verified"},
+            "bvn": {
+                "status": "verified",
+                "data": {"firstName": "Inspection", "lastName": "Agent"},
+            },
+        }
+        self._complete_agent_profile()
+        self._complete_verification_payment()
+        self.client.force_authenticate(user=self.agent)
+
+        response = self.client.post("/api/v1/agents/verify", {}, format="json")
+
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertEqual(response.json()["verification_status"], "verified")
 
     def test_unverified_agent_cannot_claim_pending_listing(self):
         self.client.force_authenticate(user=self.agent)
@@ -12480,8 +12521,8 @@ class InspectionRequestTests(TestCase):
             first_name="PIO",
             last_name="Officer",
             date_of_birth=date(1992, 4, 10),
-            city=city,
-            state_of_origin=state,
+            city_of_residence=city,
+            state_of_residence=state,
             whatsapp_number=whatsapp_number,
             verification_status=AgentProfile.VerificationStatus.VERIFIED,
         )

@@ -1,13 +1,16 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { HiChatAlt2, HiMail, HiPhone, HiSupport } from 'react-icons/hi'
 
 import { useAuth } from '@/hooks/useAuth'
 import DashboardBackButton from '@/components/DashboardBackButton'
+import SupportEmailModal from '@/components/SupportEmailModal'
 import SupportFaqAccordion from '@/components/SupportFaqAccordion'
 import { agentSupportFaqs, landlordSupportFaqs, tenantSupportContacts, tenantSupportFaqs } from '@/lib/tenantSupport'
 
 export default function TenantSupportPage() {
     const { user } = useAuth()
+    const [emailModalOpen, setEmailModalOpen] = useState(false)
     const role = user?.role === 'landlord' ? 'landlord' : user?.role === 'agent' ? 'agent' : 'tenant'
     const dashboardPath = !user?.id
         ? '/'
@@ -28,16 +31,16 @@ export default function TenantSupportPage() {
                 </div>
 
                 <div className="mt-6 grid gap-4 md:grid-cols-3">
-                    <a href={`tel:${tenantSupportContacts.phone.replace(/\s+/g, '')}`} className="card p-5 hover:shadow-lg transition">
+                    <div className="card p-5">
                         <HiPhone className="h-7 w-7 text-blue-600" />
                         <p className="mt-4 text-sm font-medium text-gray-500">Support number</p>
-                        <p className="mt-1 text-lg font-semibold text-gray-900">{tenantSupportContacts.phone}</p>
-                    </a>
-                    <a href={`mailto:${tenantSupportContacts.email}`} className="card p-5 hover:shadow-lg transition">
+                        <p className="mt-1 select-all text-lg font-semibold text-gray-900">{tenantSupportContacts.phone}</p>
+                    </div>
+                    <button type="button" onClick={() => setEmailModalOpen(true)} className="card p-5 text-left hover:shadow-lg transition">
                         <HiMail className="h-7 w-7 text-emerald-600" />
                         <p className="mt-4 text-sm font-medium text-gray-500">Email</p>
                         <p className="mt-1 text-lg font-semibold text-gray-900">{tenantSupportContacts.email}</p>
-                    </a>
+                    </button>
                     <Link to="/support-chat" className="card p-5 hover:shadow-lg transition">
                         <HiChatAlt2 className="h-7 w-7 text-purple-600" />
                         <p className="mt-4 text-sm font-medium text-gray-500">Chat</p>
@@ -55,6 +58,11 @@ export default function TenantSupportPage() {
                     </div>
                 </div>
             </div>
+            <SupportEmailModal
+                isOpen={emailModalOpen}
+                email={tenantSupportContacts.email}
+                onClose={() => setEmailModalOpen(false)}
+            />
         </div>
     )
 }

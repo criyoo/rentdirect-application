@@ -20,10 +20,14 @@ import {
     MOBILE_ERROR_MESSAGE,
     MOBILE_INPUT_PATTERN,
     MOBILE_INPUT_PLACEHOLDER,
+    WHATSAPP_ERROR_MESSAGE,
+    WHATSAPP_INPUT_PATTERN,
+    WHATSAPP_INPUT_PLACEHOLDER,
     formatCacRegistrationNumberInput,
     formatIdentityNumberInput,
     validateCacRegistrationNumber,
     validateMobile,
+    validateWhatsapp,
 } from '@/lib/profile'
 import { nigerianBanks } from '@/lib/banks'
 import { SUBSCRIPTIONS_ENABLED } from '@/lib/featureFlags'
@@ -620,7 +624,7 @@ export default function LandlordVerificationPage() {
             if (contactNumberError) {
                 nextErrors.contact_number = contactNumberError
             }
-            const whatsappError = validateMobile(individualForm.whatsapp_number)
+            const whatsappError = validateWhatsapp(individualForm.whatsapp_number)
             if (whatsappError) {
                 nextErrors.whatsapp_number = whatsappError
             }
@@ -669,7 +673,7 @@ export default function LandlordVerificationPage() {
             if (companyPhoneError) {
                 nextErrors.company_phone_number = companyPhoneError
             }
-            const corporateWhatsappError = validateMobile(corporateForm.whatsapp_number)
+            const corporateWhatsappError = validateWhatsapp(corporateForm.whatsapp_number)
             if (corporateWhatsappError) {
                 nextErrors.whatsapp_number = corporateWhatsappError
             }
@@ -1145,10 +1149,10 @@ export default function LandlordVerificationPage() {
                                                     name="whatsapp_number"
                                                     type="tel"
                                                     inputMode="tel"
-                                                    pattern={MOBILE_INPUT_PATTERN}
-                                                    maxLength={14}
-                                                    title={MOBILE_ERROR_MESSAGE}
-                                                    placeholder={MOBILE_INPUT_PLACEHOLDER}
+                                                    pattern={WHATSAPP_INPUT_PATTERN}
+                                                    maxLength={16}
+                                                    title={WHATSAPP_ERROR_MESSAGE}
+                                                    placeholder={WHATSAPP_INPUT_PLACEHOLDER}
                                                     value={individualForm.whatsapp_number}
                                                     onChange={handleIndividualChange}
                                                 />
@@ -1313,10 +1317,10 @@ export default function LandlordVerificationPage() {
                                                 name="whatsapp_number"
                                                 type="tel"
                                                 inputMode="tel"
-                                                pattern={MOBILE_INPUT_PATTERN}
-                                                maxLength={14}
-                                                title={MOBILE_ERROR_MESSAGE}
-                                                placeholder={MOBILE_INPUT_PLACEHOLDER}
+                                                pattern={WHATSAPP_INPUT_PATTERN}
+                                                maxLength={16}
+                                                title={WHATSAPP_ERROR_MESSAGE}
+                                                placeholder={WHATSAPP_INPUT_PLACEHOLDER}
                                                 value={corporateForm.whatsapp_number}
                                                 onChange={handleCorporateChange}
                                             />

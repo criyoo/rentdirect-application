@@ -21,10 +21,14 @@ import {
     NIN_ERROR_MESSAGE,
     NIN_INPUT_PATTERN,
     NIN_INPUT_PLACEHOLDER,
+    WHATSAPP_ERROR_MESSAGE,
+    WHATSAPP_INPUT_PATTERN,
+    WHATSAPP_INPUT_PLACEHOLDER,
     formatIdentityNumberInput,
     validateBvn,
     validateMobile,
     validateNin,
+    validateWhatsapp,
 } from '@/lib/profile'
 import { ServicePayment, User } from '@/types'
 
@@ -40,7 +44,7 @@ const schema = z.object({
     lga: z.string().min(1, 'LGA is required'),
     email: z.string().min(1, 'Email is required').email('Enter a valid email address.'),
     mobile: z.string().optional().refine((value) => !value || !validateMobile(value), MOBILE_ERROR_MESSAGE),
-    whatsapp_number: z.string().optional().refine((value) => !value || !validateMobile(value), MOBILE_ERROR_MESSAGE),
+    whatsapp_number: z.string().optional().refine((value) => !value || !validateWhatsapp(value), WHATSAPP_ERROR_MESSAGE),
     employment_status: z.string().min(1, 'Employment status is required'),
     nin_number: z.string().min(1, 'NIN is required').refine((value) => !validateNin(value), NIN_ERROR_MESSAGE),
     bvn_number: z.string().min(1, 'BVN is required').refine((value) => !validateBvn(value), BVN_ERROR_MESSAGE),
@@ -181,6 +185,14 @@ const mobileInputProps = {
     pattern: MOBILE_INPUT_PATTERN,
     maxLength: 14,
     title: MOBILE_ERROR_MESSAGE,
+}
+
+const whatsappInputProps = {
+    type: 'tel',
+    inputMode: 'tel' as const,
+    pattern: WHATSAPP_INPUT_PATTERN,
+    maxLength: 16,
+    title: WHATSAPP_ERROR_MESSAGE,
 }
 
 const ninInputProps = {
@@ -569,7 +581,7 @@ export default function TenantVerificationPage() {
                                 <TextInput register={register} name="mobile" placeholder={MOBILE_INPUT_PLACEHOLDER} error={errors.mobile?.message} {...mobileInputProps} />
                             </InputRow>
                             <InputRow label="WhatsApp Number (optional)" error={errors.whatsapp_number?.message}>
-                                <TextInput register={register} name="whatsapp_number" placeholder={MOBILE_INPUT_PLACEHOLDER} error={errors.whatsapp_number?.message} {...mobileInputProps} />
+                                <TextInput register={register} name="whatsapp_number" placeholder={WHATSAPP_INPUT_PLACEHOLDER} error={errors.whatsapp_number?.message} {...whatsappInputProps} />
                             </InputRow>
                         </div>
 

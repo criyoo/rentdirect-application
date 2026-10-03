@@ -9,10 +9,12 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from .profile_validation import (
+    WHATSAPP_ERROR_MESSAGE,
     normalize_residence,
     normalize_state_of_origin,
     is_valid_mobile,
     is_valid_nin,
+    is_valid_whatsapp_number,
 )
 from .inspection_checklist import validate_inspection_responses
 from .models import (
@@ -176,10 +178,8 @@ class UserSerializer(serializers.ModelSerializer):
 
     def validate_whatsapp_number(self, value):
         value = (value or "").strip()
-        if value and not is_valid_mobile(value):
-            raise serializers.ValidationError(
-                "Enter an 11 digit mobile number starting with 07, 08, or 09, or a +234 number starting with 70, 71, 80, 81, 90, or 91."
-            )
+        if value and not is_valid_whatsapp_number(value):
+            raise serializers.ValidationError(WHATSAPP_ERROR_MESSAGE)
         return value
 
     def validate_nin_number(self, value):
@@ -271,8 +271,8 @@ class UserSerializer(serializers.ModelSerializer):
 
             profile_whatsapp = str(verification_profile.get("whatsapp_number") or "").strip()
             if profile_whatsapp:
-                if not is_valid_mobile(profile_whatsapp):
-                    raise serializers.ValidationError({"landlord_verification_profile": {"whatsapp_number": "Enter a valid mobile number."}})
+                if not is_valid_whatsapp_number(profile_whatsapp):
+                    raise serializers.ValidationError({"landlord_verification_profile": {"whatsapp_number": WHATSAPP_ERROR_MESSAGE}})
                 attrs.setdefault("whatsapp_number", profile_whatsapp)
 
             profile_state_of_origin = str(verification_profile.get("state_of_origin") or "").strip()
@@ -2080,7 +2080,8 @@ AGENT_PROFILE_FIELDS = [
     "lga_of_origin",
     "mobile",
     "whatsapp_number",
-    "city",
+    "state_of_residence",
+    "city_of_residence",
     "residential_address",
     "nin_number",
     "bvn_number",
@@ -2212,6 +2213,12 @@ class AgentProfileSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Enter an 11 digit mobile number starting with 07, 08, or 09, or a +234 number starting with 70, 71, 80, 81, 90, or 91."
             )
+        return value
+
+    def validate_whatsapp_number(self, value):
+        value = (value or "").strip()
+        if value and not is_valid_whatsapp_number(value):
+            raise serializers.ValidationError(WHATSAPP_ERROR_MESSAGE)
         return value
 
     def validate(self, attrs):

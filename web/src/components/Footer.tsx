@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import BrandLogo from '@/components/BrandLogo'
+import SupportEmailModal from '@/components/SupportEmailModal'
 import {
     HiArrowRight,
     HiBadgeCheck,
@@ -70,6 +72,7 @@ const AGENT_PUBLIC_PATHS = new Set([
 export default function Footer() {
     const { user } = useAuth()
     const location = useLocation()
+    const [emailModalAddress, setEmailModalAddress] = useState('')
     const isAgentPublicPage = AGENT_PUBLIC_PATHS.has(location.pathname)
     const isAgent = user?.role === 'agent'
     const isAnonymous = !user?.id
@@ -156,13 +159,14 @@ export default function Footer() {
                                     Search homes
                                     <HiArrowRight className="h-3 w-3" />
                                 </Link>
-                                <a
-                                    href="mailto:info@rentdirect.homes"
+                                <button
+                                    type="button"
+                                    onClick={() => setEmailModalAddress('info@rentdirect.homes')}
                                     className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/15 bg-white/5 px-5 py-3 text-sm font-semibold text-slate-100 hover:border-blue-300/40 hover:bg-white/10"
                                 >
                                     <HiMail className="h-3 w-3 text-blue-200" />
                                     info@rentdirect.homes
-                                </a>
+                                </button>
                             </div>
 
                             <div className="mt-auto grid auto-rows-fr items-stretch gap-3 sm:grid-cols-3">
@@ -258,9 +262,10 @@ export default function Footer() {
                             <div className={`min-w-0 sm:col-span-2 ${isAnonymous ? 'xl:col-span-4' : 'xl:col-span-3'}`}>
                                 <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-200">Support</p>
                                 <div className="mt-8 grid auto-rows-fr items-stretch gap-3 md:grid-cols-3">
-                                    <a
-                                        href="mailto:info@rentdirect.homes"
-                                        className="flex h-full min-h-36 flex-col rounded-lg border border-white/10 bg-white/5 p-4 text-sm text-slate-300 hover:border-blue-300/40 hover:bg-white/10"
+                                    <button
+                                        type="button"
+                                        onClick={() => setEmailModalAddress('support@rentdirect.homes')}
+                                        className="flex h-full min-h-36 flex-col rounded-lg border border-white/10 bg-white/5 p-4 text-left text-sm text-slate-300 hover:border-blue-300/40 hover:bg-white/10"
                                     >
                                         <span className="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-blue-500/15 text-blue-100">
                                             <HiMail className="h-5 w-5" />
@@ -269,7 +274,7 @@ export default function Footer() {
                                             <span className="block font-semibold text-white">Email support</span>
                                             <span className="mt-1 block">support@rentdirect.homes</span>
                                         </span>
-                                    </a>
+                                    </button>
 
                                     <div className="flex h-full min-h-36 flex-col rounded-lg border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
                                         <span className="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-blue-500/15 text-blue-100">
@@ -338,6 +343,11 @@ export default function Footer() {
                     </div>
                 </div>
             </div>
+            <SupportEmailModal
+                isOpen={Boolean(emailModalAddress)}
+                email={emailModalAddress}
+                onClose={() => setEmailModalAddress('')}
+            />
         </footer>
     )
 }
