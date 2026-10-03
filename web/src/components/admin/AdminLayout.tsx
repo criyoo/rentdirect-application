@@ -101,6 +101,15 @@ export default function AdminLayout({ children }: AdminLayoutProps)
                                 Listings
                             </Link>
                             <Link
+                                to="/admin/support"
+                                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 ${isActiveRoute('/admin/support')
+                                    ? 'bg-purple-100 text-purple-700'
+                                    : 'text-gray-600 hover:text-purple-600 hover:bg-purple-50'
+                                    }`}
+                            >
+                                Support
+                            </Link>
+                            <Link
                                 to="/admin/settings"
                                 className={`px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 ${isActiveRoute('/admin/settings')
                                     ? 'bg-purple-100 text-purple-700'

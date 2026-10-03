@@ -11,6 +11,7 @@ import {
     HiSupport,
     HiUser,
     HiUsers,
+    HiChatAlt,
     HiChatAlt2,
 } from 'react-icons/hi'
 
@@ -29,6 +30,7 @@ const AGENT_DASHBOARD_ACTIONS = [
     { to: '/dashboard/settings', label: 'Settings', Icon: HiCog, colorClass: 'text-green-800' },
     { to: '/feedback', label: 'Feedback', Icon: HiChatAlt2, colorClass: 'text-lime-600' },
     { to: '/support', label: 'Support', Icon: HiSupport, colorClass: 'text-emerald-700' },
+    { to: '/support-chat', label: 'Support Chat', Icon: HiChatAlt, colorClass: 'text-teal-700' },
 ] as const
 
 const INSPECTION_STATUS_LABELS: Record<string, string> = {

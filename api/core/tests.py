@@ -10724,6 +10724,69 @@ class SupportChatMessageTests(TestCase):
         self.assertEqual([item["content"] for item in results], ["Tenant thread only."])
         self.assertEqual(results[0]["sender_role"], AppUser.Role.TENANT)
 
+    def test_admin_can_list_support_threads_grouped_by_role(self):
+        tenant = AppUser.objects.create_user(
+            email="thread-tenant@example.com",
+            password="password-123",
+            name="Thread Tenant",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        agent = AppUser.objects.create_user(
+            email="thread-agent@example.com",
+            password="password-123",
+            name="Thread Agent",
+            role=AppUser.Role.AGENT,
+            email_verified=True,
+        )
+        admin = AppUser.objects.create_user(
+            email="thread-admin@example.com",
+            password="password-123",
+            name="Thread Admin",
+            role=AppUser.Role.ADMIN,
+            email_verified=True,
+            is_staff=True,
+        )
+        SupportChatMessage.objects.create(thread_user=tenant, thread_role=AppUser.Role.TENANT, sender=tenant, sender_role=AppUser.Role.TENANT, content="Tenant help please.")
+        SupportChatMessage.objects.create(thread_user=tenant, thread_role=AppUser.Role.TENANT, sender=admin, sender_role=AppUser.Role.ADMIN, content="Admin reply to tenant.")
+        SupportChatMessage.objects.create(thread_user=agent, thread_role=AppUser.Role.AGENT, sender=agent, sender_role=AppUser.Role.AGENT, content="PIO help please.")
+
+        client = APIClient()
+        client.force_authenticate(user=admin)
+
+        response = client.get("/api/v1/support-chat/messages/threads")
+        self.assertEqual(response.status_code, 200, response.json())
+        threads = response.json()
+        self.assertEqual(len(threads), 2)
+        by_user = {thread["thread_user_id"]: thread for thread in threads}
+        tenant_thread = by_user[str(tenant.id)]
+        self.assertEqual(tenant_thread["thread_role"], AppUser.Role.TENANT)
+        self.assertEqual(tenant_thread["last_message"], "Admin reply to tenant.")
+        self.assertTrue(tenant_thread["is_last_from_support"])
+        self.assertEqual(tenant_thread["message_count"], 2)
+        self.assertEqual(tenant_thread["user_email"], tenant.email)
+
+        filtered = client.get("/api/v1/support-chat/messages/threads?thread_role=agent")
+        self.assertEqual(filtered.status_code, 200, filtered.json())
+        filtered_threads = filtered.json()
+        self.assertEqual(len(filtered_threads), 1)
+        self.assertEqual(filtered_threads[0]["thread_role"], AppUser.Role.AGENT)
+        self.assertEqual(filtered_threads[0]["last_message"], "PIO help please.")
+        self.assertFalse(filtered_threads[0]["is_last_from_support"])
+
+    def test_non_admin_cannot_list_support_threads(self):
+        tenant = AppUser.objects.create_user(
+            email="thread-denied@example.com",
+            password="password-123",
+            name="Denied Tenant",
+            role=AppUser.Role.TENANT,
+            email_verified=True,
+        )
+        client = APIClient()
+        client.force_authenticate(user=tenant)
+        response = client.get("/api/v1/support-chat/messages/threads")
+        self.assertEqual(response.status_code, 403)
+
 
 class LandlordPublicProfileTests(TestCase):
     def test_public_landlord_profile_returns_metrics_and_reviews(self):

@@ -52,6 +52,7 @@ import AdminVerificationPage from './pages/shared/admin/AdminVerificationPage'
 import AdminLoginPage from './pages/shared/admin/AdminLoginPage'
 import AdminDashboardPage from './pages/shared/admin/AdminDashboardPage'
 import AdminRegisterPage from './pages/shared/admin/AdminRegisterPage'
+import AdminSupportChatPage from './pages/shared/admin/AdminSupportChatPage'
 import AgentLandingPage from './pages/agents/AgentLandingPage'
 import AgentRegistrationPage from './pages/agents/AgentRegistrationPage'
 import AgentLoginPage from './pages/agents/AgentLoginPage'
@@ -289,6 +290,7 @@ function App() {
                                     <Route path="/admin/register" element={<AdminRegisterPage />} />
                                     <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
                                     <Route path="/admin/verification" element={<AdminVerificationPage />} />
+                                    <Route path="/admin/support" element={<AdminSupportChatPage />} />
                                 </Routes>
                             </AdminRouteWrapper>
                         </AccountFreezeGate>
