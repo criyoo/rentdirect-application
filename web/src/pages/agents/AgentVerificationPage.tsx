@@ -240,7 +240,14 @@ export default function AgentVerificationPage() {
                     <div className="mb-8 flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 p-4 text-green-900">
                         <HiCheckCircle className="h-6 w-6" />
                         <div>
-                            <p className="font-semibold">Your PIO account is verified.</p>
+                            <p className="font-semibold">
+                                Your PIO account is verified.
+                                {profile?.verification_badge && (
+                                    <span className="ml-2 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
+                                        {profile.verification_badge}
+                                    </span>
+                                )}
+                            </p>
                             <p className="text-sm">
                                 You can now claim in-person inspection requests from your{' '}
                                 <Link to="/agents/dashboard" className="font-semibold underline">PIO dashboard</Link>.

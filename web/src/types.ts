@@ -31,6 +31,7 @@ export type User = {
     is_verified?: boolean
     verification_payment_required?: boolean
     verification_attempts?: number
+    verification_badge?: string
     account_frozen?: boolean
     account_frozen_at?: string | null
     account_frozen_until?: string | null
@@ -571,6 +572,7 @@ export interface AgentProfile {
     verification_attempts?: number
     verification_payment?: ServicePayment | null
     verification_payment_required?: boolean
+    verification_badge?: string
     referral_code?: string
     mobile_warning?: string
     created_at?: string

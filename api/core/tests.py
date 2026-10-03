@@ -3238,7 +3238,7 @@ class VerificationRequestViewSetTests(TestCase):
             payment_date=timezone.now(),
         )
 
-    def test_tenant_nin_lga_is_validated_only_when_present(self):
+    def test_tenant_nin_lga_is_not_validated(self):
         from core.dikript_verification import validate_nin_payload as validate_dikript_nin_payload
         from core.prembly_verification import validate_nin_payload as validate_prembly_nin_payload
 
@@ -3254,15 +3254,12 @@ class VerificationRequestViewSetTests(TestCase):
             (validate_dikript_nin_payload, self._nin_payload()),
             (validate_prembly_nin_payload, self._prembly_nin_payload(phone="09080350066")),
         ):
-            payload["data"]["self_origin_lga"] = "Surulere"
-            mismatches, _ = validate_nin_payload(input_data, payload["data"])
-            self.assertEqual(mismatches["lga"], "LGA does not match the NIN record.")
+            for lga_value in ("Surulere", ""):
+                payload["data"]["self_origin_lga"] = lga_value
+                mismatches, _ = validate_nin_payload(input_data, payload["data"])
+                self.assertNotIn("lga", mismatches)
 
-            payload["data"]["self_origin_lga"] = ""
-            mismatches, _ = validate_nin_payload(input_data, payload["data"])
-            self.assertNotIn("lga", mismatches)
-
-    def test_landlord_bvn_lga_matches_a_contained_value(self):
+    def test_bvn_lga_is_not_validated(self):
         from core.dikript_verification import validate_bvn_payload as validate_dikript_bvn_payload
         from core.prembly_verification import validate_bvn_payload as validate_prembly_bvn_payload
 
@@ -3272,7 +3269,7 @@ class VerificationRequestViewSetTests(TestCase):
             "last_name": "Aluya",
             "date_of_birth": "1977-02-06",
             "gender": "Male",
-            "lga": "Surulere",
+            "lga": "Completely Different LGA",
             "nationality": "Nigerian",
             "state_of_origin": "Delta",
             "mobile": "09080350066",
@@ -3281,7 +3278,6 @@ class VerificationRequestViewSetTests(TestCase):
             (validate_dikript_bvn_payload, self._bvn_payload()),
             (validate_prembly_bvn_payload, self._prembly_bvn_payload()),
         ):
-            payload["data"]["lgaOfOrigin"] = "Surulere, Lagos State, Nigeria"
             self.assertNotIn("lga", validate_bvn_payload(input_data, payload["data"]))
 
     def test_dikript_lookup_stores_successful_nin_bvn_and_cac_records(self):
@@ -3486,6 +3482,210 @@ class VerificationRequestViewSetTests(TestCase):
 
         self.assertFalse(NinVerificationRecord.objects.filter(provider="prembly", nin="91231161558").exists())
         self.assertFalse(BvnVerificationRecord.objects.filter(provider="prembly", bvn="22347235093").exists())
+
+    def _dikript_joy_nin_payload(self):
+        return {
+            "status": True,
+            "message": "Successful",
+            "transactionRef": "NIN-REF",
+            "data": {
+                "firstName": "JOY",
+                "middleName": "CHINWE",
+                "surname": "TAIWO",
+                "birthDate": "10-04-1988",
+                "gender": "f",
+                "telephoneNo": "08091234567",
+                "nin": "80090664009",
+                "birthcountry": "nigeria",
+                "selfOriginLga": "",
+                "selfOriginState": "",
+                "selfOriginPlace": "",
+            },
+        }
+
+    def _dikript_joy_bvn_payload(self):
+        return {
+            "status": True,
+            "message": "Successful",
+            "transactionRef": "BVN-REF",
+            "data": {
+                "bvn": "22425350362",
+                "firstName": "JOY",
+                "middleName": "CHINWE",
+                "lastName": "TAIWO",
+                "dateOfBirth": "10-Apr-1988",
+                "phoneNumber1": "08095237164",
+                "gender": "Female",
+                "stateOfOrigin": "Lagos State",
+                "lgaOfOrigin": "Surulere, Lagos State",
+                "nationality": "Nigeria",
+            },
+        }
+
+    def _prembly_joy_nin_payload(self):
+        return {
+            "status": True,
+            "response_code": "00",
+            "message": "National Identity Number (NIN) verification successful",
+            "data": {
+                "firstname": "JOY",
+                "middlename": "CHINWE",
+                "surname": "TAIWO",
+                "birthdate": "10-04-1988",
+                "gender": "f",
+                "telephoneno": "08091234567",
+                "nin": "80090664009",
+                "birthcountry": "nigeria",
+                "birthlga": "",
+                "self_origin_lga": "",
+                "self_origin_place": "",
+            },
+            "verification_status": "verified",
+        }
+
+    def _prembly_joy_bvn_payload(self):
+        return {
+            "status": True,
+            "response_code": "00",
+            "message": "Bank Verification Number (BVN) verification successful",
+            "data": {
+                "bvn": "22425350362",
+                "firstName": "JOY",
+                "middleName": "CHINWE",
+                "lastName": "TAIWO",
+                "dateOfBirth": "10-Apr-1988",
+                "phoneNumber1": "08095237164",
+                "gender": "Female",
+                "stateOfOrigin": "Lagos State",
+                "lgaOfOrigin": "Surulere, Lagos State",
+                "nationality": "Nigeria",
+            },
+            "verification_status": "verified",
+        }
+
+    def _joy_identity_input(self):
+        return {
+            "first_name": "Joy",
+            "middle_name": "",
+            "last_name": "Taiwo",
+            "date_of_birth": "1988-04-10",
+            "gender": "female",
+            "nationality": "Nigerian",
+            "state_of_origin": "Lagos",
+            "lga": "Surulere",
+            "country_of_birth": "Nigeria",
+            "mobile": "+2348091234567",
+        }
+
+    def _verify_joy(self, provider, input_data):
+        if provider == "dikript":
+            from core.dikript_verification import verify_nin_and_bvn
+
+            with patch(
+                "core.dikript_verification.dikript_lookup",
+                side_effect=[self._dikript_joy_nin_payload(), self._dikript_joy_bvn_payload()],
+            ):
+                return verify_nin_and_bvn(dict(input_data), "80090664009", "22425350362")
+        from core.prembly_verification import verify_nin_and_bvn
+
+        with patch(
+            "core.prembly_verification.prembly_post",
+            side_effect=[self._prembly_joy_nin_payload(), self._prembly_joy_bvn_payload()],
+        ):
+            return verify_nin_and_bvn(dict(input_data), "80090664009", "22425350362")
+
+    def test_verify_nin_and_bvn_full_match_returns_excellent_badge(self):
+        cache.clear()
+        self.addCleanup(cache.clear)
+        for provider in ("dikript", "prembly"):
+            nin_payload, bvn_payload = self._verify_joy(provider, self._joy_identity_input())
+            self.assertEqual(nin_payload["verification_badge"], "Verification: Excellent", provider)
+            self.assertEqual(bvn_payload["verification_badge"], "Verification: Excellent", provider)
+
+    def test_verify_nin_and_bvn_mandatory_field_matches_on_either_record(self):
+        cache.clear()
+        self.addCleanup(cache.clear)
+        # Phone only exists on the BVN record -> still passes mandatory checks.
+        input_data = {**self._joy_identity_input(), "mobile": "08095237164"}
+        for provider in ("dikript", "prembly"):
+            nin_payload, _ = self._verify_joy(provider, input_data)
+            self.assertEqual(nin_payload["verification_badge"], "Verification: Excellent", provider)
+
+    def test_verify_nin_and_bvn_fails_when_mandatory_field_mismatches_both(self):
+        from rest_framework.exceptions import ValidationError
+
+        cache.clear()
+        self.addCleanup(cache.clear)
+        for field, value in (
+            ("first_name", "Janet"),
+            ("last_name", "Okafor"),
+            ("gender", "male"),
+            ("mobile", "08011112222"),
+        ):
+            input_data = {**self._joy_identity_input(), field: value}
+            for provider in ("dikript", "prembly"):
+                with self.assertRaises(ValidationError, msg=f"{provider} {field}"):
+                    self._verify_joy(provider, input_data)
+
+    def test_verify_nin_and_bvn_optional_mismatch_passes_with_good_badge(self):
+        cache.clear()
+        self.addCleanup(cache.clear)
+        for field, value in (
+            ("middle_name", "Chiamaka"),
+            ("nationality", "Ghanaian"),
+            ("lga", "Abeokuta"),
+            ("state_of_origin", "Ogun"),
+            ("country_of_birth", "Ghana"),
+        ):
+            input_data = {**self._joy_identity_input(), field: value}
+            for provider in ("dikript", "prembly"):
+                nin_payload, _ = self._verify_joy(provider, input_data)
+                self.assertEqual(nin_payload["verification_badge"], "Verification: Good", f"{provider} {field}")
+
+    def test_verify_nin_and_bvn_normalizes_phone_gender_dates_and_case(self):
+        cache.clear()
+        self.addCleanup(cache.clear)
+        input_data = {
+            **self._joy_identity_input(),
+            "first_name": "joy",
+            "last_name": "TAIWO",
+            "date_of_birth": "10/04/1988",
+            "gender": "F",
+            "mobile": "  +234 809 123 4567 ",
+        }
+        for provider in ("dikript", "prembly"):
+            nin_payload, _ = self._verify_joy(provider, input_data)
+            self.assertEqual(nin_payload["verification_badge"], "Verification: Excellent", provider)
+
+        for mobile in ("2348091234567", "08091234567", "+2348091234567"):
+            input_data = {**self._joy_identity_input(), "mobile": mobile}
+            for provider in ("dikript", "prembly"):
+                self._verify_joy(provider, input_data)  # passes only without ValidationError
+
+    def test_verify_nin_and_bvn_rejects_submitted_number_not_on_record(self):
+        from rest_framework.exceptions import ValidationError
+
+        cache.clear()
+        self.addCleanup(cache.clear)
+        from core.dikript_verification import verify_nin_and_bvn as dikript_verify
+
+        with patch(
+            "core.dikript_verification.dikript_lookup",
+            side_effect=[self._dikript_joy_nin_payload(), self._dikript_joy_bvn_payload()],
+        ):
+            with self.assertRaises(ValidationError) as error:
+                dikript_verify(self._joy_identity_input(), "80090664000", "22425350362")
+        self.assertIn("nin_number", error.exception.detail)
+
+        from core.prembly_verification import verify_nin_and_bvn as prembly_verify
+
+        with patch(
+            "core.prembly_verification.prembly_post",
+            side_effect=[self._prembly_joy_nin_payload(), self._prembly_joy_bvn_payload()],
+        ):
+            with self.assertRaises(ValidationError) as error:
+                prembly_verify(self._joy_identity_input(), "80090664009", "22425350360")
+        self.assertIn("bvn_number", error.exception.detail)
 
     @patch("core.dikript_verification.dikript_lookup")
     def test_tenant_profile_submission_verifies_nin_and_bvn(self, dikript_lookup_mock):
@@ -3761,17 +3961,17 @@ class VerificationRequestViewSetTests(TestCase):
                 "middle_name": "Odezi",
                 "last_name": "Aluya",
                 "date_of_birth": "1977-02-06",
-                "gender": "Male",
+                "gender": "Female",
                 "nationality": "Nigerian",
-                "state_of_origin": "Delta",
-                "lga": "Wrong LGA",
+                "state_of_origin": "Wrong State",
+                "lga": "Isoko North",
                 "employment_status": "Employed",
             },
             format="json",
         )
 
         self.assertEqual(response.status_code, 400, response.json())
-        self.assertIn("lga", response.json())
+        self.assertIn("gender", response.json())
         self.assertEqual(dikript_lookup_mock.call_count, 2)
 
     @patch("core.dikript_verification.dikript_lookup")
@@ -3837,18 +4037,18 @@ class VerificationRequestViewSetTests(TestCase):
         client = APIClient()
         client.force_authenticate(user=user)
         payload = self._complete_tenant_profile_payload()
-        payload["lga"] = "Wrong LGA"
+        payload["gender"] = "Female"
 
         for _ in range(3):
             response = client.post("/api/v1/users/me/tenant-profile", payload, format="json")
             self.assertEqual(response.status_code, 400, response.json())
-            self.assertIn("lga", response.json())
+            self.assertIn("gender", response.json())
 
         user.refresh_from_db()
         self.assertEqual(user.tenant_verification_attempts, 3)
         self.assertEqual(dikript_lookup_mock.call_count, 6)
 
-        payload["lga"] = "Isoko North"
+        payload["gender"] = "Male"
         response = client.post("/api/v1/users/me/tenant-profile", payload, format="json")
         self.assertIn(response.status_code, (200, 201), response.json())
         user.refresh_from_db()
@@ -4352,7 +4552,7 @@ class VerificationRequestViewSetTests(TestCase):
         self.assertEqual(request.identity_verification_status, VerificationRequest.VerificationProgressStatus.VERIFIED)
 
     @patch("core.dikript_verification.dikript_lookup")
-    def test_landlord_identification_warns_when_phone_matches_neither_nin_nor_bvn(self, dikript_lookup_mock):
+    def test_landlord_identification_fails_when_phone_matches_neither_nin_nor_bvn(self, dikript_lookup_mock):
         dikript_lookup_mock.side_effect = [
             self._nin_payload(phone="08011111111"),
             self._bvn_payload(phone="08022222222"),
@@ -4389,14 +4589,11 @@ class VerificationRequestViewSetTests(TestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, 201, response.json())
-        self.assertEqual(
-            response.json()["mobile_warning"],
-            "Warning: Mobile number does not match number register in NIN or BVN. Do you want to register this number?",
-        )
+        self.assertEqual(response.status_code, 400, response.json())
+        self.assertIn("mobile", response.json())
 
     @patch("core.dikript_verification.dikript_lookup")
-    def test_landlord_identification_warns_when_phone_is_missing(self, dikript_lookup_mock):
+    def test_landlord_identification_fails_when_phone_is_missing(self, dikript_lookup_mock):
         dikript_lookup_mock.side_effect = [self._nin_payload(), self._bvn_payload()]
         user = AppUser.objects.create_user(
             email="landlord-phone-required@example.com",
@@ -4430,11 +4627,8 @@ class VerificationRequestViewSetTests(TestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, 201, response.json())
-        self.assertEqual(
-            response.json()["mobile_warning"],
-            "Warning: You did not provide a contact number, please ensure you add a contact number in your profile",
-        )
+        self.assertEqual(response.status_code, 400, response.json())
+        self.assertIn("mobile", response.json())
         self.assertEqual(dikript_lookup_mock.call_count, 2)
 
     @patch("core.dikript_verification.dikript_lookup")

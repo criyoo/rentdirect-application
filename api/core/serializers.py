@@ -74,6 +74,7 @@ class UserSerializer(serializers.ModelSerializer):
     account_freeze_fee_percentage = serializers.SerializerMethodField()
     verification_payment_required = serializers.SerializerMethodField()
     verification_attempts = serializers.SerializerMethodField()
+    verification_badge = serializers.SerializerMethodField()
 
     def get_available_roles(self, obj):
         return available_roles(obj)
@@ -112,6 +113,15 @@ class UserSerializer(serializers.ModelSerializer):
         role = getattr(obj, "active_role", None) or obj.role
         return identity_verification_attempts_used(obj, role)
 
+    def get_verification_badge(self, obj) -> str:
+        role = getattr(obj, "active_role", None) or obj.role
+        latest = (
+            VerificationRequest.objects.filter(user=obj, role=role)
+            .order_by("-submitted_at")
+            .first()
+        )
+        return (latest.automated_decision or "") if latest else ""
+
     class Meta:
         model = AppUser
         fields = [
@@ -134,6 +144,7 @@ class UserSerializer(serializers.ModelSerializer):
             "is_verified",
             "verification_payment_required",
             "verification_attempts",
+            "verification_badge",
             "account_frozen",
             "account_frozen_at",
             "account_frozen_until",
@@ -2109,6 +2120,7 @@ class AgentProfileSerializer(serializers.ModelSerializer):
     is_verified = serializers.SerializerMethodField()
     verification_payment = serializers.SerializerMethodField()
     verification_payment_required = serializers.SerializerMethodField()
+    verification_badge = serializers.SerializerMethodField()
 
     class Meta:
         model = AgentProfile
@@ -2123,6 +2135,7 @@ class AgentProfileSerializer(serializers.ModelSerializer):
             "verification_attempts",
             "verification_payment",
             "verification_payment_required",
+            "verification_badge",
             "referral_code",
             "created_at",
             "updated_at",
@@ -2137,6 +2150,7 @@ class AgentProfileSerializer(serializers.ModelSerializer):
             "verification_attempts",
             "verification_payment",
             "verification_payment_required",
+            "verification_badge",
             "referral_code",
             "created_at",
             "updated_at",
@@ -2144,6 +2158,14 @@ class AgentProfileSerializer(serializers.ModelSerializer):
 
     def get_is_verified(self, obj) -> bool:
         return obj.verification_status == AgentProfile.VerificationStatus.VERIFIED
+
+    def get_verification_badge(self, obj) -> str:
+        latest = (
+            VerificationRequest.objects.filter(user=obj.user, role=AppUser.Role.AGENT)
+            .order_by("-submitted_at")
+            .first()
+        )
+        return (latest.automated_decision or "") if latest else ""
 
     def get_verification_payment(self, obj):
         payment = (

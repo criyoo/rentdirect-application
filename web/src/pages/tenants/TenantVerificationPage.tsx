@@ -460,7 +460,14 @@ export default function TenantVerificationPage() {
         <div className="min-h-screen bg-gray-50 py-10">
             <div className="max-w-6xl mx-auto px-2">
                 <div className="mb-8">
-                    <h1 className="text-3xl font-bold text-gray-900">Tenant Verification</h1>
+                    <div className="flex items-center gap-3">
+                        <h1 className="text-3xl font-bold text-gray-900">Tenant Verification</h1>
+                        {isVerificationLocked && me?.verification_badge && (
+                            <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
+                                {me.verification_badge}
+                            </span>
+                        )}
+                    </div>
                     <p className="text-gray-600 mt-2">Complete your biodata and identity numbers to start tenant verification.</p>
                 </div>
 
