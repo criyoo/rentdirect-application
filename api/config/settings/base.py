@@ -130,9 +130,19 @@ DATABASES = {
     "default": dj_database_url.parse(
         database_url(),
         conn_max_age=env_int("DB_CONN_MAX_AGE", 600),
+        conn_health_checks=env_bool("DB_CONN_HEALTH_CHECKS", True),
         ssl_require=env_bool("DATABASE_SSL_REQUIRE", not DEBUG),
     )
 }
+
+if DATABASES["default"].get("ENGINE") == "django.db.backends.postgresql":
+    _pg_options = DATABASES["default"].setdefault("OPTIONS", {})
+    # Bound connection establishment so an unreachable/stalled RDS Proxy fails
+    # fast instead of hanging requests past the ALB idle timeout.
+    _pg_options.setdefault("connect_timeout", env_int("DB_CONNECT_TIMEOUT", 10))
+    # Prepared statements pin RDS Proxy client connections (psycopg also issues
+    # DEALLOCATE ALL on rollback, which pins); disabled per psycopg3 guidance.
+    _pg_options.setdefault("prepare_threshold", None)
 
 def cache_url() -> str:
     return os.environ.get("VALKEY_URL", os.environ.get("REDIS_URL", "")).strip()
@@ -146,7 +156,11 @@ def cache_config() -> dict:
             "LOCATION": "rentdirect-local",
         }
 
-    options = {"CLIENT_CLASS": "django_redis.client.DefaultClient"}
+    options = {
+        "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        "SOCKET_CONNECT_TIMEOUT": env_int("CACHE_SOCKET_CONNECT_TIMEOUT", 5),
+        "SOCKET_TIMEOUT": env_int("CACHE_SOCKET_TIMEOUT", 5),
+    }
     auth_token = os.environ.get("VALKEY_AUTH_TOKEN", "").strip()
     if auth_token:
         options["PASSWORD"] = auth_token
