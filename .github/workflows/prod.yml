@@ -85,7 +85,7 @@ jobs:
               - "package.json"
               - "package-lock.json"
               - "turbo.json"
-              - ".github/workflows/$${{ vars.ENVIRONMENT }}.yml"
+              - ".github/workflows/${{ vars.ENVIRONMENT }}.yml"
 
 
   check-web:
@@ -222,6 +222,7 @@ jobs:
             api:
               - "api/**"
               - "worker/**"
+              - "scripts/admin.sh"
               - "scripts/deploy/api.sh"
               - "scripts/deploy/common.sh"
               - "scripts/migrate.sh"
@@ -309,4 +310,35 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Deploy API
-        run: bash scripts/deploy/api.sh ${{ vars.ENVIRONMENT }}
+        env:
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          DJANGO_SUPERUSER_PASSWORD: ${{ secrets.DJANGO_SUPERUSER_PASSWORD }}
+        run: ENSURE_SUPERUSER_AFTER_MIGRATION=1 bash scripts/deploy/api.sh ${{ vars.ENVIRONMENT }}
+
+
+  django-superuser:
+    needs:
+      - detect-api-changes
+      - deploy-api
+    if: needs.detect-api-changes.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: ${{ env.LINUX_PLATFORM }}
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Create Django Superuser
+        env:
+          ADMIN_EMAIL: ${{ vars.ADMIN_EMAIL }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          DJANGO_SUPERUSER_PASSWORD: ${{ secrets.DJANGO_SUPERUSER_PASSWORD }}
+        run: bash scripts/admin.sh ${{ vars.ENVIRONMENT }}

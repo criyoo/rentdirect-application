@@ -18,7 +18,7 @@ MIGRATE_ON_STARTUP="${MIGRATE_ON_STARTUP:-0}"
 SEED_DEMO_ACCOUNTS="${SEED_DEMO_ACCOUNTS:-0}"
 ENSURE_SUPERUSER_AFTER_MIGRATION="${ENSURE_SUPERUSER_AFTER_MIGRATION:-0}"
 ADMIN_EMAIL="${ADMIN_EMAIL:-admin@rentdirect.homes}"
-ADMIN_PASSWORD="${ADMIN_PASSWORD:-}"
+ADMIN_PASSWORD="${ADMIN_PASSWORD:-${DJANGO_SUPERUSER_PASSWORD:-}}"
 ADMIN_NAME="${ADMIN_NAME:-Admin}"
 MIGRATION_START_DB_INSTANCE="${MIGRATION_START_DB_INSTANCE:-0}"
 MIGRATION_RESOURCE_INIT_MAX_ATTEMPTS="${MIGRATION_RESOURCE_INIT_MAX_ATTEMPTS:-10}"
@@ -100,7 +100,9 @@ build_post_migration_command() {
   fi
 
   if [ "${ENSURE_SUPERUSER_AFTER_MIGRATION}" = "1" ]; then
-    command="${command}; if python manage.py shell -c \"from django.contrib.auth import get_user_model; import sys; sys.exit(0 if get_user_model().objects.filter(is_superuser=True).exists() else 1)\"; then echo 'Django superuser already exists; skipping admin bootstrap.'; else python manage.py ensure_superuser; fi"
+    # ensure_superuser is idempotent: it creates the admin when missing and
+    # resets the password/flags on every run so rotated credentials apply.
+    command="${command}; python manage.py ensure_superuser"
   fi
 
   printf '%s' "${command}"
