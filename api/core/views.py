@@ -114,10 +114,6 @@ from .financial_constants import (
     FEATURED_PROPERTY_MIN_DURATION_DAYS,
     FEATURED_PROPERTY_MONTHLY_DURATION_DAYS,
     FEATURED_PROPERTY_MONTHLY_FEE,
-    AGENT_VERIFICATION_FEE,
-    IDENTITY_VERIFICATION_ATTEMPTS_PER_PAYMENT,
-    LANDLORD_VERIFICATION_FEE,
-    TENANT_VERIFICATION_FEE,
     IN_PERSON_VERIFICATION_FEE,
     IN_PERSON_VERIFICATION_FEE_COMMERCIAL,
     LAWYER_SERVICE_FEE_RATE,
@@ -154,13 +150,16 @@ from .roles import (
     apply_active_role,
     available_roles,
     has_active_role,
-    identity_credentials_verified,
-    identity_verification_attempts_used,
+    completed_identity_verification_payment,
+    ensure_identity_verification_payment,
+    finalize_identity_verification,
+    identity_verification_fee_due,
     identity_verification_payment_required,
+    pending_identity_verification_payment,
     prefill_role_identity,
     record_role_event,
-    require_identity_verification_payment,
     require_unique_identity_credentials,
+    VERIFICATION_PAYMENT_PURPOSES,
     role_bound_user,
     track_identity_verification_attempt,
     users_with_role,
@@ -345,7 +344,6 @@ def verify_tenant_identity_or_raise(user, profile_data: dict, nin_number: str, b
     if not bvn_number:
         raise ValidationError({"bvn_number": "BVN is required."})
     require_unique_identity_credentials(user, nin_number, bvn_number)
-    require_identity_verification_payment(user, AppUser.Role.TENANT)
     track_identity_verification_attempt(user, AppUser.Role.TENANT)
     nin_payload, bvn_payload = verify_nin_and_bvn(identity_data, nin_number, bvn_number)
     return {"nin": nin_payload, "bvn": bvn_payload}
@@ -363,7 +361,10 @@ def tenant_verified_identity_matches(user, profile_data: dict, nin_number: str, 
     if VerificationRequest.objects.filter(
         user=user,
         role=AppUser.Role.TENANT,
-        identity_verification_status=VerificationRequest.VerificationProgressStatus.VERIFIED,
+        identity_verification_status__in=(
+            VerificationRequest.VerificationProgressStatus.AWAITING_PAYMENT,
+            VerificationRequest.VerificationProgressStatus.VERIFIED,
+        ),
     ).exists():
         stored_profile = normalize_tenant_verification_profile(user.tenant_verification_profile, user)
         if stored_profile:
@@ -424,7 +425,6 @@ def verify_landlord_identity_or_raise(user) -> dict[str, dict]:
             payloads = {"nin": {}, "bvn": {}}
         else:
             require_unique_identity_credentials(user, nin_number, bvn_number)
-            require_identity_verification_payment(user, AppUser.Role.LANDLORD)
             track_identity_verification_attempt(user, AppUser.Role.LANDLORD)
             nin_payload, bvn_payload = verify_nin_and_bvn(identity_data, nin_number, bvn_number)
             payloads = {
@@ -439,7 +439,6 @@ def verify_landlord_identity_or_raise(user) -> dict[str, dict]:
         registration_number = str(profile.get("cac_registration_number") or "").strip()
         if not registration_number:
             raise ValidationError({"cac_registration_number": "CAC registration number is required."})
-        require_identity_verification_payment(user, AppUser.Role.LANDLORD)
         track_identity_verification_attempt(user, AppUser.Role.LANDLORD)
         return {"cac": verify_cac(profile, registration_number)}
     return {}
@@ -722,7 +721,10 @@ def block_production_mock(feature: str) -> None:
 def verification_progress_to_legacy_status(progress_status: str) -> str:
     if progress_status == VerificationRequest.VerificationProgressStatus.VERIFIED:
         return VerificationRequest.Status.APPROVED
-    if progress_status == VerificationRequest.VerificationProgressStatus.PENDING:
+    if progress_status in (
+        VerificationRequest.VerificationProgressStatus.PENDING,
+        VerificationRequest.VerificationProgressStatus.AWAITING_PAYMENT,
+    ):
         return VerificationRequest.Status.PENDING
     return VerificationRequest.Status.REJECTED
 
@@ -997,30 +999,47 @@ def landlord_profile_has_mandatory_fields(user: AppUser) -> bool:
     return False
 
 
-def sync_tenant_profile_approval(user: AppUser, profile: TenantProfile) -> VerificationRequest:
-    if profile.status != TenantProfile.Status.APPROVED:
-        profile.status = TenantProfile.Status.APPROVED
-        profile.save(update_fields=["status", "updated_at"])
+def mark_identity_verification_outcome(user, role: str, verification: VerificationRequest) -> bool:
+    """Resolve a passed identity check: VERIFIED when already paid, otherwise
+    AWAITING_PAYMENT with the fee payment created. Returns True when awaiting
+    payment."""
+    already_verified = (
+        verification.identity_verification_status
+        == VerificationRequest.VerificationProgressStatus.VERIFIED
+    )
+    if already_verified or completed_identity_verification_payment(user, role):
+        verification.identity_verification_status = VerificationRequest.VerificationProgressStatus.VERIFIED
+        verification.status = VerificationRequest.Status.APPROVED
+        return False
+    verification.identity_verification_status = VerificationRequest.VerificationProgressStatus.AWAITING_PAYMENT
+    # Stay PENDING so is_verified_for_role does not treat the unpaid persona
+    # as verified; finalize_identity_verification approves it once paid.
+    verification.status = VerificationRequest.Status.PENDING
+    ensure_identity_verification_payment(user, role)
+    return True
 
+
+def sync_tenant_profile_verification_state(user: AppUser, profile: TenantProfile) -> VerificationRequest:
     verified_at = timezone.now()
     verification, _ = VerificationRequest.objects.get_or_create(
         user=user,
         role=AppUser.Role.TENANT,
         defaults={
             "request_type": VerificationRequest.RequestType.IDENTIFICATION,
-            "status": VerificationRequest.Status.APPROVED,
-            "identity_verification_status": VerificationRequest.VerificationProgressStatus.VERIFIED,
-            "verification_method": VerificationRequest.Method.AUTOMATED,
             "submitted_at": verified_at,
-            "reviewed_at": verified_at,
         },
     )
     verification.request_type = VerificationRequest.RequestType.IDENTIFICATION
     verification.submitted_at = verified_at
-    verification.identity_verification_status = VerificationRequest.VerificationProgressStatus.VERIFIED
     verification.verification_method = VerificationRequest.Method.AUTOMATED
-    verification.status = VerificationRequest.Status.APPROVED
     verification.reviewed_at = verified_at
+    awaiting_payment = mark_identity_verification_outcome(user, AppUser.Role.TENANT, verification)
+    target_status = (
+        TenantProfile.Status.PENDING if awaiting_payment else TenantProfile.Status.APPROVED
+    )
+    if profile.status != target_status:
+        profile.status = target_status
+        profile.save(update_fields=["status", "updated_at"])
     verification.save(
         update_fields=[
             "request_type",
@@ -3385,6 +3404,9 @@ def complete_service_payment(payment: ServicePayment, *, webhook_data=None) -> S
     if webhook_data is not None:
         payment.webhook_data = webhook_data
     payment.save(update_fields=["status", "payment_date", "webhook_data", "updated_at"])
+    verification_roles = {purpose: role for role, purpose in VERIFICATION_PAYMENT_PURPOSES.items()}
+    if payment.purpose in verification_roles:
+        finalize_identity_verification(payment.user, verification_roles[payment.purpose])
     if payment.purpose == ServicePayment.Purpose.IN_PERSON_VERIFICATION and payment.listing_id:
         # Paid in-person verification moves the listing into the inspection queue.
         Listing.objects.filter(pk=payment.listing_id).update(
@@ -4325,10 +4347,15 @@ class UserViewSet(viewsets.GenericViewSet):
                     request.user.whatsapp_number = verification_profile["whatsapp_number"]
                 request.user.save(update_fields=["nin_number", "bvn_number", "tenant_verification_profile", "whatsapp_number", "updated_at"])
                 new_profile = serializer.save(user=request.user)
-            vr = sync_tenant_profile_approval(request.user, new_profile)
+            vr = sync_tenant_profile_verification_state(request.user, new_profile)
             if new_profile.supporting_documents.exists():
                 vr.documents.set(new_profile.supporting_documents.all())
             response_data = TenantProfileSerializer(new_profile).data
+            if vr.identity_verification_status == VerificationRequest.VerificationProgressStatus.AWAITING_PAYMENT:
+                response_data["verification_payment"] = ServicePaymentSerializer(
+                    pending_identity_verification_payment(request.user, AppUser.Role.TENANT),
+                    context={"request": request},
+                ).data
             if mobile_warning:
                 response_data["mobile_warning"] = mobile_warning
             return Response(response_data, status=201)
@@ -4378,10 +4405,15 @@ class UserViewSet(viewsets.GenericViewSet):
                 request.user.whatsapp_number = verification_profile["whatsapp_number"]
             request.user.save(update_fields=["nin_number", "bvn_number", "tenant_verification_profile", "whatsapp_number", "updated_at"])
             updated_profile = serializer.save()
-        vr = sync_tenant_profile_approval(request.user, updated_profile)
+        vr = sync_tenant_profile_verification_state(request.user, updated_profile)
         if updated_profile.supporting_documents.exists():
             vr.documents.set(updated_profile.supporting_documents.all())
         response_data = TenantProfileSerializer(updated_profile).data
+        if vr.identity_verification_status == VerificationRequest.VerificationProgressStatus.AWAITING_PAYMENT:
+            response_data["verification_payment"] = ServicePaymentSerializer(
+                pending_identity_verification_payment(request.user, AppUser.Role.TENANT),
+                context={"request": request},
+            ).data
         if mobile_warning:
             response_data["mobile_warning"] = mobile_warning
         return Response(response_data)
@@ -4972,7 +5004,11 @@ class VerificationRequestBaseViewSet(viewsets.GenericViewSet):
         if identification_status == VerificationRequest.VerificationProgressStatus.VERIFIED:
             overall_progress = VerificationRequest.VerificationProgressStatus.VERIFIED
         elif (
-            identification_status == VerificationRequest.VerificationProgressStatus.PENDING
+            identification_status
+            in (
+                VerificationRequest.VerificationProgressStatus.PENDING,
+                VerificationRequest.VerificationProgressStatus.AWAITING_PAYMENT,
+            )
             or property_document_status == VerificationRequest.VerificationProgressStatus.PENDING
             or physical_property_status == VerificationRequest.VerificationProgressStatus.PENDING
         ):
@@ -5015,11 +5051,18 @@ class VerificationRequestBaseViewSet(viewsets.GenericViewSet):
         return verification
 
     def serialize_submission_response(self, verification, mobile_warning: str = ""):
-        message = (
-            "Verification approved automatically."
-            if verification.status == VerificationRequest.Status.APPROVED
-            else "Verification submitted for manual review."
+        awaiting_payment = (
+            verification.identity_verification_status
+            == VerificationRequest.VerificationProgressStatus.AWAITING_PAYMENT
         )
+        if awaiting_payment:
+            message = "Identity verified. Complete the verification payment to activate your account."
+        else:
+            message = (
+                "Verification approved automatically."
+                if verification.status == VerificationRequest.Status.APPROVED
+                else "Verification submitted for manual review."
+            )
         response_data = {
             "id": verification.id,
             "request_type": verification.request_type,
@@ -5029,6 +5072,11 @@ class VerificationRequestBaseViewSet(viewsets.GenericViewSet):
             "physical_property_status": verification.physical_property_status,
             "message": message,
         }
+        if awaiting_payment:
+            response_data["verification_payment"] = ServicePaymentSerializer(
+                pending_identity_verification_payment(verification.user, verification.role),
+                context={"request": self.request},
+            ).data
         if mobile_warning:
             response_data["mobile_warning"] = mobile_warning
         return response_data
@@ -5099,10 +5147,13 @@ class VerificationRequestBaseViewSet(viewsets.GenericViewSet):
     @action(detail=True, methods=["post"], url_path="approve", permission_classes=[IsAdminRole])
     def approve(self, request, pk=None):
         item = get_object_or_404(self.get_queryset(), id=pk)
-        item.status = VerificationRequest.Status.APPROVED
         if item.request_type == VerificationRequest.RequestType.IDENTIFICATION:
-            item.identity_verification_status = VerificationRequest.VerificationProgressStatus.VERIFIED
-        elif item.request_type == VerificationRequest.RequestType.PROPERTY_DOCUMENTS:
+            # The identity check passed; the role still activates only once the
+            # verification fee is paid.
+            mark_identity_verification_outcome(item.user, item.role, item)
+        else:
+            item.status = VerificationRequest.Status.APPROVED
+        if item.request_type == VerificationRequest.RequestType.PROPERTY_DOCUMENTS:
             item.property_document_verification_status = VerificationRequest.VerificationProgressStatus.VERIFIED
         item.reviewed_at = timezone.now()
         update_fields = ["status", "reviewed_at"]
@@ -5165,9 +5216,8 @@ class LandlordVerificationRequestViewSet(VerificationRequestBaseViewSet):
         if request_type == VerificationRequest.RequestType.IDENTIFICATION:
             if request.user.role == AppUser.Role.LANDLORD and request.user.landlord_verification_profile:
                 mobile_warning = extract_mobile_verification_warning(verify_landlord_identity_or_raise(request.user))
-                verification.identity_verification_status = VerificationRequest.VerificationProgressStatus.VERIFIED
+                mark_identity_verification_outcome(request.user, AppUser.Role.LANDLORD, verification)
                 verification.verification_method = VerificationRequest.Method.AUTOMATED
-                verification.status = VerificationRequest.Status.APPROVED
                 verification.reviewed_at = timezone.now()
                 _append_update_fields(update_fields, "identity_verification_status", "verification_method", "status", "reviewed_at")
                 return mobile_warning
@@ -5230,12 +5280,16 @@ class TenantVerificationRequestViewSet(VerificationRequestBaseViewSet):
                 request.user,
             )
             request.user.save(update_fields=["nin_number", "bvn_number", "tenant_verification_profile", "updated_at"])
-            if profile and profile.status != TenantProfile.Status.APPROVED:
-                profile.status = TenantProfile.Status.APPROVED
+            awaiting_payment = mark_identity_verification_outcome(
+                request.user, AppUser.Role.TENANT, verification
+            )
+            target_status = (
+                TenantProfile.Status.PENDING if awaiting_payment else TenantProfile.Status.APPROVED
+            )
+            if profile and profile.status != target_status:
+                profile.status = target_status
                 profile.save(update_fields=["status", "updated_at"])
-            verification.identity_verification_status = VerificationRequest.VerificationProgressStatus.VERIFIED
             verification.verification_method = VerificationRequest.Method.AUTOMATED
-            verification.status = VerificationRequest.Status.APPROVED
             verification.reviewed_at = timezone.now()
             _append_update_fields(update_fields, "identity_verification_status", "verification_method", "status", "reviewed_at")
             return mobile_warning
@@ -7089,31 +7143,40 @@ class ServicePaymentViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
                 ServicePayment.Purpose.AGENT_VERIFICATION: (
                     AppUser.Role.AGENT,
                     "Only property inspection officers can request PIO verification payments.",
-                    AGENT_VERIFICATION_FEE,
                 ),
                 ServicePayment.Purpose.TENANT_VERIFICATION: (
                     AppUser.Role.TENANT,
                     "Only tenants can request tenant verification payments.",
-                    TENANT_VERIFICATION_FEE,
                 ),
                 ServicePayment.Purpose.LANDLORD_VERIFICATION: (
                     AppUser.Role.LANDLORD,
                     "Only landlords can request landlord verification payments.",
-                    LANDLORD_VERIFICATION_FEE,
                 ),
             }
             if purpose in verification_roles:
-                verification_role, denied_message, verification_fee = verification_roles[purpose]
+                verification_role, denied_message = verification_roles[purpose]
                 if request.user.role != verification_role:
                     raise PermissionDenied(denied_message)
                 if booking_id:
                     raise ValidationError({"booking_id": "Identity verification is not linked to a booking."})
-                if (
-                    request.user.is_verified_for_role(verification_role)
-                    or identity_credentials_verified(request.user, verification_role)
-                ):
+                completed_payment = (
+                    ServicePayment.objects.filter(
+                        user=user, purpose=purpose, status=ServicePayment.Status.COMPLETED
+                    )
+                    .order_by("-created_at")
+                    .first()
+                )
+                if completed_payment is not None:
+                    return Response(self.get_serializer(completed_payment).data)
+                if request.user.is_verified_for_role(verification_role):
                     raise ValidationError("Your identity is already verified; no verification payment is required.")
-                amount = quantize_money(verification_fee)
+                if not identity_verification_fee_due(user, verification_role):
+                    raise ValidationError("Complete identity verification before paying the verification fee.")
+                pending = pending_identity_verification_payment(user, verification_role)
+                if pending is not None:
+                    return Response(self.get_serializer(pending).data)
+                payment = ensure_identity_verification_payment(user, verification_role)
+                return Response(self.get_serializer(payment).data, status=status.HTTP_201_CREATED)
             elif purpose == ServicePayment.Purpose.LAWYER_TENANCY:
                 if request.user.role != AppUser.Role.LANDLORD:
                     raise PermissionDenied("Only landlords can request lawyer tenancy agreement payments.")
@@ -7156,16 +7219,7 @@ class ServicePaymentViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
             )
             completed = existing.filter(status=ServicePayment.Status.COMPLETED).first()
             if completed:
-                # A completed identity verification payment covers a fixed
-                # number of attempts. Once those are used, a new payment is
-                # required.
-                if purpose in verification_roles:
-                    completed_count = existing.filter(status=ServicePayment.Status.COMPLETED).count()
-                    attempts_used = identity_verification_attempts_used(user, verification_roles[purpose][0])
-                    if attempts_used < completed_count * IDENTITY_VERIFICATION_ATTEMPTS_PER_PAYMENT:
-                        return Response(self.get_serializer(completed).data)
-                else:
-                    return Response(self.get_serializer(completed).data)
+                return Response(self.get_serializer(completed).data)
             pending = existing.filter(status=ServicePayment.Status.PENDING).first()
             if pending:
                 return Response(self.get_serializer(pending).data)
@@ -7317,11 +7371,10 @@ class AgentViewSet(viewsets.ViewSet):
             request.user, submitted_identity, credential_fields=("nin_number", "bvn_number")
         ):
             # Same credentials already verified under another persona — no
-            # provider call, no fee, and no paid attempt consumed.
+            # provider call and no verification attempt consumed.
             verification_payloads = {}
         else:
             require_unique_identity_credentials(request.user, profile.nin_number, profile.bvn_number)
-            require_identity_verification_payment(request.user, AppUser.Role.AGENT)
             try:
                 verification_payloads = verify_nin_and_bvn(identity_data, profile.nin_number, profile.bvn_number)
             except ValidationError:
@@ -7330,14 +7383,9 @@ class AgentViewSet(viewsets.ViewSet):
                 raise
 
         verified_at = timezone.now()
-        update_fields = ["verification_status", "verified_at", "updated_at"]
         if verification_payloads:
             profile.verification_attempts += 1
-            update_fields.insert(0, "verification_attempts")
-        profile.verification_status = AgentProfile.VerificationStatus.VERIFIED
-        profile.verified_at = verified_at
-        profile.save(update_fields=update_fields)
-
+            profile.save(update_fields=["verification_attempts", "updated_at"])
         verification, _ = VerificationRequest.objects.get_or_create(
             user=request.user,
             role=AppUser.Role.AGENT,
@@ -7347,9 +7395,10 @@ class AgentViewSet(viewsets.ViewSet):
         )
         verification.request_type = VerificationRequest.RequestType.IDENTIFICATION
         verification.submitted_at = verified_at
-        verification.identity_verification_status = VerificationRequest.VerificationProgressStatus.VERIFIED
+        awaiting_payment = mark_identity_verification_outcome(
+            request.user, AppUser.Role.AGENT, verification
+        )
         verification.verification_method = VerificationRequest.Method.AUTOMATED
-        verification.status = VerificationRequest.Status.APPROVED
         verification.reviewed_at = verified_at
         verification.save(
             update_fields=[
@@ -7362,12 +7411,26 @@ class AgentViewSet(viewsets.ViewSet):
             ]
         )
 
+        # The role activates only after the verification fee is paid.
+        profile.verification_status = (
+            AgentProfile.VerificationStatus.PAYMENT_REQUIRED
+            if awaiting_payment
+            else AgentProfile.VerificationStatus.VERIFIED
+        )
+        profile.verified_at = None if awaiting_payment else verified_at
+        profile.save(update_fields=["verification_status", "verified_at", "updated_at"])
+
         user = request.user
         user.nin_number = profile.nin_number
         user.bvn_number = profile.bvn_number
         user.save(update_fields=["nin_number", "bvn_number", "updated_at"])
 
         data = AgentProfileSerializer(profile, context={"request": request}).data
+        if awaiting_payment:
+            data["verification_payment"] = ServicePaymentSerializer(
+                pending_identity_verification_payment(request.user, AppUser.Role.AGENT),
+                context={"request": request},
+            ).data
         mobile_warning = extract_mobile_verification_warning(verification_payloads)
         if mobile_warning:
             data["mobile_warning"] = mobile_warning

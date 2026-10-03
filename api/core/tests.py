@@ -3775,7 +3775,8 @@ class VerificationRequestViewSetTests(TestCase):
         self.assertEqual(dikript_lookup_mock.call_count, 2)
 
     @patch("core.dikript_verification.dikript_lookup")
-    def test_tenant_profile_submission_requires_payment(self, dikript_lookup_mock):
+    def test_tenant_profile_submission_charges_fee_after_verification(self, dikript_lookup_mock):
+        dikript_lookup_mock.side_effect = [self._nin_payload(), self._bvn_payload()]
         user = AppUser.objects.create_user(
             email="tenant-unpaid@example.com",
             password="password-123",
@@ -3793,16 +3794,35 @@ class VerificationRequestViewSetTests(TestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, 400, response.json())
-        self.assertIn("payment_required", response.json())
-        self.assertFalse(dikript_lookup_mock.called)
+        self.assertEqual(response.status_code, 201, response.json())
+        payment_payload = response.json()["verification_payment"]
+        self.assertEqual(payment_payload["amount"], "500.00")
         profile = TenantProfile.objects.get(user=user)
-        self.assertEqual(profile.status, TenantProfile.Status.REJECTED)
+        self.assertEqual(profile.status, TenantProfile.Status.PENDING)
+        verification = VerificationRequest.objects.get(user=user, role=AppUser.Role.TENANT)
+        self.assertEqual(
+            verification.identity_verification_status,
+            VerificationRequest.VerificationProgressStatus.AWAITING_PAYMENT,
+        )
         user.refresh_from_db()
-        self.assertEqual(user.tenant_verification_attempts, 0)
+        self.assertEqual(user.tenant_verification_attempts, 1)
+        self.assertFalse(user.is_verified_for_role(AppUser.Role.TENANT))
+
+        from core.views import complete_service_payment
+
+        payment = ServicePayment.objects.get(id=payment_payload["id"])
+        complete_service_payment(payment)
+        verification.refresh_from_db()
+        profile.refresh_from_db()
+        self.assertEqual(
+            verification.identity_verification_status,
+            VerificationRequest.VerificationProgressStatus.VERIFIED,
+        )
+        self.assertEqual(profile.status, TenantProfile.Status.APPROVED)
+        self.assertTrue(user.is_verified_for_role(AppUser.Role.TENANT))
 
     @patch("core.dikript_verification.dikript_lookup")
-    def test_tenant_identity_payment_covers_three_attempts(self, dikript_lookup_mock):
+    def test_tenant_identity_extra_attempts_add_fee(self, dikript_lookup_mock):
         dikript_lookup_mock.side_effect = lambda **kwargs: (
             self._nin_payload() if kwargs["verification_type"] == "nin" else self._bvn_payload()
         )
@@ -3814,7 +3834,6 @@ class VerificationRequestViewSetTests(TestCase):
             email_verified=True,
             mobile="09080350066",
         )
-        self._pay_identity_verification(user, ServicePayment.Purpose.TENANT_VERIFICATION)
         client = APIClient()
         client.force_authenticate(user=user)
         payload = self._complete_tenant_profile_payload()
@@ -3829,18 +3848,26 @@ class VerificationRequestViewSetTests(TestCase):
         self.assertEqual(user.tenant_verification_attempts, 3)
         self.assertEqual(dikript_lookup_mock.call_count, 6)
 
-        exhausted = client.post("/api/v1/users/me/tenant-profile", payload, format="json")
-        self.assertEqual(exhausted.status_code, 400, exhausted.json())
-        self.assertIn("payment_required", exhausted.json())
-        self.assertEqual(dikript_lookup_mock.call_count, 6)
-
-        self._pay_identity_verification(user, ServicePayment.Purpose.TENANT_VERIFICATION)
         payload["lga"] = "Isoko North"
         response = client.post("/api/v1/users/me/tenant-profile", payload, format="json")
         self.assertIn(response.status_code, (200, 201), response.json())
+        user.refresh_from_db()
+        self.assertEqual(user.tenant_verification_attempts, 4)
+        self.assertEqual(dikript_lookup_mock.call_count, 8)
+
+        payment = ServicePayment.objects.get(
+            user=user, purpose=ServicePayment.Purpose.TENANT_VERIFICATION
+        )
+        self.assertEqual(payment.amount, Decimal("600.00"))
+        verification = VerificationRequest.objects.get(user=user, role=AppUser.Role.TENANT)
+        self.assertEqual(
+            verification.identity_verification_status,
+            VerificationRequest.VerificationProgressStatus.AWAITING_PAYMENT,
+        )
 
     @patch("core.dikript_verification.dikript_lookup")
-    def test_landlord_identification_requires_payment(self, dikript_lookup_mock):
+    def test_landlord_identification_charges_fee_after_verification(self, dikript_lookup_mock):
+        dikript_lookup_mock.side_effect = [self._nin_payload(), self._bvn_payload()]
         user = AppUser.objects.create_user(
             email="landlord-unpaid@example.com",
             password="password-123",
@@ -3851,8 +3878,14 @@ class VerificationRequestViewSetTests(TestCase):
             landlord_verification_type=AppUser.LandlordVerificationType.INDIVIDUAL,
             landlord_verification_profile={
                 "first_name": "Christian",
+                "middle_name": "Odezi",
                 "last_name": "Aluya",
                 "date_of_birth": "1977-02-06",
+                "gender": "Male",
+                "nationality": "Nigerian",
+                "state_of_origin": "Delta",
+                "lga_of_origin": "Isoko North",
+                "contact_number": "09080350066",
                 "nin": "12345678901",
                 "bvn": "22347235093",
             },
@@ -3866,9 +3899,13 @@ class VerificationRequestViewSetTests(TestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, 400, response.json())
-        self.assertIn("payment_required", response.json())
-        self.assertFalse(dikript_lookup_mock.called)
+        self.assertEqual(response.status_code, 201, response.json())
+        self.assertEqual(response.json()["verification_payment"]["amount"], "500.00")
+        verification = VerificationRequest.objects.get(user=user, role=AppUser.Role.LANDLORD)
+        self.assertEqual(
+            verification.identity_verification_status,
+            VerificationRequest.VerificationProgressStatus.AWAITING_PAYMENT,
+        )
 
     def _verified_credential_holder(self, email="verified-holder@example.com"):
         holder = AppUser.objects.create_user(
@@ -3987,7 +4024,7 @@ class VerificationRequestViewSetTests(TestCase):
         self.assertFalse(dikript_lookup_mock.called)
 
     @patch("core.dikript_verification.dikript_lookup")
-    def test_verified_landlord_activating_tenant_needs_no_payment(self, dikript_lookup_mock):
+    def test_verified_landlord_activating_tenant_awaits_payment(self, dikript_lookup_mock):
         user = AppUser.objects.create_user(
             email="landlord-turned-tenant@example.com",
             password="password-123",
@@ -4028,11 +4065,17 @@ class VerificationRequestViewSetTests(TestCase):
         self.assertIn(response.status_code, (200, 201), response.json())
         self.assertFalse(dikript_lookup_mock.called)
         user.refresh_from_db()
-        self.assertTrue(user.is_verified_for_role(AppUser.Role.TENANT))
+        self.assertFalse(user.is_verified_for_role(AppUser.Role.TENANT))
         self.assertEqual(user.tenant_verification_attempts, 0)
-        self.assertFalse(
-            ServicePayment.objects.filter(user=user, purpose=ServicePayment.Purpose.TENANT_VERIFICATION).exists()
+        verification = VerificationRequest.objects.get(user=user, role=AppUser.Role.TENANT)
+        self.assertEqual(
+            verification.identity_verification_status,
+            VerificationRequest.VerificationProgressStatus.AWAITING_PAYMENT,
         )
+        payment = ServicePayment.objects.get(
+            user=user, purpose=ServicePayment.Purpose.TENANT_VERIFICATION
+        )
+        self.assertEqual(payment.amount, Decimal("500.00"))
         self.assertEqual(
             user.tenant_verification_profile.get("nin_number"), "12345678901"
         )
@@ -4050,6 +4093,22 @@ class VerificationRequestViewSetTests(TestCase):
         )
         client = APIClient()
         client.force_authenticate(user=user)
+
+        unpaid = client.post(
+            "/api/v1/service-payments/request",
+            {"purpose": "tenant_verification"},
+            format="json",
+        )
+        self.assertEqual(unpaid.status_code, 400, unpaid.json())
+
+        VerificationRequest.objects.create(
+            user=user,
+            role=AppUser.Role.TENANT,
+            request_type=VerificationRequest.RequestType.IDENTIFICATION,
+            status=VerificationRequest.Status.PENDING,
+            identity_verification_status=VerificationRequest.VerificationProgressStatus.AWAITING_PAYMENT,
+            verification_method=VerificationRequest.Method.AUTOMATED,
+        )
 
         response = client.post(
             "/api/v1/service-payments/request",
@@ -4194,8 +4253,16 @@ class VerificationRequestViewSetTests(TestCase):
         self.assertEqual(response.status_code, 201, response.json())
         self.assertFalse(verify_mock.called)
         request = VerificationRequest.objects.get(user=user, role=user.role)
-        self.assertEqual(request.status, VerificationRequest.Status.APPROVED)
-        self.assertEqual(request.identity_verification_status, VerificationRequest.VerificationProgressStatus.VERIFIED)
+        self.assertEqual(request.status, VerificationRequest.Status.PENDING)
+        self.assertEqual(
+            request.identity_verification_status,
+            VerificationRequest.VerificationProgressStatus.AWAITING_PAYMENT,
+        )
+        self.assertTrue(
+            ServicePayment.objects.filter(
+                user=user, purpose=ServicePayment.Purpose.LANDLORD_VERIFICATION
+            ).exists()
+        )
         user.refresh_from_db()
         self.assertEqual(user.nin_number, "12345678901")
         self.assertEqual(user.bvn_number, "22347235093")
@@ -10936,7 +11003,20 @@ class ServicePaymentTests(TestCase):
         )
         self.client = APIClient()
 
+    def _set_agent_awaiting_verification_payment(self):
+        VerificationRequest.objects.update_or_create(
+            user=self.agent,
+            role=AppUser.Role.AGENT,
+            defaults={
+                "request_type": VerificationRequest.RequestType.IDENTIFICATION,
+                "status": VerificationRequest.Status.PENDING,
+                "identity_verification_status": VerificationRequest.VerificationProgressStatus.AWAITING_PAYMENT,
+                "submitted_at": timezone.now(),
+            },
+        )
+
     def test_agent_request_creates_500_payment_without_booking_or_subscription(self):
+        self._set_agent_awaiting_verification_payment()
         self.client.force_authenticate(user=self.agent)
         response = self.client.post(
             "/api/v1/service-payments/request",
@@ -11068,6 +11148,7 @@ class ServicePaymentTests(TestCase):
         )
 
     def test_pending_request_is_reused_and_completed_request_returned(self):
+        self._set_agent_awaiting_verification_payment()
         self.client.force_authenticate(user=self.agent)
         first = self.client.post(
             "/api/v1/service-payments/request",
@@ -11393,33 +11474,46 @@ class AgentFeatureTests(TestCase):
         self.assertEqual(self.agent.state_of_origin, "Lagos")
 
     @patch("core.views.verify_nin_and_bvn")
-    def test_verify_requires_payment_then_verifies_profile_and_request(self, verify_mock):
+    def test_verify_charges_fee_after_verification_then_activates(self, verify_mock):
         verify_mock.return_value = {"nin": {"status": "verified"}, "bvn": {"status": "verified"}}
         self._complete_agent_profile()
         self.client.force_authenticate(user=self.agent)
 
-        unpaid = self.client.post("/api/v1/agents/verify", {}, format="json")
-        self.assertEqual(unpaid.status_code, 400)
-        self.assertFalse(verify_mock.called)
-
-        self._complete_verification_payment()
         response = self.client.post("/api/v1/agents/verify", {}, format="json")
         self.assertEqual(response.status_code, 200, response.json())
-        self.assertEqual(response.json()["verification_status"], "verified")
-        self.assertTrue(response.json()["is_verified"])
+        self.assertEqual(response.json()["verification_status"], "payment_required")
+        self.assertFalse(response.json()["is_verified"])
+        payment_payload = response.json()["verification_payment"]
+        self.assertEqual(payment_payload["amount"], "500.00")
 
         profile = AgentProfile.objects.get(user=self.agent)
-        self.assertEqual(profile.verification_status, AgentProfile.VerificationStatus.VERIFIED)
-        self.assertIsNotNone(profile.verified_at)
+        self.assertEqual(profile.verification_status, AgentProfile.VerificationStatus.PAYMENT_REQUIRED)
+        self.assertIsNone(profile.verified_at)
+        self.assertEqual(profile.verification_attempts, 1)
 
         verification = VerificationRequest.objects.get(user=self.agent, role=AppUser.Role.AGENT)
-        self.assertEqual(verification.status, VerificationRequest.Status.APPROVED)
+        self.assertEqual(verification.status, VerificationRequest.Status.PENDING)
+        self.assertEqual(
+            verification.identity_verification_status,
+            VerificationRequest.VerificationProgressStatus.AWAITING_PAYMENT,
+        )
+        self.assertEqual(
+            verification.verification_method, VerificationRequest.Method.AUTOMATED
+        )
+
+        from core.views import complete_service_payment
+
+        complete_service_payment(ServicePayment.objects.get(id=payment_payload["id"]))
+        verification.refresh_from_db()
+        profile.refresh_from_db()
         self.assertEqual(
             verification.identity_verification_status,
             VerificationRequest.VerificationProgressStatus.VERIFIED,
         )
-        self.assertEqual(
-            verification.verification_method, VerificationRequest.Method.AUTOMATED
+        self.assertEqual(profile.verification_status, AgentProfile.VerificationStatus.VERIFIED)
+        self.assertIsNotNone(profile.verified_at)
+        self.assertTrue(
+            AppUser.objects.get(pk=self.agent.pk).is_verified_for_role(AppUser.Role.AGENT)
         )
 
         self.assertFalse(SubscriptionPayment.objects.filter(user=self.agent).exists())

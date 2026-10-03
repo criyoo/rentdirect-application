@@ -56,7 +56,7 @@ from .models import (
     VerificationRequest,
 )
 from .financial_constants import REFUNDABLE_CAUTION_FEE_RATE, ZERO_AMOUNT
-from .roles import active_role_membership, available_roles, has_active_role, identity_verification_payment_required
+from .roles import active_role_membership, available_roles, has_active_role, identity_verification_attempts_used, identity_verification_payment_required
 from .pricing import calculate_booking_total, calculate_listing_deposit_amount, calculate_remaining_balance, quantize_money, resolve_booking_total
 from .subscription_access import user_has_completed_tenant_profile, user_has_silver_access
 from .tenant_scoring import build_tenant_screening_summary
@@ -73,6 +73,7 @@ class UserSerializer(serializers.ModelSerializer):
     account_frozen_until = serializers.SerializerMethodField()
     account_freeze_fee_percentage = serializers.SerializerMethodField()
     verification_payment_required = serializers.SerializerMethodField()
+    verification_attempts = serializers.SerializerMethodField()
 
     def get_available_roles(self, obj):
         return available_roles(obj)
@@ -104,6 +105,13 @@ class UserSerializer(serializers.ModelSerializer):
         role = getattr(obj, "active_role", None) or obj.role
         return identity_verification_payment_required(obj, role)
 
+    def get_verification_attempts(self, obj) -> int:
+        request = self.context.get("request")
+        if request is None or getattr(request.user, "pk", None) != obj.pk:
+            return 0
+        role = getattr(obj, "active_role", None) or obj.role
+        return identity_verification_attempts_used(obj, role)
+
     class Meta:
         model = AppUser
         fields = [
@@ -125,6 +133,7 @@ class UserSerializer(serializers.ModelSerializer):
             "tenant_verification_profile",
             "is_verified",
             "verification_payment_required",
+            "verification_attempts",
             "account_frozen",
             "account_frozen_at",
             "account_frozen_until",

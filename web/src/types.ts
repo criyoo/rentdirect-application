@@ -30,6 +30,7 @@ export type User = {
     tenant_verification_profile?: Record<string, any> | null
     is_verified?: boolean
     verification_payment_required?: boolean
+    verification_attempts?: number
     account_frozen?: boolean
     account_frozen_at?: string | null
     account_frozen_until?: string | null

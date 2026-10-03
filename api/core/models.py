@@ -918,6 +918,7 @@ class VerificationRequest(models.Model):
     class VerificationProgressStatus(models.TextChoices):
         UNVERIFIED = "unverified", "Unverified"
         PENDING = "pending", "Pending"
+        AWAITING_PAYMENT = "awaiting_payment", "Awaiting payment"
         VERIFIED = "verified", "Verified"
 
     class Method(models.TextChoices):

@@ -112,6 +112,7 @@ export default function AgentVerificationPage() {
 
     const isVerified = profile?.verification_status === 'verified'
     const verificationPaymentRequired = Boolean(profile?.verification_payment_required)
+    const verificationAttempts = profile?.verification_attempts ?? 0
 
     useEffect(() => {
         if (!whatsappSameAsMobile) return
@@ -140,10 +141,15 @@ export default function AgentVerificationPage() {
     })
 
     const verifyIdentity = useMutation({
-        mutationFn: async () => (await api.post<AgentProfile>('/agents/verify')).data,
+        mutationFn: async () => (await api.post<AgentProfile & { verification_payment?: ServicePayment | null }>('/agents/verify')).data,
         onSuccess: async (saved) => {
             await queryClient.invalidateQueries({ queryKey: ['agents', 'profile'] })
             await queryClient.invalidateQueries({ queryKey: ['agents', 'dashboard'] })
+            const paymentId = saved?.verification_payment?.id
+            if (paymentId) {
+                navigate(`/service-payments/${paymentId}`)
+                return
+            }
             if (saved.mobile_warning) {
                 await alert(saved.mobile_warning, { title: 'Verification complete', variant: 'warning' })
             } else {
@@ -184,17 +190,20 @@ export default function AgentVerificationPage() {
         try {
             await saveProfile.mutateAsync(form)
             if (verificationPaymentRequired) {
-                const attemptsUsed = profile?.verification_attempts ?? 0
-                const message = attemptsUsed === 0
-                    ? 'A ₦500 identity verification fee is required to verify your PIO account. It covers up to 3 verification attempts. Continue to payment?'
-                    : 'You have used all verification attempts covered by your last payment. A ₦500 fee is required for another round of up to 3 verification attempts. Continue to payment?'
                 const proceed = await confirm(
-                    message,
-                    { title: 'Identity verification payment', confirmLabel: 'Continue', cancelLabel: 'Cancel' },
+                    'Your identity was verified. Complete the verification payment to activate your PIO account.',
+                    { title: 'Verification payment', confirmLabel: 'Continue', cancelLabel: 'Cancel' },
                 )
                 if (!proceed) return
                 await requestVerificationPayment.mutateAsync()
                 return
+            }
+            if (verificationAttempts >= 3) {
+                const proceed = await confirm(
+                    'Your next attempts will attract extra fees of N100 for each attempt to cover verification cost',
+                    { title: 'Extra Verification Fee', confirmLabel: 'Continue', cancelLabel: 'Cancel' },
+                )
+                if (!proceed) return
             }
             await verifyIdentity.mutateAsync()
         } catch {
@@ -223,7 +232,7 @@ export default function AgentVerificationPage() {
                 <div className="mb-6">
                     <h1 className="text-3xl font-bold text-gray-900">PIO Verification</h1>
                     <p className="mt-1 text-sm text-gray-600">
-                        Complete your profile, pay the one-time ₦500 identity verification fee, then verify. There is no subscription for PIOs.
+                        Complete your profile and verify your identity; the ₦500 verification fee is charged after a successful verification. There is no subscription for PIOs.
                     </p>
                 </div>
 
